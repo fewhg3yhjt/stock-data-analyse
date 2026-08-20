@@ -1,0 +1,33 @@
+# StockInvestmentTool — 单容器生产部署（web + 每日定时任务内置）
+# 所有路径相对本目录（部署文件与代码同层）
+# ⚠️ 数据安全：output/ 挂载宿主机，执行 down/up 不丢数据。切勿 `docker compose down -v`。
+services:
+  stock-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: stock-invest:latest
+    container_name: stock-invest
+    ports:
+      - "9000:9000"
+    # 环境变量：登录 / webhook / 每日任务时间 / DeepSeek 等
+    env_file:
+      - path: ${STOCK_ENV_FILE:-./.env}
+        required: false
+    environment:
+      - TZ=Asia/Shanghai
+    # 运行数据持久化（portfolio.db / 缓存 / 报表；切勿 down -v）
+    volumes:
+      - ${STOCK_OUTPUT_DIR:-./output}:/app/StockInvestmentTool/output
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:9000/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

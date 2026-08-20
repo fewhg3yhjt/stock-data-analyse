@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# 环境变量（含真实密钥，勿推送）
+.env
+.env.*
+!.env.example
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 数据与运行产物
+data/
+output/
+*.log
+
+# 打包产物
+*.tar.gz
+*.zip

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 复盘</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
+  --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
+  --red:#dc3545; --green:#28a745; --orange:#e67e22;
+  --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
+}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+.app{max-width:1400px;margin:0 auto;padding:28px 22px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.header .nav{font-size:14px;}
+.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
+.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
+.card-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.card-title i{color:var(--accent);}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+.stat-card{background:var(--surface2);border-radius:6px;padding:16px 12px;text-align:center;border:1px solid var(--border);}
+.stat-card .value{font-size:21px;font-weight:700;}
+.stat-card .label{font-size:12px;color:var(--text2);}
+.stat-card.green .value{color:var(--green);}
+.stat-card.red .value{color:var(--red);}
+.stat-card.blue .value{color:var(--accent);}
+.stat-card.orange .value{color:var(--orange);}
+table{width:100%;border-collapse:collapse;font-size:14px;}
+.table-wrap{overflow-x:auto;}
+th{text-align:left;padding:9px 10px;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;}
+.tag.green{background:#e8f5e9;color:var(--green);}
+.tag.red{background:#fbe9e7;color:var(--red);}
+.tag.orange{background:#fff3e0;color:var(--orange);}
+.tag.gray{background:#eceff1;color:var(--text2);}
+.tag.blue{background:#e3f2fd;color:var(--accent);}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--red);font-size:14px;margin-bottom:14px;}
+.note{font-size:13px;color:var(--text2);}
+.confidence{margin-top:12px;border-radius:6px;padding:10px 16px;font-size:13px;font-weight:600;}
+.confidence.ok{background:#e8f5e9;color:#14532d;}
+.confidence.warn{background:#fff3e0;color:#7c4a03;}
+.confidence.crisis{background:#fbe9e7;color:#7f1d1d;}
+.empty{padding:30px;text-align:center;color:var(--text2);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-book-open"></i> 复盘</h1>
+      <div class="sub">战后复盘 · 全量流水 + 统计看板</div>
+    </div>
+    {% set active = 'review' %}{% include '_nav.html' %}
+  </div>
+
+  {% if error %}
+  <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-title"><span><i class="fas fa-plus-circle"></i> 手动添加交易记录</span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <select id="tx-pos" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;">
+        {% for p in positions %}<option value="{{ p.id }}">{{ p.stock_name }}（{{ p.stock_code }}）</option>{% endfor %}
+      </select>
+      <select id="tx-type" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;">
+        <option value="buy">买入</option>
+        <option value="sell">卖出</option>
+        <option value="sell_all">清仓</option>
+        <option value="dividend">分红</option>
+      </select>
+      <input id="tx-price" placeholder="价格" step="any" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;width:90px;">
+      <input id="tx-shares" placeholder="数量" type="number" step="100" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;width:90px;">
+      <input id="tx-date" type="date" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;">
+      <input id="tx-reason" placeholder="备注" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;flex:1;min-width:120px;">
+      <button class="btn btn-primary" onclick="addTxn()"><i class="fas fa-plus"></i> 添加</button>
+    </div>
+    {% if not positions %}<p class="note" style="margin-top:8px;">当前无持仓 —— 先建仓才能记录买卖交易（分红除外）</p>{% endif %}
+  </div>
+
+  {% if data %}
+  <div class="card">
+    <div class="card-title"><span><i class="fas fa-chart-simple"></i> 交易统计看板 <span class="note">（已实现盈亏口径，FIFO 配对）</span></span>
+      <span style="display:flex;gap:8px;">
+        <a class="btn btn-primary" href="/dashboard/review/export" style="padding:5px 14px;font-size:12px;"><i class="fas fa-download"></i> 导出 Excel</a>
+        <a class="btn btn-outline" href="/dashboard/warroom" style="padding:5px 14px;font-size:12px;"><i class="fas fa-briefcase"></i> 持仓</a>
+      </span>
+    </div>
+    {% set s = data.stats %}
+    <div class="stat-grid">
+      <div class="stat-card blue"><div class="value">{{ s.closed_trades }}</div><div class="label">已平仓笔数</div></div>
+      <div class="stat-card {% if (s.win_rate or 0)>=50 %}green{% else %}red{% endif %}"><div class="value">{{ s.win_rate if s.win_rate is not none else '—' }}%</div><div class="label">胜率</div></div>
+      <div class="stat-card green"><div class="value">{{ s.avg_win if s.avg_win is not none else '—' }}</div><div class="label">平均盈利(元)</div></div>
+      <div class="stat-card red"><div class="value">{{ s.avg_loss if s.avg_loss is not none else '—' }}</div><div class="label">平均亏损(元)</div></div>
+      <div class="stat-card orange"><div class="value">{{ s.pnl_ratio if s.pnl_ratio is not none else '—' }}</div><div class="label">盈亏比(目标>2:1)</div></div>
+      <div class="stat-card"><div class="value">{{ s.avg_holding_days if s.avg_holding_days is not none else '—' }}</div><div class="label">平均持仓天数</div></div>
+    </div>
+    <div class="confidence {% if '极低' in s.confidence %}crisis{% elif '中等' in s.confidence %}warn{% else %}ok{% endif %}">
+      <i class="fas fa-flask"></i> 样本置信度：{{ s.confidence }}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span><i class="fas fa-receipt"></i> 全量交易流水（FIFO 配对）</span><span class="note">共 {{ data.total }} 笔</span></div>
+    {% if data.txns %}
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>日期</th><th>标的</th><th>方向</th><th>价格</th><th>数量</th><th>金额</th><th>手续费</th><th>盈亏</th><th>备注</th></tr>
+      </thead>
+      <tbody>
+        {% for t in data.txns %}
+        <tr>
+          <td>{{ t.date }}</td>
+          <td>{{ t.stock_name }}<br><span class="note">{{ t.stock_code }}</span></td>
+          <td><span class="tag {% if t.trans_type in ('buy',) %}green{% elif t.trans_type in ('sell','sell_all') %}red{% else %}gray{% endif %}">
+            {% if t.trans_type=='buy' %}买入{% elif t.trans_type=='sell' %}卖出{% elif t.trans_type=='sell_all' %}清仓{% elif t.trans_type=='dividend' %}分红{% else %}{{ t.trans_type }}{% endif %}
+          </span></td>
+          <td>{{ t.price }}</td>
+          <td>{{ "%.0f"|format(t.shares or 0) }}</td>
+          <td>{{ "%.0f"|format(t.amount or 0) }}</td>
+          <td>{{ "%.0f"|format(t.fee or 0) }}</td>
+          <td>
+            {% if t.pnl is not none %}
+              <span class="tag {% if t.pnl>0 %}green{% elif t.pnl<0 %}red{% else %}gray{% endif %}">{{ "%+.0f"|format(t.pnl) }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="note">{{ t.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty">暂无交易流水</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+<div class="toast" id="toast" style="position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;"></div>
+<script>
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
+async function addTxn(){
+  const posId = document.getElementById('tx-pos').value;
+  const type = document.getElementById('tx-type').value;
+  const price = parseFloat(document.getElementById('tx-price').value);
+  const shares = parseFloat(document.getElementById('tx-shares').value || 0);
+  const date = document.getElementById('tx-date').value || '';
+  const reason = document.getElementById('tx-reason').value.trim();
+  if (!posId){ showToast('请选择持仓'); return; }
+  if (!price || price <= 0){ showToast('请填写价格'); return; }
+  const body = new URLSearchParams({ type, price, shares: String(shares), date, reason });
+  const url = type === 'sell_all' ? '/portfolio/' + posId + '/close' : '/portfolio/' + posId + '/transaction';
+  const d = await (await fetch(url, { method: 'POST', body })).json();
+  if (d.status === 'success'){ showToast('已添加交易' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : '')); setTimeout(()=>location.reload(),600); }
+  else showToast(d.error || '添加失败');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+# ============================================================
+# 默认价值白马方案
+# 精确映射 StockInvestmentTool 重构前的硬编码行为:
+#   - 买点: 三批交叉验证支撑位（规则A）
+#   - 卖点: 左侧固定止盈(前高90-100%减持40%) + 右侧移动止盈
+#   - 风控: 硬止损(均价×85%/D类×90%) + 技术止损(放量跌破强支撑)
+#   - 回测: 网格搜索(右侧回撤阈值 × 买入偏移量)
+# ============================================================
+
+name: "default_value"
+version: "1.0"
+description: "基于支撑位交叉验证的三批买入 + 左侧固定止盈 + 右侧移动止盈（默认方案）"
+
+applicable_types: ["A", "B", "C", "D"]
+
+# ── 策略说明书（纯文档，不参与执行；各买卖点逻辑一目了然）────
+strategy_spec:
+  状态机: "accumulating → left_side → right_side → closed；全清仓后重建仓回到 accumulating"
+  买入点:
+    - "第1批 综合弱支撑: 当日最低价 ≤ 次低价格支撑(MA60/近3月低点/年内低点) → 买 30%"
+    - "第2批 综合强支撑: 当日最低价 ≤ 最低价格支撑 → 买 40%"
+    - "第3批 极端低估锚: 当日最低价 ≤ 股息锚(每股分红÷4%) → 买 30%"
+  卖出点(按优先级从高到低):
+    - "技术止损: 最低价放量跌破强支撑(量>5日均量×1.8) → 全清"
+    - "硬止损: 最低价 ≤ 均价×85%(D类90%) → 全清"
+    - "左侧预警区: 最高价达前高90%-95% → 卖 20%(浮盈<10%减半)"
+    - "左侧第一止盈区: 最高价达前高95%-100% → 再卖 20%"
+    - "左侧回撤保护: 止盈后收盘从峰值回撤≥8% 且曾达峰值利润≥6% → 清仓"
+    - "右侧移动止盈: 突破前高后收盘从峰值回撤≥3%(B类)/5%(A/C/D) → 全清"
+  买入当天: "当日刚买入时不触发止盈(避免同bar先买后卖)"
+  强制平仓: "回测期结束仍有持仓时按期末收盘价强制平仓"
+
+# ── 买点规则 ────────────────────────────────────────────────
+buy_rules:
+  # 规则A: 交叉验证支撑位分批买入
+  - type: "support_level"
+    params:
+      support_sources:
+        - "dividend_anchor"   # 股息率锚（每股分红÷4.0%）
+        - "ma_60"             # 60日均线
+        - "low_3m"            # 近3月低点
+        - "year_low"          # 年内低点
+      sort_direction: "asc"   # 升序 → position_index 0 = 最低值(强支撑)
+      buy_stages:
+        - label: "综合弱支撑"
+          position_index: 1
+          ratio: 0.30
+        - label: "综合强支撑"
+          position_index: 0
+          ratio: 0.40
+        - label: "极端低估锚"
+          use_special: "dividend_anchor_4pct"
+          ratio: 0.30
+
+# ── 卖点规则 ────────────────────────────────────────────────
+sell_rules:
+  # 硬止损: 最低价 ≤ 成本均价 × (1 - 止损率)
+  - type: "hard_stop"
+    params:
+      stop_loss_by_type: {A: 0.15, B: 0.15, C: 0.15, D: 0.10}
+
+  # 技术止损: 放量跌破综合强支撑
+  - type: "technical_stop"
+    params:
+      volume_surge_ratio: 1.8
+      support_source: "strong"
+
+  # 左侧固定止盈: 前高90%-100%区间分档减持
+  - type: "left_side_fixed"
+    params:
+      reference_price: "year_high"
+      zones:
+        - name: "预警区"
+          range: [0.90, 0.95]
+          sell_ratio: 0.20
+        - name: "第一止盈区"
+          range: [0.95, 1.00]
+          sell_ratio: 0.20
+      transition_to_right: 1.00   # 突破前高 → 剩余仓位转右侧移动止盈
+      half_profit_threshold: 0.10  # 浮盈 <10% 时减持比例减半
+      total_cap_ratio: 0.40        # 左侧止盈总仓位上限
+
+  # 右侧移动止盈: 突破前高后回撤跟踪
+  - type: "right_side_trailing"
+    params:
+      drawdown_by_type: {A: 0.05, B: 0.03, C: 0.05, D: 0.05}
+
+# ── 风控 ────────────────────────────────────────────────────
+# 注意: stop_loss_by_type 用"扣减率"表示（与 TakeProfitOptimizer 一致）
+#   止损价 = 成本均价 × (1 - 扣减率)。A/B/C类扣15%，D类扣10%。
+# 这是 hard_stop 卖点规则参数的同值来源；hard_stop 中的配置优先。
+risk:
+  stop_loss_by_type: {A: 0.15, B: 0.15, C: 0.15, D: 0.10}
+  volume_surge_threshold: 1.8
+  technical_stop_enabled: true
+  # 左侧回撤保护：左侧止盈后、突破前高前，剩余仓位从峰值回撤≥drawdown_stop
+  # 且曾达到最小峰值利润(min_profit_for_dd)时清仓，避免坐过山车
+  drawdown_stop: 0.08      # 从峰值收盘回撤 ≥8% → 清仓
+  min_profit_for_dd: 0.06  # 本次持仓峰值利润需 ≥6% 才启用回撤保护
+
+# ── 回测 ────────────────────────────────────────────────────
+backtest:
+  initial_cash: 100000
+  optimize: true
+  grid_search:
+    trail_thresholds: [0.03, 0.04, 0.05, 0.06, 0.08, 0.10]
+    buy_offsets: [-0.02, 0.0, 0.02]

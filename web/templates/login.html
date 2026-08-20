@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 登录</title>
+<style>
+*, *::before, *::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--bg:#f5f6f8;--surface:#fff;--border:#e0e4ea;--text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;--red:#dc3545;--radius:8px;}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;min-height:100vh;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:40px 36px;width:360px;box-shadow:0 2px 12px rgba(0,0,0,.06);}
+.card h1{font-size:20px;margin-bottom:6px;display:flex;align-items:center;gap:8px;}
+.card h1 i{color:var(--accent);}
+.card .sub{font-size:13px;color:var(--text2);margin-bottom:24px;}
+.form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:16px;}
+.form-group label{font-size:13px;color:var(--text2);}
+.form-group input{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:11px 14px;font-size:15px;outline:none;}
+.form-group input:focus{border-color:var(--accent);}
+.btn{width:100%;padding:12px;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff;}
+.btn:hover{background:var(--accent2);}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;color:var(--red);font-size:13px;margin-bottom:14px;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1><i class="fas fa-shield-halved"></i> StockInvestmentTool</h1>
+  <div class="sub">登录后进入监控平台</div>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="POST">
+    <div class="form-group"><label>用户名</label><input name="username" required autofocus></div>
+    <div class="form-group"><label>密码</label><input type="password" name="password" required></div>
+    <button class="btn" type="submit">登 录</button>
+  </form>
+</div>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+</body>
+</html>

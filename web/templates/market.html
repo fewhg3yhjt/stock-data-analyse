@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 大盘</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
+  --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
+  --red:#dc3545; --green:#28a745; --orange:#e67e22;
+  --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
+}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+.app{max-width:1400px;margin:0 auto;padding:28px 22px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.header .nav{font-size:14px;}
+.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
+.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 22px;margin-bottom:16px;box-shadow:var(--shadow);}
+.card-title{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.card-title i{color:var(--accent);}
+.chart{width:100%;height:340px;}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+select,input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--text);outline:none;}
+.btn{padding:7px 14px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s;background:var(--accent);color:#fff;}
+.btn:hover{background:var(--accent2);}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--red);font-size:14px;margin-bottom:14px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-chart-line"></i> 大盘</h1>
+      <div class="sub">指数走势 · 关注板块 · 持仓股票与止盈止损线</div>
+    </div>
+    {% set active = 'market' %}{% include '_nav.html' %}
+  </div>
+
+  {% if error %}
+  <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-title"><i class="fas fa-landmark"></i> 指数走势</div>
+    <div class="chart" id="chart-index"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span><i class="fas fa-layer-group"></i> 关注板块走势</span>
+      <div class="controls">
+        <select id="board-select">{% for b in board_names %}<option value="{{ b }}">{{ b }}</option>{% endfor %}</select>
+        <button class="btn" onclick="loadBoard()">加载板块</button>
+      </div>
+    </div>
+    <div class="chart" id="chart-board"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span><i class="fas fa-briefcase"></i> 持仓股票走势 + 止盈止损线</span>
+      <div class="controls">
+        <select id="stock-select"></select>
+        <button class="btn" onclick="loadStock()">加载</button>
+        <span id="stock-state" style="font-size:13px;"></span>
+      </div>
+    </div>
+    <div class="chart" id="chart-stock"></div>
+    <div id="stock-legend" style="margin-top:6px;"></div>
+  </div>
+
+</div>
+<script>
+// ECharts 离线降级：不可用时显示占位
+const chartEls = { index: 'chart-index', board: 'chart-board', stock: 'chart-stock' };
+function makeChart(id){ return echarts.init(document.getElementById(id)); }
+
+function lineOption(title, dates, series, lines){
+  const opt = {
+    title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: { trigger: 'axis' },
+    legend: { top: 28 },
+    grid: { left: 50, right: 20, top: 60, bottom: 30 },
+    xAxis: { type: 'category', data: dates, boundaryGap: false },
+    yAxis: { type: 'value', scale: true },
+    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 14 }],
+    series: series.map(s => ({ name: s.name, type: 'line', data: s.data, showSymbol: false, lineStyle: { width: 1.5 } })),
+  };
+  if (lines && lines.length) {
+    opt.series.push({ name: '点位线', type: 'line', data: [], markLine: {
+      silent: true, symbol: 'none',
+      label: { formatter: p => p.name, position: 'insideEndTop', fontSize: 10 },
+      data: lines.map(l => ({ name: l.name, yAxis: l.value, lineStyle: { type: 'dashed', color: l.color || '#999' } })),
+    }});
+  }
+  return opt;
+}
+function legendHtml(lines){
+  if (!lines || !lines.length) return '';
+  return '<div style="margin-top:6px;font-size:12px;color:var(--text2);">' +
+    lines.map(l => '<span style="margin-right:14px;white-space:nowrap;"><span style="display:inline-block;width:16px;height:3px;background:'+(l.color||'#999')+';vertical-align:middle;margin-right:4px;"></span>' + l.name + '</span>').join('') + '</div>';
+}
+
+async function loadIndices(){
+  const codes = Object.values({{ indices | tojson }}).join(',');
+  const r = await fetch('/market/index_kline?codes=' + encodeURIComponent(codes));
+  const d = await r.json();
+  if (d.status !== 'success') return;
+  const names = Object.keys({{ indices | tojson }});
+  const series = names.map(n => ({ name: n, data: d.series[{{ indices | tojson }}[n]] || [] }));
+  makeChart('chart-index').setOption(lineOption('指数走势', d.dates || [], series, null), true);
+}
+
+async function loadBoard(){
+  const name = document.getElementById('board-select').value;
+  const r = await fetch('/market/board_kline?name=' + encodeURIComponent(name));
+  const d = await r.json();
+  if (d.status !== 'success') return;
+  makeChart('chart-board').setOption(lineOption(d.name, d.dates || [], [{ name: d.name, data: d.close || [] }], null), true);
+}
+
+async function loadStock(){
+  const code = document.getElementById('stock-select').value;
+  if (!code) return;
+  const r = await fetch('/market/stock_chart?code=' + encodeURIComponent(code));
+  const d = await r.json();
+  if (d.status !== 'success') return;
+  document.getElementById('stock-state').textContent = '市场状态：' + (d.market_state || '');
+  makeChart('chart-stock').setOption(lineOption(code, d.dates || [], [{ name: code, data: d.close || [] }], d.lines || []), true);
+  document.getElementById('stock-legend').innerHTML = legendHtml(d.lines || []);
+}
+
+// 持仓股票下拉
+async function initStocks(){
+  const codes = window.__positions_codes__ || [];
+  const sel = document.getElementById('stock-select');
+  if (!codes.length){ sel.innerHTML = '<option value="">暂无持仓（先去持仓/观察建仓）</option>'; return; }
+  codes.forEach(c => { const o = document.createElement('option'); o.value = c.code; o.textContent = c.name; sel.appendChild(o); });
+  if (codes.length) loadStock();
+}
+window.__positions_codes__ = {{ positions_codes | tojson }};
+initStocks();
+loadIndices();
+</script>
+</body>
+</html>

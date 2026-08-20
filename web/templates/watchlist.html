@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 自选</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
+  --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
+  --red:#dc3545; --green:#28a745; --orange:#e67e22;
+  --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
+}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+.app{max-width:1200px;margin:0 auto;padding:28px 22px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.header .nav{font-size:14px;}
+.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
+.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:12px;box-shadow:var(--shadow);}
+.wl-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer;}
+.wl-head .name{font-weight:700;font-size:16px;}
+.wl-head .code{color:var(--text2);font-size:13px;}
+.wl-actions{display:flex;gap:6px;flex-wrap:wrap;}
+.btn{padding:5px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:6px;text-decoration:none;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-outline{background:var(--surface);border:1px solid var(--border);color:var(--text2);}
+.btn-danger{background:#fbe9e7;color:var(--red);}
+.wl-detail{display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;}
+.wl-detail.open{display:block;}
+.chart{width:100%;height:300px;}
+.meta{font-size:13px;color:var(--text2);margin-bottom:8px;display:flex;gap:16px;flex-wrap:wrap;}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--red);font-size:14px;margin-bottom:14px;}
+.toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
+.empty{padding:30px;text-align:center;color:var(--text2);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-star"></i> 自选</h1>
+      <div class="sub">稳定观察 · 点击展开看日K与止盈止损线</div>
+    </div>
+    {% set active = 'watchlist' %}{% include '_nav.html' %}
+  </div>
+
+  {% if error %}
+  <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-title"><span><i class="fas fa-plus-circle"></i> 手动添加自选</span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <input id="wl-code" placeholder="代码 sh600519 / 600519" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:180px;">
+      <input id="wl-name" placeholder="名称（可留空自动识别）" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:180px;">
+      <button class="btn btn-primary" onclick="addManual()"><i class="fas fa-plus"></i> 添加</button>
+    </div>
+  </div>
+
+  {% if items %}
+    {% for w in items %}
+    <div class="card">
+      <div class="wl-head" onclick="toggle('{{ w.stock_code }}')">
+        <span class="name">{{ w.stock_name }} <span class="code">{{ w.stock_code }}</span></span>
+        <div class="wl-actions" onclick="event.stopPropagation()">
+          <button class="btn btn-outline" onclick="simulate('{{ w.stock_code }}','{{ w.stock_name }}')"><i class="fas fa-flask"></i> 模拟</button>
+          <a class="btn btn-primary" href="/portfolio/add?code={{ w.stock_code }}&name={{ w.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
+          <button class="btn btn-danger" onclick="delWatch('{{ w.id }}')"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+      <div class="wl-detail" id="detail-{{ w.stock_code }}">
+        <div class="meta" id="meta-{{ w.stock_code }}">加载中…</div>
+        <div class="chart" id="chart-{{ w.stock_code }}"></div>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty"><i class="fas fa-star"></i> 暂无自选 —— 从「观察」页点 ⭐自选 添加</div>
+  {% endif %}
+
+</div>
+<div class="toast" id="toast"></div>
+<script>
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
+async function toggle(code){
+  const d = document.getElementById('detail-'+code);
+  d.classList.toggle('open');
+  if (d.classList.contains('open') && !d.dataset.loaded){
+    d.dataset.loaded = '1';
+    const r = await fetch('/market/stock_chart?code='+encodeURIComponent(code));
+    const j = await r.json();
+    if (j.status !== 'success'){ document.getElementById('meta-'+code).textContent = j.error||'加载失败'; return; }
+    document.getElementById('meta-'+code).innerHTML =
+      '市场状态：<b>'+ (j.market_state||'') +'</b> <span style="font-size:11px;">' +
+      (j.lines ? j.lines.map(l=>'<span style="color:'+(l.color||'#999')+';margin-right:8px;">— '+l.name+' '+l.value+'</span>').join('') : '') + '</span>';
+    const chart = echarts.init(document.getElementById('chart-'+code));
+    chart.setOption({
+      tooltip:{trigger:'axis'}, grid:{left:50,right:20,top:20,bottom:30},
+      xAxis:{type:'category',data:j.dates,boundaryGap:false},
+      yAxis:{type:'value',scale:true},
+      dataZoom:[{type:'inside'}],
+      series:[{name:code,type:'line',data:j.close,showSymbol:false,lineStyle:{width:1.5}},
+        {name:'点位',type:'line',data:[],markLine:{silent:true,symbol:'none',
+          label:{formatter:p=>p.name,position:'insideEndTop',fontSize:10},
+          data:j.lines.map(l=>({name:l.name,yAxis:l.value,lineStyle:{type:'dashed',color:l.color||'#999'}}))}}]
+    }, true);
+  }
+}
+async function simulate(code, name){
+  showToast('模拟中…');
+  const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name})})).json();
+  if (d.status==='success') location.href = '/simulation';
+  else showToast(d.error||'模拟失败');
+}
+async function delWatch(id){
+  if (!confirm('确认删除该自选？')) return;
+  const r = await fetch('/watchlist/'+id, {method:'DELETE'});
+  const d = await r.json();
+  if (d.status==='success') location.reload(); else showToast(d.error||'删除失败');
+}
+async function addManual(){
+  const code = document.getElementById('wl-code').value.trim();
+  const name = document.getElementById('wl-name').value.trim() || code;
+  if (!code){ showToast('请填写代码'); return; }
+  const d = await (await fetch('/watchlist', {method:'POST', body:new URLSearchParams({code, name})})).json();
+  if (d.status==='success'){ showToast('已加入自选'); setTimeout(()=>location.reload(),500); }
+  else showToast(d.error||'添加失败');
+}
+</script>
+</body>
+</html>

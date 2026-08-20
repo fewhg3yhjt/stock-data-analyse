@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 管理</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
+  --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
+  --red:#dc3545; --green:#28a745; --orange:#e67e22;
+  --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
+}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+.app{max-width:1200px;margin:0 auto;padding:28px 22px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.header .nav{font-size:14px;}
+.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
+.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
+.tabs{display:flex;gap:8px;margin-bottom:18px;}
+.tab{padding:8px 18px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;border:1px solid var(--border);background:var(--surface);color:var(--text2);}
+.tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.panel{display:none;}
+.panel.active{display:block;}
+.btn{padding:9px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-danger{background:#fbe9e7;color:var(--red);}
+.btn-danger:hover{background:var(--red);color:#fff;}
+.form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.form-group label{font-size:13px;color:var(--text2);font-weight:500;}
+.form-group input,.form-group select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;}
+textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier New',monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--text);line-height:1.6;}
+textarea.code.mini{min-height:200px;}
+.hint{font-size:12px;color:var(--text2);}
+.status-tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;}
+.status-tag.ok{background:#e8f5e9;color:var(--green);}
+.status-tag.no{background:#eceff1;color:var(--text2);}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--red);font-size:14px;margin-bottom:14px;}
+.toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
+@media(max-width:700px){.form-row{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-gear"></i> 管理</h1>
+      <div class="sub">策略方案 · 初筛规则 · 消息通知配置</div>
+    </div>
+    {% set active = 'settings' %}{% include '_nav.html' %}
+  </div>
+
+  {% if error %}
+  <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active" data-tab="scheme">📦 策略方案</div>
+      <div class="tab" data-tab="screener">📡 初筛规则</div>
+      <div class="tab" data-tab="notify">🔔 通知配置</div>
+      <div class="tab" data-tab="account">💰 账户与数据</div>
+    </div>
+
+    <!-- 策略方案 -->
+    <div class="panel active" id="panel-scheme">
+      <div class="form-group">
+        <label>选择方案</label>
+        <select id="scheme-select">
+          {% for s in schemes %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group"><label>YAML 内容（保存前自动校验）</label>
+        <textarea class="code" id="scheme-content"></textarea></div>
+      <button class="btn btn-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
+    </div>
+
+    <!-- 初筛规则 -->
+    <div class="panel" id="panel-screener">
+      <div class="form-group"><label>screen_rules.yaml（板块/价格/ST/估值阈值）</label>
+        <textarea class="code" id="screen-content">{{ screen_rules }}</textarea></div>
+      <button class="btn btn-primary" onclick="saveScreen()"><i class="fas fa-save"></i> 保存初筛规则</button>
+    </div>
+
+    <!-- 通知配置 -->
+    <div class="panel" id="panel-notify">
+      <div class="form-row" style="display:flex;gap:24px;flex-wrap:wrap;">
+        <div class="form-group" style="flex:1;min-width:260px;">
+          <label>渠道</label>
+          <select id="notify-channel">
+            <option value="feishu" {% if webhook.channel=='feishu' %}selected{% endif %}>飞书 feishu</option>
+            <option value="wecom" {% if webhook.channel=='wecom' %}selected{% endif %}>企业微信 wecom</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;min-width:260px;">
+          <label>飞书 webhook 状态：<span class="status-tag {% if webhook.feishu_configured %}ok{% else %}no{% endif %}">{{ '已配置 ✓' if webhook.feishu_configured else '未配置' }}</span></label>
+          <label>企微 webhook 状态：<span class="status-tag {% if webhook.wecom_configured %}ok{% else %}no{% endif %}">{{ '已配置 ✓' if webhook.wecom_configured else '未配置' }}</span></label>
+          <span class="hint">配置位置：{{ webhook.env_file }}</span>
+        </div>
+      </div>
+      <div class="form-row" style="display:flex;gap:24px;flex-wrap:wrap;">
+        <div class="form-group" style="flex:1;min-width:320px;"><label>飞书 webhook URL（留空=不修改）</label>
+          <input id="notify-feishu-url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"></div>
+        <div class="form-group" style="flex:1;min-width:320px;"><label>企微 webhook URL（留空=不修改）</label>
+          <input id="notify-wecom-url" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx"></div>
+      </div>
+      <button class="btn btn-primary" style="margin-bottom:16px;" onclick="saveWebhook()"><i class="fas fa-save"></i> 保存 webhook</button>
+      <div class="form-group"><label>notifier/rules.yaml（自选阈值 / 资金流信号 / 每日汇总）</label>
+        <textarea class="code mini" id="notify-rules">{{ notify_rules }}</textarea></div>
+      <button class="btn btn-primary" onclick="saveNotifyRules()"><i class="fas fa-save"></i> 保存通知规则</button>
+    </div>
+
+    <!-- 账户与数据管理 -->
+    <div class="panel" id="panel-account">
+      <div class="card-title" style="font-weight:600;margin-bottom:12px;"><i class="fas fa-wallet"></i> 初始本金</div>
+      <div class="form-row" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px;">
+        <div class="form-group" style="flex:1;min-width:220px;"><label>当前现金余额（元）</label>
+          <input id="acc-cash" type="number" step="1000" placeholder="如 100000"></div>
+        <button class="btn btn-primary" onclick="saveAccount()"><i class="fas fa-save"></i> 设置本金</button>
+        <span class="hint">首次使用或重置后，在此填入计划投入的本金</span>
+      </div>
+
+      <div class="card-title" style="font-weight:600;margin-bottom:12px;"><i class="fas fa-trash"></i> 数据管理（不可恢复，谨慎操作）</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-danger" onclick="resetData('watchlist')"><i class="fas fa-star"></i> 清空自选</button>
+        <button class="btn btn-danger" onclick="resetData('simulations')"><i class="fas fa-flask"></i> 清空模拟</button>
+        <button class="btn btn-danger" onclick="resetData('positions')"><i class="fas fa-briefcase"></i> 清空持仓+流水</button>
+        <button class="btn btn-danger" onclick="resetData('all')"><i class="fas fa-broom"></i> 全部重置（含本金）</button>
+      </div>
+      <p class="hint" style="margin-top:10px;">⚠️ 清空持仓/全部重置会同时清空：复盘统计看板、全量交易流水、操作日志。建议先在「复盘」页导出 Excel 备份。</p>
+
+      <div class="card-title" style="font-weight:600;margin:22px 0 12px;"><i class="fas fa-rotate"></i> 每日自动任务</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-primary" onclick="runDaily()"><i class="fas fa-play"></i> 立即运行每日任务</button>
+        <span class="hint" id="daily-status">{{ scheduler_status }}</span>
+      </div>
+      <p class="hint" style="margin-top:8px;">每日任务：持仓刷新(现价/点位/建议) → 持仓进自选 → 观察池重算 → 生成晨报 → 消息推送。时间由 DAILY_RUN_TIME 环境变量配置（默认 15:35）。</p>
+    </div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+<script>
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+}));
+async function post(url, data){ const r=await fetch(url,{method:'POST',body:new URLSearchParams(data)}); return r.json(); }
+async function saveScheme(){
+  const d = await post('/settings/scheme', {name:document.getElementById('scheme-select').value, content:document.getElementById('scheme-content').value});
+  d.status==='success' ? showToast('方案已保存：'+d.saved) : showToast(d.error||'保存失败');
+}
+async function saveScreen(){
+  const d = await post('/settings/screen-rules', {content:document.getElementById('screen-content').value});
+  d.status==='success' ? showToast('初筛规则已保存') : showToast(d.error||'保存失败');
+}
+async function saveNotifyRules(){
+  const d = await post('/settings/notify', {action:'rules', content:document.getElementById('notify-rules').value});
+  d.status==='success' ? showToast('通知规则已保存') : showToast(d.error||'保存失败');
+}
+async function saveWebhook(){
+  const d = await post('/settings/notify', {action:'webhook', channel:document.getElementById('notify-channel').value,
+    feishu_url:document.getElementById('notify-feishu-url').value, wecom_url:document.getElementById('notify-wecom-url').value});
+  if(d.status==='success'){ showToast('webhook 已保存'); setTimeout(()=>location.reload(),700); }
+  else showToast(d.error||'保存失败');
+}
+async function saveAccount(){
+  const cash = document.getElementById('acc-cash').value;
+  if (!cash || parseFloat(cash) <= 0){ showToast('请填写本金金额'); return; }
+  const d = await post('/settings/account', {cash});
+  d.status==='success' ? showToast('本金已设为 ' + d.cash + ' 元') : showToast(d.error||'保存失败');
+}
+async function resetData(scope){
+  const names = {watchlist:'清空自选', simulations:'清空模拟', positions:'清空持仓+流水', all:'全部重置'};
+  const warn = scope==='all'
+    ? '将清空：持仓、交易流水、建议、自选、模拟、本金。确认？'
+    : `将清空${names[scope]}数据。确认？`;
+  if (!confirm('⚠️ ' + warn + '\n建议先到「复盘」页导出 Excel 备份。')) return;
+  const d = await post('/settings/reset', {scope});
+  if(d.status==='success'){ showToast('已清空: ' + JSON.stringify(d.deleted)); setTimeout(()=>location.reload(),700); }
+  else showToast(d.error||'重置失败');
+}
+async function runDaily(){
+  if (!confirm('立即运行每日自动任务？（持仓刷新+自选同步+观察重算+晨报+推送，约 1-3 分钟）')) return;
+  const d = await (await fetch('/api/daily/run', {method:'POST'})).json();
+  d.status==='success' ? showToast(d.msg||'每日任务已启动') : showToast(d.error||'启动失败');
+}
+// 方案切换加载
+const sel = document.getElementById('scheme-select');
+if (sel && sel.options.length){ loadScheme(sel.value); sel.addEventListener('change',()=>loadScheme(sel.value)); }
+async function loadScheme(name){
+  const r = await fetch('/schemes/raw?name='+encodeURIComponent(name));
+  const d = await r.json();
+  document.getElementById('scheme-content').value = d.content || '';
+}
+</script>
+</body>
+</html>

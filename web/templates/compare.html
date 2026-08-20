@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 方案对比</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.bootcdn.net/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f5f6f8; --surface: #fff; --surface2: #f8f9fb;
+  --border: #e0e4ea; --text: #1a1a2e; --text2: #6b7280;
+  --accent: #1a73e8; --accent2: #1557b0;
+  --red: #dc3545; --green: #28a745; --orange: #e67e22;
+  --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.07);
+}
+body {
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.8; font-size: 17px;
+}
+.app { max-width: 1300px; margin: 0 auto; padding: 32px 24px 60px; }
+.header { margin-bottom: 28px; padding-bottom: 22px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 10px; }
+.header h1 { font-size: 26px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.header h1 i { color: var(--accent); }
+.header .sub { font-size: 14px; color: var(--text2); margin-top: 3px; }
+.header .nav { font-size: 14px; }
+.header .nav a { color: var(--accent); text-decoration: none; margin-left: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 26px; margin-bottom: 18px; box-shadow: var(--shadow); }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.card-title i { color: var(--accent); width: 18px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-row.three { grid-template-columns: 1fr 1fr 1fr; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group label { font-size: 14px; color: var(--text2); font-weight: 500; }
+.form-group input, .form-group select {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px 14px; color: var(--text); font-size: 15px; outline: none; transition: .2s;
+}
+.form-group input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(26,115,232,.12); }
+.form-group .hint { font-size: 13px; color: var(--text2); margin-top: 2px; }
+.scheme-pick { display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 0 4px; }
+.scheme-pick label { display: flex; align-items: flex-start; gap: 9px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; cursor: pointer; transition: .2s; flex: 1 1 260px; }
+.scheme-pick label:hover { border-color: var(--accent); }
+.scheme-pick label.selected { border-color: var(--accent); background: #e3f2fd; }
+.scheme-pick input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--accent); margin-top: 4px; }
+.scheme-pick .sname { font-weight: 600; font-size: 14px; }
+.scheme-pick .sdesc { font-size: 13px; color: var(--text2); }
+.form-actions { display: flex; gap: 14px; align-items: center; margin-top: 16px; }
+.btn { padding: 11px 32px; border: none; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer; transition: .2s; display: inline-flex; align-items: center; gap: 8px; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-outline { background: var(--surface); border: 1px solid var(--border); color: var(--text2); text-decoration: none; }
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+#loading { display: none; }
+.loading-bar { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 10px 0; }
+.loading-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 3px; transition: width .5s; width: 0; }
+.loading-info { display: flex; justify-content: space-between; font-size: 14px; color: var(--text2); }
+.error { background: #fbe9e7; border: 1px solid #f5c6cb; border-radius: 6px; padding: 14px 18px; color: var(--red); font-size: 15px; }
+.result-section { display: none; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; padding: 10px 12px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 13px; white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+td.best { font-weight: 700; color: var(--green); }
+.tag { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 13px; font-weight: 600; }
+.tag.gold { background: #fff8e1; color: #f59f00; }
+.chart-list { display: flex; flex-direction: column; gap: 18px; }
+.chart-item { background: var(--surface2); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); cursor: pointer; transition: box-shadow .2s; }
+.chart-item:hover { box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+.chart-item img { width: 100%; height: auto; display: block; }
+.chart-item .label { padding: 10px 14px; font-size: 14px; color: var(--text2); text-align: center; background: var(--surface); border-top: 1px solid var(--border); }
+.modal-overlay { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.78); justify-content: center; align-items: center; padding: 40px; }
+.modal-overlay.active { display: flex; }
+.modal-overlay img { max-width: 95%; max-height: 95%; object-fit: contain; border-radius: 4px; box-shadow: 0 4px 30px rgba(0,0,0,.5); }
+.modal-overlay .close { position: absolute; top: 16px; right: 24px; font-size: 36px; color: #fff; cursor: pointer; opacity: .7; transition: .2s; background: none; border: none; }
+.modal-overlay .close:hover { opacity: 1; }
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab { padding: 12px 22px; font-size: 15px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; transition: .2s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+#report-content { font-size: 15px; line-height: 1.8; }
+#report-content h1, #report-content h2, #report-content h3 { margin: 1em 0 .5em; font-weight: 600; }
+#report-content h1 { font-size: 22px; }
+#report-content h2 { font-size: 19px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+#report-content table { font-size: 13px; margin: 1em 0; }
+#report-content table th { background: var(--surface2); }
+@media (max-width: 640px) {
+  .form-row, .form-row.three { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-balance-scale"></i> 多方案对比</h1>
+      <div class="sub">同一股票 · 多套策略 · 横向对比收益与风险</div>
+    </div>
+    <div class="nav">
+      <a href="/"><i class="fas fa-chart-line"></i> 单方案分析</a>
+      <a href="/schemes" target="_blank"><i class="fas fa-list"></i> 全部方案</a>
+    </div>
+  </div>
+
+  <!-- 对比表单 -->
+  <div class="card">
+    <div class="card-title"><i class="fas fa-search"></i> 对比参数</div>
+    <form id="compare-form" autocomplete="off">
+      <div class="form-row">
+        <div class="form-group">
+          <label>股票代码</label>
+          <input type="text" name="code" placeholder="sh.600900 / 600900" value="sh.600900" required>
+        </div>
+        <div class="form-group">
+          <label>股票名称</label>
+          <input type="text" name="name" placeholder="如 长江电力" value="长江电力" required>
+        </div>
+      </div>
+      <div class="form-row three" style="margin-top:12px;">
+        <div class="form-group">
+          <label>开始日期</label>
+          <input type="date" name="start_date" value="{{ last_year }}">
+        </div>
+        <div class="form-group">
+          <label>结束日期</label>
+          <input type="date" name="end_date" value="{{ yesterday }}">
+        </div>
+        <div class="form-group">
+          <label>股票类型</label>
+          <select name="stock_type">
+            <option value="B" selected>B 价值白马</option>
+            <option value="A">A 高成长</option>
+            <option value="C">C 强周期</option>
+            <option value="D">D 深度价值</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:14px;">
+        <label>选择对比方案（至少 2 个）</label>
+        <div class="scheme-pick">
+          {% for s in schemes %}
+          <label class="{% if s.name in ('default_value', 'aggressive_growth') %}selected{% endif %}">
+            <input type="checkbox" name="schemes" value="{{ s.name }}"
+                   {% if s.name in ('default_value', 'aggressive_growth') %}checked{% endif %}>
+            <span>
+              <div class="sname">{{ s.name }}</div>
+              <div class="sdesc">{{ s.description }}</div>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" id="run-btn"><i class="fas fa-scale-balanced"></i> 开始对比</button>
+        <a href="/compare" class="btn btn-outline"><i class="fas fa-undo"></i> 重置</a>
+      </div>
+    </form>
+    <div id="loading" style="margin-top:16px;">
+      <div class="loading-info"><span id="loading-stage">初始化...</span><span id="loading-pct">0%</span></div>
+      <div class="loading-bar"><div class="loading-bar-fill" id="loading-fill"></div></div>
+    </div>
+  </div>
+
+  <div id="error-area" style="display:none;"></div>
+
+  <!-- 结果 -->
+  <div class="result-section" id="result-section">
+    <!-- 排名 -->
+    <div class="card" id="ranking-card" style="display:none;">
+      <div class="card-title"><i class="fas fa-trophy"></i> 收益率排名</div>
+      <table><thead><tr><th>排名</th><th>方案</th><th>总收益率</th><th>相对最佳</th></tr></thead><tbody id="ranking-tbody"></tbody></table>
+    </div>
+
+    <!-- 指标明细 -->
+    <div class="card" id="metrics-card" style="display:none;">
+      <div class="card-title"><i class="fas fa-table"></i> 指标明细</div>
+      <table><thead id="metrics-head"></thead><tbody id="metrics-body"></tbody></table>
+    </div>
+
+    <!-- 图表 + 报告 -->
+    <div class="card">
+      <div class="tabs" id="result-tabs">
+        <div class="tab active" data-tab="charts">📊 图表</div>
+        <div class="tab" data-tab="report">📄 报告</div>
+      </div>
+      <div class="tab-content active" id="tab-charts"><div class="chart-list" id="chart-gallery"></div></div>
+      <div class="tab-content" id="tab-report"><div id="report-content"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 图表放大弹窗 -->
+<div class="modal-overlay" id="chart-modal" onclick="closeModal(event)">
+  <button class="close" onclick="closeModal()">&times;</button>
+  <img id="modal-img" src="" alt="图表放大">
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+// 方案卡片选择高亮
+$$('.scheme-pick input[type=checkbox]').forEach(cb => {
+  cb.addEventListener('change', () => {
+    cb.closest('label').classList.toggle('selected', cb.checked);
+  });
+});
+
+// Tab 切换
+$$('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    $$('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    $('#tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// 图表放大
+function openModal(src) { $('#modal-img').src = src; $('#chart-modal').classList.add('active'); }
+function closeModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  $('#chart-modal').classList.remove('active');
+}
+
+// 指标行定义
+const METRIC_ROWS = [
+  ['total_return', '总收益率', v => v != null ? v.toFixed(2) + '%' : '—'],
+  ['buy_hold_return', '买入持有', v => v != null ? v.toFixed(2) + '%' : '—'],
+  ['excess_return', '超额收益', v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—'],
+  ['max_drawdown', '最大回撤', v => v != null ? v.toFixed(2) + '%' : '—'],
+  ['sharpe_ratio', '夏普比率', v => v != null ? v.toFixed(2) : '—'],
+  ['calmar_ratio', 'Calmar', v => v != null ? v.toFixed(2) : '—'],
+  ['win_rate', '胜率', v => v != null ? v.toFixed(1) + '%' : '—'],
+  ['trade_count', '交易次数', v => v != null ? v : '—'],
+  ['final_asset', '最终资产', v => v != null ? v.toLocaleString() : '—'],
+];
+
+$('#compare-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData($('#compare-form'));
+  const schemes = fd.getAll('schemes');
+  if (schemes.length < 2) {
+    showError('请至少选择 2 个方案进行对比');
+    return;
+  }
+
+  $('#error-area').style.display = 'none';
+  $('#result-section').style.display = 'none';
+  $('#loading').style.display = 'block';
+  $('#run-btn').disabled = true;
+  setProgress('提交中...', 2);
+
+  try {
+    const res = await fetch('/compare', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.status !== 'success') {
+      showError(data.error || '对比失败');
+      return;
+    }
+    renderResult(data.result);
+  } catch (err) {
+    showError('请求失败: ' + err.message);
+  } finally {
+    $('#loading').style.display = 'none';
+    $('#run-btn').disabled = false;
+  }
+});
+
+function setProgress(stage, pct) {
+  $('#loading-stage').textContent = stage;
+  $('#loading-pct').textContent = pct + '%';
+  $('#loading-fill').style.width = pct + '%';
+}
+
+function showError(msg) {
+  $('#error-area').innerHTML = '<div class="error" style="margin-bottom:18px;">❌ ' + msg + '</div>';
+  $('#error-area').style.display = 'block';
+}
+
+function renderResult(d) {
+  const results = d.results || [];
+  const valid = results.filter(r => r.metrics && r.metrics.total_return != null);
+
+  // 排名
+  const ranked = [...valid].sort((a, b) => b.metrics.total_return - a.metrics.total_return);
+  if (ranked.length) {
+    $('#ranking-card').style.display = '';
+    const best = ranked[0].metrics.total_return;
+    $('#ranking-tbody').innerHTML = ranked.map((r, i) => {
+      const diff = r.metrics.total_return - best;
+      return `<tr>
+        <td>${i + 1}${i === 0 ? ' <span class="tag gold">🏆</span>' : ''}</td>
+        <td><strong>${r.scheme_name}</strong></td>
+        <td class="${i === 0 ? 'best' : ''}">${r.metrics.total_return.toFixed(2)}%</td>
+        <td>${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // 指标明细
+  if (valid.length) {
+    $('#metrics-card').style.display = '';
+    $('#metrics-head').innerHTML = '<tr><th>指标</th>' + valid.map(r => `<th>${r.scheme_name}</th>`).join('') + '</tr>';
+    $('#metrics-body').innerHTML = METRIC_ROWS.map(([key, label, fmt]) => {
+      return '<tr><td><strong>' + label + '</strong></td>' +
+        valid.map(r => `<td>${fmt(r.metrics[key])}</td>`).join('') + '</tr>';
+    }).join('');
+  }
+
+  // 图表
+  const gallery = $('#chart-gallery');
+  gallery.innerHTML = '';
+  (d.charts || []).forEach(ch => {
+    const item = document.createElement('div');
+    item.className = 'chart-item';
+    item.innerHTML = `<img src="/charts/${ch.file}" alt="${ch.name}" onclick="openModal('/charts/${ch.file}')"><div class="label">${ch.name}</div>`;
+    gallery.appendChild(item);
+  });
+
+  // 报告
+  $('#report-content').innerHTML = marked.parse(d.report_content || '');
+
+  $('#result-section').style.display = 'block';
+  window.scrollTo({ top: $('#result-section').offsetTop - 20, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>

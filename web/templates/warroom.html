@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 持仓</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
+  --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
+  --red:#dc3545; --green:#28a745; --orange:#e67e22;
+  --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
+}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+.app{max-width:1400px;margin:0 auto;padding:28px 22px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.header .nav{font-size:14px;}
+.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
+.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
+.card-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.card-title i{color:var(--accent);}
+.btn{padding:9px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;text-decoration:none;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-outline{background:var(--surface);border:1px solid var(--border);color:var(--text2);}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+.stat-card{background:var(--surface2);border-radius:6px;padding:16px 12px;text-align:center;border:1px solid var(--border);}
+.stat-card .value{font-size:21px;font-weight:700;}
+.stat-card .label{font-size:12px;color:var(--text2);}
+.stat-card.green .value{color:var(--green);}
+.stat-card.red .value{color:var(--red);}
+.stat-card.blue .value{color:var(--accent);}
+.risk-banner{border-radius:6px;padding:12px 16px;font-size:15px;font-weight:600;margin-top:12px;}
+.risk-banner.ok{background:#e8f5e9;color:#14532d;}
+.risk-banner.warn{background:#fff3e0;color:#7c4a03;}
+.risk-banner.crisis{background:#fbe9e7;color:#7f1d1d;}
+.pos{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;}
+.pos-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+.pos-head .name{font-weight:700;font-size:16px;}
+.pos-head .code{color:var(--text2);font-size:13px;}
+.pos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:10px;}
+.pos-metric{background:var(--surface2);border-radius:5px;padding:8px 10px;text-align:center;}
+.pos-metric .v{font-size:15px;font-weight:600;}
+.pos-metric .l{font-size:11px;color:var(--text2);}
+.pos-metric.stop .v{color:var(--red);}
+.pos-metric.warn .v{color:var(--orange);}
+.pos-metric.gain .v{color:var(--green);}
+.pos-metric.buy .v{color:var(--accent);}
+.pos-metric.peak .v{color:var(--text2);}
+.fund{font-size:12px;color:var(--text2);margin-bottom:8px;}
+.advice{background:#fff8e1;border-left:4px solid var(--orange);padding:10px 14px;border-radius:0 5px 5px 0;font-size:13px;color:#5f4b00;margin-bottom:8px;}
+.advice.urgent{background:#fbe9e7;border-left-color:var(--red);color:#7f1d1d;}
+.advice.hold{background:var(--surface2);border-left-color:var(--text2);color:var(--text2);}
+.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;}
+.tag.green{background:#e8f5e9;color:var(--green);}
+.tag.red{background:#fbe9e7;color:var(--red);}
+.tag.orange{background:#fff3e0;color:var(--orange);}
+.tag.gray{background:#eceff1;color:var(--text2);}
+.tag.blue{background:#e3f2fd;color:var(--accent);}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--red);font-size:14px;margin-bottom:14px;}
+.note{font-size:13px;color:var(--text2);}
+.empty{padding:30px;text-align:center;color:var(--text2);}
+.detail{font-size:12px;color:var(--text2);margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-shield-halved"></i> 持仓</h1>
+      <div class="sub">持仓明细 · 账户总览 / 止盈止损点位 / 今日指令</div>
+    </div>
+    {% set active = 'warroom' %}{% include '_nav.html' %}
+  </div>
+
+  {% if error %}
+  <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
+  {% endif %}
+
+  {% if data %}
+  <div class="card">
+    <div class="card-title">
+      <span><i class="fas fa-chart-pie"></i> 账户全局总览</span>
+      <span class="note">{{ data.data_date }} · {{ data.data_note }}
+        <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+           href="/portfolio/add"><i class="fas fa-plus"></i> 新建持仓</a>
+      </span>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="value">{{ data.summary.position_count or 0 }}</div><div class="label">总持仓只数</div></div>
+      <div class="stat-card blue"><div class="value">{{ "%.0f"|format(data.summary.total_cost or 0) }}</div><div class="label">总投入成本(元)</div></div>
+      <div class="stat-card blue"><div class="value">{{ "%.0f"|format(data.summary.total_market_value or 0) }}</div><div class="label">当前总市值(元)</div></div>
+      <div class="stat-card {% if (data.summary.total_pnl or 0)>0 %}green{% else %}red{% endif %}"><div class="value">{{ "%+.0f"|format(data.summary.total_pnl or 0) }}</div><div class="label">总浮动盈亏·未实现(元)</div></div>
+      <div class="stat-card {% if (data.summary.total_pnl_pct or 0)>0 %}green{% else %}red{% endif %}"><div class="value">{{ "%+.2f"|format(data.summary.total_pnl_pct or 0) }}%</div><div class="label">总浮动盈亏比例</div></div>
+      <div class="stat-card"><div class="value">{{ "%.0f"|format(data.cash or 0) }}</div><div class="label">可用现金(元)</div></div>
+    </div>
+    <div class="risk-banner {% if '危机' in data.risk_status %}crisis{% elif '防守' in data.risk_status %}warn{% else %}ok{% endif %}">
+      <i class="fas fa-flag"></i> 账户风险状态：{{ data.risk_status }}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span><i class="fas fa-list-check"></i> 个股今日指令</span>
+      <a class="btn btn-outline" href="#" onclick="refreshAll();return false;"><i class="fas fa-rotate"></i> 刷新行情+建议</a>
+    </div>
+    {% if data.positions %}
+      {% for p in data.positions %}
+      <div class="pos">
+        <div class="pos-head">
+          <span class="name">{{ p.stock_name }} <span class="code">{{ p.stock_code }}</span></span>
+          <span>
+            <span class="tag gray">{{ p.scheme_name }}</span>
+            <span class="tag blue">类型{{ p.stock_type }}</span>
+            <span class="tag {% if (p.unrealized_pnl_pct or 0)>=0 %}green{% else %}red{% endif %}">{{ "%+.2f"|format(p.unrealized_pnl_pct or 0) }}%</span>
+            <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+               href="/portfolio/{{ p.id }}" title="加仓/减仓/平仓操作"><i class="fas fa-arrows-rotate"></i> 操作</a>
+          </span>
+        </div>
+        <div class="pos-grid">
+          <div class="pos-metric"><div class="v">{{ "%.0f"|format(p.total_shares or 0) }}</div><div class="l">持仓股数{% if p.batch_count and p.batch_count>1 %}（{{ p.batch_count }}批）{% endif %}</div></div>
+          <div class="pos-metric"><div class="v">{{ p.avg_cost }}</div><div class="l">持仓均价</div></div>
+          <div class="pos-metric"><div class="v">{{ p.current_price }}</div><div class="l">当前价</div></div>
+          <div class="pos-metric"><div class="v">{{ "%.0f"|format(p.market_value or 0) }}</div><div class="l">市值(元)</div></div>
+          <div class="pos-metric stop"><div class="v">{{ p.stop_loss_price }}</div><div class="l">🚨硬止损线</div></div>
+          <div class="pos-metric peak" title="自买入以来的最高价，右侧回撤止盈线 = 峰值 × 95%/97%"><div class="v">{{ p.peak_price }}</div><div class="l">📈持仓峰值(止盈锚)</div></div>
+          {% if p.left_side %}
+          <div class="pos-metric warn"><div class="v">{{ p.left_side.year_high }}</div><div class="l">💡止盈预警区(前高{{ p.left_side.pct_of_year_high }}%)</div></div>
+          {% endif %}
+          {% if p.hard_cap %}
+          <div class="pos-metric gain"><div class="v">{{ p.hard_cap }}</div><div class="l">📈止盈硬上限</div></div>
+          {% endif %}
+          {% if p.right_side %}
+          <div class="pos-metric warn"><div class="v">{{ p.right_side.peak_price }}</div><div class="l">📉右侧回撤线(已回撤{{ p.right_side.drawdown_pct }}%)</div></div>
+          {% endif %}
+          {% if p.buy_more %}
+          <div class="pos-metric buy"><div class="v">{{ p.buy_more.trigger_price }}</div><div class="l">💰补仓线{{ p.buy_more.label }}</div></div>
+          {% endif %}
+        </div>
+        {% if p.fundamental %}
+        <div class="fund">📊 营收 {{ p.fundamental.revenue or '—' }}亿 · 净利 {{ p.fundamental.net_profit or '—' }}亿 · 增速 {{ p.fundamental.revenue_yoy or '—' }}% · ROE {{ p.fundamental.roe or '—' }}%（{{ p.fundamental.date }}）</div>
+        {% endif %}
+        {% if p.advice %}
+        <div class="advice {% if p.advice.urgency=='urgent' %}urgent{% elif p.advice.advice_type=='hold' %}hold{% endif %}">
+          <strong>{{ p.advice_label }}</strong>
+          {% if p.advice.urgency=='urgent' %}<span class="tag red">紧急</span>{% endif %}
+          — {{ p.advice.reason }}
+          {% if p.advice.suggested_price %}｜建议价 {{ p.advice.suggested_price }}{% endif %}
+          {% if p.advice.suggested_shares %}｜{{ "%.0f"|format(p.advice.suggested_shares) }}股{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty"><i class="fas fa-inbox"></i> 当前无持仓 —— 从观察池挑选标的开仓</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+<div id="toast" style="position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;"></div>
+<script>
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+async function refreshAll(){
+  const btn = event.target.closest('a'); btn.style.opacity = .5;
+  try {
+    const res = await fetch('/portfolio/refresh', { method: 'POST' });
+    const d = await res.json();
+    if (d.status === 'success') {
+      showToast('已刷新 ' + (d.results || []).length + ' 只持仓建议');
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showToast(d.error || '刷新失败');
+    }
+  } catch(e) { showToast('刷新失败: ' + e.message); }
+  btn.style.opacity = 1;
+}
+</script>
+</body>
+</html>

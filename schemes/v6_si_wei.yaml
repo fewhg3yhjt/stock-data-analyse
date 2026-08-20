@@ -1,0 +1,110 @@
+# ============================================================
+# V6.0 四维一体实战投资体系 实验方案
+# 范围: 模块级验证 + 单股对比（Phase 2 策略层）
+# 规则引擎: 复用现有 type+params 方案模型，新增 V6.0 规则 type
+#   buy_rules.market_state_arbiter  → 6态市场唯一仲裁 + 5分支
+#   sell_rules.logic_stop / price_stop / time_stop / 三层止盈
+# 说明: 本方案声明 V6.0 决策结构；执行类在 strategy/ 下独立注册。
+#       宏观上限/集中度/RPS 为组合层能力，本期单股对比不纳入（§8 边界）。
+# ============================================================
+
+name: "v6_si_wei"
+version: "1.0"
+description: "V6.0 六态市场仲裁买入 + 逻辑/价格/时间止损 + 三层止盈（实验方案，模块验证）"
+
+applicable_types: ["A", "B", "C", "D", "E"]
+
+# ── 策略说明书（纯文档，不参与执行）────────────────────
+strategy_spec:
+  买入仲裁: "市场状态为唯一仲裁：强多头→规则C右侧跟随 / 超买→降级规则A等回调 / 弱多头·震荡→规则A左侧挂单 / 弱空头→极小仓位 / 强空头→禁止操作"
+  买入前置: "5条件：六步完成+排雷通过 / 总仓位<宏观上限 / 年线熔断未触发 / 估值满足 / 逻辑坚实"
+  仓位: "类型上限 × 市场乘数 × 乖离率乘数（纸面富贵×50%，弱空头再×20%）"
+  卖出优先级: "逻辑止损 > 价格止损(贝塔保护) > 时间止损 > 三层止盈"
+  价格止损: "仅价值(B/E)/金融(D)设硬止损-15%；周期/成长不设硬止损只看逻辑"
+  贝塔保护: "跌15%且沪深300跌<5%→硬止损；沪深300跌>10%→暂停转逻辑审视；股债收益差>5.5%→取消硬止损改时间止损"
+  保本线上移: "左侧止盈已触发 → 止损线上移至持仓成本"
+  时间止损: "强周期6个月无右侧信号→减半；成长6个月无营收加速→减半（赦免2个月）"
+  三层止盈: "左侧比例 A20/B·D40/C60（前高90-95→95-100分步）；右侧回撤 A·C5%/B·D3%清仓；止盈硬上限 MIN(前高×1.05, MA250×1.2)"
+
+# ── 买点规则 ────────────────────────────────────────────
+buy_rules:
+  # V6.0: 6态市场唯一仲裁 + 5分支（执行: strategy/buy_tree.judge_buy_tree）
+  - type: "market_state_arbiter"
+    params:
+      branches:
+        strong_bull:            # 强多头(乖离≤20%) → 规则C 右侧跟随
+          rule: "规则C"
+          batches:
+            - {label: "当前价(现价)", threshold: "current_price", ratio: 0.20}
+            - {label: "MA20回调",   threshold: "ma20",            ratio: 0.30}
+            - {label: "综合弱支撑", threshold: "weak_support",    ratio: 0.20}
+            - {label: "机动仓位",   threshold: null,              ratio: 0.30}
+        overbought:             # 强多头(超买>20%) → 降级规则A 等回调
+          rule: "降级规则A"
+          batches:
+            - {label: "MA20",         threshold: "ma20",          ratio: 0.30}
+            - {label: "综合弱支撑",    threshold: "weak_support",  ratio: 0.30}
+            - {label: "综合强支撑",    threshold: "strong_support", ratio: 0.20}
+        weak_bull_sideways:     # 弱多头/震荡 → 规则A 左侧挂单
+          rule: "规则A"
+          batches:
+            - {label: "综合弱支撑", threshold: "weak_support",    ratio: 0.30}
+            - {label: "综合强支撑", threshold: "strong_support",  ratio: 0.40}
+            - {label: "极端低估锚", threshold: "extreme_anchor",  ratio: 0.20}
+        weak_bear:
+          rule: "极小仓位"
+          extra_factor: 0.2       # ≤标准×20%
+        strong_bear:
+          rule: "禁止操作"
+
+# ── 卖点规则 ────────────────────────────────────────────
+sell_rules:
+  # 逻辑止损（最高优先）: thesis 证伪 → 清仓
+  - type: "logic_stop"
+    params:
+      source: "thesis_snapshot"   # 建仓核心假设快照 + 人工/LLM 核对
+
+  # 价格止损 + 贝塔保护（仅价值/金融）
+  - type: "price_stop"
+    params:
+      stop_loss_by_type: {B: 0.15, E: 0.15, D: 0.10}
+      beta_cut_market_drop: 0.05     # 沪深300跌<5% → 硬止损成立
+      beta_suspend_market_drop: 0.10 # 沪深300跌>10% → 暂停转逻辑审视
+      erp_hard_stop_waiver: 0.055    # 股债收益差>5.5% → 取消硬止损改时间止损
+      breakeven_on_left_tp: true     # 左侧止盈已触发 → 止损线上移至持仓成本
+
+  # 时间止损: 强周期无右侧信号 / 成长无营收加速 → 减半（赦免2个月）
+  - type: "time_stop"
+    params:
+      holding_days: 180
+      grace_days: 60
+      apply_to: ["A", "C"]
+
+  # 左侧止盈（三层，比例按类型差异化）[EXT: 复用 left_side_fixed 语义]
+  - type: "left_side_fixed"
+    params:
+      reference_price: "year_high"
+      ratio_by_type: {A: 0.20, B: 0.40, C: 0.60, D: 0.40, E: 0.40}
+      zones:
+        - name: "预警档"
+          range: [0.90, 0.95]
+        - name: "第一档"
+          range: [0.95, 1.00]
+      transition_to_right: 1.00
+
+  # 右侧移动止盈（回撤按类型差异化 + 止盈硬上限）[EXT]
+  - type: "right_side_trailing"
+    params:
+      drawdown_by_type: {A: 0.05, B: 0.03, C: 0.05, D: 0.03, E: 0.03}
+      hard_cap: "MIN(year_high*1.05, ma250*1.2)"
+
+# ── 风控 ────────────────────────────────────────────────
+risk:
+  stop_loss_by_type: {B: 0.15, E: 0.15, D: 0.10}
+  technical_stop_enabled: false    # V6.0 不依赖 v4.5 技术止损（放量破支撑）
+  drawdown_stop: 0.05
+
+# ── 回测（单股对比用固定参数，不做网格搜索）──────────────
+backtest:
+  initial_cash: 100000
+  optimize: false

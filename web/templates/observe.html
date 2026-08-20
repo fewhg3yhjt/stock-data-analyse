@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 观察</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
+  --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
+  --red:#dc3545; --green:#28a745; --orange:#e67e22;
+  --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
+}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+.app{max-width:1400px;margin:0 auto;padding:28px 22px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.header .nav{font-size:14px;}
+.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
+.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
+.card-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.card-title i{color:var(--accent);}
+.btn{padding:9px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;text-decoration:none;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-outline{background:var(--surface);border:1px solid var(--border);color:var(--text2);}
+table{width:100%;border-collapse:collapse;font-size:14px;}
+.table-wrap{overflow-x:auto;}
+th{text-align:left;padding:9px 10px;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;}
+.tag.green{background:#e8f5e9;color:var(--green);}
+.tag.red{background:#fbe9e7;color:var(--red);}
+.tag.orange{background:#fff3e0;color:var(--orange);}
+.tag.blue{background:#e3f2fd;color:var(--accent);}
+.tag.gray{background:#eceff1;color:var(--text2);}
+.instr{font-size:13px;color:#5f4b00;background:#fff8e1;border-left:4px solid var(--orange);padding:6px 12px;border-radius:0 5px 5px 0;}
+.instr.deny{background:#fbe9e7;border-left-color:var(--red);color:#7f1d1d;}
+.instr.fire{background:#e8f5e9;border-left-color:var(--green);color:#14532d;}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--red);font-size:14px;margin-bottom:14px;}
+.note{font-size:13px;color:var(--text2);}
+.empty{padding:30px;text-align:center;color:var(--text2);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-satellite-dish"></i> 观察</h1>
+      <div class="sub">战前侦察 · 市场状态 / 支撑位 / 开仓指令</div>
+    </div>
+    {% set active = 'observe' %}{% include '_nav.html' %}
+  </div>
+
+  {% if error %}
+  <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-title">
+      <span><i class="fas fa-list"></i> 今日观察清单</span>
+      <span class="note"><i class="fas fa-circle-info"></i> 现价实时（腾讯报价） · 技术指标截至最近收盘 · 数据时刻 {{ data_time }}</span>
+    </div>
+    {% if rows %}
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>代码</th><th>名称</th><th>现价</th><th>市场状态</th><th>排雷灯</th>
+          <th>弱支撑</th><th>强支撑</th><th>🔥开仓指令</th><th>关注理由</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.code }}</td>
+          <td>{{ r.name }}</td>
+          <td>{{ r.price if r.price is not none else '—' }}</td>
+          <td>
+            {% set cls = 'green' if r.market_state=='强多' else ('blue' if r.market_state=='弱多' else ('orange' if r.market_state=='震荡' else ('red' if r.market_state=='空头' else 'gray'))) %}
+            <span class="tag {{ cls }}">{{ r.market_state }}</span>
+          </td>
+          <td><span class="tag {% if '红灯' in r.risk_light %}red{% elif '黄' in r.risk_light %}orange{% else %}green{% endif %}">{{ r.risk_light }}</span></td>
+          <td>{{ r.weak_support if r.weak_support is not none else '—' }}</td>
+          <td>{{ r.strong_support if r.strong_support is not none else '—' }}</td>
+          <td>
+            {% set icls = 'fire' if '立即建仓' in r.instruction else ('deny' if '禁买' in r.instruction else '') %}
+            <div class="instr {{ icls }}">{{ r.instruction }}</div>
+          </td>
+          <td class="note">{{ r.notes }}</td>
+          <td style="white-space:nowrap;">
+            {% if r.ok %}
+            <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;margin-right:4px;"
+                    onclick="simulate('{{ r.code }}','{{ r.name }}')" title="跑分析存模拟快照"><i class="fas fa-flask"></i> 模拟</button>
+            <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;margin-right:4px;"
+                    onclick="addWatch('{{ r.code }}','{{ r.name }}')" title="加入自选"><i class="fas fa-star"></i> 自选</button>
+            <a class="btn btn-primary" style="padding:4px 12px;font-size:12px;"
+               href="/portfolio/add?code={{ r.code }}&name={{ r.name }}"
+               title="录入已买入的持仓"><i class="fas fa-plus"></i> 建仓</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty">暂无观察标的 —— 在「持仓 → 自选股」中添加，或等待资金流候选</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span><i class="fas fa-book"></i> 开仓指令对照表</span></div>
+    <table>
+      <thead><tr><th>市场状态</th><th>买入指令</th></tr></thead>
+      <tbody>
+        <tr><td><span class="tag green">强多</span></td><td>🔥 规则C激活：现价立即建仓 20%</td></tr>
+        <tr><td><span class="tag blue">弱多</span></td><td>⏳ 等待回踩 MA20 建仓</td></tr>
+        <tr><td><span class="tag orange">震荡</span></td><td>⏳ 等待回落至弱支撑挂单</td></tr>
+        <tr><td><span class="tag red">空头</span></td><td>🚫 禁买（空头趋势不操作）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+<div class="toast" id="toast" style="position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;"></div>
+<script>
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
+async function addWatch(code, name){
+  const d = await (await fetch('/watchlist', {method:'POST', body:new URLSearchParams({code, name})})).json();
+  d.status==='success' ? showToast('已加入自选') : showToast(d.error||'失败');
+}
+async function simulate(code, name){
+  showToast('模拟中，请稍候…');
+  const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name})})).json();
+  if (d.status==='success'){
+    const s = d.snapshot;
+    showToast(`模拟完成：止损${s.hard_stop} 止盈预警${s.left_side_zone ? s.left_side_zone[1] : '-'}`);
+  } else showToast(d.error||'模拟失败');
+}
+</script>
+</body>
+</html>

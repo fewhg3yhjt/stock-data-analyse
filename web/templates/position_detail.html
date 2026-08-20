@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 持仓详情</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+*, *::before, *::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;--text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--red:#dc3545;--green:#28a745;--orange:#e67e22;--radius:8px;}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+.app{max-width:1100px;margin:0 auto;padding:28px 20px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+.header h1{font-size:22px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header .code{font-size:14px;color:var(--text2);font-weight:400;}
+.header a{color:var(--accent);text-decoration:none;font-size:14px;margin-left:14px;}
+.header .nav a.active{font-weight:700;color:var(--accent2);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.07);}
+.card-title{font-size:16px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.card-title i{color:var(--accent);}
+.card-title .count{font-size:13px;color:var(--text2);font-weight:400;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;}
+.stat-card{background:var(--surface2);border-radius:6px;padding:14px 10px;text-align:center;border:1px solid var(--border);}
+.stat-card .v{font-size:18px;font-weight:700;}
+.stat-card .l{font-size:11px;color:var(--text2);}
+.green{color:var(--green);} .red{color:var(--red);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;padding:8px 10px;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:8px 10px;border-bottom:1px solid var(--border);}
+.advice{background:#fff8e1;border-left:4px solid var(--orange);padding:10px 14px;border-radius:0 5px 5px 0;font-size:14px;margin-bottom:12px;}
+.advice.urgent{background:#fbe9e7;border-left-color:var(--red);color:#7f1d1d;}
+.advice.hold{background:var(--surface2);border-left-color:var(--text2);color:var(--text2);}
+.btn{padding:8px 18px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s;text-decoration:none;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-outline{background:var(--surface);border:1px solid var(--border);color:var(--text2);}
+.btn-danger{background:#fbe9e7;color:var(--red);}
+.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;}
+.tag.green{background:#e8f5e9;color:var(--green);} .tag.red{background:#fbe9e7;color:var(--red);}
+.tag.orange{background:#fff3e0;color:var(--orange);} .tag.gray{background:#eceff1;color:var(--text2);} .tag.blue{background:#e3f2fd;color:var(--accent);}
+
+/* 规则明细块（可读版 check_results） */
+.rule-block{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:10px;}
+.rule-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.rule-title i{color:var(--accent);}
+table.mini{width:100%;border-collapse:collapse;font-size:13px;}
+table.mini td{padding:3px 8px;border-bottom:1px solid var(--border);}
+table.mini tr:last-child td{border-bottom:none;}
+table.mini td.k{color:var(--text2);width:38%;}
+table.mini td.v{color:var(--text);font-weight:500;}
+.ctx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;}
+.ctx-cell{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px 10px;text-align:center;}
+.ctx-cell .v{font-size:14px;font-weight:600;}
+.ctx-cell .l{font-size:11px;color:var(--text2);}
+.muted{font-size:12px;color:var(--text2);font-style:italic;}
+
+/* 历史日志折叠 */
+.log-item{border:1px solid var(--border);border-radius:6px;margin-bottom:10px;overflow:hidden;cursor:pointer;transition:background .15s;}
+.log-item:hover{background:var(--surface2);}
+.log-item-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 14px;}
+.log-item-head .time{color:var(--text2);font-size:12px;}
+.log-reason{font-size:13px;color:var(--text2);padding:0 14px 10px;}
+.log-reason strong{color:var(--text);}
+.log-detail{display:none;padding:12px 14px;border-top:1px dashed var(--border);background:var(--surface);}
+.log-item.open .log-detail{display:block;}
+.log-item .chevron{color:var(--text2);font-size:12px;transition:transform .2s;}
+.log-item.open .chevron{transform:rotate(90deg);}
+@media(max-width:700px){.ctx-grid{grid-template-columns:1fr 1fr;}.stat-grid{grid-template-columns:1fr 1fr;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1><i class="fas fa-chart-line"></i> {{ detail.position.stock_name }} <span class="code">{{ detail.position.stock_code }}</span></h1>
+    <div class="nav">
+      <a href="/dashboard/warroom"><i class="fas fa-arrow-left"></i> 返回仪表盘</a>
+      <a href="/log"><i class="fas fa-book-open"></i> 操作日志</a>
+    </div>
+  </div>
+
+  {% set p = detail.position %}
+  {% set advice = detail.advice %}
+  {% set cr = (advice.check_results if advice else {}) or {} %}
+  {% set ctx = cr.get('context') or {} %}
+
+  <div class="card">
+    <div class="card-title"><i class="fas fa-tachometer-alt"></i> 持仓概览</div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="l">当前价</div><div class="v">{{ '%.2f' % p.current_price }}</div></div>
+      <div class="stat-card"><div class="l">持仓均价</div><div class="v">{{ '%.2f' % p.avg_cost }}</div></div>
+      <div class="stat-card"><div class="l">份额</div><div class="v">{{ '{:,.0f}'.format(p.total_shares) }}</div></div>
+      <div class="stat-card"><div class="l">市值</div><div class="v">{{ '{:,.0f}'.format(p.market_value) }}</div></div>
+      <div class="stat-card"><div class="l">浮动盈亏</div><div class="v {{ 'green' if p.unrealized_pnl >= 0 else 'red' }}">{{ '{:+,.0f}'.format(p.unrealized_pnl) }}</div></div>
+      <div class="stat-card"><div class="l">止损线</div><div class="v">{{ '%.2f' % p.stop_loss_price }}</div></div>
+      <div class="stat-card"><div class="l">阶段</div><div class="v" style="font-size:14px;">{{ p.position_phase }}</div></div>
+      <div class="stat-card"><div class="l">已实现盈亏</div><div class="v {{ 'green' if detail.realized_pnl >= 0 else 'red' }}">{{ '{:+,.0f}'.format(detail.realized_pnl) }}</div></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+      <span class="tag gray">方案: {{ p.scheme_name }}</span>
+      <span class="tag gray">类型: {{ p.stock_type }}</span>
+      <span class="tag gray">建仓: {{ p.buy_date }}</span>
+      <span class="tag gray">峰值: {{ '%.2f' % p.peak_price }}</span>
+      {% if p.notes %}<span class="tag blue">备注: {{ p.notes }}</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><i class="fas fa-sliders"></i> 切换策略方案</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <select id="scheme-select" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;">
+        {% for s in schemes %}<option value="{{ s.name }}" {% if s.name == detail.position.scheme_name %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-primary" onclick="changeScheme()"><i class="fas fa-rotate"></i> 应用并重算止盈止损</button>
+      <span class="hint">当前方案：{{ detail.position.scheme_name }}</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><i class="fas fa-arrows-rotate"></i> 执行操作</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px;">
+      <div class="form-group"><label>方向</label>
+        <select id="op-type">
+          <option value="buy">加仓</option>
+          <option value="sell">减仓</option>
+          <option value="sell_all">清仓</option>
+          <option value="dividend">分红</option>
+        </select></div>
+      <div class="form-group"><label>价格(元)</label><input id="op-price" type="number" step="any" placeholder="成交价"></div>
+      <div class="form-group"><label>份额(股)</label><input id="op-shares" type="number" step="100" placeholder="清仓可留空=全平"></div>
+    </div>
+    <div class="form-group"><label>备注</label><input id="op-reason" placeholder="操作理由（可选）"></div>
+    <button class="btn btn-primary" onclick="execOp()"><i class="fas fa-check"></i> 提交操作</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><i class="fas fa-robot"></i> 最新操作建议</div>
+    {% if advice %}
+    <div class="advice {{ 'urgent' if advice.urgency == 'urgent' else ('hold' if advice.advice_type == 'hold' else '') }}">
+      <strong>{{ advice.advice_type }}</strong> [{{ advice.urgency }}]<br>{{ advice.reason }}
+      {% if advice.suggested_price %}<br>建议价位: {{ '%.2f' % advice.suggested_price }}{% endif %}
+      {% if advice.suggested_shares %} · 建议份额: {{ '{:,.0f}'.format(advice.suggested_shares) }}{% endif %}
+    </div>
+
+    {% if ctx %}
+    <div class="rule-block">
+      <div class="rule-title"><i class="fas fa-chart-line"></i> 当时计算的指标</div>
+      <div class="ctx-grid">
+        {% set ctx_items = [
+          ('当前价', ctx.get('current_price')), ('综合弱支撑', ctx.get('weak_support')),
+          ('综合强支撑', ctx.get('strong_support')), ('极端低估锚', ctx.get('extreme_anchor')),
+          ('MA20', ctx.get('ma_20')), ('MA60', ctx.get('ma_60')),
+          ('近1月最低价', ctx.get('recent_low')), ('年高', ctx.get('year_high')),
+          ('趋势', ctx.get('trend')), ('市场状态', ctx.get('market_state')),
+          ('自低点反弹', ctx.get('rebound_from_month_low')),
+          ('5日均量', ctx.get('volume_ma_5')),
+        ] %}
+        {% for label, val in ctx_items %}
+        <div class="ctx-cell">
+          <div class="v">{% if val %}{% if val is string %}{{ val }}{% else %}{{ '%.2f' % val }}{% endif %}{% else %}—{% endif %}</div>
+          <div class="l">{{ label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="muted">（该记录未保存指标快照，可能为历史数据）</div>
+    {% endif %}
+
+    {% set rules = [
+      ('hard_stop','硬止损检查','fa-shield-alt'),
+      ('technical_stop','技术止损检查','fa-wave-square'),
+      ('left_side','左侧止盈检查','fa-arrow-trend-up'),
+      ('right_side','右侧移动止盈','fa-arrow-right'),
+      ('buy_more','后续批次加仓','fa-cart-plus'),
+      ('rule_c','规则C趋势跟随','fa-route'),
+    ] %}
+    {% for rk, rtitle, ric in rules %}
+      {% set r = cr.get(rk) %}
+      {% if r %}
+      <div class="rule-block">
+        <div class="rule-title"><i class="fas {{ ric }}"></i> {{ rtitle }}
+          {% if r.get('triggered') is defined %}
+            <span class="tag {{ 'red' if r.get('triggered') else 'gray' }}">{{ '✅ 已触发' if r.get('triggered') else '未触发' }}</span>
+          {% endif %}
+        </div>
+        <table class="mini">
+        {% for k, v in r.items() %}
+          {% if k != 'triggered' %}
+          <tr><td class="k">{{ {
+            'stop_price':'止损线','recent_low':'最近最低价','strong_support':'强支撑',
+            'volume_surge':'放量','year_high':'前高','pct_of_year_high':'占前高',
+            'tier':'止盈档位','sell_ratio':'卖出比例','left_tier_sold':'已卖档位',
+            'peak_price':'峰值','drawdown_pct':'回撤','next_stage':'下一批次',
+            'label':'批次','trigger_price':'触发价','current_price':'当前价',
+            'failed':'未满足条件','transition':'转右侧'
+          }.get(k, k) }}</td>
+          <td class="v">{{ v | fmt }}</td></tr>
+          {% endif %}
+        {% endfor %}
+        </table>
+      </div>
+      {% endif %}
+    {% endfor %}
+    {% else %}<div class="empty">暂无建议，请先刷新行情</div>{% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title"><i class="fas fa-history"></i> 历史建议日志 <span class="count">{{ detail.advice_history|length }} 条</span></div>
+    {% if detail.advice_history %}
+      {% for a in detail.advice_history %}
+        {% set a_cr = (a.check_results or {}) %}
+        {% set a_ctx = a_cr.get('context') or {} %}
+        {% set atype = a.advice_type %}
+        {% set tag_cls = 'green' if atype == 'buy_more' else ('red' if atype == 'sell_all' else ('orange' if atype == 'partial_sell' else ('blue' if atype == 'adjust_stop' else 'gray'))) %}
+        {% set tag_txt = {'buy_more':'加仓','partial_sell':'减仓','sell_all':'清仓','hold':'持有','adjust_stop':'调整止损'}.get(atype, atype) %}
+        <div class="log-item" onclick="toggle(this)">
+          <div class="log-item-head">
+            <span style="display:flex;align-items:center;gap:8px;">
+              <span class="tag {{ tag_cls }}">{{ tag_txt }}</span>
+              <span class="tag {{ 'red' if a.urgency == 'urgent' else ('orange' if a.urgency == 'attention' else 'gray') }}">{{ a.urgency }}</span>
+            </span>
+            <span style="display:flex;align-items:center;gap:8px;">
+              <span class="time"><i class="far fa-clock"></i> {{ a.created_at }}</span>
+              <span class="chevron"><i class="fas fa-chevron-right"></i></span>
+            </span>
+          </div>
+          <div class="log-reason"><strong>{{ tag_txt }}决策</strong> — {{ a.reason }}</div>
+          <div class="log-detail">
+            {% if a_ctx %}
+            <div class="rule-block">
+              <div class="rule-title"><i class="fas fa-chart-line"></i> 当时计算的指标</div>
+              <div class="ctx-grid">
+                {% for label, val in [
+                  ('当前价', a_ctx.get('current_price')), ('综合弱支撑', a_ctx.get('weak_support')),
+                  ('综合强支撑', a_ctx.get('strong_support')), ('极端低估锚', a_ctx.get('extreme_anchor')),
+                  ('MA20', a_ctx.get('ma_20')), ('MA60', a_ctx.get('ma_60')),
+                  ('趋势', a_ctx.get('trend')), ('市场状态', a_ctx.get('market_state')),
+                ] %}
+                <div class="ctx-cell">
+                  <div class="v">{% if val %}{% if val is string %}{{ val }}{% else %}{{ '%.2f' % val }}{% endif %}{% else %}—{% endif %}</div>
+                  <div class="l">{{ label }}</div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            {% for rk, rtitle, ric in rules %}
+              {% set r = a_cr.get(rk) %}
+              {% if r %}
+              <div class="rule-block">
+                <div class="rule-title"><i class="fas {{ ric }}"></i> {{ rtitle }}
+                  {% if r.get('triggered') is defined %}
+                    <span class="tag {{ 'red' if r.get('triggered') else 'gray' }}">{{ '✅ 已触发' if r.get('triggered') else '未触发' }}</span>
+                  {% endif %}
+                </div>
+                <table class="mini">
+                {% for k, v in r.items() %}
+                  {% if k != 'triggered' %}
+                  <tr><td class="k">{{ {
+                    'stop_price':'止损线','recent_low':'最近最低价','strong_support':'强支撑',
+                    'volume_surge':'放量','year_high':'前高','pct_of_year_high':'占前高',
+                    'tier':'止盈档位','sell_ratio':'卖出比例','left_tier_sold':'已卖档位',
+                    'peak_price':'峰值','drawdown_pct':'回撤','next_stage':'下一批次',
+                    'label':'批次','trigger_price':'触发价','current_price':'当前价',
+                    'failed':'未满足条件','transition':'转右侧'
+                  }.get(k, k) }}</td>
+                  <td class="v">{{ v | fmt }}</td></tr>
+                  {% endif %}
+                {% endfor %}
+                </table>
+              </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div style="color:var(--text2);">暂无历史建议，刷新行情后会产生记录</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title"><i class="fas fa-exchange-alt"></i> 交易历史 <span class="count">{{ detail.transactions|length }} 笔</span></div>
+    {% if detail.transactions %}
+    <table><thead><tr><th>日期</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>盈亏</th><th>说明</th></tr></thead>
+    <tbody>
+      {% for t in detail.transactions %}
+      <tr>
+        <td>{{ t.date }}</td>
+        <td><span class="tag {{ 'green' if t.trans_type == 'buy' else ('red' if t.trans_type in ('sell','sell_all') else 'orange') }}">{{ t.trans_type }}</span></td>
+        <td>{{ '%.2f' % t.price }}</td>
+        <td>{{ '{:,.0f}'.format(t.shares) }}</td>
+        <td>{{ '{:,.0f}'.format(t.amount) }}</td>
+        <td class="{{ 'green' if t.pnl >= 0 else 'red' }}">{{ '{:+,.2f}'.format(t.pnl) if t.pnl else '—' }}</td>
+        <td>{{ t.reason }}</td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+    {% else %}<div style="color:var(--text2);">暂无交易记录</div>{% endif %}
+  </div>
+
+  <div style="display:flex;gap:10px;">
+    <a class="btn btn-outline" href="/dashboard/warroom"><i class="fas fa-arrow-left"></i> 返回</a>
+    <a class="btn btn-outline" href="/log"><i class="fas fa-book-open"></i> 查看全部操作日志</a>
+  </div>
+</div>
+
+ <script>
+function toggle(el) { el.classList.toggle('open'); }
+async function changeScheme(){
+  const scheme = document.getElementById('scheme-select').value;
+  if (!confirm('切换方案为 ' + scheme + '？将重新计算止盈止损位。')) return;
+  const r = await fetch('/portfolio/{{ p.id }}/scheme', { method: 'POST', body: new URLSearchParams({ scheme }) });
+  const d = await r.json();
+  if (d.status === 'success'){ alert('方案已切换，止盈止损位已重算'); location.reload(); }
+  else alert(d.error || '切换失败');
+}
+async function execOp(){
+  const type = document.getElementById('op-type').value;
+  const price = parseFloat(document.getElementById('op-price').value);
+  const shares = parseFloat(document.getElementById('op-shares').value || 0);
+  const reason = document.getElementById('op-reason').value.trim();
+  if (!price || price <= 0){ alert('请填写成交价格'); return; }
+  const body = new URLSearchParams({ type, price, shares: String(shares), reason });
+  const url = type === 'sell_all' ? '/portfolio/{{ p.id }}/close' : '/portfolio/{{ p.id }}/transaction';
+  const r = await fetch(url, { method: 'POST', body });
+  const d = await r.json();
+  if (d.status === 'success'){ alert('操作成功' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : '')); location.reload(); }
+  else alert(d.error || '操作失败');
+}
+</script>
+</body>
+</html>

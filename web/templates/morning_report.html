@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 每日晨报</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.bootcdn.net/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://unpkg.com/marked/marked.min.js"></script>
+<style>
+*, *::before, *::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;--text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;--red:#dc3545;--green:#28a745;--orange:#e67e22;--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.07);}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+.app{max-width:1100px;margin:0 auto;padding:28px 20px 60px;}
+.header h1{font-size:22px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px 26px;box-shadow:var(--shadow);}
+.btn{padding:10px 24px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:8px;text-decoration:none;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-outline{background:var(--surface);border:1px solid var(--border);color:var(--text2);}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent);}
+#content{font-size:15px;}
+#content h1{font-size:24px;margin-bottom:12px;}
+#content h2{font-size:19px;margin:1.2em 0 .5em;border-bottom:1px solid var(--border);padding-bottom:6px;}
+#content table{width:100%;border-collapse:collapse;font-size:13px;margin:1em 0;}
+#content th{text-align:left;padding:9px 10px;color:var(--text2);font-weight:500;background:var(--surface2);border-bottom:1px solid var(--border);white-space:nowrap;}
+#content td{padding:9px 10px;border-bottom:1px solid var(--border);}
+#content strong{color:var(--accent);}
+#content blockquote{border-left:4px solid var(--accent);padding:8px 16px;background:var(--surface2);margin:1em 0;border-radius:0 4px 4px 0;color:var(--text2);}
+#content hr{border:none;border-top:1px solid var(--border);margin:1.5em 0;}
+.empty{padding:40px;text-align:center;color:var(--text2);}
+.empty i{font-size:40px;color:#cbd5e1;display:block;margin-bottom:12px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-newspaper"></i> 每日晨报 <span style="font-size:14px;color:var(--text2);font-weight:400;">{{ today }}</span></h1>
+    </div>
+    {% set active = '' %}{% include '_nav.html' %}
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+      <button class="btn btn-primary" onclick="genReport()"><i class="fas fa-sync"></i> 重新生成（刷新行情）</button>
+    </div>
+    {% if content %}
+    <div id="content"></div>
+    {% else %}
+    <div class="empty"><i class="fas fa-file-alt"></i> 今日晨报尚未生成，点击"重新生成"创建</div>
+    {% endif %}
+  </div>
+</div>
+<script>
+{% if content %}
+(function(){
+  const el = document.getElementById('content');
+  const raw = {{ content | tojson }};
+  if (window.marked && typeof window.marked.parse === 'function') {
+    el.innerHTML = window.marked.parse(raw);
+  } else {
+    // marked CDN 加载失败时降级为纯文本，保证内容不空白
+    el.textContent = raw;
+  }
+})();
+{% endif %}
+async function genReport() {
+  const btn = event.currentTarget;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 生成中';
+  try {
+    const res = await fetch('/morning-report', { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'success') { location.reload(); }
+    else { alert(data.error || '生成失败'); btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync"></i> 重新生成'; }
+  } catch (e) {
+    alert('请求失败: ' + e.message);
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync"></i> 重新生成';
+  }
+}
+</script>
+</body>
+</html>

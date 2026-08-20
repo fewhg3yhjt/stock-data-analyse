@@ -1,0 +1,103 @@
+# ============================================================
+# 激进成长方案
+# 特点:
+#   - 买点前移: 弱支撑即买50%（更积极建仓）
+#   - 附加规则C趋势跟随（牛市早期/中期放量跟随）
+#   - 右侧移动止盈更宽松（让利润奔跑），但止损同样严格
+#   - 左侧固定止盈仅在浮盈≥12%时减半（更拿得住）
+# ============================================================
+
+name: "aggressive_growth"
+version: "1.0"
+description: "激进成长方案：弱支撑即重仓 + 规则C趋势跟随 + 宽右侧止盈"
+
+applicable_types: ["A", "B", "C", "D"]
+
+# ── 买点规则 ────────────────────────────────────────────────
+buy_rules:
+  # 规则A: 交叉验证支撑位（前移买点）
+  - type: "support_level"
+    params:
+      support_sources:
+        - "dividend_anchor"
+        - "ma_60"
+        - "low_3m"
+        - "year_low"
+      sort_direction: "asc"
+      buy_stages:
+        - label: "综合弱支撑"
+          position_index: 1
+          ratio: 0.50
+        - label: "综合强支撑"
+          position_index: 0
+          ratio: 0.30
+        - label: "极端低估锚"
+          use_special: "dividend_anchor_4pct"
+          ratio: 0.20
+
+  # 规则C: 趋势跟随（牛市早期重仓跟涨）
+  - type: "trend_following"
+    params:
+      conditions:
+        - "trend_bullish"
+        - "market_bull_early"
+        - "rebound_lt_10pct"
+        - "not_cyclical"
+      buy_stages:
+        - label: "当前价(立即买入)"
+          ratio: 0.30
+        - label: "MA20回调"
+          ratio: 0.30
+        - label: "综合弱支撑"
+          ratio: 0.20
+        - label: "机动仓位"
+          ratio: 0.20
+
+# ── 卖点规则 ────────────────────────────────────────────────
+sell_rules:
+  # 硬止损: 更严格（A/B/C类扣18%，D类扣12%）
+  - type: "hard_stop"
+    params:
+      stop_loss_by_type: {A: 0.18, B: 0.18, C: 0.18, D: 0.12}
+
+  # 技术止损
+  - type: "technical_stop"
+    params:
+      volume_surge_ratio: 1.8
+      support_source: "strong"
+
+  # 左侧固定止盈: 浮盈≥12%才按正常比例减持（拿得住）
+  - type: "left_side_fixed"
+    params:
+      reference_price: "year_high"
+      zones:
+        - name: "预警区"
+          range: [0.90, 0.95]
+          sell_ratio: 0.20
+        - name: "第一止盈区"
+          range: [0.95, 1.00]
+          sell_ratio: 0.20
+      transition_to_right: 1.00
+      half_profit_threshold: 0.12
+      total_cap_ratio: 0.40
+
+  # 右侧移动止盈: 更宽松（让利润奔跑）
+  - type: "right_side_trailing"
+    params:
+      drawdown_by_type: {A: 0.08, B: 0.05, C: 0.08, D: 0.08}
+
+# ── 风控 ────────────────────────────────────────────────────
+risk:
+  stop_loss_by_type: {A: 0.18, B: 0.18, C: 0.18, D: 0.12}
+  volume_surge_threshold: 1.8
+  technical_stop_enabled: true
+  drawdown_stop: 0.10
+  min_profit_for_dd: 0.08
+
+# ── 回测 ────────────────────────────────────────────────────
+backtest:
+  initial_cash: 100000
+  optimize: true
+  grid_search:
+    trail_thresholds: [0.04, 0.05, 0.06, 0.08, 0.10, 0.12]
+    buy_offsets: [-0.02, 0.0, 0.02]

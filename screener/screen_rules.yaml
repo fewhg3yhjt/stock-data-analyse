@@ -1,0 +1,52 @@
+# ============================================================
+# A股初筛规则 — 按条件导出目标股票集合
+# 改这个文件即可灵活调整筛选条件；命令行参数优先级更高。
+# 运行: python -m StockInvestmentTool.screener
+# ============================================================
+
+# ── 股票池（全市场候选名单）──────────────────────────────
+universe:
+  source: "sina"        # sina | em | baostock（新浪一次调用全市场，最稳）
+  fallback: "em"        # 主源失败时的备胎
+
+# ── 交易板块（权限过滤，示例=只留沪深主板）───────────────
+# 可用板块: main_sh 沪主板 / main_sz 深主板 / cyb 创业板 /
+#          kcb 科创板 / bse 北交所（cyb/kcb/bse 需额外开通权限）
+boards:
+  include: ["main_sh", "main_sz"]
+  # 或用 exclude 反向剔除（include 与 exclude 二选一，include 优先）
+  # exclude: ["cyb", "kcb", "bse"]
+
+# ── 名称过滤 ─────────────────────────────────────────────
+name_filter:
+  exclude_st: true          # 剔除 ST / *ST
+  exclude_keywords: ["退"]  # 名称含任一关键词剔除（示例: 退市整理期股票）
+
+# ── 股价区间（元）────────────────────────────────────────
+price:
+  min: null                 # 下限，null=不限
+  max: 35.0                 # 上限（示例: 本金有限，只选 35 元以内）
+
+# ── 增强字段（PE/PB/市值/换手率，来自腾讯批量报价，不封IP）──
+enrich:
+  enabled: true
+  source: "tencent"         # tencent | em | none
+  fallback: "em"            # 主增强源失败时的备胎
+
+# ── 估值/规模过滤（依赖上面增强字段；null=不启用）────────
+valuation:
+  max_pe_ttm: null          # 动态PE上限
+  max_pb: null              # 市净率上限
+  min_total_mcap: null      # 总市值下限（亿元）
+  min_float_mcap: null      # 流通市值下限（亿元）
+  max_turnover: null        # 换手率上限（%）
+
+# ── 输出 ─────────────────────────────────────────────────
+output:
+  dir: null                 # null → output/screener/
+  formats: ["csv", "json"]
+  max_rows: 1000            # 导出条数上限
+
+# ── 附注 ─────────────────────────────────────────────────
+annotate:
+  industry_summary_ths: true  # 附导同花顺行业热度汇总（90行业，仅参考）
