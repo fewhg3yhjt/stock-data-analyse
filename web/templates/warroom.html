@@ -90,6 +90,10 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
       <span class="note">{{ data.data_date }} · {{ data.data_note }}
         <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
            href="/portfolio/add"><i class="fas fa-plus"></i> 新建持仓</a>
+        <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+           href="/portfolio/export" title="下载 xlsx 模板（自选/持仓/加仓/操作笔记）"><i class="fas fa-file-excel"></i> 导出模板</a>
+        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+           onclick="openImport()" title="批量导入 xlsx 模板"><i class="fas fa-file-import"></i> 批量导入</button>
       </span>
     </div>
     <div class="stat-grid">
@@ -121,6 +125,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
             <span class="tag {% if (p.unrealized_pnl_pct or 0)>=0 %}green{% else %}red{% endif %}">{{ "%+.2f"|format(p.unrealized_pnl_pct or 0) }}%</span>
             <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                href="/portfolio/{{ p.id }}" title="加仓/减仓/平仓操作"><i class="fas fa-arrows-rotate"></i> 操作</a>
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+               onclick="toggleReturn(this)" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}"
+               title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
           </span>
         </div>
         <div class="pos-grid">
@@ -142,6 +149,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
           {% if p.buy_more %}
           <div class="pos-metric buy"><div class="v">{{ p.buy_more.trigger_price }}</div><div class="l">💰补仓线{{ p.buy_more.label }}</div></div>
           {% endif %}
+        </div>
+        <div class="return-box" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
+          <div class="return-loading" style="color:var(--text2);font-size:13px;">收益加载中…</div>
         </div>
         {% if p.fundamental %}
         <div class="fund">📊 营收 {{ p.fundamental.revenue or '—' }}亿 · 净利 {{ p.fundamental.net_profit or '—' }}亿 · 增速 {{ p.fundamental.revenue_yoy or '—' }}% · ROE {{ p.fundamental.roe or '—' }}%（{{ p.fundamental.date }}）</div>
@@ -184,6 +194,26 @@ async function refreshAll(){
     }
   } catch(e) { showToast('刷新失败: ' + e.message); }
   btn.style.opacity = 1;
+}
+async function toggleReturn(btn){
+  const box = btn.closest('.pos').querySelector('.return-box');
+  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div class="return-loading" style="color:var(--text2);font-size:13px;">收益加载中…</div>';
+  const fd = new FormData();
+  fd.append('code', btn.dataset.code);
+  fd.append('kind', btn.dataset.kind);
+  if (btn.dataset.start) fd.append('start_date', btn.dataset.start);
+  try {
+    const res = await fetch('/api/returns/chart', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.status !== 'success') { box.innerHTML = '<span style="color:#c62828;font-size:13px;">' + d.error + '</span>'; return; }
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;font-size:13px;">' +
+      '<span>累计收益率 <b style="color:' + (d.ret_pct>=0?'#28a745':'#dc3545') + ';">' + d.ret_pct + '%</b></span>' +
+      '<span>累计收益 <b>' + d.ret_amount + ' 元</b></span>' +
+      '<span>最新收盘 <b>' + d.latest_close + '</b></span></div>' +
+      '<img src="' + d.chart + '" style="width:100%;max-width:640px;border-radius:6px;">';
+  } catch(e) { box.innerHTML = '<span style="color:#c62828;font-size:13px;">请求失败</span>'; }
 }
 </script>
 </body>

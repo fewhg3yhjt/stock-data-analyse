@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>快记 - StockInvestmentTool</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;--text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;--red:#dc3545;--green:#28a745;--orange:#e67e22;--radius:10px;}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;font-size:16px;}
+.app{max-width:640px;margin:0 auto;padding:16px 14px 80px;}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.topbar h1{font-size:22px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.topbar h1 i{color:var(--accent);}
+.toggle-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+.toggle-bar button{flex:1;min-width:72px;padding:12px 4px;border:2px solid var(--border);background:var(--surface);border-radius:8px;font-size:14px;font-weight:600;color:var(--text2);cursor:pointer;transition:all .15s;}
+.toggle-bar button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:13px;color:var(--text2);margin-bottom:5px;font-weight:600;}
+.field input,.field select,.field textarea{width:100%;padding:13px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;background:var(--surface2);color:var(--text);-webkit-appearance:none;appearance:none;}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent);}
+.field textarea{min-height:64px;resize:vertical;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.btn{width:100%;padding:15px;border:none;border-radius:10px;font-size:17px;font-weight:700;color:#fff;cursor:pointer;margin-top:4px;}
+.btn.buy{background:var(--green);}
+.btn.sell{background:var(--red);}
+.btn.accent{background:var(--accent);}
+.btn.orange{background:var(--orange);}
+.btn:active{filter:brightness(.92);}
+.hint{font-size:12px;color:var(--text2);margin-top:8px;text-align:center;}
+.msg{padding:11px 14px;border-radius:8px;font-size:14px;margin-bottom:12px;display:none;}
+.msg.ok{background:#e8f5e9;color:var(--green);border:1px solid #a5d6a7;}
+.msg.err{background:#fbe9e7;color:var(--red);border:1px solid #f5c6cb;}
+.stock-select{display:flex;gap:8px;}
+.stock-select select{flex:1;}
+.pick-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+.pick-chips button{background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:8px 12px;font-size:13px;color:var(--text);cursor:pointer;}
+.pick-chips button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+section{display:none;}
+section.active{display:block;}
+.form-title{font-size:14px;font-weight:600;color:var(--text2);margin-bottom:10px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <h1 style="font-size:20px;font-weight:700;"><i class="fas fa-bolt" style="color:var(--accent);"></i> 快记</h1>
+      <div class="sub" style="font-size:12px;color:var(--text2);">手机优先 · 快速记录操作与笔记</div>
+    </div>
+    {% set active = '' %}{% include '_nav.html' %}
+  </div>
+
+  {% if error %}<div class="msg err" style="display:block;">❌ {{ error }}</div>{% endif %}
+  <div class="msg" id="msg"></div>
+
+  <div class="toggle-bar">
+    <button type="button" class="active" data-sec="buy" onclick="show('buy')"><i class="fas fa-cart-plus"></i> 买入</button>
+    <button type="button" data-sec="sell" onclick="show('sell')"><i class="fas fa-cart-arrow-down"></i> 卖出</button>
+    <button type="button" data-sec="dividend" onclick="show('dividend')"><i class="fas fa-coins"></i> 分红</button>
+    <button type="button" data-sec="watch" onclick="show('watch')"><i class="fas fa-star"></i> 自选</button>
+    <button type="button" data-sec="note" onclick="show('note')"><i class="fas fa-pen"></i> 笔记</button>
+  </div>
+
+  <div class="card">
+    <div class="form-title">选择股票</div>
+    <div class="stock-select">
+      <select id="code" onchange="codePick()">
+        <option value="">— 选择自选/持仓 —</option>
+        {% for p in positions %}
+        <option value="{{ p.stock_code }}" data-name="{{ p.stock_name }}">{{ p.stock_name }} ({{ p.stock_code }}) 持仓</option>
+        {% endfor %}
+        {% for w in watchlist %}
+        <option value="{{ w.stock_code }}" data-name="{{ w.stock_name }}">{{ w.stock_name }} ({{ w.stock_code }}) 自选</option>
+        {% endfor %}
+      </select>
+      <input type="text" id="codeManual" placeholder="或手输代码/名称" style="flex:1;">
+    </div>
+  </div>
+
+  <form id="logForm">
+    <input type="hidden" name="action" id="action" value="buy">
+
+    <section id="sec-buy" class="active">
+      <div class="card">
+        <div class="form-title"><i class="fas fa-cart-plus"></i> 买入（无持仓自动建仓）</div>
+        <div class="row2">
+          <div class="field"><label>价格</label><input type="number" step="0.001" name="price" placeholder="买入价"></div>
+          <div class="field"><label>数量(股)</label><input type="number" step="100" name="shares" placeholder="数量"></div>
+        </div>
+        <div class="field"><label>日期</label><input type="date" name="date"></div>
+        <div class="field"><label>备注</label><input type="text" name="note" placeholder="选填"></div>
+        <button class="btn buy" type="submit"><i class="fas fa-check"></i> 确认买入 / 加仓</button>
+      </div>
+    </section>
+
+    <section id="sec-sell">
+      <div class="card">
+        <div class="form-title"><i class="fas fa-cart-arrow-down"></i> 卖出 / 清仓</div>
+        <div class="row2">
+          <div class="field"><label>价格</label><input type="number" step="0.001" name="price" placeholder="卖出价"></div>
+          <div class="field"><label>数量(股, 留空=清仓)</label><input type="number" step="100" name="shares" placeholder="留空清仓"></div>
+        </div>
+        <div class="field"><label>日期</label><input type="date" name="date"></div>
+        <div class="field"><label>备注</label><input type="text" name="note" placeholder="选填"></div>
+        <button class="btn sell" type="submit"><i class="fas fa-check"></i> 确认卖出</button>
+      </div>
+    </section>
+
+    <section id="sec-dividend">
+      <div class="card">
+        <div class="form-title"><i class="fas fa-coins"></i> 记录分红</div>
+        <div class="field"><label>分红金额(元)</label><input type="number" step="0.01" name="amount" placeholder="现金分红总额"></div>
+        <div class="field"><label>日期</label><input type="date" name="date"></div>
+        <div class="field"><label>备注</label><input type="text" name="note" placeholder="选填"></div>
+        <button class="btn orange" type="submit"><i class="fas fa-check"></i> 确认分红</button>
+      </div>
+    </section>
+
+    <section id="sec-watch">
+      <div class="card">
+        <div class="form-title"><i class="fas fa-star"></i> 加入自选 / 观察</div>
+        <div class="field"><label>名称</label><input type="text" name="name" placeholder="股票名称"></div>
+        <div class="field"><label>观察起点（默认今天，可回看）</label><input type="date" name="date"></div>
+        <div class="field"><label>备注</label><input type="text" name="note" placeholder="选填"></div>
+        <button class="btn accent" type="submit"><i class="fas fa-check"></i> 加入自选</button>
+      </div>
+    </section>
+
+    <section id="sec-note">
+      <div class="card">
+        <div class="form-title"><i class="fas fa-pen"></i> 追加笔记</div>
+        <div class="field"><label>笔记内容</label><textarea name="note" placeholder="记录想法/操作依据…"></textarea></div>
+        <button class="btn accent" type="submit"><i class="fas fa-check"></i> 保存笔记</button>
+      </div>
+    </section>
+  </form>
+
+  <div class="hint"><i class="fas fa-mobile-screen"></i> 手机优先：选择股票 → 选操作 → 填关键字段 → 提交</div>
+</div>
+
+<script>
+function show(sec){
+  document.querySelectorAll('.toggle-bar button').forEach(b=>b.classList.toggle('active', b.dataset.sec===sec));
+  document.querySelectorAll('section').forEach(s=>s.classList.toggle('active', s.id==='sec-'+sec));
+  document.getElementById('action').value = sec==='buy' ? 'open' : (sec==='sell'?'sell':(sec==='dividend'?'dividend':(sec==='watch'?'watch':'note')));
+  var form = document.getElementById('logForm');
+  if(sec==='buy'){form.querySelector('[name=price]').required=true;form.querySelector('[name=shares]').required=true;}
+  else{form.querySelector('[name=price]').required=false;form.querySelector('[name=shares]').required=false;}
+}
+function codePick(){
+  var sel=document.getElementById('code');
+  var opt=sel.options[sel.selectedIndex];
+  if(opt && opt.dataset.name) document.getElementById('codeManual').value = opt.value + ' ' + opt.dataset.name;
+}
+document.getElementById('logForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  var fd=new FormData(this);
+  var manual=document.getElementById('codeManual').value.trim();
+  if(manual){
+    var parts=manual.split(/\s+/);
+    var code=parts[0]; var name=parts.slice(1).join(' ');
+    fd.append('code', code); if(name) fd.append('name', name);
+  }
+  var msg=document.getElementById('msg');
+  msg.className='msg'; msg.style.display='none';
+  fetch('/quicklog',{method:'POST',body:fd})
+    .then(r=>r.json())
+    .then(d=>{
+      msg.style.display='block';
+      if(d.status==='success'){ msg.className='msg ok'; msg.textContent='✅ '+ (d.error||'已记录'); resetFields(); }
+      else{ msg.className='msg err'; msg.textContent='❌ '+d.error; }
+    })
+    .catch(err=>{ msg.style.display='block'; msg.className='msg err'; msg.textContent='❌ 请求失败'; });
+});
+function resetFields(){
+  document.querySelectorAll('#logForm input[name=price],#logForm input[name=shares],#logForm input[name=amount],#logForm input[name=note],#logForm textarea[name=note],#logForm input[name=date],#logForm input[name=name]').forEach(i=>i.value='');
+}
+</script>
+</body>
+</html>

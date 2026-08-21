@@ -86,7 +86,8 @@ CREATE TABLE IF NOT EXISTS watchlist (
     weak_support REAL NOT NULL DEFAULT 0,
     strong_support REAL NOT NULL DEFAULT 0,
     extreme_anchor REAL NOT NULL DEFAULT 0,
-    notes TEXT NOT NULL DEFAULT ''
+    notes TEXT NOT NULL DEFAULT '',
+    added_time TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS advices (
@@ -138,9 +139,15 @@ class PortfolioStorage:
         return conn
 
     def _init_db(self):
-        """建表 + 确保默认组合存在"""
+        """建表 + 确保默认组合存在 + 轻量迁移"""
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            # 迁移：watchlist 增加 added_time（观察起点），老库补默认当天
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(watchlist)").fetchall()}
+            if "added_time" not in cols:
+                conn.execute("ALTER TABLE watchlist ADD COLUMN added_time TEXT NOT NULL DEFAULT ''")
+            conn.execute("UPDATE watchlist SET added_time=? WHERE added_time='' OR added_time IS NULL",
+                         (datetime.now().strftime("%Y-%m-%d"),))
             # 确保默认组合
             cur = conn.execute("SELECT id FROM portfolios WHERE id=1")
             if cur.fetchone() is None:
@@ -314,6 +321,20 @@ class PortfolioStorage:
             ).fetchall()
         return [self._txn_from_row(r) for r in rows]
 
+    def get_transaction(self, transaction_id: int) -> Optional[Transaction]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM transactions WHERE id=?", (transaction_id,),
+            ).fetchone()
+        return self._txn_from_row(row) if row else None
+
+    def update_transaction_reason(self, transaction_id: int, reason: str):
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE transactions SET reason=? WHERE id=?",
+                (reason, transaction_id),
+            )
+
     @staticmethod
     def _txn_from_row(row: sqlite3.Row) -> Transaction:
         return Transaction(
@@ -343,20 +364,30 @@ class PortfolioStorage:
             asset_type=row["asset_type"], target_capital=row["target_capital"],
             weak_support=row["weak_support"], strong_support=row["strong_support"],
             extreme_anchor=row["extreme_anchor"], notes=row["notes"],
+            added_time=row["added_time"],
         )
 
     def add_watchlist(self, item: WatchlistItem) -> WatchlistItem:
+        if not item.added_time:
+            item.added_time = _now()[:10]
         with self._connect() as conn:
             cur = conn.execute(
                 """INSERT INTO watchlist
                    (stock_code, stock_name, asset_type, target_capital,
-                    weak_support, strong_support, extreme_anchor, notes)
-                   VALUES (?,?,?,?,?,?,?,?)""",
+                    weak_support, strong_support, extreme_anchor, notes, added_time)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
                 (item.stock_code, item.stock_name, item.asset_type, item.target_capital,
-                 item.weak_support, item.strong_support, item.extreme_anchor, item.notes),
+                 item.weak_support, item.strong_support, item.extreme_anchor, item.notes,
+                 item.added_time),
             )
             item.id = cur.lastrowid
         return item
+
+    def update_watchlist_added_time(self, item_id: int, added_time: str):
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE watchlist SET added_time=? WHERE id=?", (added_time, item_id),
+            )
 
     def get_watchlist(self) -> list[WatchlistItem]:
         with self._connect() as conn:
@@ -367,6 +398,12 @@ class PortfolioStorage:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM watchlist WHERE id=?", (item_id,)).fetchone()
         return self._wl_from_row(row) if row else None
+
+    def update_watchlist_notes(self, item_id: int, notes: str):
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE watchlist SET notes=? WHERE id=?", (notes, item_id),
+            )
 
     def delete_watchlist(self, item_id: int):
         with self._connect() as conn:

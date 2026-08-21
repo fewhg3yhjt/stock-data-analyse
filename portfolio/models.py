@@ -192,6 +192,7 @@ class WatchlistItem:
     strong_support: float = 0.0      # 手动预设强支撑（可选）
     extreme_anchor: float = 0.0      # 手动预设极端低估锚（可选）
     notes: str = ""
+    added_time: str = ""             # 观察/自选加入时间（默认当天，可回看；晚于当天视为未生效）
 
     def to_dict(self) -> dict:
         return {
@@ -204,6 +205,7 @@ class WatchlistItem:
             "strong_support": self.strong_support,
             "extreme_anchor": self.extreme_anchor,
             "notes": self.notes,
+            "added_time": self.added_time,
         }
 
 

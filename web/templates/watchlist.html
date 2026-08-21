@@ -61,6 +61,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <input id="wl-code" placeholder="代码 sh600519 / 600519" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:180px;">
       <input id="wl-name" placeholder="名称（可留空自动识别）" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:180px;">
+      <input id="wl-added" type="date" title="观察起点（默认今天，可回看）" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;">
       <button class="btn btn-primary" onclick="addManual()"><i class="fas fa-plus"></i> 添加</button>
     </div>
   </div>
@@ -69,9 +70,14 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
     {% for w in items %}
     <div class="card">
       <div class="wl-head" onclick="toggle('{{ w.stock_code }}')">
-        <span class="name">{{ w.stock_name }} <span class="code">{{ w.stock_code }}</span></span>
+        <span class="name">{{ w.stock_name }} <span class="code">{{ w.stock_code }}</span>
+          <button class="btn btn-outline" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="event.stopPropagation();editAddedTime({{ w.id }},'{{ w.added_time or '' }}')" title="点击修改观察起点">
+            <i class="fas fa-clock"></i> {{ w.added_time or '设观察起点' }}
+          </button>
+        </span>
         <div class="wl-actions" onclick="event.stopPropagation()">
           <button class="btn btn-outline" onclick="simulate('{{ w.stock_code }}','{{ w.stock_name }}')"><i class="fas fa-flask"></i> 模拟</button>
+          <button class="btn btn-outline" onclick="toggleReturn(this,'{{ w.stock_code }}')" data-kind="watch" data-start="{{ w.added_time or '' }}"><i class="fas fa-chart-line"></i> 收益</button>
           <a class="btn btn-primary" href="/portfolio/add?code={{ w.stock_code }}&name={{ w.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
           <button class="btn btn-danger" onclick="delWatch('{{ w.id }}')"><i class="fas fa-trash"></i></button>
         </div>
@@ -79,6 +85,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
       <div class="wl-detail" id="detail-{{ w.stock_code }}">
         <div class="meta" id="meta-{{ w.stock_code }}">加载中…</div>
         <div class="chart" id="chart-{{ w.stock_code }}"></div>
+        <div class="return-box" id="return-{{ w.stock_code }}" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;"></div>
       </div>
     </div>
     {% endfor %}
@@ -129,10 +136,38 @@ async function delWatch(id){
 async function addManual(){
   const code = document.getElementById('wl-code').value.trim();
   const name = document.getElementById('wl-name').value.trim() || code;
+  const added = document.getElementById('wl-added').value;
   if (!code){ showToast('请填写代码'); return; }
-  const d = await (await fetch('/watchlist', {method:'POST', body:new URLSearchParams({code, name})})).json();
+  const body = {code, name};
+  if (added) body.added_time = added;
+  const d = await (await fetch('/watchlist', {method:'POST', body:new URLSearchParams(body)})).json();
   if (d.status==='success'){ showToast('已加入自选'); setTimeout(()=>location.reload(),500); }
   else showToast(d.error||'添加失败');
+}
+async function toggleReturn(btn, code){
+  const box = document.getElementById('return-'+code);
+  if (box.style.display !== 'none'){ box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="color:var(--text2);font-size:13px;">收益加载中…</div>';
+  const fd = new FormData();
+  fd.append('code', code);
+  fd.append('kind', btn.dataset.kind);
+  if (btn.dataset.start) fd.append('start_date', btn.dataset.start);
+  try {
+    const res = await fetch('/api/returns/chart', {method:'POST', body:fd});
+    const d = await res.json();
+    if (d.status !== 'success'){ box.innerHTML = '<span style="color:#c62828;font-size:13px;">'+d.error+'</span>'; return; }
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;font-size:13px;">' +
+      '<span>累计收益率 <b style="color:'+(d.ret_pct>=0?'#28a745':'#dc3545')+';">'+d.ret_pct+'%</b></span>' +
+      '<span>最新收盘 <b>'+d.latest_close+'</b></span></div>' +
+      '<img src="'+d.chart+'" style="width:100%;max-width:640px;border-radius:6px;">';
+  } catch(e){ box.innerHTML = '<span style="color:#c62828;font-size:13px;">请求失败</span>'; }
+}
+function editAddedTime(id, current){
+  const val = prompt('设置观察起点日期（YYYY-MM-DD，可回看；晚于今天则待观察）', current || '');
+  if (!val) return;
+  fetch('/api/watchlist/'+id+'/added_time', {method:'POST', body:new URLSearchParams({added_time: val})})
+    .then(r=>r.json()).then(d=>{ if(d.status==='success'){ showToast('已更新'); setTimeout(()=>location.reload(),400); } else showToast(d.error||'更新失败'); });
 }
 </script>
 </body>

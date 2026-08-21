@@ -95,8 +95,12 @@ class DashboardService:
 
         seen = set()
         items: list[dict] = []
+        today = datetime.now().strftime("%Y-%m-%d")
         for w in self.manager.get_watchlist():
-            items.append({"code": w.stock_code, "name": w.stock_name, "notes": w.notes or ""})
+            at = w.added_time or today
+            items.append({"code": w.stock_code, "name": w.stock_name,
+                          "notes": w.notes or "", "added_time": at,
+                          "pending": at > today})
         for cand in self._flow_candidates(max_candidates):
             if cand["code"] not in seen:
                 items.append(cand)
@@ -107,6 +111,19 @@ class DashboardService:
             if not code or code in seen:
                 continue
             seen.add(code)
+            if item.get("pending"):
+                rows.append({
+                    "code": code,
+                    "name": item.get("name") or code,
+                    "notes": item.get("notes") or "",
+                    "added_time": item.get("added_time") or "",
+                    "pending": True,
+                    "price": None, "market_state": "待观察",
+                    "risk_light": _risk_light(item.get("name") or ""),
+                    "instruction": f"观察起点 {item.get('added_time')} 晚于当天，待开始后生成指标",
+                    "ok": False,
+                })
+                continue
             try:
                 rows.append(self._observe_one(item))
             except Exception as e:
@@ -174,9 +191,15 @@ class DashboardService:
         code = (item.get("code") or "").lower()
         name = item.get("name") or code
         notes = (item.get("notes") or "").strip()
+        added_time = item.get("added_time") or ""
 
         monitor = PriceMonitor()
         kline, dividend_anchor = monitor.fetch_context_data(code)
+        # 按观察起点截取：从 added_time 起算各类指标；起点后首个交易日之前不生成
+        if added_time:
+            import pandas as _pd
+            mask = _pd.to_datetime(kline["date"]) >= _pd.to_datetime(added_time)
+            kline = kline[mask].reset_index(drop=True)
         ctx = self.manager.advisor.compute_context(kline, dividend_anchor)
         market_state = dashboard_market_state(kline)
 
@@ -191,6 +214,7 @@ class DashboardService:
             "ma_20": round(ctx.ma_20, 2) if ctx.ma_20 else None,
             "instruction": _open_instruction(market_state, ctx),
             "notes": notes,
+            "added_time": added_time,
             "ok": True,
         }
 

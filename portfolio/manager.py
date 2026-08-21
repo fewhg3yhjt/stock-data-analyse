@@ -135,7 +135,8 @@ class PortfolioManager:
                     stock_name, code, shares, cost, scheme_name)
         return position
 
-    def _ensure_watchlist(self, stock_code: str, stock_name: str) -> Optional[WatchlistItem]:
+    def _ensure_watchlist(self, stock_code: str, stock_name: str,
+                          added_time: str = "") -> Optional[WatchlistItem]:
         """确保股票在自选列表（去重）。"""
         from StockInvestmentTool.data.fetcher import StockDataFetcher
 
@@ -144,7 +145,8 @@ class PortfolioManager:
             if StockDataFetcher.normalize_code(w.stock_code) == code_norm:
                 return w
         return self.storage.add_watchlist(
-            WatchlistItem(stock_code=stock_code, stock_name=stock_name)
+            WatchlistItem(stock_code=stock_code, stock_name=stock_name,
+                          added_time=added_time or datetime.now().strftime("%Y-%m-%d"))
         )
 
     def sync_holdings_to_watchlist(self) -> int:
@@ -191,6 +193,11 @@ class PortfolioManager:
         txn_pnl = 0.0
         if trans_type == TXN_BUY:
             position = self._apply_buy(position, price, shares, fee)
+            # 加仓自动同步到自选（观察池数据源；幂等去重）
+            try:
+                self._ensure_watchlist(position.stock_code, position.stock_name)
+            except Exception as e:
+                logger.debug("加仓自动同步自选失败 %s: %s", position.stock_code, e)
         elif trans_type in (TXN_SELL, TXN_SELL_ALL):
             position, txn_pnl = self._apply_sell(position, trans_type, price, shares, fee)
         elif trans_type == TXN_DIVIDEND:
@@ -467,8 +474,9 @@ class PortfolioManager:
                       target_capital: float = 0,
                       asset_type: str = "stock",
                       weak_support: float = 0, strong_support: float = 0,
-                      extreme_anchor: float = 0, notes: str = "") -> WatchlistItem:
-        """新增自选（同代码已存在则跳过，去重）。"""
+                      extreme_anchor: float = 0, notes: str = "",
+                      added_time: str = "") -> WatchlistItem:
+        """新增自选（同代码已存在则跳过，去重）。added_time 为观察起点，空则默认当天。"""
         from StockInvestmentTool.data.fetcher import StockDataFetcher
 
         code_norm = StockDataFetcher.normalize_code(stock_code)
@@ -480,8 +488,13 @@ class PortfolioManager:
             asset_type=asset_type, target_capital=target_capital,
             weak_support=weak_support, strong_support=strong_support,
             extreme_anchor=extreme_anchor, notes=notes,
+            added_time=added_time or datetime.now().strftime("%Y-%m-%d"),
         )
         return self.storage.add_watchlist(item)
+
+    def update_watchlist_added_time(self, item_id: int, added_time: str):
+        """设置观察起点时间（可往前回看；晚于当天视为未生效，由展示层过滤）。"""
+        self.storage.update_watchlist_added_time(item_id, added_time)
 
     def get_watchlist(self) -> list[WatchlistItem]:
         return self.storage.get_watchlist()
@@ -492,6 +505,134 @@ class PortfolioManager:
 
     def delete_watchlist(self, item_id: int):
         self.storage.delete_watchlist(item_id)
+
+    # ── 操作记录 / 笔记 ───────────────────────────────
+
+    def update_transaction_note(self, transaction_id: int, reason: str):
+        """编辑单笔交易的备注（reason 字段承载笔记）。"""
+        txn = self.storage.get_transaction(transaction_id)
+        if txn is None:
+            raise ValueError(f"交易记录不存在: {transaction_id}")
+        self.storage.update_transaction_reason(transaction_id, reason)
+        return txn
+
+    def update_position_note(self, position_id: int, notes: str):
+        """编辑持仓备注。"""
+        p = self.storage.get_position(position_id)
+        if p is None:
+            raise ValueError(f"持仓不存在: {position_id}")
+        p.notes = notes
+        self.storage.update_position(p)
+        return p
+
+    def update_watchlist_note(self, item_id: int, notes: str):
+        """编辑自选备注。"""
+        if self.storage.get_watchlist_item(item_id) is None:
+            raise ValueError(f"自选不存在: {item_id}")
+        self.storage.update_watchlist_notes(item_id, notes)
+
+    def list_transactions(self) -> list[dict]:
+        """全量交易流水（含股票名），供操作日志/笔记展示。"""
+        rows = []
+        for p in self.storage.get_positions():
+            for t in self.storage.get_transactions(p.id):
+                rows.append({**t.to_dict(),
+                             "stock_name": p.stock_name,
+                             "stock_code": p.stock_code})
+        rows.sort(key=lambda x: (x.get("date") or ""), reverse=True)
+        return rows
+
+    def cost_basis(self, position_id: int) -> dict:
+        """持仓成本口径：累计净投入 / 当前份额。
+
+        Returns:
+            {"net_invested": 累计净投入, "shares": 当前份额,
+             "cost_price": 成本价, "buy_total": 累计买入额, "sell_total": 累计卖出额}
+        """
+        p = self.storage.get_position(position_id)
+        if p is None:
+            raise ValueError(f"持仓不存在: {position_id}")
+        buy_total = 0.0
+        sell_total = 0.0
+        for t in self.storage.get_transactions(position_id):
+            if t.trans_type == TXN_BUY:
+                buy_total += t.amount
+            elif t.trans_type in (TXN_SELL, TXN_SELL_ALL):
+                sell_total += t.amount
+        net_invested = buy_total - sell_total
+        shares = p.total_shares
+        cost_price = net_invested / shares if shares > 0 else 0.0
+        return {
+            "net_invested": round(net_invested, 2),
+            "shares": shares,
+            "cost_price": round(cost_price, 4),
+            "buy_total": round(buy_total, 2),
+            "sell_total": round(sell_total, 2),
+        }
+
+    def return_analysis(self) -> list[dict]:
+        """构建持仓/自选的收益分析条目列表（含每日明细 DataFrame + 成本基准）。
+
+        持仓：成本 = 累计净投入/份额，起点 = 建仓日，含金额。
+        自选：基准 = 观察起点价，起点 = added_time（晚于当天视为未生效），无金额。
+        """
+        from StockInvestmentTool.portfolio.monitor import PriceMonitor
+        from StockInvestmentTool.analysis.returns import compute_returns
+        import pandas as pd
+
+        monitor = PriceMonitor()
+        today = datetime.now().strftime("%Y-%m-%d")
+        entries = []
+
+        # 持仓
+        for p in self.storage.get_open_positions():
+            try:
+                cb = self.cost_basis(p.id)
+                kline, _ = monitor.fetch_context_data(p.stock_code)
+                start = p.buy_date
+                r = compute_returns(kline, start_date=start,
+                                    cost_price=cb["cost_price"], shares=cb["shares"])
+                last = r.iloc[-1] if r is not None and not r.empty else {}
+                has = r is not None and not r.empty
+                entries.append({
+                    "code": p.stock_code, "name": p.stock_name, "kind": "position",
+                    "start_date": start, "cost_price": cb["cost_price"],
+                    "shares": cb["shares"], "returns": r,
+                    "latest_close": float(last.get("close", 0)) if has else None,
+                    "ret_pct": float(last.get("ret_pct", 0)) if has else 0,
+                    "ret_amount": float(last.get("ret_amount", 0)) if has else 0,
+                })
+            except Exception as e:
+                logger.warning("收益分析(持仓)失败 %s: %s", p.stock_code, e)
+
+        # 自选/观察（无份额，基准为观察起点价）
+        for w in self.storage.get_watchlist():
+            try:
+                at = w.added_time or today
+                if at > today:
+                    # 观察起点晚于当天 → 未生效，等开始时间再生成
+                    entries.append({
+                        "code": w.stock_code, "name": w.stock_name, "kind": "watch",
+                        "start_date": at, "cost_price": None, "shares": 0,
+                        "returns": pd.DataFrame(), "latest_close": None,
+                        "ret_pct": 0, "ret_amount": 0, "pending": True,
+                    })
+                    continue
+                kline, _ = monitor.fetch_context_data(w.stock_code)
+                r = compute_returns(kline, start_date=at, cost_price=None, shares=0)
+                last = r.iloc[-1] if r is not None and not r.empty else {}
+                has = r is not None and not r.empty
+                entries.append({
+                    "code": w.stock_code, "name": w.stock_name, "kind": "watch",
+                    "start_date": at, "cost_price": None, "shares": 0, "returns": r,
+                    "latest_close": float(last.get("close", 0)) if has else None,
+                    "ret_pct": float(last.get("ret_pct", 0)) if has else 0,
+                    "ret_amount": 0,
+                })
+            except Exception as e:
+                logger.warning("收益分析(自选)失败 %s: %s", w.stock_code, e)
+
+        return entries
 
     # ══════════════════════════════════════════════════
     # Simulation（模拟快照）

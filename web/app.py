@@ -556,7 +556,7 @@ def portfolio_export():
         mgr = _get_manager()
         path = export_to_excel(mgr)
         return flask.send_file(path, as_attachment=True,
-                               download_name="my_portfolio.xlsx")
+                               download_name="portfolio_template.xlsx")
     except Exception as e:
         logger.exception("导出失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
@@ -588,6 +588,7 @@ def watchlist_add():
     mgr = _get_manager()
     code = flask.request.form.get("code", "").strip()
     name = flask.request.form.get("name", "").strip()
+    added_time = (flask.request.form.get("added_time") or "").strip()[:10]
     try:
         capital = float(flask.request.form.get("target_capital", "0") or 0)
     except (ValueError, TypeError):
@@ -597,7 +598,8 @@ def watchlist_add():
     try:
         from StockInvestmentTool.data.fetcher import StockDataFetcher
         code = StockDataFetcher.normalize_code(code)
-        item = mgr.add_watchlist(code, name or code, target_capital=capital)
+        item = mgr.add_watchlist(code, name or code, target_capital=capital,
+                                 added_time=added_time)
         return flask.jsonify({"status": "success", "watchlist_id": item.id})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400
@@ -731,6 +733,236 @@ def operation_log_api(position_id):
         return flask.jsonify({"status": "success",
                               "items": [a.to_dict() for a in history]})
     except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/note/transaction/<int:txn_id>", methods=["POST"])
+def api_note_transaction(txn_id):
+    """编辑单笔交易备注"""
+    mgr = _get_manager()
+    note = (flask.request.form.get("note") or "").strip()
+    try:
+        mgr.update_transaction_note(txn_id, note)
+        return flask.jsonify({"status": "success"})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/note/position/<int:position_id>", methods=["POST"])
+def api_note_position(position_id):
+    """编辑持仓备注"""
+    mgr = _get_manager()
+    note = (flask.request.form.get("note") or "").strip()
+    try:
+        mgr.update_position_note(position_id, note)
+        return flask.jsonify({"status": "success"})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/note/watchlist/<int:item_id>", methods=["POST"])
+def api_note_watchlist(item_id):
+    """编辑自选备注"""
+    mgr = _get_manager()
+    note = (flask.request.form.get("note") or "").strip()
+    try:
+        mgr.update_watchlist_note(item_id, note)
+        return flask.jsonify({"status": "success"})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/watchlist/<int:item_id>/added_time", methods=["POST"])
+def api_watchlist_added_time(item_id):
+    """设置自选观察起点时间（可回看；晚于当天视为待观察）"""
+    mgr = _get_manager()
+    added_time = (flask.request.form.get("added_time") or "").strip()
+    if not added_time:
+        return flask.jsonify({"status": "error", "error": "缺少时间"}), 400
+    try:
+        mgr.update_watchlist_added_time(item_id, added_time[:10])
+        return flask.jsonify({"status": "success"})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+# ── 快记页（手机优先）────────────────────────────
+
+@web_app.route("/quicklog", methods=["GET"])
+def quicklog_page():
+    """快记页：手机优先的快速操作/笔记录入"""
+    from StockInvestmentTool.core.registry import SchemeRegistry
+    mgr = _get_manager()
+    try:
+        watchlist = [w.to_dict() for w in mgr.get_watchlist()]
+        positions = [p.to_dict() for p in mgr.storage.get_open_positions()]
+        schemes = [s.name for s in SchemeRegistry().list()]
+        return flask.render_template("quicklog.html",
+                                     watchlist=watchlist, positions=positions,
+                                     schemes=schemes, error=None)
+    except Exception as e:
+        logger.exception("快记页加载失败")
+        return flask.render_template("quicklog.html",
+                                     watchlist=[], positions=[], schemes=[],
+                                     error=str(e))
+
+
+@web_app.route("/quicklog", methods=["POST"])
+def quicklog_submit():
+    """快记提交：建仓 / 加仓 / 卖出 / 分红 / 纯笔记"""
+    from StockInvestmentTool.portfolio.models import (
+        TXN_BUY, TXN_SELL, TXN_SELL_ALL, TXN_DIVIDEND,
+    )
+    mgr = _get_manager()
+    action = (flask.request.form.get("action") or "").strip()
+    code = (flask.request.form.get("code") or "").strip()
+    name = (flask.request.form.get("name") or "").strip()
+    date = (flask.request.form.get("date") or "").strip()
+    note = (flask.request.form.get("note") or "").strip()
+    if not code:
+        return flask.jsonify({"status": "error", "error": "请填写股票代码"}), 400
+
+    from StockInvestmentTool.data.fetcher import StockDataFetcher
+    try:
+        code = StockDataFetcher.normalize_code(code)
+    except Exception:
+        pass
+
+    pos = None
+    for p in mgr.storage.get_open_positions():
+        if StockDataFetcher.normalize_code(p.stock_code) == StockDataFetcher.normalize_code(code):
+            pos = p
+            break
+
+    def _f(key, default=0.0):
+        try:
+            return float(flask.request.form.get(key) or default)
+        except (ValueError, TypeError):
+            return default
+
+    try:
+        if action in ("open", "add"):
+            price = _f("price")
+            shares = _f("shares")
+            if price <= 0 or shares <= 0:
+                return flask.jsonify({"status": "error", "error": "价格/数量需为正"}), 400
+            if pos is None:
+                scheme = (flask.request.form.get("scheme") or "default_value").strip()
+                mgr.add_position(stock_code=code, stock_name=name or code,
+                                 shares=shares, cost=price,
+                                 buy_date=date or "2026-01-01",
+                                 scheme_name=scheme, notes=note)
+            else:
+                mgr.record_transaction(pos.id, TXN_BUY, price=price, shares=shares,
+                                       date=date or None, reason=note or "快记")
+        elif action == "sell":
+            if pos is None:
+                return flask.jsonify({"status": "error", "error": "该股无持仓，无法卖出"}), 400
+            price = _f("price")
+            shares = _f("shares")
+            ttype = TXN_SELL_ALL if shares <= 0 else TXN_SELL
+            mgr.record_transaction(pos.id, ttype, price=price, shares=shares,
+                                   date=date or None, reason=note)
+        elif action == "dividend":
+            if pos is None:
+                return flask.jsonify({"status": "error", "error": "该股无持仓，无法记分红"}), 400
+            amount = _f("amount")
+            mgr.record_transaction(pos.id, TXN_DIVIDEND, price=amount, shares=0,
+                                   date=date or None, reason=note)
+        elif action == "watch":
+            mgr.add_watchlist(code, name or code, notes=note,
+                              added_time=(date or "")[:10])
+        elif action == "note":
+            if pos is not None:
+                mgr.update_position_note(pos.id, note)
+            else:
+                wl = None
+                for w in mgr.get_watchlist():
+                    if StockDataFetcher.normalize_code(w.stock_code) == StockDataFetcher.normalize_code(code):
+                        wl = w
+                        break
+                if wl is not None:
+                    mgr.update_watchlist_note(wl.id, note)
+                else:
+                    mgr.add_watchlist(code, name or code, notes=note)
+        else:
+            return flask.jsonify({"status": "error", "error": f"未知操作: {action}"}), 400
+        return flask.jsonify({"status": "success"})
+    except Exception as e:
+        logger.exception("快记失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+# ── 收益分析（累计收益率/金额 + 折线图 + 导出）────────
+
+@web_app.route("/api/returns/chart", methods=["POST"])
+def api_returns_chart():
+    """为单只标的生成累计收益率折线图，返回 /charts/<filename>。"""
+    from StockInvestmentTool.analysis.returns import compute_returns, build_chart
+    from StockInvestmentTool.portfolio.monitor import PriceMonitor
+
+    mgr = _get_manager()
+    code = (flask.request.form.get("code") or "").strip()
+    kind = (flask.request.form.get("kind") or "position").strip()
+    start = (flask.request.form.get("start_date") or "").strip()
+    if not code:
+        return flask.jsonify({"status": "error", "error": "缺少代码"}), 400
+
+    try:
+        monitor = PriceMonitor()
+        kline, _ = monitor.fetch_context_data(code)
+        cost_price = None
+        shares = 0.0
+        title = code
+        if kind == "position":
+            pos = None
+            from StockInvestmentTool.data.fetcher import StockDataFetcher
+            norm = StockDataFetcher.normalize_code(code)
+            for p in mgr.storage.get_open_positions():
+                if StockDataFetcher.normalize_code(p.stock_code) == norm:
+                    pos = p
+                    break
+            if pos is None:
+                return flask.jsonify({"status": "error", "error": "无该持仓"}), 400
+            cb = mgr.cost_basis(pos.id)
+            cost_price, shares = cb["cost_price"], cb["shares"]
+            start = start or pos.buy_date
+            title = f"{pos.stock_name} 累计收益率（成本 {cost_price:.3f}）"
+        else:
+            start = start or datetime.now().strftime("%Y-%m-%d")
+            title = f"{code} 自观察起点收益"
+
+        r = compute_returns(kline, start_date=start,
+                            cost_price=cost_price, shares=shares)
+        if r is None or r.empty:
+            return flask.jsonify({"status": "error", "error": "区间无数据"}), 400
+        filename = build_chart(r, title)
+        if not filename:
+            return flask.jsonify({"status": "error", "error": "图表生成失败"}), 500
+        import os
+        rel = os.path.basename(filename)
+        return flask.jsonify({"status": "success",
+                              "chart": "/charts/" + rel,
+                              "ret_pct": round(float(r["ret_pct"].iloc[-1]), 2),
+                              "ret_amount": round(float(r["ret_amount"].iloc[-1]), 2),
+                              "latest_close": round(float(r["close"].iloc[-1]), 2)})
+    except Exception as e:
+        logger.exception("收益图生成失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/returns/export", methods=["GET"])
+def returns_export():
+    """导出全部持仓/自选的收益明细 + 汇总到 xlsx。"""
+    from StockInvestmentTool.analysis.returns import export_returns_xlsx
+    mgr = _get_manager()
+    try:
+        entries = mgr.return_analysis()
+        path = export_returns_xlsx(entries)
+        return flask.send_file(path, as_attachment=True,
+                               download_name=Path(path).name)
+    except Exception as e:
+        logger.exception("收益导出失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
