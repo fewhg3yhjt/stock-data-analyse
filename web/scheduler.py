@@ -9,6 +9,7 @@
   ② 持仓 → 自选 同步（去重）
   ③ 观察池重算：候选（自选+资金流）指标更新
   ④ 生成晨报
+  ④' 数据仓库离线采集（可选，WAREHOUSE_DAILY_SYNC=1 开启）
   ⑤ notifier 推送（价格+资金流+盘后+持仓指令）
 
 手动触发：web 管理页「立即运行每日任务」按钮 或 POST /api/daily/run。
@@ -16,6 +17,7 @@
 
 import logging
 import os
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,15 @@ def run_daily_tasks() -> dict:
     except Exception as e:
         logger.error("晨报生成失败: %s", e)
 
+    # ④' 数据仓库离线采集（可选，默认关闭）
+    # 用 WAREHOUSE_DAILY_SYNC=1 开启。开盘期间请勿开启（会在盘中拉全量）。
+    if os.getenv("WAREHOUSE_DAILY_SYNC") == "1":
+        try:
+            results["warehouse"] = run_warehouse_daily()
+        except Exception as e:
+            logger.error("数据仓库采集失败: %s", e)
+            results["warehouse"] = f"error: {e}"
+
     # ⑤ 消息推送
     try:
         from StockInvestmentTool.notifier.cli import main as notifier_main
@@ -85,6 +96,30 @@ def run_daily_tasks() -> dict:
 
     logger.info("=== 每日自动任务完成: %s ===", results)
     return results
+
+
+def run_warehouse_daily() -> dict:
+    """数据仓库每日离线采集：增量日线 → 因子计算（收盘后运行）。
+
+    由 WAREHOUSE_DAILY_SYNC=1 开启（见 run_daily_tasks ④'）。
+    历史深度取 WAREHOUSE_YEARS（默认3年），增量只补缺失日期。
+    """
+    logger.info("=== 数据仓库离线采集开始 ===")
+    import os as _os
+    years = int(_os.getenv("WAREHOUSE_YEARS", "3"))
+    from StockInvestmentTool.warehouse.collector import MarketCollector
+    from StockInvestmentTool.warehouse.factors import FactorEngine
+
+    c = MarketCollector()
+    sync_res = c.sync_daily(
+        start_date=(datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d"),
+        include_etf=True,
+        include_index=False,
+    )
+    factor_res = FactorEngine().build_factors()
+    result = {"sync": sync_res, "factors": factor_res}
+    logger.info("=== 数据仓库离线采集完成: %s ===", result)
+    return result
 
 
 def init_scheduler(app) -> None:
