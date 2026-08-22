@@ -517,8 +517,13 @@ class PortfolioManager:
                       asset_type: str = "stock",
                       weak_support: float = 0, strong_support: float = 0,
                       extreme_anchor: float = 0, notes: str = "",
-                      added_time: str = "") -> WatchlistItem:
-        """新增自选（同代码已存在则跳过，去重）。added_time 为观察起点，空则默认当天。"""
+                      added_time: str = "", source: str = "manual") -> WatchlistItem:
+        """新增自选/观察（同代码已存在则跳过，去重）。
+
+        added_time 为观察起点，空则默认当天。
+        source 为来源: manual 手动(带原因) / holding 持仓 / strategy 策略选入。
+        notes 可填加入原因。
+        """
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
         code_norm = StockDataFetcher.normalize_code(stock_code)
@@ -531,6 +536,7 @@ class PortfolioManager:
             weak_support=weak_support, strong_support=strong_support,
             extreme_anchor=extreme_anchor, notes=notes,
             added_time=added_time or datetime.now().strftime("%Y-%m-%d"),
+            source=source,
         )
         return self.storage.add_watchlist(item)
 

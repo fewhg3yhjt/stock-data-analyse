@@ -237,6 +237,7 @@ def _build_subparser(sub, rest: list[str]) -> argparse.Namespace:
         wa.add_argument("--code", required=True)
         wa.add_argument("--name", default=None)
         wa.add_argument("--capital", type=float, default=0)
+        wa.add_argument("--reason", default="", help="加入原因（写入 notes）")
         sub_actions.add_parser("list", help="列出自选")
         wd = sub_actions.add_parser("delete", help="删除自选")
         wd.add_argument("id", type=int)
@@ -319,8 +320,10 @@ def run_management_cli(sub: str, rest: list[str]):
         if args.action == "add":
             from StockInvestmentTool.datasource.fetcher import StockDataFetcher
             code = StockDataFetcher.normalize_code(args.code)
-            item = mgr.add_watchlist(code, args.name or code, target_capital=args.capital)
-            print(f"✅ 已加自选 #{item.id}: {item.stock_name} ({item.stock_code})")
+            item = mgr.add_watchlist(code, args.name or code, target_capital=args.capital,
+                                     notes=args.reason, source="manual")
+            print(f"✅ 已加自选 #{item.id}: {item.stock_name} ({item.stock_code})"
+                  + (f"  原因: {args.reason}" if args.reason else ""))
         elif args.action == "list":
             print(f"\n{'ID':<6}{'代码':<12}{'名称':<12}{'目标仓位':>12}")
             print("-" * 50)

@@ -584,11 +584,12 @@ def portfolio_import():
 
 @web_app.route("/watchlist", methods=["POST"])
 def watchlist_add():
-    """新增自选"""
+    """新增自选/观察（自定义加入，可填原因）"""
     mgr = _get_manager()
     code = flask.request.form.get("code", "").strip()
     name = flask.request.form.get("name", "").strip()
     added_time = (flask.request.form.get("added_time") or "").strip()[:10]
+    reason = (flask.request.form.get("reason") or "").strip()
     try:
         capital = float(flask.request.form.get("target_capital", "0") or 0)
     except (ValueError, TypeError):
@@ -599,7 +600,7 @@ def watchlist_add():
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
         code = StockDataFetcher.normalize_code(code)
         item = mgr.add_watchlist(code, name or code, target_capital=capital,
-                                 added_time=added_time)
+                                 added_time=added_time, notes=reason, source="manual")
         return flask.jsonify({"status": "success", "watchlist_id": item.id})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400

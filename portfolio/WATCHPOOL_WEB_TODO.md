@@ -34,6 +34,11 @@
   - 现有 `StockDataFetcher.normalize_code` 能兼容读取，但展示时应统一为无点格式
   - 建议观察池展示层统一 normalize，避免前端处理两种格式
 
+### 6. 自定义加入原因输入框
+- [ ] web 自选添加表单（`watchlist.html`）增加「原因」输入框（后端已支持 `reason` 参数写入 notes）
+- [ ] 观察池列表展示每只的来源与原因（manual 显示 notes 原因 / strategy 显示策略名）
+- [ ] 允许编辑原因（后端 `update_watchlist_note` 已存在）
+
 ## 后端已就绪（无需重复开发）
 - `DashboardService.stock_dual_view(code)` → 天周期历史 + 盘中快照
 - `warehouse/online.py` 统一观察池读取（持仓∪自选∪策略）
