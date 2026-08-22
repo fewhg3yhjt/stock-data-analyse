@@ -87,7 +87,8 @@ CREATE TABLE IF NOT EXISTS watchlist (
     strong_support REAL NOT NULL DEFAULT 0,
     extreme_anchor REAL NOT NULL DEFAULT 0,
     notes TEXT NOT NULL DEFAULT '',
-    added_time TEXT NOT NULL DEFAULT ''
+    added_time TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual'
 );
 
 CREATE TABLE IF NOT EXISTS advices (
@@ -148,6 +149,9 @@ class PortfolioStorage:
                 conn.execute("ALTER TABLE watchlist ADD COLUMN added_time TEXT NOT NULL DEFAULT ''")
             conn.execute("UPDATE watchlist SET added_time=? WHERE added_time='' OR added_time IS NULL",
                          (datetime.now().strftime("%Y-%m-%d"),))
+            # 迁移：watchlist 增加 source（观察池来源 manual/holding/strategy）
+            if "source" not in cols:
+                conn.execute("ALTER TABLE watchlist ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
             # 确保默认组合
             cur = conn.execute("SELECT id FROM portfolios WHERE id=1")
             if cur.fetchone() is None:
@@ -365,23 +369,32 @@ class PortfolioStorage:
             weak_support=row["weak_support"], strong_support=row["strong_support"],
             extreme_anchor=row["extreme_anchor"], notes=row["notes"],
             added_time=row["added_time"],
+            source=row["source"] if "source" in row.keys() else "manual",
         )
 
     def add_watchlist(self, item: WatchlistItem) -> WatchlistItem:
         if not item.added_time:
             item.added_time = _now()[:10]
+        if not item.source:
+            item.source = "manual"
         with self._connect() as conn:
             cur = conn.execute(
                 """INSERT INTO watchlist
                    (stock_code, stock_name, asset_type, target_capital,
-                    weak_support, strong_support, extreme_anchor, notes, added_time)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                    weak_support, strong_support, extreme_anchor, notes, added_time, source)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (item.stock_code, item.stock_name, item.asset_type, item.target_capital,
                  item.weak_support, item.strong_support, item.extreme_anchor, item.notes,
-                 item.added_time),
+                 item.added_time, item.source),
             )
             item.id = cur.lastrowid
         return item
+
+    def update_watchlist_source(self, item_id: int, source: str):
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE watchlist SET source=? WHERE id=?", (source, item_id),
+            )
 
     def update_watchlist_added_time(self, item_id: int, added_time: str):
         with self._connect() as conn:
@@ -392,6 +405,13 @@ class PortfolioStorage:
     def get_watchlist(self) -> list[WatchlistItem]:
         with self._connect() as conn:
             rows = conn.execute("SELECT * FROM watchlist ORDER BY id").fetchall()
+        return [self._wl_from_row(r) for r in rows]
+
+    def get_watchlist_by_source(self, source: str) -> list[WatchlistItem]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM watchlist WHERE source=? ORDER BY id", (source,)
+            ).fetchall()
         return [self._wl_from_row(r) for r in rows]
 
     def get_watchlist_item(self, item_id: int) -> Optional[WatchlistItem]:

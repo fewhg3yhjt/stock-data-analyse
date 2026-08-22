@@ -179,9 +179,15 @@ class Portfolio:
         }
 
 
+# 自选/观察池条目来源
+WL_SOURCE_MANUAL = "manual"      # 手动添加
+WL_SOURCE_HOLDING = "holding"    # 持仓自动同步
+WL_SOURCE_STRATEGY = "strategy"  # 策略选入（资金流持续流入等）
+
+
 @dataclass
 class WatchlistItem:
-    """自选池条目"""
+    """自选池条目（统一观察池 Watchpool 的实体）"""
 
     id: int = 0
     stock_code: str = ""
@@ -193,6 +199,7 @@ class WatchlistItem:
     extreme_anchor: float = 0.0      # 手动预设极端低估锚（可选）
     notes: str = ""
     added_time: str = ""             # 观察/自选加入时间（默认当天，可回看；晚于当天视为未生效）
+    source: str = WL_SOURCE_MANUAL   # 来源: manual/holding/strategy
 
     def to_dict(self) -> dict:
         return {
@@ -206,6 +213,7 @@ class WatchlistItem:
             "extreme_anchor": self.extreme_anchor,
             "notes": self.notes,
             "added_time": self.added_time,
+            "source": self.source,
         }
 
 

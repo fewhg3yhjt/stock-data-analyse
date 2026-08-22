@@ -183,6 +183,73 @@ class DashboardService:
             logger.warning("资金流候选获取失败: %s", e)
             return []
 
+    def stock_dual_view(self, code: str, days: int = 120) -> dict:
+        """单只股票的「天周期历史 + 盘中快照」双视图数据（后端打通）。
+
+        框1 天周期历史: warehouse daily 分区（OHLCV/amount/turn/PE/PB）
+        框2 盘中快照:   warehouse online 当日最新快照（实时价/换手/量比）
+
+        Returns:
+            dict: {code, daily_history: {dates, closes, ...}, intraday: {...}}
+        """
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        norm = StockDataFetcher.normalize_code(code)
+        code_nodot = norm.replace(".", "")
+        result = {"code": code_nodot, "daily_history": {}, "intraday": {}}
+
+        # 框1：天周期历史（从 warehouse 读，避免重复拉网络）
+        try:
+            w = Warehouse()
+            history = []
+            for ym in w.available_months("daily"):
+                df = w.read_daily(ym)
+                if df is None or df.empty or "code" not in df.columns:
+                    continue
+                sub = df[df["code"] == code_nodot].tail(days)
+                if len(sub):
+                    history.append(sub)
+            if history:
+                import pandas as pd
+                hdf = pd.concat(history, ignore_index=True).sort_values("date").tail(days)
+                result["daily_history"] = {
+                    "dates": [str(d)[:10] for d in hdf["date"]],
+                    "closes": [round(float(x), 2) if x == x else None for x in hdf["close"]],
+                    "volumes": [round(float(x), 0) if x == x else None for x in hdf["volume"]],
+                    "amounts": [round(float(x), 2) if x == x else None for x in hdf.get("amount", pd.Series([None]*len(hdf)))],
+                    "turns": [round(float(x), 2) if x == x else None for x in hdf.get("turn", pd.Series([None]*len(hdf)))],
+                    "pe": [round(float(x), 2) if x == x else None for x in hdf.get("peTTM", pd.Series([None]*len(hdf)))],
+                    "pb": [round(float(x), 2) if x == x else None for x in hdf.get("pbMRQ", pd.Series([None]*len(hdf)))],
+                }
+        except Exception as e:
+            logger.warning("天周期历史读取失败 %s: %s", code, e)
+
+        # 框2：盘中快照（当日最新）
+        try:
+            today = datetime.now().strftime("%Y-%m-%d")
+            w = Warehouse()
+            snaps = w.online_snapshots(today)
+            if snaps:
+                import pandas as pd
+                latest = pd.read_csv(snaps[-1], encoding="utf-8-sig")
+                row = latest[latest["code"] == code_nodot]
+                if len(row):
+                    r = row.iloc[0]
+                    result["intraday"] = {
+                        "price": round(float(r["price"]), 2) if r.get("price") == r.get("price") else None,
+                        "change_pct": round(float(r["change_pct"]), 2) if r.get("change_pct") == r.get("change_pct") else None,
+                        "turnover": round(float(r["turnover"]), 2) if r.get("turnover") == r.get("turnover") else None,
+                        "vol_ratio": round(float(r["vol_ratio"]), 2) if r.get("vol_ratio") == r.get("vol_ratio") else None,
+                        "pe_ttm": round(float(r["pe_ttm"]), 2) if r.get("pe_ttm") == r.get("pe_ttm") else None,
+                        "pb": round(float(r["pb"]), 2) if r.get("pb") == r.get("pb") else None,
+                        "snapshot_time": str(r.get("snapshot_time", ""))[:19],
+                    }
+        except Exception as e:
+            logger.warning("盘中快照读取失败 %s: %s", code, e)
+
+        return result
+
     def _observe_one(self, item: dict) -> dict:
         """计算单只观察标的全套字段。"""
         from StockInvestmentTool.portfolio.monitor import PriceMonitor

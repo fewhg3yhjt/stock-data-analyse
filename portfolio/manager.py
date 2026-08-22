@@ -136,8 +136,12 @@ class PortfolioManager:
         return position
 
     def _ensure_watchlist(self, stock_code: str, stock_name: str,
-                          added_time: str = "") -> Optional[WatchlistItem]:
-        """确保股票在自选列表（去重）。"""
+                          added_time: str = "", source: str = "holding") -> Optional[WatchlistItem]:
+        """确保股票在自选列表（去重）。
+
+        Args:
+            source: 来源（holding 持仓自动同步 / manual 手动 / strategy 策略选入）
+        """
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
         code_norm = StockDataFetcher.normalize_code(stock_code)
@@ -146,11 +150,12 @@ class PortfolioManager:
                 return w
         return self.storage.add_watchlist(
             WatchlistItem(stock_code=stock_code, stock_name=stock_name,
-                          added_time=added_time or datetime.now().strftime("%Y-%m-%d"))
+                          added_time=added_time or datetime.now().strftime("%Y-%m-%d"),
+                          source=source)
         )
 
     def sync_holdings_to_watchlist(self) -> int:
-        """把所有 open 持仓同步进自选（幂等去重），返回新增数。
+        """把所有 open 持仓同步进自选（幂等去重，source=holding），返回新增数。
 
         用于回填功能上线前的既有持仓，以及持仓页访问时的兜底。
         """
@@ -163,10 +168,47 @@ class PortfolioManager:
             norm = StockDataFetcher.normalize_code(p.stock_code)
             if norm not in existing:
                 self.storage.add_watchlist(
-                    WatchlistItem(stock_code=p.stock_code, stock_name=p.stock_name)
+                    WatchlistItem(stock_code=p.stock_code, stock_name=p.stock_name,
+                                  source="holding")
                 )
                 existing.add(norm)
                 added += 1
+        return added
+
+    def sync_strategy_candidates(self, top_n: int = 15) -> int:
+        """把观察策略选中的股票（资金流持续流入）同步进观察池（source=strategy）。
+
+        返回新增数。幂等：已有股票跳过；策略候选每日刷新（超出的旧候选不主动删除，
+        保留作为历史观察记录）。
+        """
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+
+        existing = {StockDataFetcher.normalize_code(w.stock_code)
+                    for w in self.storage.get_watchlist()}
+        added = 0
+        try:
+            from StockInvestmentTool.portfolio.dashboard import DashboardService
+            # 复用看板观察池的资金流候选逻辑
+            candidates = DashboardService(self).observe_pool(max_candidates=top_n,
+                                                             use_cache=True)
+            for r in candidates:
+                code = (r.get("code") or "").strip().lower()
+                if not code:
+                    continue
+                norm = StockDataFetcher.normalize_code(code)
+                if norm in existing:
+                    continue
+                name = r.get("name") or code
+                notes = r.get("notes") or "资金流策略选入"
+                self.storage.add_watchlist(
+                    WatchlistItem(stock_code=code, stock_name=name,
+                                  notes=notes, source="strategy")
+                )
+                existing.add(norm)
+                added += 1
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("策略候选同步失败: %s", e)
         return added
 
     # ══════════════════════════════════════════════════

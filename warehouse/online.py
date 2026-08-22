@@ -22,18 +22,24 @@ RETENTION_DAYS = 90
 
 
 def _default_observe_codes() -> list[str]:
-    """默认观察代码集：持仓 + 自选（失败降级空列表）。"""
+    """默认观察代码集：统一观察池 = 持仓 ∪ 自选 ∪ 策略选中（Watchpool）。
+
+    观察池实体在 portfolio 的 watchlist 表（含 source 字段：
+    manual 手动 / holding 持仓 / strategy 策略选入）。
+    读取前先同步持仓与策略候选进观察池，保证统一覆盖。
+    """
+    codes: set[str] = set()
     try:
         from StockInvestmentTool.portfolio.manager import PortfolioManager
         mgr = PortfolioManager()
-        codes = set()
-        for p in mgr.storage.get_open_positions():
-            codes.add(p.stock_code)
-        codes.update(mgr.get_watchlist_codes())
-        return sorted(codes)
+        # 同步：持仓 → 观察池；策略候选 → 观察池
+        mgr.sync_holdings_to_watchlist()
+        mgr.sync_strategy_candidates(top_n=15)
+        for w in mgr.get_watchlist():
+            codes.add(w.stock_code)
     except Exception as e:
-        logger.warning("获取观察代码失败: %s", e)
-        return []
+        logger.warning("获取统一观察池失败: %s", e)
+    return sorted(codes)
 
 
 def _normalize_codes(codes: list[str]) -> list[str]:
