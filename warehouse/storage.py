@@ -59,6 +59,12 @@ class Warehouse:
             d.mkdir(parents=True, exist_ok=True)
         self._init_meta()
 
+    @property
+    def raw(self):
+        """贴源层（各接口原始数据独立存放）"""
+        from StockInvestmentTool.warehouse.raw import RawStore
+        return RawStore(self.base_dir)
+
     # ── 元数据 ─────────────────────────────────────────
 
     def _conn(self) -> sqlite3.Connection:

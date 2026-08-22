@@ -17,5 +17,8 @@ from StockInvestmentTool.warehouse.storage import Warehouse
 from StockInvestmentTool.warehouse.collector import MarketCollector
 from StockInvestmentTool.warehouse.factors import FactorEngine
 from StockInvestmentTool.warehouse.scanner import MarketScanner
+from StockInvestmentTool.warehouse.process import ProcessEngine
+from StockInvestmentTool.warehouse.backfill import ValuationBackfill
 
-__all__ = ["Warehouse", "MarketCollector", "FactorEngine", "MarketScanner"]
+__all__ = ["Warehouse", "MarketCollector", "FactorEngine", "MarketScanner",
+           "ProcessEngine", "ValuationBackfill"]

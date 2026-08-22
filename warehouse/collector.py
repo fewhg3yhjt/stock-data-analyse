@@ -172,18 +172,18 @@ class MarketCollector:
     # ── 腾讯历史K线数据源（备胎/主源，不封IP）──────────────
 
     def _fetch_symbol_tencent(self, code: str, start: str, end: str) -> pd.DataFrame:
-        """用腾讯 fqkline 接口拉取单只标的日线（前复权）。
+        """用腾讯 newfqkline 接口拉取单只标的日线（前复权，含成交额/换手率）。
 
-        接口: web.ifzq.gtimg.cn/appstock/app/fqkline/get
+        接口: proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get
         param: <code>,day,<start>,<end>,<count>,qfq
-        返回 [date, open, close, high, low, volume, ...]
-        快、稳定、不封 IP；count 上限约 800 根（3 年+），超过需分段。
+        返回 [date, open, close, high, low, volume(手), {}, turn%, amount(万), ...]
+        快、稳定、不封 IP；count 上限约 800 根（3 年+）。
         """
         import requests
 
         self._throttle()
         code_tencent = code  # sh600900 无点，与腾讯一致
-        url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+        url = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
         # 计算需要多少根（按交易日 ~244/年）
         need_days = (datetime.strptime(end, "%Y-%m-%d")
                      - datetime.strptime(start, "%Y-%m-%d")).days
@@ -205,17 +205,21 @@ class MarketCollector:
         if not rows:
             return pd.DataFrame()
 
-        # 行格式: [date, open, close, high, low, volume, ...]
+        # 行格式: [date, open, close, high, low, volume(手), {}, turn%, amount(万), ...]
         records = []
         for r in rows:
             if len(r) < 6:
                 continue
-            records.append({
+            rec = {
                 "date": r[0],
                 "open": r[1], "close": r[2],
                 "high": r[3], "low": r[4],
-                "volume": r[5],
-            })
+                "volume": r[5],  # 单位「手」，稍后 ×100 转股
+            }
+            if len(r) >= 9:  # proxy 接口含换手率/成交额
+                rec["turn"] = r[7]           # 换手率 %
+                rec["amount"] = r[8]         # 成交额（万元）→ 稍后转元
+            records.append(rec)
         if not records:
             return pd.DataFrame()
 
@@ -225,12 +229,17 @@ class MarketCollector:
             df[c] = pd.to_numeric(df[c], errors="coerce")
         # 腾讯 volume 单位是「手」，统一转成「股」（×100），与 baostock 对齐
         df["volume"] = pd.to_numeric(df["volume"], errors="coerce") * 100
+        # 成交额: 万元 → 元（×10000），与 baostock 对齐
+        if "amount" in df.columns:
+            df["amount"] = pd.to_numeric(df["amount"], errors="coerce") * 10000
+        if "turn" in df.columns:
+            df["turn"] = pd.to_numeric(df["turn"], errors="coerce")
         df["date"] = pd.to_datetime(df["date"])
         # 过滤到请求区间内
         df = df[(df["date"] >= pd.Timestamp(start)) & (df["date"] <= pd.Timestamp(end))]
         df = df.sort_values("date").drop_duplicates("date")
-        # 对齐 _KEEP_COLS（腾讯无 pe/pb/turn/amount，用 NaN 占位）
-        for c in ("amount", "turn", "tradestatus", "peTTM", "pbMRQ"):
+        # 对齐 _KEEP_COLS（腾讯无 pe/pb/tradestatus，用 NaN 占位）
+        for c in ("tradestatus", "peTTM", "pbMRQ"):
             df[c] = float("nan")
         df = df[[c for c in _KEEP_COLS if c in df.columns]]
         return df
@@ -242,7 +251,8 @@ class MarketCollector:
                    include_index: bool = False,
                    max_symbols: Optional[int] = None,
                    flush_every: int = 1000,
-                   source: str = "baostock") -> dict:
+                   source: str = "baostock",
+                   target: str = "daily") -> dict:
         """全市场日线增量同步（核心）。
 
         Args:
@@ -253,6 +263,9 @@ class MarketCollector:
             max_symbols: 最多处理多少只（测试用）
             flush_every: 每处理 N 个标的就落盘一次，控制内存峰值（2C2G 安全）
             source: 数据源 baostock（默认）/ tencent（腾讯，不封IP）
+            target: 写入目标
+                daily     → 加工层 daily/ 分区（旧行为，直接写完整宽表）
+                raw:<src> → 贴源层 raw/<src>/ 分区（源数据独立存放，不覆盖）
 
         Returns:
             dict: 统计（新增行数/失败数/耗时）
@@ -282,19 +295,35 @@ class MarketCollector:
         failed: list[str] = []
         t0 = time.time()
 
+        # 解析写入目标
+        raw_source = None
+        if target.startswith("raw:"):
+            raw_source = target.split(":", 1)[1]
+
         # 一次性构建「已覆盖到 end_date 的标的集合」（读一次最新分区），
         # 后续 O(1) 判断跳过，避免逐标的重复读分区。
+        # 注意：贴源层写入时按「该源已覆盖」判断，读取的是对应源的分区。
         covered_codes: set[str] = set()
-        last_month = self.warehouse.available_months("daily")
-        if last_month:
-            lm = self.warehouse.read_daily(last_month[-1])
-            if lm is not None and not lm.empty and "code" in lm.columns:
-                lm = lm.copy()
-                lm["_d"] = pd.to_datetime(lm["date"])
-                latest_global = lm["_d"].max()
-                # 某标的在仓库中已到「仓库最新交易日」→ 视为已覆盖（跳过）
-                hit = lm[lm["_d"] >= latest_global]
-                covered_codes = set(hit["code"].unique())
+        if raw_source:
+            lm_months = self.warehouse.raw.available_months(raw_source)
+            if lm_months:
+                lm = self.warehouse.raw.read(raw_source, lm_months[-1])
+                if lm is not None and not lm.empty and "code" in lm.columns:
+                    lm = lm.copy()
+                    lm["_d"] = pd.to_datetime(lm["date"])
+                    latest_global = lm["_d"].max()
+                    hit = lm[lm["_d"] >= latest_global]
+                    covered_codes = set(hit["code"].unique())
+        else:
+            last_month = self.warehouse.available_months("daily")
+            if last_month:
+                lm = self.warehouse.read_daily(last_month[-1])
+                if lm is not None and not lm.empty and "code" in lm.columns:
+                    lm = lm.copy()
+                    lm["_d"] = pd.to_datetime(lm["date"])
+                    latest_global = lm["_d"].max()
+                    hit = lm[lm["_d"] >= latest_global]
+                    covered_codes = set(hit["code"].unique())
         logger.info("已覆盖标的: %d 个（跳过）", len(covered_codes))
 
         # 内存只持有「按月累积」的数据块；每 flush_every 个标的落盘一次并清空，
@@ -306,12 +335,17 @@ class MarketCollector:
             for ym, df in month_bufs.items():
                 if df is None or len(df) == 0:
                     continue
-                existing = self.warehouse.read_daily(ym)
-                if existing is not None and len(existing):
-                    df = pd.concat([existing, df], ignore_index=True)
-                df = df.drop_duplicates(subset=["date", "code"])
-                df = df.sort_values(["date", "code"])
-                self.warehouse.write_daily_partition(ym, df)
+                if raw_source:
+                    # 写贴源层：该源分区独立，仅追加/合并本标的
+                    self.warehouse.raw.write(raw_source, ym, df)
+                else:
+                    # 写加工层 daily
+                    existing = self.warehouse.read_daily(ym)
+                    if existing is not None and len(existing):
+                        df = pd.concat([existing, df], ignore_index=True)
+                    df = df.drop_duplicates(subset=["date", "code"])
+                    df = df.sort_values(["date", "code"])
+                    self.warehouse.write_daily_partition(ym, df)
             month_bufs.clear()
 
         for i, code in enumerate(symbols, 1):

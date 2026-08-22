@@ -46,7 +46,8 @@ def cmd_sync(args):
     c = MarketCollector()
     res = c.sync_daily(start_date=args.start, include_etf=True,
                        include_index=args.include_index, max_symbols=args.max_symbols,
-                       flush_every=args.flush_every, source=args.source)
+                       flush_every=args.flush_every, source=args.source,
+                       target=args.target)
     print(f"✅ 日线增量: +{res['added_rows']} 行, 失败 {len(res['failed'])}, 耗时 {res['elapsed_sec']}s")
 
 
@@ -101,6 +102,34 @@ def cmd_reset(args):
     print(f"✅ 已清空: {result}")
 
 
+def cmd_process(args):
+    """把贴源层 raw/* 加工为 daily/ 完整宽表。"""
+    from StockInvestmentTool.warehouse.process import ProcessEngine
+    months = [m.strip() for m in (args.months or "").split(",") if m.strip()] or None
+    pe = ProcessEngine()
+    result = pe.build_all(months=months)
+    if result:
+        print(f"✅ 加工完成: {len(result)} 个月, 总 {sum(result.values())} 行")
+    else:
+        print("⚠️ 贴源层无数据可加工（先跑 sync --target raw:tencent）")
+
+
+def cmd_backfill(args):
+    """单点回补：从东财补历史 PE/PB 到加工层。"""
+    from StockInvestmentTool.warehouse.backfill import ValuationBackfill
+    codes = [c.strip() for c in args.codes.split(",") if c.strip()]
+    if not codes:
+        print("❌ 需要 --codes（逗号分隔）")
+        return
+    vb = ValuationBackfill()
+    if len(codes) == 1:
+        r = vb.backfill(codes[0], args.start, args.end, reprocess=True)
+        print(f"✅ 回补 {codes[0]}: {r['rows']} 行, {r['months']} 个月")
+    else:
+        r = vb.backfill_many(codes, args.start, args.end, reprocess=True)
+        print(f"✅ 批量回补: {r['rows']} 行, 失败 {r['failed']}")
+
+
 def cmd_status(args):
     """仓库状态总览。"""
     from StockInvestmentTool.warehouse.storage import Warehouse
@@ -146,6 +175,8 @@ def main(argv: list[str] | None = None):
     p_sync.add_argument("--source", default="baostock",
                         choices=["baostock", "tencent"],
                         help="数据源: baostock(默认)/tencent(腾讯,不封IP)")
+    p_sync.add_argument("--target", default="daily",
+                        help="写入目标: daily(加工层,默认)/raw:tencent(贴源层)")
 
     p_factors = sub.add_parser("factors", help="计算因子宽表")
     p_factors.add_argument("--max-symbols", type=int, default=None)
@@ -166,6 +197,14 @@ def main(argv: list[str] | None = None):
     p_reset.add_argument("--kinds", default="daily,factor,online", help="daily/factor/online")
     p_reset.add_argument("--force", action="store_true", help="跳过确认")
 
+    p_process = sub.add_parser("process", help="贴源层→加工层(daily 完整宽表)")
+    p_process.add_argument("--months", default="", help="逗号分隔月份，空=全部")
+
+    p_backfill = sub.add_parser("backfill", help="单点回补历史PE/PB(东财)")
+    p_backfill.add_argument("--codes", required=True, help="逗号分隔代码 sh600900")
+    p_backfill.add_argument("--start", required=True, help="YYYY-MM-DD")
+    p_backfill.add_argument("--end", required=True, help="YYYY-MM-DD")
+
     sub.add_parser("status", help="仓库状态")
 
     args = parser.parse_args(argv)
@@ -173,7 +212,7 @@ def main(argv: list[str] | None = None):
 
     handlers = {"init": cmd_init, "sync": cmd_sync, "factors": cmd_factors,
                 "scan": cmd_scan, "online": cmd_online, "status": cmd_status,
-                "reset": cmd_reset}
+                "reset": cmd_reset, "process": cmd_process, "backfill": cmd_backfill}
     try:
         handlers[args.cmd](args)
     except Exception as e:
