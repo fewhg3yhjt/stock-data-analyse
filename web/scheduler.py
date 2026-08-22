@@ -99,10 +99,10 @@ def run_daily_tasks() -> dict:
 
 
 def run_warehouse_daily() -> dict:
-    """数据仓库每日离线采集：增量日线 → 因子计算（收盘后运行）。
+    """数据仓库每日离线采集：增量日线 → 因子计算 → 新股PE/PB回补。
 
     由 WAREHOUSE_DAILY_SYNC=1 开启（见 run_daily_tasks ④'）。
-    历史深度取 WAREHOUSE_YEARS（默认3年），增量只补缺失日期。
+    历史深度取 WAREHOUSE_YEARS（默认3年），增量只补缺失日期（方案B）。
     """
     logger.info("=== 数据仓库离线采集开始 ===")
     import os as _os
@@ -110,14 +110,43 @@ def run_warehouse_daily() -> dict:
     from StockInvestmentTool.warehouse.collector import MarketCollector
     from StockInvestmentTool.warehouse.factors import FactorEngine
 
+    result = {}
     c = MarketCollector()
+    start_date = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
     sync_res = c.sync_daily(
-        start_date=(datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d"),
+        start_date=start_date,
         include_etf=True,
         include_index=False,
+        source="tencent",
     )
-    factor_res = FactorEngine().build_factors()
-    result = {"sync": sync_res, "factors": factor_res}
+    result["sync"] = sync_res
+
+    # 因子计算（增量后全量重算因子宽表）
+    try:
+        factor_res = FactorEngine().build_factors()
+        result["factors"] = factor_res
+    except Exception as e:
+        logger.error("因子计算失败: %s", e)
+        result["factors"] = f"error: {e}"
+
+    # 新股 PE/PB 回补（仅补刚新增/缺失的股票估值）
+    try:
+        from StockInvestmentTool.warehouse.backfill import ValuationBackfill
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        w = Warehouse()
+        df = w.read_daily(w.available_months("daily")[-1])
+        if df is not None and not df.empty:
+            codes = sorted([c for c in df["code"].unique()
+                            if c.startswith(("sh6", "sz0", "sz3"))])
+            vb = ValuationBackfill(w)
+            bf = vb.backfill_many(codes, start_date, datetime.now().strftime("%Y-%m-%d"),
+                                  reprocess=True)
+            result["backfill"] = bf
+    except Exception as e:
+        logger.error("PE/PB回补失败: %s", e)
+        result["backfill"] = f"error: {e}"
+
     logger.info("=== 数据仓库离线采集完成: %s ===", result)
     return result
 
@@ -140,9 +169,30 @@ def init_scheduler(app) -> None:
         run_daily_tasks, CronTrigger(hour=hour, minute=minute, timezone=TZ),
         id="daily_tasks", misfire_grace_time=3600, coalesce=True,
     )
+    # 盘中观察池实时快照：每 10 分钟一次（仅交易时段内实际取值）
+    # 用 WAREHOUSE_ONLINE_SNAPSHOT=1 开启（默认关闭，避免过度采集）
+    if os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1":
+        scheduler.add_job(
+            run_online_snapshot_job, CronTrigger(minute="*/10", timezone=TZ),
+            id="online_snapshot", misfire_grace_time=600, coalesce=True,
+        )
+        logger.info("盘中观察池快照已启动: 每 10 分钟")
     scheduler.start()
     app.extensions["scheduler"] = scheduler
     logger.info("每日定时任务已启动: %02d:%02d (%s)", hour, minute, TZ)
+
+
+def run_online_snapshot_job():
+    """盘中观察池快照定时任务主体（10 分钟一次）。"""
+    from StockInvestmentTool.warehouse.online import run_online_snapshot
+    try:
+        result = run_online_snapshot()
+        if result.get("ok"):
+            logger.info("盘中快照已采集: %s", result.get("path"))
+        else:
+            logger.warning("盘中快照失败: %s", result.get("error"))
+    except Exception as e:
+        logger.error("盘中快照任务异常: %s", e)
 
 
 def scheduler_status(app) -> dict:

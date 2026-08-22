@@ -151,13 +151,15 @@ class RawStore:
             if existing is None:
                 new = grp.copy()
             else:
-                # 用回补数据覆盖同 date+code 行的字段，保留其他列
+                # 合并索引：existing ∪ new（new 的行可能不存在于 existing）
                 idx = existing.set_index(["date", "code"])
-                # 补上贴源层分区中没有但回补数据含有的列（如 peTTM/pbMRQ）
+                # 补上分区没有但回补数据含有的列
                 for col in new_idx.columns:
                     if col not in idx.columns:
                         idx[col] = pd.NA
-                # 只更新回补数据中存在的列
+                # 用 reindex 扩展索引到并集，再覆盖回补列的对应行
+                all_index = idx.index.union(new_idx.index)
+                idx = idx.reindex(all_index)
                 update_cols = [c for c in new_idx.columns if c in idx.columns]
                 for col in update_cols:
                     idx.loc[new_idx.index, col] = new_idx[col]

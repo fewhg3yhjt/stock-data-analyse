@@ -14,6 +14,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -300,31 +301,40 @@ class MarketCollector:
         if target.startswith("raw:"):
             raw_source = target.split(":", 1)[1]
 
-        # 一次性构建「已覆盖到 end_date 的标的集合」（读一次最新分区），
-        # 后续 O(1) 判断跳过，避免逐标的重复读分区。
-        # 注意：贴源层写入时按「该源已覆盖」判断，读取的是对应源的分区。
-        covered_codes: set[str] = set()
+        # 构建「每个标的自有最后日期」索引 {code: last_date}
+        # 用 DuckDB 对全部分区 GROUP BY code 取 max(date)（秒级，不占常驻内存）。
+        # 增量判断依据是"该标的自有最后日期"，而非"仓库全局最新交易日"：
+        #   - 某天没拉到 → 下次检测到 last_date < end_date → 自动补拉缺失区间
+        #   - 已到 end_date → 跳过（不重拉）
+        last_dates: dict[str, pd.Timestamp] = {}
         if raw_source:
             lm_months = self.warehouse.raw.available_months(raw_source)
-            if lm_months:
-                lm = self.warehouse.raw.read(raw_source, lm_months[-1])
-                if lm is not None and not lm.empty and "code" in lm.columns:
-                    lm = lm.copy()
-                    lm["_d"] = pd.to_datetime(lm["date"])
-                    latest_global = lm["_d"].max()
-                    hit = lm[lm["_d"] >= latest_global]
-                    covered_codes = set(hit["code"].unique())
+            months_to_scan = lm_months
         else:
-            last_month = self.warehouse.available_months("daily")
-            if last_month:
-                lm = self.warehouse.read_daily(last_month[-1])
-                if lm is not None and not lm.empty and "code" in lm.columns:
-                    lm = lm.copy()
-                    lm["_d"] = pd.to_datetime(lm["date"])
-                    latest_global = lm["_d"].max()
-                    hit = lm[lm["_d"] >= latest_global]
-                    covered_codes = set(hit["code"].unique())
-        logger.info("已覆盖标的: %d 个（跳过）", len(covered_codes))
+            months_to_scan = self.warehouse.available_months("daily")
+        if months_to_scan:
+            try:
+                import duckdb
+                files = []
+                for ym in months_to_scan:
+                    if raw_source:
+                        files.append(str(self.warehouse.raw.partition_path(raw_source, ym)))
+                    else:
+                        files.append(str(self.warehouse.daily_partition(ym)))
+                files = [f for f in files if Path(f).exists()]
+                if files:
+                    con = duckdb.connect()
+                    try:
+                        file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
+                        rows = con.execute(
+                            f"SELECT code, MAX(date) AS last_date FROM read_parquet({file_list}) GROUP BY code"
+                        ).fetchall()
+                        last_dates = {r[0]: pd.Timestamp(r[1]) for r in rows}
+                    finally:
+                        con.close()
+            except Exception as e:
+                logger.warning("构建标的最新日期索引失败(%s)，退回旧覆盖判断", e)
+        logger.info("已覆盖标的: %d 个（跳过）", len(last_dates))
 
         # 内存只持有「按月累积」的数据块；每 flush_every 个标的落盘一次并清空，
         # 避免全市场 × 多月在内存中累积过高（2C2G 下 OOM 风险）。
@@ -348,15 +358,26 @@ class MarketCollector:
                     self.warehouse.write_daily_partition(ym, df)
             month_bufs.clear()
 
+        end_ts = pd.Timestamp(end_date)
         for i, code in enumerate(symbols, 1):
-            # 增量跳过：该标的在仓库中已覆盖到 end_date → 无需重拉
-            if code in covered_codes:
+            # 增量判断：该标的自有最后日期 >= end_date → 已覆盖，跳过
+            last = last_dates.get(code)
+            if last is not None and last >= end_ts:
                 continue
+
+            # 只拉缺失区间：已有数据的拉 (last_date+1, end_date]，无数据拉全区间
+            if last is not None:
+                fetch_start = (last + timedelta(days=1)).strftime("%Y-%m-%d")
+            else:
+                fetch_start = start_date
+            if fetch_start > end_date:
+                continue
+
             try:
                 if source == "tencent":
-                    df = self._fetch_symbol_tencent(code, start_date, end_date)
+                    df = self._fetch_symbol_tencent(code, fetch_start, end_date)
                 else:
-                    df = self._fetch_symbol(code, start_date, end_date)
+                    df = self._fetch_symbol(code, fetch_start, end_date)
             except Exception as e:
                 failed.append(code)
                 logger.warning("拉取 %s 失败: %s", code, e)

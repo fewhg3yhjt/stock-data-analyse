@@ -135,7 +135,8 @@ python -m StockInvestmentTool.notifier --test
 python -m StockInvestmentTool.warehouse init [--years 3] [--max-symbols N]
 
 # 增量同步日线（每日收盘后跑一次，只补缺失日期）
-python -m StockInvestmentTool.warehouse sync [--start YYYY-MM-DD]
+# 增量同步日线（每日收盘后跑一次，只补缺失日期，自动断点续传）
+python -m StockInvestmentTool.warehouse sync [--start YYYY-MM-DD] [--source tencent] [--target daily|raw:tencent]
 
 # 计算全市场因子宽表（MA/量比/乖离/动量/波动率）
 python -m StockInvestmentTool.warehouse factors
@@ -144,7 +145,13 @@ python -m StockInvestmentTool.warehouse factors
 python -m StockInvestmentTool.warehouse scan --start 2026-08-01 --end 2026-08-20 \
     --where "vol_ratio > 2 AND ret_5d > 5" --limit 50
 
-# 观察池盘中低频快照（腾讯，不封 IP）
+# 贴源层 → 加工层（raw/* 合并生成 daily 完整宽表）
+python -m StockInvestmentTool.warehouse process [--months 2026-08]
+
+# 单点回补历史 PE/PB（东财 stock_value_em，与 baostock 口径一致）
+python -m StockInvestmentTool.warehouse backfill --codes sh600900,sh600519 --start 2023-08-21 --end 2026-08-21
+
+# 观察池盘中低频快照（腾讯，不封 IP；默认保留 90 天）
 python -m StockInvestmentTool.warehouse online [--codes sh600900,sz000001]
 
 # 仓库状态 / 清空（破坏性）
@@ -152,7 +159,9 @@ python -m StockInvestmentTool.warehouse status
 python -m StockInvestmentTool.warehouse reset [--kinds daily,factor,online]
 ```
 
-数据落盘位置：`output/data/warehouse/`（`daily/` 与 `factors/` 按月分区 parquet，`online/` 按日快照，`meta.db` 存标的清单与分区清单）。
+数据落盘位置：`output/data/warehouse/`（`daily/` 与 `factors/` 按月分区 parquet，`raw/<源>/` 贴源层独立存放，`online/` 按日快照，`meta.db` 存标的清单与分区清单）。
+
+**每日自动增量**：`run_warehouse_daily`（收盘后）按「标的自有最后日期」只补缺失区间（方案B），不会全量重跑；新股/缺失标的自动补 PE/PB。盘中实时快照由 `WAREHOUSE_ONLINE_SNAPSHOT=1` 开启，每 10 分钟一次。
 
 ## Web 界面
 
@@ -339,8 +348,9 @@ bash deploy-remote.sh <project> <package.tar.gz> [--dir]
 | `SECRET_KEY` | — | Flask 会话密钥 |
 | `DAILY_RUN_TIME` | `15:35` | 每日定时任务时间 |
 | `DISABLE_SCHEDULER` | — | `1` 时关闭定时任务 |
-| `WAREHOUSE_DAILY_SYNC` | — | `1` 时每日收盘后自动做数据仓库离线采集（默认关闭） |
+| `WAREHOUSE_DAILY_SYNC` | — | `1` 时每日收盘后自动做数据仓库离线采集（增量日线+因子+新股PE/PB回补，默认关闭） |
 | `WAREHOUSE_YEARS` | `3` | 数据仓库历史深度（年），首建时决定全量回补长度 |
+| `WAREHOUSE_ONLINE_SNAPSHOT` | — | `1` 时盘中每 10 分钟采集观察池实时快照（腾讯，默认关闭） |
 
 ## 数据来源
 

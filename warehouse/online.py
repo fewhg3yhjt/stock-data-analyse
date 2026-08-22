@@ -11,10 +11,14 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# 在线快照留存天数：超过自动清理
+RETENTION_DAYS = 90
 
 
 def _default_observe_codes() -> list[str]:
@@ -80,3 +84,40 @@ def collect_online_snapshot(codes: Optional[list[str]] = None,
     df["snapshot_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return str(w.write_online_snapshot(day, df))
+
+
+def cleanup_old_snapshots(retention_days: int = RETENTION_DAYS) -> int:
+    """清理超过留存天数的在线快照目录。返回删除的目录数。"""
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    w = Warehouse()
+    cutoff = (datetime.now() - timedelta(days=retention_days)).date()
+    removed = 0
+    for d in w.online_dir.iterdir():
+        if not d.is_dir():
+            continue
+        try:
+            day = datetime.strptime(d.name, "%Y-%m-%d").date()
+            if day < cutoff:
+                for p in d.glob("*.csv"):
+                    p.unlink()
+                d.rmdir()
+                removed += 1
+                logger.info("清理过期在线快照: %s", d.name)
+        except (ValueError, OSError):
+            continue
+    return removed
+
+
+def run_online_snapshot(codes: Optional[list[str]] = None) -> dict:
+    """盘中实时快照采集入口（供定时任务调用）。
+
+    拉取观察池实时报价 → 写按日快照 → 顺带清理过期快照。
+    """
+    try:
+        path = collect_online_snapshot(codes=codes)
+        cleaned = cleanup_old_snapshots()
+        return {"ok": True, "path": path, "cleaned_dirs": cleaned}
+    except Exception as e:
+        logger.warning("在线快照采集失败: %s", e)
+        return {"ok": False, "error": str(e)}
