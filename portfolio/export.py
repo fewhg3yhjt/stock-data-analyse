@@ -175,7 +175,7 @@ def import_from_excel(manager: PortfolioManager, path: str | Path,
     existing_codes = {p.stock_code for p in manager.storage.get_positions()}
 
     def _find_open_position(code: str):
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
         norm = StockDataFetcher.normalize_code(code)
         for p in manager.storage.get_open_positions():
             if StockDataFetcher.normalize_code(p.stock_code) == norm:

@@ -15,8 +15,8 @@ from typing import Optional
 
 from StockInvestmentTool.core.registry import SchemeRegistry
 from StockInvestmentTool.core.scheme import SchemeConfig
-from StockInvestmentTool.data.fetcher import StockDataFetcher
-from StockInvestmentTool.data.indicators import TechnicalIndicators
+from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 from StockInvestmentTool.backtest.engine import BacktestEngine
 from StockInvestmentTool.backtest.metrics import PerformanceMetrics
 
@@ -125,7 +125,7 @@ class MultiSchemeRunner:
         # 股息率极端低估锚（anchor_price_3）
         dividend_anchor = None
         try:
-            from StockInvestmentTool.data.indicators import ValuationHelper
+            from StockInvestmentTool.datasource.indicators import ValuationHelper
             anchor = ValuationHelper.triple_anchor(divs, sr["current_price"])
             if anchor and anchor.get("anchor_price_3"):
                 dividend_anchor = anchor["anchor_price_3"]

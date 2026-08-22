@@ -18,8 +18,8 @@ import pandas as pd
 from StockInvestmentTool.config import Config
 from StockInvestmentTool.core.registry import SchemeRegistry
 from StockInvestmentTool.core.scheme import SchemeConfig
-from StockInvestmentTool.data.fetcher import StockDataFetcher
-from StockInvestmentTool.data.indicators import TechnicalIndicators, ValuationHelper
+from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+from StockInvestmentTool.datasource.indicators import TechnicalIndicators, ValuationHelper
 from StockInvestmentTool.strategy.multi_buy import MultiBuyStrategy
 from StockInvestmentTool.backtest.engine import BacktestEngine
 from StockInvestmentTool.backtest.metrics import PerformanceMetrics

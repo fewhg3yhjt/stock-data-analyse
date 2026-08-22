@@ -61,7 +61,7 @@ def determine_market_state_from_df(
     Returns:
         市场状态
     """
-    from StockInvestmentTool.data.indicators import TechnicalIndicators
+    from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 
     last = df.iloc[-1]
     trend = TechnicalIndicators.trend_judgment(df)
@@ -87,7 +87,7 @@ def dashboard_market_state(df: pd.DataFrame, ma_slope_days: int = 5) -> str:
 
     依赖 K 线的 ma_5/ma_20/ma_60 列（用 TechnicalIndicators.compute_all 预计算）。
     """
-    from StockInvestmentTool.data.indicators import TechnicalIndicators
+    from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 
     last = df.iloc[-1]
     trend = TechnicalIndicators.trend_judgment(df)

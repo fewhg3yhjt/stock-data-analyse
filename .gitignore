@@ -25,7 +25,6 @@ env/
 Thumbs.db
 
 # 数据与运行产物
-data/
 output/
 *.log
 

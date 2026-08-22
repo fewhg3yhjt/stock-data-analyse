@@ -220,7 +220,7 @@ def fetch_universe(source: str, fallback: Optional[str] = None) -> tuple[pd.Data
 def _baostock_pool() -> pd.DataFrame:
     """baostock 全市场股票列表（type=1 股票），拼装标准快照列（价格为空）。"""
     import baostock as bs
-    from StockInvestmentTool.data.fetcher import StockDataFetcher
+    from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
     fetcher = StockDataFetcher()
     from datetime import datetime, timedelta

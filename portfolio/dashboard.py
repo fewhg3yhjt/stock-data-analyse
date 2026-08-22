@@ -239,7 +239,7 @@ class DashboardService:
         summary = self.manager.get_summary()
 
         # 按代码分组合并 open 持仓
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
         groups: dict[str, list] = {}
         for p in self.manager.storage.get_open_positions():
@@ -301,7 +301,7 @@ class DashboardService:
     def _fundamental_snapshot(code: str) -> Optional[dict]:
         """持仓基本面快照（营收/净利/扣非/ROE，复用财务史缓存；失败返回 None）。"""
         try:
-            from StockInvestmentTool.data.fetcher import StockDataFetcher
+            from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
             fetcher = StockDataFetcher()
             df = fetcher.get_fundamental_history(code, years=1)
@@ -333,7 +333,7 @@ class DashboardService:
 
     def index_kline(self, codes: list[str], days: int = 120) -> dict:
         """多指数收盘序列（baostock）。codes: ["sh.000300","sh.000001",...]"""
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
         result = {"dates": None, "series": {}}
         with StockDataFetcher() as fetcher:

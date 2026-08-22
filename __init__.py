@@ -4,7 +4,7 @@
     python -m StockInvestmentTool --code sh.600900 --name 长江电力 --backtest
 
 功能模块:
-    - data/      数据获取与技术指标
+    - datasource/ 行情数据获取与技术指标
     - strategy/  分批买入/止盈/止损策略
     - backtest/  回测引擎与绩效指标
     - analysis/  报告生成与可视化

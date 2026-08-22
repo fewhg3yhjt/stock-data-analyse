@@ -122,7 +122,7 @@ class BacktestEngineV6:
         if csi300 is not None and not csi300.empty:
             csi = csi300.copy()
             if "ma_250" not in csi.columns:
-                from StockInvestmentTool.data.indicators import TechnicalIndicators
+                from StockInvestmentTool.datasource.indicators import TechnicalIndicators
                 csi = TechnicalIndicators.compute_all(csi)
             csi["date"] = pd.to_datetime(csi["date"])
             csi = csi.drop_duplicates("date").sort_values("date").set_index("date")

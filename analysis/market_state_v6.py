@@ -19,7 +19,7 @@ from typing import Optional
 
 import pandas as pd
 
-from StockInvestmentTool.data.indicators import TechnicalIndicators
+from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 
 # 市场状态常量
 STRONG_BULL = "强多头"

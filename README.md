@@ -194,7 +194,7 @@ StockInvestmentTool/
 │   ├── engine.py           #   统一分析引擎（CLI/Web 共用）
 │   ├── registry.py         #   方案注册中心（YAML 扫描/加载/缓存）
 │   └── scheme.py           #   方案数据模型（YAML→SchemeConfig）
-├── data/                   # 数据层
+├── datasource/             # 行情数据源层
 │   ├── fetcher.py          #   baostock K线/基本面/分红 + AkShare 财务史
 │   ├── indicators.py       #   技术指标 + 估值辅助（PE分位/三重锚/交叉支撑）
 │   └── macro.py            #   V6.0 宏观数据（10Y债/ M2/ 沪深300 PE → ERP）

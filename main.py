@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from StockInvestmentTool.config import Config
 from StockInvestmentTool.core.engine import AnalysisEngine, AnalysisOptions
 from StockInvestmentTool.core.registry import SchemeRegistry
-from StockInvestmentTool.data.fetcher import StockDataFetcher
+from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 from StockInvestmentTool.prompt.llm_client import LLMError
 
 logger = logging.getLogger("StockInvestmentTool")
@@ -317,7 +317,7 @@ def run_management_cli(sub: str, rest: list[str]):
     elif sub == "watchlist":
         mgr = _get_manager()
         if args.action == "add":
-            from StockInvestmentTool.data.fetcher import StockDataFetcher
+            from StockInvestmentTool.datasource.fetcher import StockDataFetcher
             code = StockDataFetcher.normalize_code(args.code)
             item = mgr.add_watchlist(code, args.name or code, target_capital=args.capital)
             print(f"✅ 已加自选 #{item.id}: {item.stock_name} ({item.stock_code})")

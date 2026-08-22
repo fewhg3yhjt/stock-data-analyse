@@ -44,7 +44,7 @@ from StockInvestmentTool.strategy.take_profit import (
 )
 from StockInvestmentTool.strategy.market_state import determine_market_state_from_df
 from StockInvestmentTool.strategy.stock_classifier import classify_stock
-from StockInvestmentTool.data.indicators import TechnicalIndicators
+from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 
 logger = logging.getLogger(__name__)
 

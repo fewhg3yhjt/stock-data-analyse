@@ -45,7 +45,8 @@ def cmd_sync(args):
     from StockInvestmentTool.warehouse.collector import MarketCollector
     c = MarketCollector()
     res = c.sync_daily(start_date=args.start, include_etf=True,
-                       include_index=args.include_index, max_symbols=args.max_symbols)
+                       include_index=args.include_index, max_symbols=args.max_symbols,
+                       flush_every=args.flush_every, source=args.source)
     print(f"✅ 日线增量: +{res['added_rows']} 行, 失败 {len(res['failed'])}, 耗时 {res['elapsed_sec']}s")
 
 
@@ -140,6 +141,11 @@ def main(argv: list[str] | None = None):
     p_sync.add_argument("--start", default=None, help="起始日期(默认近3年)")
     p_sync.add_argument("--include-index", action="store_true", help="含指数")
     p_sync.add_argument("--max-symbols", type=int, default=None)
+    p_sync.add_argument("--flush-every", type=int, default=1000,
+                        help="每 N 个标的落盘一次，控制内存峰值(2C2G)")
+    p_sync.add_argument("--source", default="baostock",
+                        choices=["baostock", "tencent"],
+                        help="数据源: baostock(默认)/tencent(腾讯,不封IP)")
 
     p_factors = sub.add_parser("factors", help="计算因子宽表")
     p_factors.add_argument("--max-symbols", type=int, default=None)

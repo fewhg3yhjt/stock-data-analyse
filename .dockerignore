@@ -1,0 +1,27 @@
+# 运行数据与敏感配置（运行时由 volume/env_file 提供，勿进镜像）
+.env
+.env.*
+!.env.example
+output/
+*.log
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.pyc
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 打包产物
+*.tar.gz
+*.zip
+
+# IDE/系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

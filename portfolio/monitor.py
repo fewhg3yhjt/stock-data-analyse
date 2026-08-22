@@ -11,8 +11,8 @@ from typing import Optional
 
 import pandas as pd
 
-from StockInvestmentTool.data.fetcher import StockDataFetcher
-from StockInvestmentTool.data.indicators import TechnicalIndicators, ValuationHelper
+from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+from StockInvestmentTool.datasource.indicators import TechnicalIndicators, ValuationHelper
 
 logger = logging.getLogger(__name__)
 

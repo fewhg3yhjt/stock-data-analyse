@@ -28,7 +28,7 @@ from typing import Optional
 
 import pandas as pd
 
-from StockInvestmentTool.data.indicators import TechnicalIndicators
+from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 
 # 股债收益差档位
 ERP_BANDS = [

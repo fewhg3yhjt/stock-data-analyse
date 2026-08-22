@@ -16,8 +16,8 @@ from typing import Optional
 import pandas as pd
 
 from StockInvestmentTool.config import Config
-from StockInvestmentTool.data.fetcher import StockDataFetcher
-from StockInvestmentTool.data.indicators import TechnicalIndicators
+from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 from StockInvestmentTool.strategy.market_state import determine_market_state_from_df
 from StockInvestmentTool.portfolio.manager import PortfolioManager
 from StockInvestmentTool.portfolio.models import (

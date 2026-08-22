@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from StockInvestmentTool.config import Config
 from StockInvestmentTool.core.engine import AnalysisEngine, AnalysisOptions
 from StockInvestmentTool.core.registry import SchemeRegistry
-from StockInvestmentTool.data.fetcher import StockDataFetcher
+from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 from StockInvestmentTool.prompt.llm_client import DeepSeekClient, LLMError
 
 logger = logging.getLogger(__name__)
@@ -367,7 +367,7 @@ def api_classify():
     if not code:
         return flask.jsonify({"status": "error", "error": "缺少 code"}), 400
     try:
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
         from StockInvestmentTool.strategy.stock_classifier import classify_stock
 
         code = StockDataFetcher.normalize_code(code)
@@ -428,7 +428,7 @@ def portfolio_add():
     if not code or not name:
         return flask.jsonify({"status": "error", "error": "请填写代码和名称"}), 400
     try:
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
         code = StockDataFetcher.normalize_code(code)
         pos = mgr.add_position(code, name, shares, cost, buy_date,
                                scheme_name, stock_type, notes)
@@ -596,7 +596,7 @@ def watchlist_add():
     if not code:
         return flask.jsonify({"status": "error", "error": "请填写代码"}), 400
     try:
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
         code = StockDataFetcher.normalize_code(code)
         item = mgr.add_watchlist(code, name or code, target_capital=capital,
                                  added_time=added_time)
@@ -822,7 +822,7 @@ def quicklog_submit():
     if not code:
         return flask.jsonify({"status": "error", "error": "请填写股票代码"}), 400
 
-    from StockInvestmentTool.data.fetcher import StockDataFetcher
+    from StockInvestmentTool.datasource.fetcher import StockDataFetcher
     try:
         code = StockDataFetcher.normalize_code(code)
     except Exception:
@@ -916,7 +916,7 @@ def api_returns_chart():
         title = code
         if kind == "position":
             pos = None
-            from StockInvestmentTool.data.fetcher import StockDataFetcher
+            from StockInvestmentTool.datasource.fetcher import StockDataFetcher
             norm = StockDataFetcher.normalize_code(code)
             for p in mgr.storage.get_open_positions():
                 if StockDataFetcher.normalize_code(p.stock_code) == norm:

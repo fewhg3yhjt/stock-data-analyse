@@ -72,7 +72,7 @@ class PortfolioManager:
             raise ValueError("份额和成本必须为正数")
 
         # 源头去重：同一股票只允许一条 open 持仓，加仓走交易流水
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
         code_norm = StockDataFetcher.normalize_code(stock_code)
         for p in self.storage.get_open_positions():
@@ -138,7 +138,7 @@ class PortfolioManager:
     def _ensure_watchlist(self, stock_code: str, stock_name: str,
                           added_time: str = "") -> Optional[WatchlistItem]:
         """确保股票在自选列表（去重）。"""
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
         code_norm = StockDataFetcher.normalize_code(stock_code)
         for w in self.storage.get_watchlist():
@@ -154,7 +154,7 @@ class PortfolioManager:
 
         用于回填功能上线前的既有持仓，以及持仓页访问时的兜底。
         """
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
         existing = {StockDataFetcher.normalize_code(w.stock_code)
                     for w in self.storage.get_watchlist()}
@@ -477,7 +477,7 @@ class PortfolioManager:
                       extreme_anchor: float = 0, notes: str = "",
                       added_time: str = "") -> WatchlistItem:
         """新增自选（同代码已存在则跳过，去重）。added_time 为观察起点，空则默认当天。"""
-        from StockInvestmentTool.data.fetcher import StockDataFetcher
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
         code_norm = StockDataFetcher.normalize_code(stock_code)
         for w in self.storage.get_watchlist():
