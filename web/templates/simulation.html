@@ -106,9 +106,15 @@ select{background:var(--surface2);border:1px solid var(--border);border-radius:6
               {% for sc in schemes %}<option value="{{ sc }}" {% if sc==s.scheme_name %}selected{% endif %}>{{ sc }}</option>{% endfor %}
             </select>
             <button class="btn btn-outline" onclick="reanalyze('{{ s.stock_code }}','{{ s.stock_name }}',{{ s.id }})"><i class="fas fa-rotate"></i> 重新分析</button>
+            <button class="btn btn-outline" onclick="toggleReturn('{{ s.stock_code }}')" title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
             <a class="btn btn-primary" href="/portfolio/add?code={{ s.stock_code }}&name={{ s.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
             <a class="btn btn-outline" href="/?code={{ s.stock_code }}&name={{ s.stock_name }}" title="进入完整分析/回测"><i class="fas fa-chart-line"></i> 完整分析</a>
             <button class="btn btn-danger" onclick="delSim({{ s.id }})"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>
+        <tr class="return-row" id="return-{{ s.stock_code }}" style="display:none;">
+          <td colspan="9" style="background:var(--surface2);padding:12px 16px;">
+            <div class="return-box" style="font-size:13px;">收益加载中…</div>
           </td>
         </tr>
         {% endfor %}
@@ -135,6 +141,26 @@ async function delSim(id){
   if (!confirm('删除该模拟？')) return;
   const d = await (await fetch('/api/simulation?id='+id, {method:'DELETE'})).json();
   if (d.status==='success') location.reload(); else showToast(d.error||'删除失败');
+}
+async function toggleReturn(code){
+  const tr = document.getElementById('return-'+code);
+  if (!tr) return;
+  if (tr.style.display !== 'none'){ tr.style.display = 'none'; return; }
+  tr.style.display = '';
+  const box = tr.querySelector('.return-box');
+  box.innerHTML = '收益加载中…';
+  const fd = new FormData();
+  fd.append('code', code);
+  fd.append('kind', 'watch');
+  try {
+    const res = await fetch('/api/returns/chart', {method:'POST', body:fd});
+    const d = await res.json();
+    if (d.status !== 'success'){ box.innerHTML = '<span style="color:#c62828;">'+d.error+'</span>'; return; }
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">' +
+      '<span>累计收益率 <b style="color:'+(d.ret_pct>=0?'#28a745':'#dc3545')+';">'+d.ret_pct+'%</b></span>' +
+      '<span>最新收盘 <b>'+d.latest_close+'</b></span></div>' +
+      '<img src="'+d.chart+'" style="width:100%;max-width:640px;border-radius:6px;">';
+  } catch(e){ box.innerHTML = '<span style="color:#c62828;">请求失败</span>'; }
 }
 async function addManual(){
   const code = document.getElementById('sim-code').value.trim();

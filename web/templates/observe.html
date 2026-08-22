@@ -99,11 +99,18 @@ tr:last-child td{border-bottom:none;}
             <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;margin-right:4px;"
                     onclick="simulate('{{ r.code }}','{{ r.name }}')" title="跑分析存模拟快照"><i class="fas fa-flask"></i> 模拟</button>
             <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;margin-right:4px;"
+                    onclick="toggleReturn(this,'{{ r.code }}','{{ r.added_time or '' }}')" title="累计收益率折线图（自观察起点）"><i class="fas fa-chart-line"></i> 收益</button>
+            <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;margin-right:4px;"
                     onclick="addWatch('{{ r.code }}','{{ r.name }}')" title="加入自选"><i class="fas fa-star"></i> 自选</button>
             <a class="btn btn-primary" style="padding:4px 12px;font-size:12px;"
                href="/portfolio/add?code={{ r.code }}&name={{ r.name }}"
                title="录入已买入的持仓"><i class="fas fa-plus"></i> 建仓</a>
             {% endif %}
+          </td>
+        </tr>
+        <tr class="return-row" id="return-{{ r.code }}" style="display:none;">
+          <td colspan="10" style="background:var(--surface2);padding:12px 16px;">
+            <div class="return-box" style="font-size:13px;">收益加载中…</div>
           </td>
         </tr>
         {% endfor %}
@@ -143,6 +150,27 @@ async function simulate(code, name){
     const s = d.snapshot;
     showToast(`模拟完成：止损${s.hard_stop} 止盈预警${s.left_side_zone ? s.left_side_zone[1] : '-'}`);
   } else showToast(d.error||'模拟失败');
+}
+async function toggleReturn(btn, code, start){
+  const tr = document.getElementById('return-'+code);
+  if (!tr) return;
+  if (tr.style.display !== 'none'){ tr.style.display = 'none'; return; }
+  tr.style.display = '';
+  const box = tr.querySelector('.return-box');
+  box.innerHTML = '收益加载中…';
+  const fd = new FormData();
+  fd.append('code', code);
+  fd.append('kind', 'watch');
+  if (start) fd.append('start_date', start);
+  try {
+    const res = await fetch('/api/returns/chart', {method:'POST', body:fd});
+    const d = await res.json();
+    if (d.status !== 'success'){ box.innerHTML = '<span style="color:#c62828;">'+d.error+'</span>'; return; }
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">' +
+      '<span>累计收益率 <b style="color:'+(d.ret_pct>=0?'#28a745':'#dc3545')+';">'+d.ret_pct+'%</b></span>' +
+      '<span>最新收盘 <b>'+d.latest_close+'</b></span></div>' +
+      '<img src="'+d.chart+'" style="width:100%;max-width:640px;border-radius:6px;">';
+  } catch(e){ box.innerHTML = '<span style="color:#c62828;">请求失败</span>'; }
 }
 </script>
 </body>

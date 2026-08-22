@@ -929,7 +929,8 @@ def api_returns_chart():
             start = start or pos.buy_date
             title = f"{pos.stock_name} 累计收益率（成本 {cost_price:.3f}）"
         else:
-            start = start or datetime.now().strftime("%Y-%m-%d")
+            # 未指定观察起点时用全量数据首日为起点（默认展示全历史收益）
+            start = start or ""
             title = f"{code} 自观察起点收益"
 
         r = compute_returns(kline, start_date=start,
