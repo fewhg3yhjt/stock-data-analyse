@@ -123,6 +123,93 @@ def scan(conditions: Optional[dict] = None, as_of: str = "",
 
 
 # ═══════════════════════════════════════════════════════
+# 图表数据：返回 ECharts 友好的多指标序列（指标可勾选）
+# ═══════════════════════════════════════════════════════
+
+# 可用指标及其中文名（前端勾选器用）
+METRICS = {
+    "close": "收盘价",
+    "ma5": "MA5",
+    "ma10": "MA10",
+    "ma20": "MA20",
+    "ma60": "MA60",
+    "ma120": "MA120",
+    "vol_ratio": "量比",
+    "turn": "换手率",
+    "amount": "成交额(亿)",
+    "pe": "PE",
+    "pb": "PB",
+}
+
+
+def get_series(code: str, as_of: str = "", days: int = 120,
+               metrics: Optional[list[str]] = None) -> dict:
+    """取单只股票的多指标时间序列（ECharts 数据）。
+
+    Returns:
+        {code, dates: [...], series: [{name, data: [...]}], metrics: {可选指标名: 中文}}
+    """
+    if metrics is None:
+        metrics = ["close", "ma20", "ma60"]
+    w = Warehouse()
+    fl = _parquet_files(w)
+    if not as_of:
+        df = w.read_daily(w.available_months("daily")[-1])
+        as_of = str(df["date"].max())[:10]
+
+    # 动态拼窗口 SQL
+    ma_cols = {m: f"AVG(close) OVER (ORDER BY date ROWS BETWEEN {w}-1 PRECEDING AND CURRENT ROW) AS {m}"
+               for m, w in [("ma5",5),("ma10",10),("ma20",20),("ma60",60),("ma120",120)]}
+    select_ma = ", ".join(ma_cols[m] for m in metrics if m in ma_cols)
+
+    con = duckdb.connect()
+    try:
+        extra_sql = ""
+        if select_ma:
+            extra_sql = ", " + select_ma
+        sql = f"""
+        SELECT date, close, volume, amount, turn, peTTM, pbMRQ
+               {extra_sql},
+               volume / NULLIF(AVG(volume) OVER (ORDER BY date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW),0) AS vol_ratio
+        FROM read_parquet({fl})
+        WHERE code = '{code}' AND date <= DATE '{as_of}'
+        ORDER BY date DESC LIMIT {int(days)}
+        """
+        df = con.execute(sql).fetchdf().sort_values("date")
+    finally:
+        con.close()
+
+    if df.empty:
+        return {"code": code, "dates": [], "series": [], "metrics": METRICS}
+
+    dates = [str(d)[:10] for d in df["date"]]
+    series = []
+    for m in metrics:
+        if m not in df.columns:
+            continue
+        col = df[m]
+        vals = []
+        for v in col:
+            if v is None or (isinstance(v, float) and (v != v)):  # NaN
+                vals.append(None)
+            elif m == "amount":
+                vals.append(round(float(v) / 1e8, 2))  # 元→亿
+            else:
+                vals.append(round(float(v), 2))
+        series.append({"name": METRICS.get(m, m), "key": m, "data": vals})
+
+    # 支撑/压力点位（可选展示）
+    lines = []
+    if "close" in df.columns and len(df):
+        last = df.iloc[-1]
+        for m, label, color in [("ma20", "MA20", "#e67e22"), ("ma60", "MA60", "#27ae60")]:
+            if m in df.columns and last[m] == last[m]:
+                lines.append({"name": label, "value": round(float(last[m]), 2), "color": color})
+    return {"code": code, "dates": dates, "series": series, "lines": lines,
+            "metrics": METRICS}
+
+
+# ═══════════════════════════════════════════════════════
 # 回测：历史选股 → 持有 N 天收益（vs 全市场基准）
 # ═══════════════════════════════════════════════════════
 

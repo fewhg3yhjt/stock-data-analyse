@@ -698,6 +698,26 @@ def api_strategy_scan():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/strategy/chart", methods=["POST"])
+def api_strategy_chart():
+    """策略图表数据：单只股票多指标序列（ECharts，指标可勾选）"""
+    from StockInvestmentTool.strategy_lab import get_series
+
+    try:
+        code = (flask.request.form.get("code") or "").strip()
+        as_of = (flask.request.form.get("as_of") or "").strip()[:10]
+        days = int(flask.request.form.get("days", "120"))
+        metrics_raw = flask.request.form.get("metrics", "")
+        metrics = [m.strip() for m in metrics_raw.split(",") if m.strip()] if metrics_raw else None
+        if not code:
+            return flask.jsonify({"status": "error", "error": "缺少代码"}), 400
+        data = get_series(code, as_of=as_of, days=days, metrics=metrics)
+        return flask.jsonify({"status": "success", **data})
+    except Exception as e:
+        logger.exception("策略图表数据失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/api/strategy/backtest", methods=["POST"])
 def api_strategy_backtest():
     """策略回测：历史选股持有N天收益 vs 全市场基准"""

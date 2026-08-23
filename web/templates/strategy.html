@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>StockInvestmentTool - 策略实验室</title>
 <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -25,8 +26,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 table{width:100%;border-collapse:collapse;font-size:14px;}
 .table-wrap{overflow-x:auto;}
 th{text-align:left;padding:9px 10px;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap;}
-td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;cursor:pointer;}
 tr:last-child td{border-bottom:none;}
+tr.hover-row:hover{background:var(--surface2);}
 .tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;}
 .tag.green{background:#e8f5e9;color:var(--green);}
 .tag.red{background:#fbe9e7;color:var(--red);}
@@ -46,10 +48,13 @@ label{font-size:13px;color:var(--text2);display:block;margin-bottom:4px;}
 .metric .v.green{color:var(--green);}
 .metric .v.red{color:var(--red);}
 .metric .l{font-size:12px;color:var(--text2);margin-top:2px;}
-.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-.chart-grid img{width:100%;border:1px solid var(--border);border-radius:var(--radius);background:#fff;}
+.chart{width:100%;height:380px;}
 #loading{display:none;text-align:center;padding:30px;color:var(--text2);}
 .hint{font-size:12px;color:var(--text2);}
+.checkbox-group{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:10px;font-size:13px;}
+.checkbox-group label{display:inline-flex;align-items:center;gap:5px;cursor:pointer;margin:0;color:var(--text);}
+.checkbox-group input{margin:0;width:auto;accent-color:var(--accent);}
+.metric-color{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:2px;}
 </style>
 </head>
 <body>
@@ -72,7 +77,7 @@ label{font-size:13px;color:var(--text2);display:block;margin-bottom:4px;}
       <button class="btn btn-primary" onclick="doScan()"><i class="fas fa-magnifying-glass"></i> 扫描选股</button>
       <button class="btn btn-secondary" onclick="doBacktest()"><i class="fas fa-chart-line"></i> 历史回测</button>
     </div>
-    <div class="hint" style="margin-top:8px;">条件: 股价>MA60 | 10日涨停≥N | 偏离MA20&lt;X%（创业板/科创板涨停阈值自动按20%处理）</div>
+    <div class="hint" style="margin-top:8px;">条件: 股价>MA60 | 10日涨停≥N | 偏离MA20&lt;X%（创业板/科创板涨停阈值自动按20%处理）。点击结果行可查看该股票交互式图表。</div>
   </div>
 
   <div id="loading"><i class="fas fa-spinner fa-spin"></i> 计算中，请稍候（全市场约 15-30 秒）...</div>
@@ -89,19 +94,33 @@ label{font-size:13px;color:var(--text2);display:block;margin-bottom:4px;}
       <div class="card-title"><i class="fas fa-list"></i> 扫描结果 <span class="tag blue" id="scan_count"></span></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>代码</th><th>现价</th><th>MA20</th><th>MA60</th><th>偏离%</th><th>10日涨停</th></tr></thead>
+          <thead><tr><th>代码</th><th>现价</th><th>MA20</th><th>MA60</th><th>偏离%</th><th>10日涨停</th><th>操作</th></tr></thead>
           <tbody id="scan_rows"></tbody>
         </table>
       </div>
     </div>
-    <div class="card">
-      <div class="card-title"><i class="fas fa-image"></i> 折线图（前5只: 收盘 + MA20/MA60，红虚线=买点）</div>
-      <div class="chart-grid" id="charts"></div>
+    <div class="card" id="chart_card" style="display:none;">
+      <div class="card-title">
+        <span><i class="fas fa-image"></i> <span id="chart_title">交互式图表</span></span>
+      </div>
+      <div class="checkbox-group" id="metric_selector"></div>
+      <div class="chart" id="chart_main"></div>
     </div>
   </div>
 </div>
 
 <script>
+let currentCode = '';
+let chartObj = null;
+let lastMetrics = ['close','ma20','ma60'];
+let metricMeta = {};
+
+const METRIC_COLORS = {
+  close:'#1a73e8', ma5:'#8e44ad', ma10:'#2980b9', ma20:'#e67e22',
+  ma60:'#27ae60', ma120:'#7f8c8d', vol_ratio:'#e74c3c', turn:'#9b59b6',
+  amount:'#16a085', pe:'#d35400', pb:'#2c3e50'
+};
+
 async function doScan(){
   const as_of = document.getElementById('as_of').value.trim();
   const limit_up = document.getElementById('limit_up').value || '1';
@@ -117,14 +136,13 @@ async function doScan(){
     document.getElementById('scan_count').textContent = '命中 '+d.count+' 只';
     const tb = document.getElementById('scan_rows'); tb.innerHTML='';
     d.hits.forEach(h=>{
-      const tr=document.createElement('tr');
+      const tr=document.createElement('tr'); tr.className='hover-row';
       tr.innerHTML=`<td>${h.code}</td><td>${h.price}</td><td>${h.ma20}</td><td>${h.ma60}</td>
         <td><span class="tag ${h.deviation_pct<3?'green':'blue'}">${h.deviation_pct}%</span></td>
-        <td><span class="tag orange">${h.limit_up_10d}</span></td>`;
+        <td><span class="tag orange">${h.limit_up_10d}</span></td>
+        <td><button class="btn btn-secondary" onclick="showChart('${h.code}')"><i class="fas fa-chart-line"></i> 图表</button></td>`;
       tb.appendChild(tr);
     });
-    const cg=document.getElementById('charts'); cg.innerHTML='';
-    d.charts.forEach(url=>{ const im=document.createElement('img'); im.src=url; cg.appendChild(im); });
     document.getElementById('scan_result').style.display='';
   }catch(e){ alert('扫描失败: '+e.message); }
   setLoading(false);
@@ -160,6 +178,68 @@ async function doBacktest(){
     document.getElementById('backtest_result').style.display='';
   }catch(e){ alert('回测失败: '+e.message); }
   setLoading(false);
+}
+
+async function showChart(code){
+  document.getElementById('chart_card').style.display='';
+  document.getElementById('chart_title').textContent = code + ' 交互式图表';
+  currentCode = code;
+  await renderChart();
+}
+
+async function renderChart(){
+  if(!currentCode) return;
+  const fd = new FormData();
+  fd.append('code', currentCode);
+  fd.append('metrics', lastMetrics.join(','));
+  const r = await fetch('/api/strategy/chart', {method:'POST', body: fd});
+  const d = await r.json();
+  if(d.status!=='success'){ alert('图表失败: '+d.error); return; }
+  metricMeta = d.metrics || {};
+  buildMetricSelector();
+  drawEChart(d);
+}
+
+function buildMetricSelector(){
+  const box = document.getElementById('metric_selector'); box.innerHTML='';
+  Object.keys(metricMeta).forEach(key=>{
+    const lbl = document.createElement('label');
+    const c = METRIC_COLORS[key]||'#999';
+    lbl.innerHTML = `<span class="metric-color" style="background:${c}"></span>
+      <input type="checkbox" value="${key}" ${lastMetrics.includes(key)?'checked':''} onchange="onMetricChange()"> ${metricMeta[key]}`;
+    box.appendChild(lbl);
+  });
+}
+
+function onMetricChange(){
+  lastMetrics = Array.from(document.querySelectorAll('#metric_selector input:checked')).map(i=>i.value);
+  if(lastMetrics.length===0){ lastMetrics=['close']; document.querySelector('#metric_selector input[value="close"]').checked=true; }
+  renderChart();
+}
+
+function drawEChart(d){
+  const el = document.getElementById('chart_main');
+  if(!chartObj){ chartObj = echarts.init(el); }
+  const series = d.series.map(s=>({
+    name: s.name, type:'line', data:s.data, showSymbol:false,
+    lineStyle:{width: s.key==='close'?1.8:1.1, color: METRIC_COLORS[s.key]||'#1a73e8'},
+    itemStyle:{color: METRIC_COLORS[s.key]||'#1a73e8'}
+  }));
+  const opt = {
+    tooltip:{trigger:'axis'},
+    legend:{top:0, type:'scroll'},
+    grid:{left:60,right:30,top:34,bottom:40},
+    xAxis:{type:'category', data:d.dates, boundaryGap:false},
+    yAxis:{type:'value', scale:true},
+    dataZoom:[{type:'inside'},{type:'slider',height:16}],
+    series: series
+  };
+  if(d.lines && d.lines.length){
+    opt.series.push({name:'点位', type:'line', data:[], silent:true,
+      markLine:{symbol:'none', label:{formatter:p=>p.name,position:'insideEndTop',fontSize:10},
+        data:d.lines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))}});
+  }
+  chartObj.setOption(opt, true);
 }
 
 function setLoading(on){
