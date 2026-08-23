@@ -128,6 +128,14 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                onclick="toggleReturn(this)" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}"
                title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#28a745;"
+               onclick="openOp('{{ p.id }}','{{ p.stock_name }}','buy')" title="加仓"><i class="fas fa-plus"></i> 加仓</button>
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#e67e22;"
+               onclick="openOp('{{ p.id }}','{{ p.stock_name }}','sell')" title="减仓"><i class="fas fa-minus"></i> 减仓</button>
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#9c27b0;"
+               onclick="openOp('{{ p.id }}','{{ p.stock_name }}','dividend')" title="分红"><i class="fas fa-coins"></i> 分红</button>
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#dc3545;"
+               onclick="deletePos('{{ p.id }}','{{ p.stock_name }}')" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
           </span>
         </div>
         <div class="pos-grid">
@@ -175,6 +183,24 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 
 </div>
 <div id="toast" style="position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;"></div>
+
+<!-- 持仓操作弹窗（加仓/减仓/分红） -->
+<div id="op-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1500;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:10px;padding:20px 24px;width:380px;max-width:92%;box-shadow:0 8px 30px rgba(0,0,0,.2);">
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px;" id="op-title">操作</div>
+    <div id="op-stock" style="font-size:13px;color:#6b7280;margin-bottom:12px;"></div>
+    <div class="form-group" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">成交价格</label>
+      <input id="op-price" type="number" step="any" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="成交价"></div>
+    <div class="form-group" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">份额（分红填每股分红）</label>
+      <input id="op-shares" type="number" step="any" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="股数"></div>
+    <div class="form-group" style="margin-bottom:14px;"><label style="font-size:13px;color:#6b7280;">备注</label>
+      <input id="op-reason" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="操作理由（可选）"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn" style="padding:8px 16px;border:1px solid #e0e4ea;border-radius:6px;background:#f8f9fb;color:#6b7280;cursor:pointer;" onclick="closeOp()">取消</button>
+      <button class="btn" style="padding:8px 16px;border:none;border-radius:6px;background:#1a73e8;color:#fff;cursor:pointer;" onclick="submitOp()">确认</button>
+    </div>
+  </div>
+</div>
 <script>
 function showToast(msg){
   const t = document.getElementById('toast');
@@ -214,6 +240,50 @@ async function toggleReturn(btn){
       '<span>最新收盘 <b>' + d.latest_close + '</b></span></div>' +
       '<img src="' + d.chart + '" style="width:100%;max-width:640px;border-radius:6px;">';
   } catch(e) { box.innerHTML = '<span style="color:#c62828;font-size:13px;">请求失败</span>'; }
+}
+// ── 持仓操作弹窗（加仓/减仓/分红）───────────────────
+let curOpPos = null, curOpType = null;
+function openOp(id, name, type){
+  curOpPos = id; curOpType = type;
+  const labels = {buy:'加仓', sell:'减仓', dividend:'分红'};
+  document.getElementById('op-title').textContent = labels[type] || '操作';
+  document.getElementById('op-stock').textContent = name + (type==='dividend' ? '（分红）' : '');
+  document.getElementById('op-price').value = '';
+  document.getElementById('op-shares').value = '';
+  document.getElementById('op-reason').value = '';
+  const m = document.getElementById('op-modal');
+  m.style.display = 'flex';
+}
+function closeOp(){ document.getElementById('op-modal').style.display = 'none'; }
+async function submitOp(){
+  const price = parseFloat(document.getElementById('op-price').value);
+  const shares = parseFloat(document.getElementById('op-shares').value || 0);
+  const reason = document.getElementById('op-reason').value.trim();
+  if (!price || price <= 0){ showToast('请填写成交价格'); return; }
+  if (curOpType !== 'dividend' && (!shares || shares <= 0)){ showToast('请填写份额'); return; }
+  const fd = new FormData();
+  fd.append('type', curOpType); fd.append('price', price);
+  fd.append('shares', shares); fd.append('reason', reason);
+  try {
+    const res = await fetch('/portfolio/' + curOpPos + '/transaction', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.status === 'success'){
+      showToast('操作成功' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : ''));
+      closeOp(); setTimeout(() => location.reload(), 700);
+    } else { showToast(d.error || '操作失败'); }
+  } catch(e){ showToast('操作失败: ' + e.message); }
+}
+// ── 删除持仓（危险，需弹窗确认）────────────────────
+async function deletePos(id, name){
+  if (!confirm('⚠️ 删除持仓「' + name + '」？\n\n将还原占用资金，并删除该持仓全部交易与建议记录。\n此操作不可恢复！')) return;
+  try {
+    const res = await fetch('/portfolio/' + id + '/delete', { method: 'POST' });
+    const d = await res.json();
+    if (d.status === 'success'){
+      showToast('已删除「' + name + '」，还原资金 ' + (d.restored_cash||0).toFixed(2) + ' 元');
+      setTimeout(() => location.reload(), 700);
+    } else { showToast(d.error || '删除失败'); }
+  } catch(e){ showToast('删除失败: ' + e.message); }
 }
 </script>
 </body>

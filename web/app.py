@@ -525,6 +525,23 @@ def portfolio_edit(position_id):
         return flask.jsonify({"status": "error", "error": str(e)}), 400
 
 
+@web_app.route("/portfolio/<int:position_id>/delete", methods=["POST"])
+def portfolio_delete(position_id):
+    """删除持仓（破坏性）：open 持仓还原占用资金，级联删交易/建议。
+
+    前端必须弹窗确认后才调用。
+    """
+    mgr = _get_manager()
+    try:
+        result = mgr.delete_position(position_id)
+        return flask.jsonify(result)
+    except ValueError as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+    except Exception as e:
+        logger.exception("删除持仓失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/portfolio/<int:position_id>/advice", methods=["GET"])
 def portfolio_advice(position_id):
     """刷新并重新生成单个持仓建议"""

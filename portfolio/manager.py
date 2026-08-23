@@ -387,8 +387,23 @@ class PortfolioManager:
         ))
         return p
 
-    def delete_position(self, position_id: int):
+    def delete_position(self, position_id: int) -> dict:
+        """删除持仓（破坏性）：open 持仓还原占用资金，级联删交易/建议。
+
+        返回: {status, restored_cash, stock_name}
+        """
+        p = self.storage.get_position(position_id)
+        if p is None:
+            raise ValueError(f"持仓不存在: {position_id}")
+        restored = 0.0
+        # open 持仓: 把累计成本还原回可用资金（流水还原）
+        if p.status == STATUS_OPEN and p.total_cost > 0:
+            restored = round(p.total_cost, 2)
+            self.storage.adjust_cash(restored)
         self.storage.delete_position(position_id)
+        logger.info("删除持仓 #%d %s，还原资金 %.2f", position_id, p.stock_name, restored)
+        return {"status": "success", "restored_cash": restored,
+                "stock_name": p.stock_name}
 
     # ══════════════════════════════════════════════════
     # 刷新 + 建议
