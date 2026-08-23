@@ -16,9 +16,13 @@ services:
         required: false
     environment:
       - TZ=Asia/Shanghai
+      # 代码挂载模式下避免在宿主机代码目录生成 __pycache__
+      - PYTHONDONTWRITEBYTECODE=1
     # 运行数据持久化（portfolio.db / 缓存 / 报表；切勿 down -v）
+    # 代码挂载：宿主机代码直接映射进容器，改代码后只需 restart，无需 rebuild
     volumes:
       - ${STOCK_OUTPUT_DIR:-./output}:/app/StockInvestmentTool/output
+      - ./:/app/StockInvestmentTool
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:9000/', timeout=5)"]
