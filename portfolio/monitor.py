@@ -1,5 +1,10 @@
 """价格监控 — 拉取最新行情 + 重算技术指标
 
+数据源策略（warehouse 优先，baostock 兜底）:
+    - 优先读 warehouse 数据层（本地全量 6435 只 × 3 年，快、稳定）
+    - warehouse 数据不足/缺失时，fallback 到 baostock 实时拉取
+    - 这样持仓/观察池/晨报的指标计算不依赖网络，且数据统一来自数据层
+
 提供刷新单个/全部持仓最新价的原始能力。策略判断委托给 PostPurchaseAdvisor。
 """
 
@@ -13,6 +18,7 @@ import pandas as pd
 
 from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 from StockInvestmentTool.datasource.indicators import TechnicalIndicators, ValuationHelper
+from StockInvestmentTool.warehouse.storage import Warehouse
 
 logger = logging.getLogger(__name__)
 
@@ -40,19 +46,51 @@ class PriceMonitor:
     def fetch_kline(self, code: str,
                     start_date: Optional[str] = None,
                     end_date: Optional[str] = None) -> pd.DataFrame:
-        """拉取 K 线并计算技术指标
+        """获取 K 线并计算技术指标（warehouse 优先，baostock 兜底）
 
         Returns:
             含 ma/volume_ma/low_3m/year_low 等指标的 DataFrame
         """
         code = StockDataFetcher.normalize_code(code)
+        code_nodot = code.replace(".", "")
         if end_date is None:
             end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
         if start_date is None:
             start_date = (datetime.now() - timedelta(days=365 * DEFAULT_LOOKBACK_YEARS)).strftime("%Y-%m-%d")
 
-        kline = self.fetcher.get_kline(code, start_date, end_date)
+        # 优先读 warehouse 数据层（本地全量，无网络）
+        kline = self._fetch_from_warehouse(code_nodot, start_date, end_date)
+        if kline is None or kline.empty:
+            # 兜底: baostock 实时拉取
+            logger.info("warehouse 无 %s 数据，fallback baostock", code)
+            kline = self.fetcher.get_kline(code, start_date, end_date)
         return TechnicalIndicators.compute_all(kline)
+
+    def _fetch_from_warehouse(self, code_nodot: str,
+                              start_date: str, end_date: str) -> pd.DataFrame:
+        """从 warehouse 数据层读取 K 线（按日分区过滤 code+日期区间）。"""
+        try:
+            w = Warehouse()
+            parts = []
+            start_ts = pd.Timestamp(start_date)
+            end_ts = pd.Timestamp(end_date)
+            for ym in w.available_months("daily"):
+                df = w.read_daily(ym)
+                if df is None or df.empty or "code" not in df.columns:
+                    continue
+                sub = df[(df["code"] == code_nodot)
+                         & (df["date"] >= start_ts) & (df["date"] <= end_ts)]
+                if len(sub):
+                    parts.append(sub)
+            if not parts:
+                return pd.DataFrame()
+            kline = pd.concat(parts, ignore_index=True).sort_values("date")
+            kline = kline.drop_duplicates("date")
+            return kline[["date", "open", "high", "low", "close",
+                          "volume", "amount", "turn", "peTTM", "pbMRQ"]]
+        except Exception as e:
+            logger.warning("warehouse 读取 %s 失败(%s)，降级 baostock", code_nodot, e)
+            return pd.DataFrame()
 
     def compute_dividend_anchor(self, code: str) -> Optional[float]:
         """计算股息率极端低估锚（anchor_price_3）"""
@@ -69,7 +107,7 @@ class PriceMonitor:
             if not divs:
                 return None
             # 用最新收盘价作为当前价（粗算锚）
-            kline = self.fetcher.get_kline(code)
+            kline = self.fetch_kline(code)
             current_price = float(kline["close"].iloc[-1]) if len(kline) else 0
             anchor = ValuationHelper.triple_anchor(divs, current_price)
             if anchor and anchor.get("anchor_price_3"):
