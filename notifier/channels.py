@@ -109,29 +109,40 @@ class EmailSender:
         self.timeout = timeout
 
     def send(self, content: str, subject: str = "股票提醒",
-             images: Optional[list[str]] = None) -> dict:
+             images: Optional[list[str]] = None,
+             is_html: bool = False) -> dict:
         """发送邮件。
 
         Args:
-            content: 正文文本（自动转 HTML，保留换行）。
+            content: 正文。
+                is_html=True  → content 即为 HTML 正文（原样作为 html 部分）
+                is_html=False → content 为纯文本，自动转 HTML（换行→<br>）
             subject: 标题。
             images: 可选图片文件路径列表（PNG），内嵌 CID 展示。
+            is_html: content 是否为 HTML。
         """
         if not self.user or not self.password:
             raise ChannelError("邮件未配置 EMAIL_USER / EMAIL_PASSWORD（.env）")
         if not self.to:
             raise ChannelError("邮件未配置 EMAIL_TO 收件人（.env）")
 
-        # 纯文本 → HTML（换行转 <br>）
-        body_html = "<br>".join(
-            line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            for line in content.splitlines()
-        )
+        if is_html:
+            body_html = content
+            # plain 版本：去掉 HTML 标签，纯文本可读
+            body_plain = re.sub(r"<[^>]+>", " ", content)
+            body_plain = re.sub(r"\s+", " ", body_plain).strip()
+        else:
+            # 纯文本 → HTML（换行转 <br>）
+            body_plain = content
+            body_html = "<br>".join(
+                line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                for line in content.splitlines()
+            )
 
         if images:
             msg = MIMEMultipart("related")
             msg_alt = MIMEMultipart("alternative")
-            msg_alt.attach(MIMEText(content, "plain", "utf-8"))
+            msg_alt.attach(MIMEText(body_plain, "plain", "utf-8"))
             # HTML 正文末尾内嵌 <img src="cid:snapshotN">，图片才能显示在正文而非附件
             img_tags = "".join(
                 f'<br><img src="cid:snapshot{idx}" style="max-width:640px;border-radius:8px;">'
@@ -150,7 +161,7 @@ class EmailSender:
                     logger.warning("内嵌图片读取失败 %s: %s", img_path, e)
         else:
             msg = MIMEMultipart("alternative")
-            msg.attach(MIMEText(content, "plain", "utf-8"))
+            msg.attach(MIMEText(body_plain, "plain", "utf-8"))
             msg.attach(MIMEText(body_html, "html", "utf-8"))
 
         msg["Subject"] = Header(subject, "utf-8")

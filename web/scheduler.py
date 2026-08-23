@@ -231,7 +231,7 @@ def run_actionable_monitor():
             images = [p for group in images_2d for p in group if p]
             sender = EmailSender()
             sender.send(html_body, subject="🔔 持仓操作提醒",
-                        images=images or None)
+                        images=images or None, is_html=True)
             logger.info("持仓操作提醒已推送邮件（%d 只有操作建议，%d 张图）",
                         len(messages), len(images))
         else:

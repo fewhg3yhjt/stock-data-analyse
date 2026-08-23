@@ -259,6 +259,32 @@ def build_actionable_html(data: dict) -> str:
                        f'margin-top:8px;border-radius:0 4px 4px 0;">{reason}</div>'
                        if reason else "")
 
+        # 操作细节：左侧止盈的具体区间价格 + 减仓股数（"怎么得来的"）
+        detail_html = ""
+        if atype == "partial_sell" and ls:
+            zone = {1: "预警区", 2: "第一止盈区"}.get(ls.get("tier"), "")
+            ratio_pct = round((ls.get("sell_ratio") or 0) * 100)
+            shares = ls.get("sell_shares")
+            parts = [f"前高 {ls.get('year_high')}"]
+            if ls.get("zone_price_lo") and ls.get("zone_price_hi"):
+                parts.append(f"{zone}区间 {ls['zone_price_lo']}~{ls['zone_price_hi']}")
+            parts.append(f"当前价占前高 {ls.get('pct_of_year_high')}%")
+            detail = f"减仓 {ratio_pct}%"
+            if shares:
+                detail += f"（约 {int(shares)} 股）"
+            parts.append(detail)
+            detail_html = (f'<div style="font-size:12px;color:#111827;background:#fff8e1;'
+                           f'padding:8px 10px;border-left:3px solid #f59e0b;'
+                           f'margin-top:6px;border-radius:0 4px 4px 0;">'
+                           f'<b>操作依据</b>：{"，".join(parts)}</div>')
+        elif atype == "sell_all" and rs.get("trigger_price"):
+            detail_html = (f'<div style="font-size:12px;color:#111827;background:#fdecea;'
+                           f'padding:8px 10px;border-left:3px solid #dc3545;'
+                           f'margin-top:6px;border-radius:0 4px 4px 0;">'
+                           f'<b>操作依据</b>：峰值 {rs.get("peak_price")}，'
+                           f'跌破右侧止盈线 {rs.get("trigger_price")} 触发清仓'
+                           f'（已回撤 {rs.get("drawdown_pct")}%）</div>')
+
         cards.append(f'''
 <table style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:14px;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;overflow:hidden;">
   <tr>
@@ -279,6 +305,7 @@ def build_actionable_html(data: dict) -> str:
         </tr>
       </table>
       {reason_html}
+      {detail_html}
     </td>
   </tr>
 </table>''')

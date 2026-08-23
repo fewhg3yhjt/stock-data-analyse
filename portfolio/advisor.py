@@ -244,6 +244,16 @@ class PostPurchaseAdvisor:
             "left_tier_sold": position.left_tier_sold,
         }
 
+        # 补充止盈区间的具体价格范围（前高×区间边界），便于通知展示"怎么得来的"
+        if ctx.year_high > 0 and zones:
+            lo_pct = zones.get("预警区", (0.90, 0.95))[0] if "预警区" in zones else 0.90
+            hi_pct = zones.get("第一止盈区", (0.95, 1.00))[1] if "第一止盈区" in zones else 1.00
+            check_results["left_side"]["zone_price_lo"] = round(ctx.year_high * lo_pct, 2)
+            check_results["left_side"]["zone_price_hi"] = round(ctx.year_high * hi_pct, 2)
+        # 建议减仓股数（当前档位的减持数量）
+        if tier in (1, 2) and position.left_tier_sold < tier and ratio > 0:
+            check_results["left_side"]["sell_shares"] = round(position.total_shares * ratio, 0)
+
         if tier in (1, 2) and position.left_tier_sold < tier:
             sell_shares = round(position.total_shares * ratio, 2)
             tier_label = {1: "预警区", 2: "第一止盈区"}.get(tier, f"第{tier}档")
