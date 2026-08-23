@@ -217,6 +217,81 @@ def _load_notify_settings() -> dict:
         return {}
 
 
+# ── 通知去重（避免盘中每10分钟重复推送同一建议）──────────────
+_NOTIFY_STATE = os.path.join(os.environ.get("STOCK_OUTPUT_DIR", ""), "data", "notify_state.json") \
+    if os.environ.get("STOCK_OUTPUT_DIR") else None
+# 去重窗口（小时）：同一持仓同一建议类型在此窗口内不重复推送
+_DEDUP_HOURS = 24
+
+
+def _notify_state_path() -> str:
+    """通知去重状态文件路径（output/data/notify_state.json）。"""
+    global _NOTIFY_STATE
+    if _NOTIFY_STATE:
+        return _NOTIFY_STATE
+    from StockInvestmentTool.config import Config
+    _NOTIFY_STATE = str(Config.DATA_DIR / "notify_state.json")
+    return _NOTIFY_STATE
+
+
+def _load_notify_state() -> dict:
+    path = _notify_state_path()
+    try:
+        import json
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_notify_state(state: dict):
+    try:
+        import json
+        from pathlib import Path
+        path = Path(_notify_state_path())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        logger.warning("通知状态保存失败: %s", e)
+
+
+def _filter_unnotified(data: dict) -> dict:
+    """过滤掉去重窗口内已推送过的操作建议。
+
+    返回 {data: 过滤后的 war_room data, messages: 去重后的消息列表}
+    """
+    from datetime import datetime as _dt
+    from StockInvestmentTool.notifier.notify import build_actionable_messages
+
+    state = _load_notify_state()
+    now = _dt.now()
+    positions = data.get("positions") or []
+    kept_positions = []
+    for p in positions:
+        adv = p.get("advice") or {}
+        if not adv.get("is_actionable"):
+            continue
+        key = f"{p.get('id')}:{adv.get('advice_type')}"
+        last = state.get(key)
+        dedup = False
+        if last:
+            try:
+                last_dt = _dt.fromisoformat(last)
+                hours = (now - last_dt).total_seconds() / 3600
+                if hours < _DEDUP_HOURS:
+                    dedup = True
+            except Exception:
+                pass
+        if not dedup:
+            kept_positions.append(p)
+            state[key] = now.isoformat(timespec="seconds")
+    _save_notify_state(state)
+    data = dict(data)
+    data["positions"] = kept_positions
+    msgs = build_actionable_messages(data)
+    return {"data": data, "messages": msgs}
+
+
 def run_post_close_summary():
     """盘后全持仓汇总：发送所有持仓的状态/建议/盈亏邮件。"""
     try:
@@ -271,6 +346,13 @@ def run_actionable_monitor():
             logger.info("持仓操作提醒: 无触发（全部 hold 或无持仓）")
             return
 
+        # 去重：同一持仓同一建议类型短期内(默认24h)不重复推送
+        dedup = _filter_unnotified(data)
+        if not dedup["messages"]:
+            logger.info("持仓操作提醒: 均已在去重期内推送过，跳过")
+            return
+        data = dedup["data"]
+
         rules = NotifyRules.from_yaml()
         try:
             webhook = rules.webhook_url()
@@ -278,24 +360,27 @@ def run_actionable_monitor():
             logger.error("操作提醒推送配置错误: %s", e)
             return
 
-        # 邮件渠道：正文用 HTML 摘要卡片 + 内嵌快照图；webhook 渠道用纯文本
+        # 邮件渠道：正文用 HTML 摘要卡片 + 外部URL快照图；webhook 渠道用纯文本
         if rules.channel in ("email", "mail", "smtp"):
             from StockInvestmentTool.notifier.notify import build_actionable_html
             from StockInvestmentTool.notifier.channels import EmailSender
-            html_body = build_actionable_html(data)
-            # _build_snapshot_images 返回二维(每条消息一组)；邮件是一整封，展平成一维
-            images_2d = _build_snapshot_images(data) or []
-            images = [p for group in images_2d for p in group if p]
+            html_body = build_actionable_html(dedup["data"])
+            # 外部 URL 快照图（避开 CID 内嵌触发 QQ 550 过滤）
+            urls_2d = _build_snapshot_images(dedup["data"]) or []
+            img_tags = "".join(
+                f'<br><img src="{u}" style="max-width:640px;border-radius:8px;">'
+                for group in urls_2d for u in group
+            )
             sender = EmailSender()
-            sender.send(html_body, subject="🔔 持仓操作提醒",
-                        images=images or None, is_html=True)
-            logger.info("持仓操作提醒已推送邮件（%d 只有操作建议，%d 张图）",
-                        len(messages), len(images))
+            sender.send(html_body + img_tags, subject="🔔 持仓操作提醒",
+                        images=None, is_html=True)
+            logger.info("持仓操作提醒已推送邮件（%d 只有操作建议）",
+                        len(dedup["messages"]))
         else:
-            images = _build_snapshot_images(data)
-            sent = send_all(rules.channel, webhook, messages, images=images)
+            images = _build_snapshot_images(dedup["data"])
+            sent = send_all(rules.channel, webhook, dedup["messages"], images=images)
             logger.info("持仓操作提醒已推送 %d 条（%d 只有操作建议）",
-                        sent, len(messages))
+                        sent, len(dedup["messages"]))
     except Exception as e:
         logger.error("持仓操作提醒异常: %s", e)
 
@@ -303,8 +388,8 @@ def run_actionable_monitor():
 def _build_snapshot_images(data: dict) -> Optional[list[list[str]]]:
     """为有操作建议的持仓生成收益快照图，返回与 messages 对齐的图片列表。
 
-    每只股票一张收益图（复用 analysis.returns.build_chart），
-    webhook 渠道（飞书/企微）不支持内嵌图片 → 返回 None。
+    每只股票一张收益图（存到 CHART_DIR 供外部 URL 访问），
+    返回外部 URL 列表（邮件用 <img src> 引用，避开 CID 内嵌触发邮件过滤）。
     """
     channel = os.getenv("NOTIFY_CHANNEL", "")
     if channel in ("feishu", "wecom", "lark"):
@@ -312,33 +397,40 @@ def _build_snapshot_images(data: dict) -> Optional[list[list[str]]]:
     try:
         from StockInvestmentTool.analysis.returns import build_snapshot_chart
         from StockInvestmentTool.portfolio.monitor import PriceMonitor
-        import tempfile
-        from pathlib import Path
+        from StockInvestmentTool.config import Config
+        from datetime import datetime as _dt
 
-        out_dir = Path(tempfile.mkdtemp(prefix="snap_"))
+        out_dir = Config.CHART_DIR
+        out_dir.mkdir(parents=True, exist_ok=True)
         positions = data.get("positions") or []
-        images_all = []
+        urls_all = []
         monitor = PriceMonitor()
         for p in positions:
             adv = p.get("advice") or {}
             if not (adv.get("advice_type") and adv.get("is_actionable")):
-                images_all.append([])
+                urls_all.append([])
                 continue
             code = p.get("stock_code") or ""
             try:
                 kline, _ = monitor.fetch_context_data(code)
                 if kline is not None and not kline.empty:
                     name = p.get("stock_name") or code
+                    # 存到 CHART_DIR，文件名带 notify_ 前缀（可被 /charts/ 访问）
+                    fname = f"notify_{_dt.now():%Y%m%d%H%M%S}_{code.replace('.','_')}.png"
                     path = build_snapshot_chart(kline, name, code,
                                                 out_dir=out_dir,
-                                                filename=f"{code}.png")
-                    images_all.append([path] if path else [])
+                                                filename=fname)
+                    if path:
+                        url = f"https://stock.easyconnect.ltd/charts/{os.path.basename(path)}"
+                        urls_all.append([url])
+                    else:
+                        urls_all.append([])
                 else:
-                    images_all.append([])
+                    urls_all.append([])
             except Exception as e:
                 logger.warning("快照图生成失败 %s: %s", code, e)
-                images_all.append([])
-        return images_all
+                urls_all.append([])
+        return urls_all
     except Exception as e:
         logger.warning("快照图生成整体失败: %s", e)
         return None
