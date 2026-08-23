@@ -395,6 +395,66 @@ def api_classify():
         return flask.jsonify({"status": "error", "error": str(e)}), 400
 
 
+@web_app.route("/api/stock/lookup", methods=["GET"])
+def api_stock_lookup():
+    """股票信息自动关联：输编号(可不带前缀) → 名称 + 最近价格 + 历史价格。
+
+    Args:
+        code: 股票编号（600900 / sh.600900 / sz000001 均可）
+        date: 可选，查指定日期价格
+
+    Returns:
+        {code, name, asset_type, current_price, price_at_date(可选), board}
+    """
+    code = flask.request.args.get("code", "").strip()
+    date = (flask.request.args.get("date") or "").strip()[:10]
+    if not code:
+        return flask.jsonify({"status": "error", "error": "缺少 code"}), 400
+    try:
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        norm = StockDataFetcher.normalize_code(code)
+        code_nodot = norm.replace(".", "")
+
+        # 从 meta.db 查名称/类型/板块
+        w = Warehouse()
+        conn = w._conn()
+        name = ""
+        asset_type = "stock"
+        board = ""
+        try:
+            row = conn.execute(
+                "SELECT name, type, board FROM instruments WHERE code=?", (code_nodot,)
+            ).fetchone()
+            if row:
+                name, asset_type, board = row[0], row[1] or "stock", row[2] or ""
+        finally:
+            conn.close()
+
+        # 从 warehouse 查最近价格 + 指定日期价格
+        current_price = None
+        price_at_date = None
+        latest = w.read_daily(w.available_months("daily")[-1]) if w.available_months("daily") else None
+        if latest is not None and not latest.empty and "code" in latest.columns:
+            sub = latest[latest["code"] == code_nodot]
+            if len(sub):
+                current_price = round(float(sub["close"].iloc[-1]), 2)
+            if date:
+                dsub = sub[sub["date"].astype(str).str[:10] == date]
+                if len(dsub):
+                    price_at_date = round(float(dsub["close"].iloc[-1]), 2)
+
+        return flask.jsonify({"status": "success", "code": norm,
+                              "name": name or code_nodot,
+                              "asset_type": asset_type, "board": board,
+                              "current_price": current_price,
+                              "price_at_date": price_at_date})
+    except Exception as e:
+        logger.warning("股票查询失败 %s: %s", code, e)
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
 @web_app.route("/portfolio/add", methods=["GET", "POST"])
 def portfolio_add():
     """新建持仓"""

@@ -111,6 +111,36 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   </div>
 
   <div class="card">
+    <div class="card-title" style="cursor:pointer;" onclick="toggleHist()">
+      <span><i class="fas fa-clock-rotate-left"></i> 账户历史操作记录 <span class="tag gray">{{ data.history_txns|length }} 笔</span></span>
+      <span class="chevron" style="font-size:12px;color:var(--text2);"><i class="fas fa-chevron-down"></i></span>
+    </div>
+    <div id="history-box" style="display:none;">
+      {% if data.history_txns %}
+      <div class="table-wrap" style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>盈亏</th><th>说明</th></tr></thead>
+          <tbody>
+          {% for t in data.history_txns %}
+            <tr>
+              <td>{{ t.date }}</td>
+              <td>{{ t.stock_name }} <span style="color:var(--text2);font-size:11px;">{{ t.stock_code }}</span></td>
+              <td><span class="tag {{ 'green' if t.trans_type=='buy' else ('red' if t.trans_type in ('sell','sell_all') else 'orange') }}">{{ {'buy':'加仓','sell':'减仓','sell_all':'清仓','dividend':'分红'}.get(t.trans_type, t.trans_type) }}</span></td>
+              <td>{{ "%.2f"|format(t.price) }}</td>
+              <td>{{ "{:,.0f}".format(t.shares) }}</td>
+              <td>{{ "{:,.0f}".format(t.amount) }}</td>
+              <td class="{{ 'green' if (t.pnl or 0)>=0 else 'red' }}">{{ "%+.2f"|format(t.pnl) if t.pnl else '—' }}</td>
+              <td style="font-size:12px;color:var(--text2);">{{ t.reason }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div style="color:var(--text2);">暂无操作记录</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-title">
       <span><i class="fas fa-list-check"></i> 个股今日指令</span>
       <a class="btn btn-outline" href="#" onclick="refreshAll();return false;"><i class="fas fa-rotate"></i> 刷新行情+建议</a>
@@ -207,6 +237,10 @@ function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 3000);
+}
+function toggleHist(){
+  const box = document.getElementById('history-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
 }
 async function refreshAll(){
   const btn = event.target.closest('a'); btn.style.opacity = .5;

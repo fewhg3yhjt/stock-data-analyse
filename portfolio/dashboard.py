@@ -460,7 +460,28 @@ class DashboardService:
             "positions": positions,
             "data_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "data_note": "技术指标截至最近收盘(T-1)，现价盘中实时",
+            # 账户历史操作记录（按时间倒序，含所有股票/已平仓）
+            "history_txns": self._history_transactions(),
         }
+
+    @staticmethod
+    def _history_transactions() -> list[dict]:
+        """全部历史操作流水（时间倒序，含所有股票及已平仓）。"""
+        try:
+            from StockInvestmentTool.portfolio.manager import PortfolioManager
+            mgr = PortfolioManager()
+            txns = []
+            for p in mgr.storage.get_positions():
+                for t in mgr.storage.get_transactions(p.id):
+                    if t.trans_type in ("buy", "sell", "sell_all", "dividend"):
+                        txns.append({**t.to_dict(),
+                                     "stock_code": p.stock_code,
+                                     "stock_name": p.stock_name})
+            txns.sort(key=lambda x: (x.get("date") or ""), reverse=True)
+            return txns[:100]
+        except Exception as e:
+            logger.warning("历史流水读取失败: %s", e)
+            return []
 
     @staticmethod
     def _fundamental_snapshot(code: str) -> Optional[dict]:
