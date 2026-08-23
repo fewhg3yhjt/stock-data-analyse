@@ -1,0 +1,30 @@
+# ============================================================
+# 指标体系配置 — 基础/组合/代码指标定义
+#
+# 分层:
+#   bases:      基础指标（原子），内置 MA5/10/20/60/120/240
+#   composite:  组合指标，用已有指标 + 表达式（如 0.95*MA20）
+#   code:       代码注册指标（Python 函数，可作其他指标输入）
+#
+# 表达式支持: 算术(+-*/) / 函数(MA/MIN/MAX/ABS) / 引用已有指标名
+# 决策指标(后高/前高/止盈点) 结合持仓上下文，由 advisor 计算时注入
+# ============================================================
+
+# ── 基础指标（原子）─────────────────────────────────
+# 内置: MA5/MA10/MA20/MA60/MA120/MA240
+# 可自行添加任意均线，如 MA17、MA63
+bases:
+  - {name: "MA17", expr: "MA(close,17)", description: "17日均线(自定义)"}
+  - {name: "MA63", expr: "MA(close,63)", description: "63日均线(自定义)"}
+
+# ── 组合指标（引用已有指标 + 表达式）─────────────────
+composite:
+  - {name: "止盈参考线", expr: "0.95*MA20", description: "MA20的95%作为参考"}
+  - {name: "双均线低点", expr: "0.95*MIN(MA20,MA240)", description: "MA20与MA240取小值×0.95"}
+  - {name: "振幅_abs", expr: "ABS(high-low)", description: "日内振幅绝对值"}
+
+# ── 代码注册指标（Python 函数，动态扩展）─────────────
+# module 为可 import 的模块路径，function 为函数名
+# 函数签名: fn(df: DataFrame, env: dict) -> Series
+code:
+  - {name: "自定义示例", module: "StockInvestmentTool.indicators.custom_example", function: "example_indicator", description: "代码注册指标示例"}
