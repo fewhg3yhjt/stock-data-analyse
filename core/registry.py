@@ -86,8 +86,9 @@ class SchemeRegistry:
             if not d.exists():
                 continue
             for yaml_file in sorted(d.glob("*.yaml")):
-                if yaml_file.stem.startswith("_"):
-                    continue  # 忽略 _开头的草稿文件
+                # 跳过 _开头的草稿文件 + 非策略方案文件（如 indicators.yaml）
+                if yaml_file.stem.startswith("_") or yaml_file.stem == "indicators":
+                    continue
                 seen[yaml_file.stem] = yaml_file
 
         for name, path in seen.items():

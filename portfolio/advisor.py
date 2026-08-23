@@ -66,6 +66,7 @@ class AdvisorContext:
         self.trend = ""
         self.market_state = ""
         self.rebound_from_month_low = 0.0
+        self.indicators: dict = {}          # 指标体系计算结果（可配置/组合指标）
         self._dynamic_weak_support = False  # v4.8 基金动态弱支撑（MA20 切换）标记
 
     def to_dict(self) -> dict:
@@ -83,6 +84,7 @@ class AdvisorContext:
             "trend": self.trend,
             "market_state": self.market_state,
             "rebound_from_month_low": self.rebound_from_month_low,
+            "indicators": self.indicators,
             "dynamic_weak_support": self._dynamic_weak_support,
         }
 
@@ -119,6 +121,15 @@ class PostPurchaseAdvisor:
         ctx.year_high = float(kline["high"].tail(252).max())
         ctx.ma_20 = float(last.get("ma_20", 0)) if "ma_20" in kline.columns else 0
         ctx.ma_60 = float(last.get("ma_60", 0)) if "ma_60" in kline.columns else 0
+
+        # 用指标体系计算完整指标（可配置/可组合），补充到 context
+        try:
+            from StockInvestmentTool.indicators.engine import IndicatorRegistry
+            reg = IndicatorRegistry()
+            ind_values = reg.latest(kline)
+            ctx.indicators = {k: v for k, v in ind_values.items() if v is not None}
+        except Exception as e:
+            logger.debug("指标体系计算失败: %s", e)
 
         # 趋势与市场状态
         try:
