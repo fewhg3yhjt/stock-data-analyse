@@ -53,9 +53,10 @@ class Warehouse:
         self.base_dir = Path(base_dir) if base_dir else Config.DATA_DIR / "warehouse"
         self.daily_dir = self.base_dir / "daily"
         self.factor_dir = self.base_dir / "factors"
+        self.indicator_dir = self.base_dir / "indicators"
         self.online_dir = self.base_dir / "online"
         self.meta_db_path = self.base_dir / "meta.db"
-        for d in (self.daily_dir, self.factor_dir, self.online_dir):
+        for d in (self.daily_dir, self.factor_dir, self.indicator_dir, self.online_dir):
             d.mkdir(parents=True, exist_ok=True)
         self._init_meta()
 
@@ -179,6 +180,23 @@ class Warehouse:
         logger.info("因子分区已写入: %s (%d 行 / %d 标的)", path.name, len(df), symbols)
         return len(df)
 
+    def write_indicator_partition(self, month: str, df) -> int:
+        """把某月指标分区整体覆写。返回写入行数。"""
+        path = self.indicator_dir / f"{month}.parquet"
+        try:
+            df.to_parquet(path, index=False, engine="pyarrow",
+                           compression="zstd" if _has("pyarrow") else "snappy")
+        except Exception as e:
+            logger.error("写指标分区 %s 失败: %s", path, e)
+            raise
+        symbols = int(df["code"].nunique()) if "code" in df.columns else 0
+        logger.info("指标分区已写入: %s (%d 行 / %d 标的)", path.name, len(df), symbols)
+        return len(df)
+
+    def read_indicator(self, month: str):
+        """读取某月指标分区"""
+        return self._read_partition(self.indicator_dir, month)
+
     def write_daily_partition(self, month: str, df) -> int:
         """把某月日线分区整体覆写。df 需含 code/date 等列。返回写入行数。"""
         path = self.daily_partition(month)
@@ -206,7 +224,12 @@ class Warehouse:
 
     def available_months(self, kind: str = "daily") -> list[str]:
         """已落盘的分区月份列表（升序）"""
-        directory = self.factor_dir if kind == "factor" else self.daily_dir
+        if kind == "factor":
+            directory = self.factor_dir
+        elif kind == "indicator":
+            directory = self.indicator_dir
+        else:
+            directory = self.daily_dir
         months = sorted(p.stem for p in directory.glob("*.parquet"))
         return months
 

@@ -1,0 +1,107 @@
+# -*- coding: utf-8 -*-
+"""全量指标批量生成 — 用指标体系计算全市场指标宽表，落 indicators/ 分区
+
+设计（与 factors.py 相同的内存模式）:
+  - 每个 daily 分区只读一次，按 code 分组
+  - 逐标的用 IndicatorRegistry 计算可配置/组合指标
+  - 按月累积落盘到 warehouse/indicators/YYYY-MM.parquet
+  - 内存峰值 = 全量日线一份（2C2G 可承受，作为离线任务）
+
+衔接: 由 run_warehouse_daily（收盘后采集）自动触发，
+      源头 daily 更新后，下游 indicators 自动重建。
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from typing import Optional
+
+import pandas as pd
+
+from StockInvestmentTool.indicators.engine import IndicatorRegistry
+from StockInvestmentTool.warehouse.storage import Warehouse
+
+logger = logging.getLogger(__name__)
+
+
+class IndicatorsBuilder:
+    """全市场指标宽表批量生成器。"""
+
+    def __init__(self, warehouse: Optional[Warehouse] = None,
+                 registry: Optional[IndicatorRegistry] = None):
+        self.warehouse = warehouse or Warehouse()
+        self.registry = registry or IndicatorRegistry()
+
+    def build_all(self, symbols: Optional[list[str]] = None,
+                  max_symbols: Optional[int] = None,
+                  metrics: Optional[list[str]] = None) -> dict:
+        """全市场指标宽表生成（分组一次遍历 + 按月落盘）。
+
+        需仓库已有 daily 分区（先跑 sync_daily）。
+
+        Returns:
+            dict: 标的数 / 覆盖月份 / 耗时
+        """
+        months = self.warehouse.available_months("daily")
+        if not months:
+            logger.warning("无日线分区，请先运行 sync")
+            return {"symbols": 0, "months": 0, "elapsed_sec": 0}
+
+        # ① 每个分区只读一次，按 code 分组，累积各标的全史
+        logger.info("指标计算: 载入 %d 个月分区...", len(months))
+        per_code: dict[str, list[pd.DataFrame]] = {}
+        for ym in months:
+            df = self.warehouse.read_daily(ym)
+            if df is None or df.empty or "code" not in df.columns:
+                continue
+            for code, grp in df.groupby("code"):
+                per_code.setdefault(code, []).append(grp)
+
+        if symbols is None:
+            symbols = list(per_code.keys())
+        if max_symbols:
+            symbols = symbols[:max_symbols]
+        logger.info("指标计算: %d 标的", len(symbols))
+
+        # ② 逐标的算指标，按月份累积
+        month_bufs: dict[str, pd.DataFrame] = {}
+        done = 0
+        t0 = time.time()
+        for i, code in enumerate(symbols, 1):
+            frames = per_code.get(code)
+            if not frames:
+                continue
+            df = pd.concat(frames, ignore_index=True).sort_values("date")
+            try:
+                ind_series = self.registry.compute(df, metrics)
+            except Exception as e:
+                logger.warning("指标计算 %s 失败: %s", code, e)
+                continue
+            if not ind_series:
+                continue
+            # 组装指标宽表（date/code + 各指标列）
+            out = pd.DataFrame({"date": df["date"], "code": code})
+            for name, s in ind_series.items():
+                if s is not None:
+                    out[name] = s.values
+            for ym, grp in out.groupby(out["date"].dt.strftime("%Y-%m")):
+                cur = month_bufs.get(ym)
+                if cur is not None and len(cur):
+                    month_bufs[ym] = pd.concat([cur, grp], ignore_index=True)
+                else:
+                    month_bufs[ym] = grp.copy()
+            done += 1
+            if i % 500 == 0 or i == len(symbols):
+                logger.info("指标进度 %d/%d，完成 %d 只", i, len(symbols), done)
+
+        # ③ 统一写盘
+        for ym, df in month_bufs.items():
+            df = df.drop_duplicates(subset=["date", "code"]).sort_values(["date", "code"])
+            self.warehouse.write_indicator_partition(ym, df)
+
+        elapsed = time.time() - t0
+        logger.info("指标计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
+                    done, len(month_bufs), elapsed)
+        return {"symbols": done, "months": len(month_bufs),
+                "elapsed_sec": round(elapsed, 1)}

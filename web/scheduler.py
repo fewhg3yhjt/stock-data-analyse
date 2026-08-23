@@ -130,6 +130,15 @@ def run_warehouse_daily() -> dict:
         logger.error("因子计算失败: %s", e)
         result["factors"] = f"error: {e}"
 
+    # 指标批量生成（采集后自动重建 indicators/ 分区，下游消费最新指标）
+    try:
+        from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
+        ind_res = IndicatorsBuilder().build_all()
+        result["indicators"] = ind_res
+    except Exception as e:
+        logger.error("指标批量生成失败: %s", e)
+        result["indicators"] = f"error: {e}"
+
     # 新股 PE/PB 回补（仅补刚新增/缺失的股票估值）
     try:
         from StockInvestmentTool.warehouse.backfill import ValuationBackfill
