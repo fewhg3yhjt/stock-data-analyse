@@ -348,8 +348,9 @@ def build_orders_html(data: dict) -> str:
             f'<td style="padding:8px 10px;font-size:13px;color:{pnl_color};border-bottom:1px solid #e5e7eb;">{pnl}%</td>'
             f'<td style="padding:8px 10px;font-size:13px;border-bottom:1px solid #e5e7eb;">'
             f'<span style="background:{label_color};color:#fff;padding:1px 8px;border-radius:10px;font-size:11px;">{label}</span>'
-            f'{f"<div style=\"font-size:11px;color:#6b7280;margin-top:2px;\">{reason}</div>" if reason else ""}</td>'
-            f'</tr>'
+            + (f'<div style="font-size:11px;color:#6b7280;margin-top:2px;">{reason}</div>' if reason else "")
+            + '</td>'
+            '</tr>'
         )
 
     return (
