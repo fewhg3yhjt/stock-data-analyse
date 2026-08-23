@@ -226,11 +226,14 @@ def run_actionable_monitor():
             from StockInvestmentTool.notifier.notify import build_actionable_html
             from StockInvestmentTool.notifier.channels import EmailSender
             html_body = build_actionable_html(data)
-            images = _build_snapshot_images(data)
+            # _build_snapshot_images 返回二维(每条消息一组)；邮件是一整封，展平成一维
+            images_2d = _build_snapshot_images(data) or []
+            images = [p for group in images_2d for p in group if p]
             sender = EmailSender()
             sender.send(html_body, subject="🔔 持仓操作提醒",
-                        images=images)
-            logger.info("持仓操作提醒已推送邮件（%d 只有操作建议）", len(messages))
+                        images=images or None)
+            logger.info("持仓操作提醒已推送邮件（%d 只有操作建议，%d 张图）",
+                        len(messages), len(images))
         else:
             images = _build_snapshot_images(data)
             sent = send_all(rules.channel, webhook, messages, images=images)

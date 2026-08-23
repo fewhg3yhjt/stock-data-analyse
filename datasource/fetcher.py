@@ -132,6 +132,14 @@ def _alarm_handler(signum, frame):
     raise TimeoutError(f"baostock 查询超时（> {_QUERY_WATCHDOG_SECONDS}s），视为连接异常")
 
 
+def _is_main_thread() -> bool:
+    """是否主线程（signal 相关仅主线程可用）。"""
+    try:
+        return threading.current_thread() is threading.main_thread()
+    except Exception:
+        return True
+
+
 class StockDataFetcher:
     """A 股数据获取器（K 线 + 基本面 + 分红）
 
@@ -256,13 +264,19 @@ class StockDataFetcher:
             self._ensure_login()
             rs = None
             try:
-                # 看门狗：超时抛 TimeoutError，打断 baostock 的 recv 死循环
-                signal.signal(signal.SIGALRM, _alarm_handler)
-                signal.alarm(_QUERY_WATCHDOG_SECONDS)
+                # 看门狗：超时抛 TimeoutError，打断 baostock 的 recv 死循环。
+                # signal 仅主线程可用；APScheduler 后台线程里会抛
+                # "signal only works in main thread"，此时跳过 signal 看门狗，
+                # 退化为依赖 socket timeout（_set_socket_timeout 已设）。
+                use_signal = _is_main_thread()
+                if use_signal:
+                    signal.signal(signal.SIGALRM, _alarm_handler)
+                    signal.alarm(_QUERY_WATCHDOG_SECONDS)
                 try:
                     rs = query_fn(*args, **kwargs)
                 finally:
-                    signal.alarm(0)  # 取消闹钟
+                    if use_signal:
+                        signal.alarm(0)  # 取消闹钟
             except (OSError, ConnectionError, TimeoutError) as e:
                 if attempt == 1:
                     logger.warning("baostock 连接异常(%s)，重连后重试", e)
