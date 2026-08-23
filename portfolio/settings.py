@@ -80,6 +80,29 @@ def save_notify_rules(content: str) -> Path:
     return save_rules(NOTIFY_RULES, content)
 
 
+# ── 通知策略设置（notify_settings.yaml，管理台可编辑）───────
+
+NOTIFY_SETTINGS = Path(__file__).resolve().parent.parent / "notifier" / "notify_settings.yaml"
+
+
+def read_notify_settings() -> str:
+    return read_rules(NOTIFY_SETTINGS)
+
+
+def save_notify_settings(content: str) -> Path:
+    return save_rules(NOTIFY_SETTINGS, content)
+
+
+def load_notify_settings() -> dict:
+    """解析 notify_settings.yaml 为 dict（scheduler 用）。"""
+    try:
+        import yaml
+        with open(NOTIFY_SETTINGS, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
 # ── 通知 webhook（.env）──────────────────────────────────
 
 def _env_file() -> Path:

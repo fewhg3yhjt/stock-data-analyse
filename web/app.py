@@ -1147,6 +1147,7 @@ def settings_page():
         schemes = s.list_schemes()
         screen_rules = s.read_screen_rules()
         notify_rules = s.read_notify_rules()
+        notify_settings = s.read_notify_settings()
         webhook = s.webhook_status()
         from StockInvestmentTool.web.scheduler import scheduler_status
         sched = scheduler_status(flask.current_app)
@@ -1154,12 +1155,13 @@ def settings_page():
                                 if sched["enabled"] else "每日任务未启用（DISABLE_SCHEDULER=1 或未装 APScheduler）")
         return flask.render_template("settings.html", schemes=schemes,
                                      screen_rules=screen_rules, notify_rules=notify_rules,
-                                     webhook=webhook, scheduler_status=scheduler_status_str,
+                                     notify_settings=notify_settings, webhook=webhook,
+                                     scheduler_status=scheduler_status_str,
                                      error=None, ok=None)
     except Exception as e:
         logger.exception("设置页加载失败")
         return flask.render_template("settings.html", schemes=[], screen_rules="",
-                                     notify_rules="", webhook={}, scheduler_status="",
+                                     notify_rules="", notify_settings="", webhook={}, scheduler_status="",
                                      error=str(e), ok=None)
 
 
@@ -1194,6 +1196,13 @@ def settings_save_notify():
         content = flask.request.form.get("content") or ""
         try:
             s.save_notify_rules(content)
+            return flask.jsonify({"status": "success"})
+        except Exception as e:
+            return flask.jsonify({"status": "error", "error": str(e)}), 400
+    if action == "notify_settings":
+        content = flask.request.form.get("content") or ""
+        try:
+            s.save_notify_settings(content)
             return flask.jsonify({"status": "success"})
         except Exception as e:
             return flask.jsonify({"status": "error", "error": str(e)}), 400

@@ -116,6 +116,12 @@ textarea.code.mini{min-height:200px;}
       <div class="form-group"><label>notifier/rules.yaml（自选阈值 / 资金流信号 / 每日汇总）</label>
         <textarea class="code mini" id="notify-rules">{{ notify_rules }}</textarea></div>
       <button class="btn btn-primary" onclick="saveNotifyRules()"><i class="fas fa-save"></i> 保存通知规则</button>
+
+      <div class="card-title" style="font-weight:600;margin:22px 0 12px;"><i class="fas fa-clock"></i> 通知策略（盘中检测 / 盘后汇总 / 收件人）</div>
+      <div class="form-group"><label>notifier/notify_settings.yaml（调度策略；盘中仅当持仓触发操作建议才发）</label>
+        <textarea class="code mini" id="notify-settings" rows="14">{{ notify_settings }}</textarea></div>
+      <button class="btn btn-primary" onclick="saveNotifySettings()"><i class="fas fa-save"></i> 保存通知策略</button>
+      <span class="hint" style="display:block;margin-top:6px;">保存后需重启容器生效（改的是调度配置）。盘中每 N 分钟检测，仅止盈/止损/加仓触发才发；盘后每日发送全部持仓汇总。</span>
     </div>
 
     <!-- 账户与数据管理 -->
@@ -167,7 +173,11 @@ async function saveScreen(){
 async function saveNotifyRules(){
   const d = await post('/settings/notify', {action:'rules', content:document.getElementById('notify-rules').value});
   d.status==='success' ? showToast('通知规则已保存') : showToast(d.error||'保存失败');
-}
+ }
+async function saveNotifySettings(){
+  const d = await post('/settings/notify', {action:'notify_settings', content:document.getElementById('notify-settings').value});
+  d.status==='success' ? showToast('通知策略已保存，重启容器后生效') : showToast(d.error||'保存失败');
+ }
 async function saveWebhook(){
   const d = await post('/settings/notify', {action:'webhook', channel:document.getElementById('notify-channel').value,
     feishu_url:document.getElementById('notify-feishu-url').value, wecom_url:document.getElementById('notify-wecom-url').value});

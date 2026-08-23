@@ -179,17 +179,74 @@ def init_scheduler(app) -> None:
         )
         logger.info("盘中观察池快照已启动: 每 10 分钟")
     # 盘中持仓操作提醒：刷新持仓，仅推「有操作建议」的（止盈/止损/加仓）
-    # 用 POSITION_ACTIONABLE_NOTIFY=1 开启；间隔 POSITION_MONITOR_MINUTES（默认10分钟）
-    if os.getenv("POSITION_ACTIONABLE_NOTIFY") == "1":
-        monitor_min = int(os.getenv("POSITION_MONITOR_MINUTES", "10"))
+    # 策略配置在 notifier/notify_settings.yaml（管理台可编辑）
+    ns = _load_notify_settings()
+    intraday = ns.get("intraday") or {}
+    if intraday.get("enabled"):
+        monitor_min = int(intraday.get("interval_minutes", 10))
         scheduler.add_job(
             run_actionable_monitor, CronTrigger(minute=f"*/{monitor_min}", timezone=TZ),
             id="actionable_monitor", misfire_grace_time=600, coalesce=True,
         )
         logger.info("盘中持仓操作提醒已启动: 每 %d 分钟", monitor_min)
+    # 盘后全持仓汇总：每日定时发送全部持仓状态
+    post_close = ns.get("post_close") or {}
+    if post_close.get("enabled"):
+        pc_time = post_close.get("time", "15:35")
+        try:
+            pc_hh, pc_mm = str(pc_time).split(":")
+            pc_hh, pc_mm = int(pc_hh), int(pc_mm)
+        except (ValueError, TypeError):
+            pc_hh, pc_mm = 15, 35
+        scheduler.add_job(
+            run_post_close_summary, CronTrigger(hour=pc_hh, minute=pc_mm, timezone=TZ),
+            id="post_close_summary", misfire_grace_time=3600, coalesce=True,
+        )
+        logger.info("盘后持仓汇总已启动: %02d:%02d", pc_hh, pc_mm)
     scheduler.start()
     app.extensions["scheduler"] = scheduler
     logger.info("每日定时任务已启动: %02d:%02d (%s)", hour, minute, TZ)
+
+
+def _load_notify_settings() -> dict:
+    """读取通知策略配置（notify_settings.yaml）。"""
+    try:
+        from StockInvestmentTool.portfolio.settings import load_notify_settings
+        return load_notify_settings()
+    except Exception:
+        return {}
+
+
+def run_post_close_summary():
+    """盘后全持仓汇总：发送所有持仓的状态/建议/盈亏邮件。"""
+    try:
+        from StockInvestmentTool.portfolio.manager import PortfolioManager
+        from StockInvestmentTool.portfolio.dashboard import DashboardService
+        from StockInvestmentTool.notifier.notify import (
+            NotifyRules, build_orders_messages, build_orders_html, send_all,
+        )
+        from StockInvestmentTool.notifier.channels import EmailSender
+
+        mgr = PortfolioManager()
+        mgr.refresh_all()
+        data = DashboardService(mgr).war_room()
+        messages = build_orders_messages(data)
+        if not messages:
+            logger.info("盘后汇总: 无持仓")
+            return
+
+        rules = NotifyRules.from_yaml()
+        if rules.channel in ("email", "mail", "smtp"):
+            html = build_orders_html(data)
+            sender = EmailSender()
+            sender.send(html, subject="📊 盘后持仓汇总", is_html=True)
+            logger.info("盘后持仓汇总已推送邮件")
+        else:
+            webhook = rules.webhook_url()
+            send_all(rules.channel, webhook, messages)
+            logger.info("盘后持仓汇总已推送 %d 条", len(messages))
+    except Exception as e:
+        logger.error("盘后持仓汇总异常: %s", e)
 
 
 def run_actionable_monitor():

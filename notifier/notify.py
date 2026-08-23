@@ -320,7 +320,56 @@ def build_actionable_html(data: dict) -> str:
     )
 
 
-# ── 推送入口 ─────────────────────────────────────────────
+def build_orders_html(data: dict) -> str:
+    """把全部持仓渲染为 HTML 邮件正文（盘后汇总，含每只状态/建议/盈亏）。"""
+    positions = data.get("positions") or []
+    if not positions:
+        return "<div>当前无持仓</div>"
+
+    summary = data.get("summary") or {}
+    rows = []
+    for p in positions:
+        adv = p.get("advice") or {}
+        atype = adv.get("advice_type", "")
+        label = p.get("advice_label") or "—"
+        label_color = {
+            "buy_more": "#1a73e8", "partial_sell": "#e67e22",
+            "sell_all": "#dc3545", "adjust_stop": "#9c27b0",
+        }.get(atype, "#6b7280")
+        pnl = p.get("unrealized_pnl_pct")
+        pnl_color = "#28a745" if (pnl or 0) >= 0 else "#dc3545"
+        reason = (adv.get("reason") or "")[:80]
+        rows.append(
+            f'<tr>'
+            f'<td style="padding:8px 10px;font-size:13px;border-bottom:1px solid #e5e7eb;">'
+            f'{p.get("stock_name")}<span style="color:#6b7280;font-size:11px;"> {p.get("stock_code")}</span></td>'
+            f'<td style="padding:8px 10px;font-size:13px;border-bottom:1px solid #e5e7eb;">{p.get("current_price")}</td>'
+            f'<td style="padding:8px 10px;font-size:13px;border-bottom:1px solid #e5e7eb;">{p.get("avg_cost")}</td>'
+            f'<td style="padding:8px 10px;font-size:13px;color:{pnl_color};border-bottom:1px solid #e5e7eb;">{pnl}%</td>'
+            f'<td style="padding:8px 10px;font-size:13px;border-bottom:1px solid #e5e7eb;">'
+            f'<span style="background:{label_color};color:#fff;padding:1px 8px;border-radius:10px;font-size:11px;">{label}</span>'
+            f'{f"<div style=\"font-size:11px;color:#6b7280;margin-top:2px;\">{reason}</div>" if reason else ""}</td>'
+            f'</tr>'
+        )
+
+    return (
+        f'<div style="font-family:Arial,\'PingFang SC\',\'Microsoft YaHei\',sans-serif;'
+        f'background:#f5f6f8;padding:16px;">'
+        f'<div style="font-size:16px;font-weight:bold;color:#111827;margin-bottom:6px;">'
+        f'📊 盘后持仓汇总（{data.get("data_date", "")}）</div>'
+        f'<div style="font-size:13px;color:#6b7280;margin-bottom:12px;">'
+        f'持仓 {summary.get("position_count", 0)} 只 | 总盈亏 '
+        f'{summary.get("total_pnl_pct", "—")}% | {data.get("risk_status", "")}</div>'
+        f'<table style="width:100%;border-collapse:collapse;background:#fff;'
+        f'border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">'
+        f'<tr style="background:#f8f9fb;">'
+        f'<th style="padding:8px 10px;font-size:12px;text-align:left;color:#6b7280;">股票</th>'
+        f'<th style="padding:8px 10px;font-size:12px;text-align:left;color:#6b7280;">现价</th>'
+        f'<th style="padding:8px 10px;font-size:12px;text-align:left;color:#6b7280;">成本</th>'
+        f'<th style="padding:8px 10px;font-size:12px;text-align:left;color:#6b7280;">盈亏</th>'
+        f'<th style="padding:8px 10px;font-size:12px;text-align:left;color:#6b7280;">建议</th>'
+        f'</tr>{"".join(rows)}</table></div>'
+    )
 
 def send_all(channel, url, messages: list[str],
              images: Optional[list[list[str]]] = None) -> int:
