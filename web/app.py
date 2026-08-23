@@ -718,6 +718,26 @@ def api_strategy_chart():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/strategy/backtest/curve", methods=["POST"])
+def api_strategy_backtest_curve():
+    """策略 vs 大盘 累计收益曲线（ECharts 对比图）"""
+    from StockInvestmentTool.strategy_lab import backtest_curve
+
+    try:
+        hold_days = int(flask.request.form.get("hold_days", "10"))
+        limit_up = flask.request.form.get("limit_up_10d", "1")
+        deviation = flask.request.form.get("deviation_ma20_max", "0.10")
+        conditions = {
+            "limit_up_10d": int(limit_up) if limit_up else 1,
+            "deviation_ma20_max": float(deviation) if deviation else 0.10,
+        }
+        data = backtest_curve(conditions, hold_days=hold_days)
+        return flask.jsonify({"status": "success", **data})
+    except Exception as e:
+        logger.exception("策略收益曲线失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/api/strategy/backtest", methods=["POST"])
 def api_strategy_backtest():
     """策略回测：历史选股持有N天收益 vs 全市场基准"""

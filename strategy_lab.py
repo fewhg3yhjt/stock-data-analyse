@@ -110,6 +110,7 @@ def scan(conditions: Optional[dict] = None, as_of: str = "",
             d = dict(zip(cols, r))
             hits.append({
                 "code": d["code"],
+                "name": "",
                 "price": round(float(d["close"]), 2),
                 "ma20": round(float(d["ma20"]), 2),
                 "ma60": round(float(d["ma60"]), 2),
@@ -117,9 +118,30 @@ def scan(conditions: Optional[dict] = None, as_of: str = "",
                 "limit_up_10d": int(d["limit_up_10d"]),
                 "date": str(d["date"])[:10],
             })
+        _attach_names(hits)
         return hits
     finally:
         con.close()
+
+
+def _attach_names(hits: list[dict]) -> None:
+    """从 meta.db 批量补充股票中文名（就地修改 hits）。"""
+    if not hits:
+        return
+    w = Warehouse()
+    conn = w._conn()
+    try:
+        codes = [h["code"] for h in hits]
+        placeholders = ",".join("?" * len(codes))
+        rows = conn.execute(
+            f"SELECT code, name FROM instruments WHERE code IN ({placeholders})",
+            codes,
+        ).fetchall()
+        name_map = {r[0]: r[1] for r in rows}
+        for h in hits:
+            h["name"] = name_map.get(h["code"], "") or h["code"]
+    finally:
+        conn.close()
 
 
 # ═══════════════════════════════════════════════════════
@@ -198,15 +220,45 @@ def get_series(code: str, as_of: str = "", days: int = 120,
                 vals.append(round(float(v), 2))
         series.append({"name": METRICS.get(m, m), "key": m, "data": vals})
 
-    # 支撑/压力点位（可选展示）
-    lines = []
-    if "close" in df.columns and len(df):
-        last = df.iloc[-1]
-        for m, label, color in [("ma20", "MA20", "#e67e22"), ("ma60", "MA60", "#27ae60")]:
-            if m in df.columns and last[m] == last[m]:
-                lines.append({"name": label, "value": round(float(last[m]), 2), "color": color})
-    return {"code": code, "dates": dates, "series": series, "lines": lines,
+    # 策略买入信号点：历史上符合「股价>MA60 + 10日涨停≥1 + 偏离MA20<X%」的日期
+    # 用 markPoint 标注（不画水平虚线，避免与指标实线重叠困惑）
+    signals = _signal_points(code, as_of, days)
+    return {"code": code, "dates": dates, "series": series, "signals": signals,
             "metrics": METRICS}
+
+
+def _signal_points(code: str, as_of: str, days: int) -> list[dict]:
+    """计算单只股票历史上触发策略条件的信号日期（返回 ECharts markPoint 数据）。"""
+    from StockInvestmentTool.strategy_lab import _parquet_files
+    w = Warehouse()
+    fl = _parquet_files(w)
+    con = duckdb.connect()
+    try:
+        limit_expr = _limit_pct_sql(0.098)
+        sql = f"""
+        WITH daily AS (
+            SELECT code, date, close,
+                   close / LAG(close,1) OVER (ORDER BY date) - 1 AS pct_chg,
+                   AVG(close) OVER (ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS ma20,
+                   AVG(close) OVER (ORDER BY date ROWS BETWEEN 59 PRECEDING AND CURRENT ROW) AS ma60
+            FROM read_parquet({fl})
+            WHERE code = '{code}' AND date <= DATE '{as_of}'
+        ),
+        computed AS (
+            SELECT *,
+                   SUM(CASE WHEN pct_chg >= {limit_expr} THEN 1 ELSE 0 END)
+                       OVER (ORDER BY date ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) AS limit_up_10d,
+                   ABS(close - ma20) / NULLIF(ma20, 0) AS deviation
+            FROM daily
+        )
+        SELECT date, close FROM computed
+        WHERE close > ma60 AND limit_up_10d >= 1 AND deviation < 0.10
+        ORDER BY date DESC LIMIT {int(days)}
+        """
+        rows = con.execute(sql).fetchall()
+        return [{"date": str(r[0])[:10], "value": round(float(r[1]), 2)} for r in rows]
+    finally:
+        con.close()
 
 
 # ═══════════════════════════════════════════════════════
@@ -304,6 +356,91 @@ def _market_baseline(fl: str, start: str, end: str, n: int) -> dict:
                 "win_rate": round(float((rets > 0).mean()) * 100, 1)}
     finally:
         con.close()
+
+
+def backtest_curve(conditions: Optional[dict] = None, hold_days: int = 10,
+                   start: str = "2024-01-01", end: str = "") -> dict:
+    """策略 vs 大盘 的累计收益曲线（ECharts 对比图数据）。
+
+    Returns:
+        {dates, strategy: [...], market: [...], signals: 总信号数}
+        strategy: 每个交易日的信号「平均持有N天收益」累计曲线
+        market:   同日全市场等权「持有N天收益」累计曲线（大盘基准）
+    """
+    c = {**DEFAULT_CONDITIONS, **(conditions or {})}
+    w = Warehouse()
+    fl = _parquet_files(w)
+    if not end:
+        df = w.read_daily(w.available_months("daily")[-1])
+        end = str(df["date"].max())[:10]
+
+    con = duckdb.connect()
+    try:
+        limit_expr = _limit_pct_sql(c["limit_up_pct"])
+        n = hold_days
+        # 策略信号：每日触发的信号及持有N天收益（带信号日期）
+        sql_sig = f"""
+        WITH daily AS (
+            SELECT code, date, close,
+                   AVG(close) OVER (PARTITION BY code ORDER BY date
+                       ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS ma20,
+                   AVG(close) OVER (PARTITION BY code ORDER BY date
+                       ROWS BETWEEN 59 PRECEDING AND CURRENT ROW) AS ma60,
+                   close / LAG(close,1) OVER (PARTITION BY code ORDER BY date) - 1 AS pct_chg
+            FROM read_parquet({fl})
+            WHERE date BETWEEN DATE '{start}' AND DATE '{end}'
+        ),
+        computed AS (
+            SELECT *,
+                   COUNT(*) OVER (PARTITION BY code) AS hist_len,
+                   SUM(CASE WHEN pct_chg >= {limit_expr} THEN 1 ELSE 0 END)
+                       OVER (PARTITION BY code ORDER BY date
+                             ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) AS limit_up_10d,
+                   ABS(close - ma20) / NULLIF(ma20, 0) AS deviation,
+                   LEAD(close, {n}) OVER (PARTITION BY code ORDER BY date) AS close_n
+            FROM daily
+        )
+        SELECT date AS sig_date, (close_n - close) / close AS ret
+        FROM computed
+        WHERE hist_len >= {c['min_history']}
+          AND close > ma60 AND limit_up_10d >= {c['limit_up_10d']}
+          AND deviation < {c['deviation_ma20_max']} AND close_n IS NOT NULL
+        """
+        sig = con.execute(sql_sig).fetchdf()
+        if sig.empty:
+            return {"dates": [], "strategy": [], "market": [], "signals": 0}
+        # 按信号日聚合：每天触发信号的「平均持有N天收益」
+        sig_grp = sig.groupby("sig_date")["ret"].mean().reset_index()
+        sig_grp.columns = ["date", "avg_ret"]
+        # 累计平均收益曲线（逐日累加，避免连乘爆炸）
+        sig_grp = sig_grp.sort_values("date").reset_index(drop=True)
+        sig_grp["cum"] = sig_grp["avg_ret"].cumsum()
+
+        # 大盘基准：全市场每日「持有N天收益」平均，同样累计
+        sql_mkt = f"""
+        WITH daily AS (
+            SELECT date, code, close,
+                   LEAD(close, {n}) OVER (PARTITION BY code ORDER BY date) AS close_n
+            FROM read_parquet({fl})
+            WHERE date BETWEEN DATE '{start}' AND DATE '{end}'
+        )
+        SELECT date, AVG((close_n - close) / close) AS avg_ret
+        FROM daily WHERE close_n IS NOT NULL
+        GROUP BY date ORDER BY date
+        """
+        mkt = con.execute(sql_mkt).fetchdf()
+        mkt = mkt.sort_values("date").reset_index(drop=True)
+        mkt["cum"] = mkt["avg_ret"].cumsum()
+    finally:
+        con.close()
+
+    # 对齐到共同日期轴（按策略信号日取大盘同日值）
+    dates = [str(d)[:10] for d in sig_grp["date"]]
+    mkt_map = {str(d)[:10]: v for d, v in zip(mkt["date"], mkt["cum"])}
+    strategy_cum = [round(v * 100, 2) for v in sig_grp["cum"]]
+    market_cum = [round((mkt_map.get(d, 0)) * 100, 2) for d in dates]
+    return {"dates": dates, "strategy": strategy_cum, "market": market_cum,
+            "signals": int(len(sig))}
 
 
 # ═══════════════════════════════════════════════════════
