@@ -163,6 +163,39 @@ def build_orders_messages(data: dict) -> list[str]:
     return ["\n".join(lines)]
 
 
+def build_actionable_messages(data: dict) -> list[str]:
+    """只推「有操作建议」的持仓（右侧止盈/止损/加仓/调止损，排除 hold）。
+
+    用于实时通知：盘中刷新持仓时，仅当某只触发操作建议才推送，
+    避免噪音。
+    """
+    positions = data.get("positions") or []
+    actionable = []
+    for p in positions:
+        adv = p.get("advice") or {}
+        # is_actionable: buy_more/partial_sell/sell_all/adjust_stop（非 hold）
+        if adv.get("advice_type") and adv.get("is_actionable"):
+            actionable.append(p)
+    if not actionable:
+        return []
+
+    lines = [f"**🔔 操作提醒**（{data.get('data_date', '')}）"]
+    for p in actionable:
+        adv = p.get("advice") or {}
+        label = p.get("advice_label") or adv.get("advice_type", "")
+        reason = adv.get("reason", "")
+        urgency = adv.get("urgency", "")
+        msg = (
+            f"- **{p.get('stock_name')}**({p.get('stock_code')}): {label}"
+            f"[{urgency}] 现价{p.get('current_price')}"
+            f" 盈亏{p.get('unrealized_pnl_pct')}%"
+        )
+        if reason:
+            msg += f"\n  > {reason}"
+        lines.append(msg)
+    return ["\n".join(lines)]
+
+
 # ── 推送入口 ─────────────────────────────────────────────
 
 def send_all(channel, url, messages: list[str]) -> int:

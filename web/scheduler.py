@@ -177,9 +177,53 @@ def init_scheduler(app) -> None:
             id="online_snapshot", misfire_grace_time=600, coalesce=True,
         )
         logger.info("盘中观察池快照已启动: 每 10 分钟")
+    # 盘中持仓操作提醒：刷新持仓，仅推「有操作建议」的（止盈/止损/加仓）
+    # 用 POSITION_ACTIONABLE_NOTIFY=1 开启；间隔 POSITION_MONITOR_MINUTES（默认10分钟）
+    if os.getenv("POSITION_ACTIONABLE_NOTIFY") == "1":
+        monitor_min = int(os.getenv("POSITION_MONITOR_MINUTES", "10"))
+        scheduler.add_job(
+            run_actionable_monitor, CronTrigger(minute=f"*/{monitor_min}", timezone=TZ),
+            id="actionable_monitor", misfire_grace_time=600, coalesce=True,
+        )
+        logger.info("盘中持仓操作提醒已启动: 每 %d 分钟", monitor_min)
     scheduler.start()
     app.extensions["scheduler"] = scheduler
     logger.info("每日定时任务已启动: %02d:%02d (%s)", hour, minute, TZ)
+
+
+def run_actionable_monitor():
+    """盘中持仓操作提醒：刷新所有持仓，仅推送「有操作建议」的持仓。
+
+    触发条件: advisor 给出 buy_more/partial_sell/sell_all/adjust_stop
+    （右侧止盈/硬止损/技术止损/加仓/调止损），hold 不推。
+    """
+    try:
+        from StockInvestmentTool.portfolio.manager import PortfolioManager
+        from StockInvestmentTool.portfolio.dashboard import DashboardService
+        from StockInvestmentTool.notifier.notify import (
+            NotifyRules, build_actionable_messages, send_all,
+        )
+
+        mgr = PortfolioManager()
+        # 刷新持仓（现价/点位/建议）
+        mgr.refresh_all()
+        data = DashboardService(mgr).war_room()
+        messages = build_actionable_messages(data)
+        if not messages:
+            logger.info("持仓操作提醒: 无触发（全部 hold 或无持仓）")
+            return
+
+        rules = NotifyRules.from_yaml()
+        try:
+            webhook = rules.webhook_url()
+        except RuntimeError as e:
+            logger.error("操作提醒推送配置错误: %s", e)
+            return
+        sent = send_all(rules.channel, webhook, messages)
+        logger.info("持仓操作提醒已推送 %d 条: %d 只有操作建议",
+                    sent, len(messages))
+    except Exception as e:
+        logger.error("持仓操作提醒异常: %s", e)
 
 
 def run_online_snapshot_job():

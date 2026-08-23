@@ -24,6 +24,7 @@ import sys
 
 from StockInvestmentTool.notifier.notify import (
     NotifyRules,
+    build_actionable_messages,
     build_daily_messages,
     build_fundflow_messages,
     build_orders_messages,
@@ -44,6 +45,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--fundflow", action="store_true", help="推送资金流信号")
     p.add_argument("--daily", action="store_true", help="推送每日资金流汇总")
     p.add_argument("--orders", action="store_true", help="推送作战仓今日持仓指令")
+    p.add_argument("--actionable", action="store_true", help="只推送有操作建议的持仓(止盈/止损/加仓)")
     p.add_argument("--all", action="store_true", help="price + fundflow + daily + orders")
     p.add_argument("--dry-run", action="store_true", help="只打印消息不真正推送")
     p.add_argument("-v", "--verbose", action="store_true", help="详细日志")
@@ -86,6 +88,12 @@ def main(argv=None) -> int:
 
         data = DashboardService().war_room()
         messages.extend(build_orders_messages(data))
+
+    if args.actionable:
+        from StockInvestmentTool.portfolio.dashboard import DashboardService
+
+        data = DashboardService().war_room()
+        messages.extend(build_actionable_messages(data))
 
     if not messages:
         print("没有待推送的消息（无触发的价格阈值/信号，或未开启对应功能）")
