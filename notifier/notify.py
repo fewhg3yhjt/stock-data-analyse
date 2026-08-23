@@ -199,6 +199,100 @@ def build_actionable_messages(data: dict) -> list[str]:
     return ["\n".join(lines)]
 
 
+def build_actionable_html(data: dict) -> str:
+    """把有操作建议的持仓渲染为 HTML 邮件正文（摘要卡片 + 关键点位）。
+
+    用内联样式（邮件客户端兼容），供邮件渠道直接发送。
+    """
+    positions = data.get("positions") or []
+    actionable = [p for p in positions
+                  if (p.get("advice") or {}).get("is_actionable")]
+    if not actionable:
+        return ""
+
+    # 建议标签颜色
+    def label_color(t: str) -> str:
+        return {
+            "buy_more": "#1a73e8",
+            "partial_sell": "#e67e22",
+            "sell_all": "#dc3545",
+            "adjust_stop": "#9c27b0",
+        }.get(t, "#6b7280")
+
+    def label_text(t: str) -> str:
+        return {
+            "buy_more": "加仓", "partial_sell": "减仓",
+            "sell_all": "清仓", "adjust_stop": "调止损",
+        }.get(t, t)
+
+    cards = []
+    for p in actionable:
+        adv = p.get("advice") or {}
+        atype = adv.get("advice_type", "")
+        reason = adv.get("reason", "")
+        color = label_color(atype)
+        ltext = label_text(atype)
+        cur = p.get("current_price")
+        avg = p.get("avg_cost")
+        pnl = p.get("unrealized_pnl_pct")
+        pnl_color = "#28a745" if (pnl or 0) >= 0 else "#dc3545"
+        rs = p.get("right_side") or {}
+        ls = p.get("left_side") or {}
+        bm = p.get("buy_more") or {}
+        hard_cap = p.get("hard_cap")
+
+        # 关键点位行
+        points = []
+        if hard_cap:
+            points.append(f'<td style="padding:6px 10px;font-size:12px;"><span style="color:#1a73e8;">止盈硬上限</span><br><b>{hard_cap}</b></td>')
+        if rs.get("trigger_price"):
+            points.append(f'<td style="padding:6px 10px;font-size:12px;"><span style="color:#e67e22;">右侧止盈线</span><br><b>{rs["trigger_price"]}</b></td>')
+        if ls.get("year_high"):
+            points.append(f'<td style="padding:6px 10px;font-size:12px;"><span style="color:#e67e22;">前高</span><br><b>{ls["year_high"]}</b></td>')
+        if bm.get("trigger_price"):
+            points.append(f'<td style="padding:6px 10px;font-size:12px;"><span style="color:#1a73e8;">补仓线</span><br><b>{bm["trigger_price"]}</b></td>')
+        if not points:
+            points.append(f'<td style="padding:6px 10px;font-size:12px;color:#6b7280;">—</td>')
+
+        reason_html = (f'<div style="font-size:12px;color:#374151;background:#f8f9fb;'
+                       f'padding:8px 10px;border-left:3px solid {color};'
+                       f'margin-top:8px;border-radius:0 4px 4px 0;">{reason}</div>'
+                       if reason else "")
+
+        cards.append(f'''
+<table style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:14px;font-family:Arial,'PingFang SC','Microsoft YaHei',sans-serif;overflow:hidden;">
+  <tr>
+    <td style="padding:12px 14px;border-bottom:1px solid #e5e7eb;background:#f8f9fb;">
+      <span style="font-size:15px;font-weight:bold;color:#111827;">{p.get('stock_name')}</span>
+      <span style="font-size:12px;color:#6b7280;margin-left:6px;">{p.get('stock_code')}</span>
+      <span style="float:right;background:{color};color:#fff;padding:2px 12px;border-radius:12px;font-size:12px;font-weight:bold;">{ltext}</span>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:12px 14px;">
+      <table style="width:100%;">
+        <tr>
+          <td style="padding:6px 10px;font-size:12px;"><span style="color:#6b7280;">现价</span><br><b style="font-size:15px;">{cur}</b></td>
+          <td style="padding:6px 10px;font-size:12px;"><span style="color:#6b7280;">成本</span><br><b>{avg}</b></td>
+          <td style="padding:6px 10px;font-size:12px;"><span style="color:#6b7280;">盈亏</span><br><b style="color:{pnl_color};">{pnl}%</b></td>
+          {''.join(points)}
+        </tr>
+      </table>
+      {reason_html}
+    </td>
+  </tr>
+</table>''')
+
+    return (
+        f'<div style="font-family:Arial,\'PingFang SC\',\'Microsoft YaHei\',sans-serif;'
+        f'background:#f5f6f8;padding:16px;">'
+        f'<div style="font-size:16px;font-weight:bold;color:#111827;margin-bottom:12px;">'
+        f'🔔 持仓操作提醒（{data.get("data_date", "")}）</div>'
+        + "".join(cards) +
+        '</div>'
+    )
+
+
 # ── 推送入口 ─────────────────────────────────────────────
 
 def send_all(channel, url, messages: list[str],

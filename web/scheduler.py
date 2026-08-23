@@ -220,11 +220,22 @@ def run_actionable_monitor():
         except RuntimeError as e:
             logger.error("操作提醒推送配置错误: %s", e)
             return
-        # 为每只有操作建议的持仓生成收益快照图（内嵌邮件）
-        images = _build_snapshot_images(data)
-        sent = send_all(rules.channel, webhook, messages, images=images)
-        logger.info("持仓操作提醒已推送 %d 条: %d 只有操作建议",
-                    sent, len(messages))
+
+        # 邮件渠道：正文用 HTML 摘要卡片 + 内嵌快照图；webhook 渠道用纯文本
+        if rules.channel in ("email", "mail", "smtp"):
+            from StockInvestmentTool.notifier.notify import build_actionable_html
+            from StockInvestmentTool.notifier.channels import EmailSender
+            html_body = build_actionable_html(data)
+            images = _build_snapshot_images(data)
+            sender = EmailSender()
+            sender.send(html_body, subject="🔔 持仓操作提醒",
+                        images=images)
+            logger.info("持仓操作提醒已推送邮件（%d 只有操作建议）", len(messages))
+        else:
+            images = _build_snapshot_images(data)
+            sent = send_all(rules.channel, webhook, messages, images=images)
+            logger.info("持仓操作提醒已推送 %d 条（%d 只有操作建议）",
+                        sent, len(messages))
     except Exception as e:
         logger.error("持仓操作提醒异常: %s", e)
 
@@ -239,7 +250,7 @@ def _build_snapshot_images(data: dict) -> Optional[list[list[str]]]:
     if channel in ("feishu", "wecom", "lark"):
         return None
     try:
-        from StockInvestmentTool.analysis.returns import compute_returns, build_chart
+        from StockInvestmentTool.analysis.returns import build_snapshot_chart
         from StockInvestmentTool.portfolio.monitor import PriceMonitor
         import tempfile
         from pathlib import Path
@@ -256,11 +267,11 @@ def _build_snapshot_images(data: dict) -> Optional[list[list[str]]]:
             code = p.get("stock_code") or ""
             try:
                 kline, _ = monitor.fetch_context_data(code)
-                r = compute_returns(kline, cost_price=p.get("avg_cost"))
-                if r is not None and not r.empty:
-                    title = f"{p.get('stock_name')} 累计收益"
-                    path = build_chart(r, title, out_dir=out_dir,
-                                       filename=f"{code}.png")
+                if kline is not None and not kline.empty:
+                    name = p.get("stock_name") or code
+                    path = build_snapshot_chart(kline, name, code,
+                                                out_dir=out_dir,
+                                                filename=f"{code}.png")
                     images_all.append([path] if path else [])
                 else:
                     images_all.append([])
