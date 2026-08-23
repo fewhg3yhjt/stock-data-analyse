@@ -12,6 +12,8 @@ import os
 import re
 import smtplib
 from email.header import Header
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, formatdate
 from typing import Optional
@@ -106,13 +108,46 @@ class EmailSender:
         self.to = to or os.getenv("EMAIL_TO", "")
         self.timeout = timeout
 
-    def send(self, content: str, subject: str = "股票提醒") -> dict:
+    def send(self, content: str, subject: str = "股票提醒",
+             images: Optional[list[str]] = None) -> dict:
+        """发送邮件。
+
+        Args:
+            content: 正文文本（自动转 HTML，保留换行）。
+            subject: 标题。
+            images: 可选图片文件路径列表（PNG），内嵌 CID 展示。
+        """
         if not self.user or not self.password:
             raise ChannelError("邮件未配置 EMAIL_USER / EMAIL_PASSWORD（.env）")
         if not self.to:
             raise ChannelError("邮件未配置 EMAIL_TO 收件人（.env）")
 
-        msg = MIMEText(content, "plain", "utf-8")
+        # 纯文本 → HTML（换行转 <br>）
+        body_html = "<br>".join(
+            line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            for line in content.splitlines()
+        )
+
+        if images:
+            msg = MIMEMultipart("related")
+            msg_alt = MIMEMultipart("alternative")
+            msg_alt.attach(MIMEText(content, "plain", "utf-8"))
+            msg_alt.attach(MIMEText(body_html, "html", "utf-8"))
+            msg.attach(msg_alt)
+            for idx, img_path in enumerate(images):
+                try:
+                    with open(img_path, "rb") as f:
+                        mime = MIMEImage(f.read())
+                    mime.add_header("Content-ID", f"<snapshot{idx}>")
+                    mime.add_header("Content-Disposition", "inline", filename=f"snapshot{idx}.png")
+                    msg.attach(mime)
+                except OSError as e:
+                    logger.warning("内嵌图片读取失败 %s: %s", img_path, e)
+        else:
+            msg = MIMEMultipart("alternative")
+            msg.attach(MIMEText(content, "plain", "utf-8"))
+            msg.attach(MIMEText(body_html, "html", "utf-8"))
+
         msg["Subject"] = Header(subject, "utf-8")
         msg["From"] = formataddr((str(Header("Stock投资助手", "utf-8")), self.user))
         msg["To"] = ",".join(self.to.split(","))
@@ -125,7 +160,7 @@ class EmailSender:
         except (smtplib.SMTPException, OSError) as e:
             raise ChannelError(f"邮件发送失败: {e}") from e
         logger.info("邮件已发送: %s → %s", self.user, self.to)
-        return {"ok": True, "to": self.to}
+        return {"ok": True, "to": self.to, "images": len(images or [])}
 
 
 # ── 通用 ─────────────────────────────────────────────────

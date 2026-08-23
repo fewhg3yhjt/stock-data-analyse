@@ -144,7 +144,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
           <div class="pos-metric gain"><div class="v">{{ p.hard_cap }}</div><div class="l">📈止盈硬上限</div></div>
           {% endif %}
           {% if p.right_side %}
-          <div class="pos-metric warn"><div class="v">{{ p.right_side.peak_price }}</div><div class="l">📉右侧回撤线(已回撤{{ p.right_side.drawdown_pct }}%)</div></div>
+          <div class="pos-metric warn"><div class="v">{{ p.right_side.trigger_price if p.right_side.trigger_price else p.right_side.peak_price }}</div><div class="l">📉右侧止盈线(峰值{{ p.right_side.peak_price }} 已回撤{{ p.right_side.drawdown_pct }}%，跌破触发)</div></div>
           {% endif %}
           {% if p.buy_more %}
           <div class="pos-metric buy"><div class="v">{{ p.buy_more.trigger_price }}</div><div class="l">💰补仓线{{ p.buy_more.label }}</div></div>

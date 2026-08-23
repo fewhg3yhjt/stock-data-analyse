@@ -201,15 +201,20 @@ def build_actionable_messages(data: dict) -> list[str]:
 
 # ── 推送入口 ─────────────────────────────────────────────
 
-def send_all(channel, url, messages: list[str]) -> int:
-    """推送多条消息（每条单独发送），返回成功条数。"""
+def send_all(channel, url, messages: list[str],
+             images: Optional[list[list[str]]] = None) -> int:
+    """推送多条消息（每条单独发送），返回成功条数。
+
+    images: 可选，与 messages 等长的图片列表（每条消息对应一组图片路径）。
+    """
     if not messages:
         logger.info("无待推送消息")
         return 0
     sender = make_channel(channel, url)
     sent = 0
-    for msg in messages:
-        sender.send(msg)
+    for i, msg in enumerate(messages):
+        imgs = images[i] if images and i < len(images) else None
+        sender.send(msg, images=imgs)
         sent += 1
     logger.info("已推送 %d 条消息（渠道 %s）", sent, channel)
     return sent

@@ -18,6 +18,7 @@
 import logging
 import os
 from datetime import datetime, timedelta
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -219,11 +220,57 @@ def run_actionable_monitor():
         except RuntimeError as e:
             logger.error("操作提醒推送配置错误: %s", e)
             return
-        sent = send_all(rules.channel, webhook, messages)
+        # 为每只有操作建议的持仓生成收益快照图（内嵌邮件）
+        images = _build_snapshot_images(data)
+        sent = send_all(rules.channel, webhook, messages, images=images)
         logger.info("持仓操作提醒已推送 %d 条: %d 只有操作建议",
                     sent, len(messages))
     except Exception as e:
         logger.error("持仓操作提醒异常: %s", e)
+
+
+def _build_snapshot_images(data: dict) -> Optional[list[list[str]]]:
+    """为有操作建议的持仓生成收益快照图，返回与 messages 对齐的图片列表。
+
+    每只股票一张收益图（复用 analysis.returns.build_chart），
+    webhook 渠道（飞书/企微）不支持内嵌图片 → 返回 None。
+    """
+    channel = os.getenv("NOTIFY_CHANNEL", "")
+    if channel in ("feishu", "wecom", "lark"):
+        return None
+    try:
+        from StockInvestmentTool.analysis.returns import compute_returns, build_chart
+        from StockInvestmentTool.portfolio.monitor import PriceMonitor
+        import tempfile
+        from pathlib import Path
+
+        out_dir = Path(tempfile.mkdtemp(prefix="snap_"))
+        positions = data.get("positions") or []
+        images_all = []
+        monitor = PriceMonitor()
+        for p in positions:
+            adv = p.get("advice") or {}
+            if not (adv.get("advice_type") and adv.get("is_actionable")):
+                images_all.append([])
+                continue
+            code = p.get("stock_code") or ""
+            try:
+                kline, _ = monitor.fetch_context_data(code)
+                r = compute_returns(kline, cost_price=p.get("avg_cost"))
+                if r is not None and not r.empty:
+                    title = f"{p.get('stock_name')} 累计收益"
+                    path = build_chart(r, title, out_dir=out_dir,
+                                       filename=f"{code}.png")
+                    images_all.append([path] if path else [])
+                else:
+                    images_all.append([])
+            except Exception as e:
+                logger.warning("快照图生成失败 %s: %s", code, e)
+                images_all.append([])
+        return images_all
+    except Exception as e:
+        logger.warning("快照图生成整体失败: %s", e)
+        return None
 
 
 def run_online_snapshot_job():

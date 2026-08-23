@@ -287,9 +287,18 @@ class PostPurchaseAdvisor:
         dd_pct = (position.peak_price - ctx.current_price) / position.peak_price * 100 \
             if position.peak_price > 0 else 0
 
+        # 右侧止盈触发线 = 峰值 × (1 - 回撤阈值)；跌破即触发清仓
+        dd_threshold = None
+        if drawdown_by_type:
+            dd_threshold = drawdown_by_type.get(position.stock_type)
+        trigger_price = round(
+            position.peak_price * (1 - dd_threshold), 2
+        ) if dd_threshold and position.peak_price > 0 else None
+
         check_results["right_side"] = {
             "peak_price": round(position.peak_price, 2),
             "drawdown_pct": round(dd_pct, 2),
+            "trigger_price": trigger_price,          # 右侧止盈触发线（跌破即清仓）
             "triggered": should_sell,
         }
         if should_sell:
