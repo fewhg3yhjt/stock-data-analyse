@@ -360,11 +360,15 @@ class DashboardService:
 
         monitor = PriceMonitor()
         kline, dividend_anchor = monitor.fetch_context_data(code)
-        # 按观察起点截取：从 added_time 起算各类指标；起点后首个交易日之前不生成
+        # 按观察起点截取：从 added_time 起算各类指标；起点后首个交易日之前不生成。
+        # 注意：若起点晚于最新数据（如今天加入，仓库数据止于昨天），过滤后会变空，
+        # 此时降级用完整 kline（观察起点是"从哪天起观察"，不是"从哪天起有数据"）。
         if added_time:
             import pandas as _pd
             mask = _pd.to_datetime(kline["date"]) >= _pd.to_datetime(added_time)
-            kline = kline[mask].reset_index(drop=True)
+            filtered = kline[mask].reset_index(drop=True)
+            if len(filtered) > 0:
+                kline = filtered
         ctx = self.manager.advisor.compute_context(kline, dividend_anchor)
         market_state = dashboard_market_state(kline)
 
