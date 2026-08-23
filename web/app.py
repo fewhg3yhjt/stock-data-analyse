@@ -1074,6 +1074,30 @@ def api_returns_chart():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/chart/stock", methods=["POST"])
+def api_stock_chart_series():
+    """单只股票可视化序列：日/周/月 + 指标 + 收益率双线（ECharts）"""
+    from StockInvestmentTool.portfolio.dashboard import DashboardService
+
+    try:
+        code = (flask.request.form.get("code") or "").strip()
+        period = (flask.request.form.get("period") or "day").strip()
+        days = int(flask.request.form.get("days", "120"))
+        cost = flask.request.form.get("cost_price", "")
+        cost_price = float(cost) if cost else None
+        metrics_raw = flask.request.form.get("metrics", "")
+        metrics = [m.strip() for m in metrics_raw.split(",") if m.strip()] if metrics_raw else None
+        if not code:
+            return flask.jsonify({"status": "error", "error": "缺少代码"}), 400
+        svc = DashboardService(_get_manager())
+        data = svc.stock_chart_series(code, period=period, days=days,
+                                      cost_price=cost_price, metrics=metrics)
+        return flask.jsonify({"status": "success", **data})
+    except Exception as e:
+        logger.exception("股票图表序列失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/returns/export", methods=["GET"])
 def returns_export():
     """导出全部持仓/自选的收益明细 + 汇总到 xlsx。"""

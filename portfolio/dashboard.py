@@ -250,6 +250,104 @@ class DashboardService:
 
         return result
 
+    def stock_chart_series(self, code: str, period: str = "day",
+                           days: int = 120,
+                           cost_price: Optional[float] = None,
+                           metrics: Optional[list[str]] = None) -> dict:
+        """单只股票的可视化序列（ECharts 用）。
+
+        支持日/周/月重采样 + 指标体系 + 收益率双线（成本收益/价格收益）。
+
+        Args:
+            code: 股票代码
+            period: day/week/month（重采样粒度）
+            days: 数据长度（交易日）
+            cost_price: 持仓成本（用于成本收益率，None=只算价格收益）
+            metrics: 要展示的指标名（None=收盘+MA20+MA60）
+
+        Returns:
+            {code, dates, closes, metrics:[{name,key,data}],
+             ret_cost, ret_price, avg_cost}
+        """
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        from StockInvestmentTool.indicators.engine import IndicatorRegistry
+
+        norm = StockDataFetcher.normalize_code(code)
+        code_nodot = norm.replace(".", "")
+        if metrics is None:
+            metrics = ["MA20", "MA60"]
+
+        # 读 warehouse 日线
+        w = Warehouse()
+        parts = []
+        for ym in w.available_months("daily"):
+            df = w.read_daily(ym)
+            if df is None or df.empty or "code" not in df.columns:
+                continue
+            sub = df[df["code"] == code_nodot]
+            if len(sub):
+                parts.append(sub)
+        if not parts:
+            return {"code": code_nodot, "dates": [], "closes": [],
+                    "metrics": [], "ret_cost": [], "ret_price": [],
+                    "avg_cost": cost_price}
+        import pandas as pd
+        kline = pd.concat(parts, ignore_index=True).sort_values("date").tail(days * 2)
+
+        # 计算指标（指标体系，日线）
+        reg = IndicatorRegistry()
+        ind_series = reg.compute(kline, metrics)
+
+        # 重采样（日/周/月）
+        if period == "week":
+            kline["_period"] = kline["date"].dt.to_period("W")
+        elif period == "month":
+            kline["_period"] = kline["date"].dt.to_period("M")
+        else:
+            kline["_period"] = kline["date"].dt.to_period("D")
+
+        agg = kline.groupby("_period").agg(
+            close=("close", "last"),
+            start_close=("close", "first"),
+            _date=("date", "last"),
+        ).reset_index().sort_values("_date").tail(days)
+
+        dates = [str(d)[:10] for d in agg["_date"]]
+        closes = [round(float(x), 2) for x in agg["close"]]
+
+        # 指标序列（按重采样粒度重采样）
+        metric_series = []
+        for name in metrics:
+            if name not in ind_series:
+                continue
+            s = ind_series[name]
+            if s is None or s.empty:
+                continue
+            s_df = pd.DataFrame({"date": kline["date"], "val": s.values})
+            if period == "week":
+                s_df["_p"] = s_df["date"].dt.to_period("W")
+            elif period == "month":
+                s_df["_p"] = s_df["date"].dt.to_period("M")
+            else:
+                s_df["_p"] = s_df["date"].dt.to_period("D")
+            s_agg = s_df.groupby("_p")["val"].last().reindex(agg["_period"]).tail(days)
+            vals = [round(float(x), 2) if x == x else None for x in s_agg]
+            metric_series.append({"name": name, "key": name, "data": vals})
+
+        # 收益率双线
+        start_close = float(agg["start_close"].iloc[0]) if len(agg) else 1
+        ret_price = [round((float(c) / start_close - 1) * 100, 2) if start_close else None
+                     for c in closes]
+        ret_cost = []
+        if cost_price and cost_price > 0:
+            ret_cost = [round((float(c) / float(cost_price) - 1) * 100, 2) for c in closes]
+
+        return {"code": code_nodot, "dates": dates, "closes": closes,
+                "metrics": metric_series,
+                "ret_cost": ret_cost, "ret_price": ret_price,
+                "avg_cost": cost_price}
+
     def _observe_one(self, item: dict) -> dict:
         """计算单只观察标的全套字段。"""
         from StockInvestmentTool.portfolio.monitor import PriceMonitor
