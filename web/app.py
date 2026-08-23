@@ -1038,11 +1038,20 @@ def api_returns_chart():
             return flask.jsonify({"status": "error", "error": "图表生成失败"}), 500
         import os
         rel = os.path.basename(filename)
+        # 额外返回 ECharts 交互数据（dates + 收益序列），前端优先用交互式渲染
+        dates = [str(d)[:10] for d in r["date"]]
+        ret_series = [round(float(x), 2) if x == x else None for x in r["ret_pct"]]
+        close_series = [round(float(x), 2) if x == x else None for x in r["close"]]
         return flask.jsonify({"status": "success",
                               "chart": "/charts/" + rel,
                               "ret_pct": round(float(r["ret_pct"].iloc[-1]), 2),
                               "ret_amount": round(float(r["ret_amount"].iloc[-1]), 2),
-                              "latest_close": round(float(r["close"].iloc[-1]), 2)})
+                              "latest_close": round(float(r["close"].iloc[-1]), 2),
+                              "chart_data": {"dates": dates, "title": title,
+                                             "series": [
+                                                 {"name": "累计收益%", "key": "ret_pct", "data": ret_series},
+                                                 {"name": "收盘价", "key": "close", "data": close_series},
+                                             ]}})
     except Exception as e:
         logger.exception("收益图生成失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
