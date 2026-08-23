@@ -4,7 +4,7 @@
 # WECOM_WEBHOOK_URL），不写在这里（避免泄露）。
 # ============================================================
 
-channel: "feishu"              # feishu | wecom
+channel: "email"              # feishu | wecom | email
 
 # ── 自选股价格阈值提醒（--price / --all）──────────────────
 # code 格式: sh600519 / sz300750（腾讯报价用）

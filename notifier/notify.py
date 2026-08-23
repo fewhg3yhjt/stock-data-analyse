@@ -46,6 +46,9 @@ class NotifyRules:
         return rules
 
     def webhook_url(self) -> str:
+        """返回渠道的 webhook URL（email 渠道返回 ''，发送器从环境变量读配置）。"""
+        if self.channel in ("email", "mail", "smtp"):
+            return ""  # email 渠道无 webhook，配置走环境变量
         env_key = "FEISHU_WEBHOOK_URL" if self.channel in ("feishu", "lark") else "WECOM_WEBHOOK_URL"
         url = os.getenv(env_key, "")
         if not url:

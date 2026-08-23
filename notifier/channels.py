@@ -1,14 +1,19 @@
 # -*- coding: utf-8 -*-
-"""消息推送渠道适配器 — 企业微信 / 飞书 群机器人 webhook
+"""消息推送渠道适配器 — 企业微信 / 飞书 群机器人 webhook / 邮件 SMTP
 
 设计原则:
-    - 消息直达自己的 App（企业微信/飞书），不经过任何第三方中转
-    - 渠道通过环境变量/配置选择: NOTIFY_CHANNEL = wecom | feishu
+    - 消息直达自己的 App（企业微信/飞书）或邮箱（SMTP），不经过任何第三方中转
+    - 渠道通过环境变量/配置选择: NOTIFY_CHANNEL = wecom | feishu | email
     - 统一入口 send()：外部只需关心「发一段文本」即可
 """
 
 import logging
+import os
 import re
+import smtplib
+from email.header import Header
+from email.mime.text import MIMEText
+from email.utils import formataddr, formatdate
 from typing import Optional
 
 import requests
@@ -78,6 +83,51 @@ def _feishu_card(md: str) -> dict:
     }
 
 
+# ── 邮件 SMTP ─────────────────────────────────────────────
+
+class EmailSender:
+    """SMTP 邮件发送（QQ/163 等，SSL 465）。
+
+    配置走环境变量（.env）:
+        EMAIL_SMTP_HOST   smtp.qq.com
+        EMAIL_SMTP_PORT   465
+        EMAIL_USER        发件邮箱账号
+        EMAIL_PASSWORD    SMTP 授权码（非登录密码）
+        EMAIL_TO          收件人（逗号分隔多个）
+    """
+
+    def __init__(self, host: Optional[str] = None, port: Optional[int] = None,
+                 user: Optional[str] = None, password: Optional[str] = None,
+                 to: Optional[str] = None, timeout: float = 30.0):
+        self.host = host or os.getenv("EMAIL_SMTP_HOST", "smtp.qq.com")
+        self.port = int(port or os.getenv("EMAIL_SMTP_PORT", "465"))
+        self.user = user or os.getenv("EMAIL_USER", "")
+        self.password = password or os.getenv("EMAIL_PASSWORD", "")
+        self.to = to or os.getenv("EMAIL_TO", "")
+        self.timeout = timeout
+
+    def send(self, content: str, subject: str = "股票提醒") -> dict:
+        if not self.user or not self.password:
+            raise ChannelError("邮件未配置 EMAIL_USER / EMAIL_PASSWORD（.env）")
+        if not self.to:
+            raise ChannelError("邮件未配置 EMAIL_TO 收件人（.env）")
+
+        msg = MIMEText(content, "plain", "utf-8")
+        msg["Subject"] = Header(subject, "utf-8")
+        msg["From"] = formataddr((str(Header("Stock投资助手", "utf-8")), self.user))
+        msg["To"] = ",".join(self.to.split(","))
+        msg["Date"] = formatdate(localtime=True)
+
+        try:
+            with smtplib.SMTP_SSL(self.host, self.port, timeout=self.timeout) as s:
+                s.login(self.user, self.password)
+                s.sendmail(self.user, [x.strip() for x in self.to.split(",") if x.strip()], msg.as_string())
+        except (smtplib.SMTPException, OSError) as e:
+            raise ChannelError(f"邮件发送失败: {e}") from e
+        logger.info("邮件已发送: %s → %s", self.user, self.to)
+        return {"ok": True, "to": self.to}
+
+
 # ── 通用 ─────────────────────────────────────────────────
 
 def _post_webhook(url: str, payload: dict, timeout: float) -> dict:
@@ -96,10 +146,15 @@ def _post_webhook(url: str, payload: dict, timeout: float) -> dict:
 
 
 def make_channel(channel: str, url: str, timeout: float = 10.0):
-    """按渠道名构造发送器。"""
+    """按渠道名构造发送器。
+
+    url 参数: webhook 渠道用 URL；email 渠道忽略（配置走环境变量）。
+    """
     channel = (channel or "").lower()
     if channel == "wecom":
         return WecomWebhook(url, timeout)
     if channel in ("feishu", "lark", "飞书"):
         return FeishuWebhook(url, timeout)
-    raise ChannelError(f"未知通知渠道: {channel}（支持 wecom / feishu）")
+    if channel in ("email", "mail", "smtp", "邮件"):
+        return EmailSender()
+    raise ChannelError(f"未知通知渠道: {channel}（支持 wecom / feishu / email）")
