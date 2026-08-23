@@ -37,6 +37,27 @@ def setup_cjk_font() -> Optional[str]:
         except Exception:
             continue
 
+    # 兜底：从项目 fonts/ 目录注册中文字体（代码挂载进容器，容器无系统字体时可用）
+    if cjk is None:
+        from StockInvestmentTool.config import Config
+        font_dir = Config.BASE_DIR / "fonts"
+        if font_dir.exists():
+            for font_file in font_dir.glob("*.[tT][tT][cCfF]"):
+                try:
+                    fm.fontManager.addfont(str(font_file))
+                    logger.info("已注册项目字体: %s", font_file.name)
+                except Exception as e:
+                    logger.debug("字体注册失败 %s: %s", font_file, e)
+            # 注册后再找一次
+            for fname in ["Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK"]:
+                try:
+                    fp = fm.findfont(fname, fallback_to_default=False)
+                    if fp and "DejaVu" not in fp:
+                        cjk = fname
+                        break
+                except Exception:
+                    continue
+
     if cjk:
         plt.rcParams["font.sans-serif"] = [cjk, "DejaVu Sans"]
         plt.rcParams["axes.unicode_minus"] = False

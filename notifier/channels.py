@@ -132,7 +132,12 @@ class EmailSender:
             msg = MIMEMultipart("related")
             msg_alt = MIMEMultipart("alternative")
             msg_alt.attach(MIMEText(content, "plain", "utf-8"))
-            msg_alt.attach(MIMEText(body_html, "html", "utf-8"))
+            # HTML 正文末尾内嵌 <img src="cid:snapshotN">，图片才能显示在正文而非附件
+            img_tags = "".join(
+                f'<br><img src="cid:snapshot{idx}" style="max-width:640px;border-radius:8px;">'
+                for idx in range(len(images))
+            )
+            msg_alt.attach(MIMEText(body_html + img_tags, "html", "utf-8"))
             msg.attach(msg_alt)
             for idx, img_path in enumerate(images):
                 try:

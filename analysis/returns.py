@@ -168,3 +168,55 @@ def export_returns_xlsx(entries: list[dict], path: Optional[str | Path] = None) 
     wb.save(str(path))
     logger.info("收益分析已导出: %s", path)
     return str(path)
+
+
+def build_snapshot_chart(kline, stock_name: str, code: str,
+                         out_dir: Optional[Path] = None,
+                         filename: Optional[str] = None) -> Optional[str]:
+    """生成单只股票的快照图（收盘价 + MA20/MA60，风格与页面 ECharts 一致）。
+
+    用于邮件内嵌：比纯收益图信息更丰富，用户一眼看到当前走势/均线位置。
+    """
+    if kline is None or kline.empty:
+        return None
+    try:
+        from StockInvestmentTool.analysis.charts import setup_cjk_font
+        setup_cjk_font()
+    except Exception:
+        pass
+
+    out_dir = Path(out_dir) if out_dir else Config.CHART_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if filename is None:
+        filename = f"snap_{code}_{datetime.now():%Y%m%d%H%M%S}.png"
+    path = out_dir / filename
+
+    df = kline.copy()
+    df = df.sort_values("date")
+    df["ma20"] = df["close"].rolling(20).mean()
+    df["ma60"] = df["close"].rolling(60).mean()
+    df = df.tail(120)
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(9, 4.2), dpi=120)
+    ax.plot(df["date"], df["close"], color="#1a73e8", linewidth=1.6,
+            label="收盘")
+    ax.plot(df["date"], df["ma20"], color="#e67e22", linewidth=1.0,
+            label="MA20")
+    ax.plot(df["date"], df["ma60"], color="#27ae60", linewidth=1.0,
+            label="MA60")
+    last = df.iloc[-1]
+    ax.axhline(last["close"], color="#1a73e8", linewidth=0.8, linestyle="--", alpha=0.5)
+    ax.set_title(f"{stock_name}（{code}） 最新 {last['close']:.2f}", fontsize=13)
+    ax.set_ylabel("价格", fontsize=10)
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="best", fontsize=9)
+    ax.tick_params(labelsize=9)
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    fig.savefig(str(path), bbox_inches="tight")
+    plt.close(fig)
+    return str(path)
