@@ -665,6 +665,61 @@ def simulation_page():
                                      error=str(e))
 
 
+@web_app.route("/strategy", methods=["GET"])
+def strategy_page():
+    """策略实验室页：扫描选股 + 回测验证"""
+    return flask.render_template("strategy.html", error=None)
+
+
+@web_app.route("/api/strategy/scan", methods=["POST"])
+def api_strategy_scan():
+    """策略扫描：找当前/某时点符合条件股票 + 生成折线图"""
+    from StockInvestmentTool.strategy_lab import scan, plot_hits
+
+    try:
+        as_of = (flask.request.form.get("as_of") or "").strip()[:10]
+        limit_up = flask.request.form.get("limit_up_10d", "1")
+        deviation = flask.request.form.get("deviation_ma20_max", "0.10")
+        top_n = int(flask.request.form.get("top_n", "20"))
+        conditions = {
+            "limit_up_10d": int(limit_up) if limit_up else 1,
+            "deviation_ma20_max": float(deviation) if deviation else 0.10,
+        }
+        hits = scan(conditions, as_of=as_of, top_n=top_n)
+        # 生成折线图到 CHART_DIR，返回 /charts/ 路径
+        charts = []
+        if hits:
+            paths = plot_hits(conditions, as_of=as_of, hits=hits, max_plot=5)
+            charts = ["/charts/" + os.path.basename(p) for p in paths]
+        return flask.jsonify({"status": "success", "hits": hits,
+                              "charts": charts, "count": len(hits)})
+    except Exception as e:
+        logger.exception("策略扫描失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/strategy/backtest", methods=["POST"])
+def api_strategy_backtest():
+    """策略回测：历史选股持有N天收益 vs 全市场基准"""
+    from StockInvestmentTool.strategy_lab import backtest
+
+    try:
+        hold_days = int(flask.request.form.get("hold_days", "10"))
+        limit_up = flask.request.form.get("limit_up_10d", "1")
+        deviation = flask.request.form.get("deviation_ma20_max", "0.10")
+        conditions = {
+            "limit_up_10d": int(limit_up) if limit_up else 1,
+            "deviation_ma20_max": float(deviation) if deviation else 0.10,
+        }
+        r = backtest(conditions, hold_days=hold_days)
+        if r.get("signals", 0) == 0:
+            return flask.jsonify({"status": "error", "error": "无信号"}), 400
+        return flask.jsonify({"status": "success", **r})
+    except Exception as e:
+        logger.exception("策略回测失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/watchlist/<int:item_id>", methods=["DELETE"])
 def watchlist_delete(item_id):
     """删除自选"""

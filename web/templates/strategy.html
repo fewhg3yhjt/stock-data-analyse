@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 策略实验室</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
+  --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
+  --red:#dc3545; --green:#28a745; --orange:#e67e22;
+  --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
+}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+.app{max-width:1300px;margin:0 auto;padding:28px 22px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 22px;margin-bottom:16px;box-shadow:var(--shadow);}
+.card-title{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.card-title i{color:var(--accent);}
+table{width:100%;border-collapse:collapse;font-size:14px;}
+.table-wrap{overflow-x:auto;}
+th{text-align:left;padding:9px 10px;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;}
+.tag.green{background:#e8f5e9;color:var(--green);}
+.tag.red{background:#fbe9e7;color:var(--red);}
+.tag.orange{background:#fff3e0;color:var(--orange);}
+.tag.blue{background:#e3f2fd;color:var(--accent);}
+.btn{padding:6px 14px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
+.btn-secondary:hover{background:var(--border);}
+input,select{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--surface);}
+label{font-size:13px;color:var(--text2);display:block;margin-bottom:4px;}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px;}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px;}
+.metric{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;text-align:center;}
+.metric .v{font-size:22px;font-weight:700;color:var(--accent);}
+.metric .v.green{color:var(--green);}
+.metric .v.red{color:var(--red);}
+.metric .l{font-size:12px;color:var(--text2);margin-top:2px;}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.chart-grid img{width:100%;border:1px solid var(--border);border-radius:var(--radius);background:#fff;}
+#loading{display:none;text-align:center;padding:30px;color:var(--text2);}
+.hint{font-size:12px;color:var(--text2);}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1><i class="fas fa-vial-virus"></i> 策略实验室</h1>
+    <div class="sub">快速验证选股策略 — 扫描选股 + 历史回测，有效再固化</div>
+    {% set active='strategy' %}{% include '_nav.html' %}
+  </div>
+
+  <div class="card">
+    <div class="card-title"><i class="fas fa-sliders"></i> 策略条件</div>
+    <div class="form-grid">
+      <div><label>基准日(空=最新交易日)</label><input id="as_of" placeholder="2026-08-21"></div>
+      <div><label>10日涨停次数 ≥</label><input id="limit_up" value="1" type="number" min="1"></div>
+      <div><label>偏离MA20 < (%):</label><input id="deviation" value="10" type="number" step="1"></div>
+      <div><label>持有天数(回测):</label><input id="hold_days" value="10" type="number" min="1"></div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" onclick="doScan()"><i class="fas fa-magnifying-glass"></i> 扫描选股</button>
+      <button class="btn btn-secondary" onclick="doBacktest()"><i class="fas fa-chart-line"></i> 历史回测</button>
+    </div>
+    <div class="hint" style="margin-top:8px;">条件: 股价>MA60 | 10日涨停≥N | 偏离MA20&lt;X%（创业板/科创板涨停阈值自动按20%处理）</div>
+  </div>
+
+  <div id="loading"><i class="fas fa-spinner fa-spin"></i> 计算中，请稍候（全市场约 15-30 秒）...</div>
+
+  <div id="backtest_result" style="display:none;">
+    <div class="card">
+      <div class="card-title"><i class="fas fa-chart-line"></i> 回测结果（历史选股 → 持有N天）</div>
+      <div class="metric-grid" id="bt_metrics"></div>
+    </div>
+  </div>
+
+  <div id="scan_result" style="display:none;">
+    <div class="card">
+      <div class="card-title"><i class="fas fa-list"></i> 扫描结果 <span class="tag blue" id="scan_count"></span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>代码</th><th>现价</th><th>MA20</th><th>MA60</th><th>偏离%</th><th>10日涨停</th></tr></thead>
+          <tbody id="scan_rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><i class="fas fa-image"></i> 折线图（前5只: 收盘 + MA20/MA60，红虚线=买点）</div>
+      <div class="chart-grid" id="charts"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function doScan(){
+  const as_of = document.getElementById('as_of').value.trim();
+  const limit_up = document.getElementById('limit_up').value || '1';
+  const deviation = document.getElementById('deviation').value || '10';
+  setLoading(true);
+  try{
+    const fd = new FormData();
+    fd.append('as_of', as_of); fd.append('limit_up_10d', limit_up);
+    fd.append('deviation_ma20_max', (parseFloat(deviation)/100).toFixed(4));
+    const r = await fetch('/api/strategy/scan', {method:'POST', body: fd});
+    const d = await r.json();
+    if(d.status!=='success') throw new Error(d.error);
+    document.getElementById('scan_count').textContent = '命中 '+d.count+' 只';
+    const tb = document.getElementById('scan_rows'); tb.innerHTML='';
+    d.hits.forEach(h=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${h.code}</td><td>${h.price}</td><td>${h.ma20}</td><td>${h.ma60}</td>
+        <td><span class="tag ${h.deviation_pct<3?'green':'blue'}">${h.deviation_pct}%</span></td>
+        <td><span class="tag orange">${h.limit_up_10d}</span></td>`;
+      tb.appendChild(tr);
+    });
+    const cg=document.getElementById('charts'); cg.innerHTML='';
+    d.charts.forEach(url=>{ const im=document.createElement('img'); im.src=url; cg.appendChild(im); });
+    document.getElementById('scan_result').style.display='';
+  }catch(e){ alert('扫描失败: '+e.message); }
+  setLoading(false);
+}
+
+async function doBacktest(){
+  const limit_up = document.getElementById('limit_up').value || '1';
+  const deviation = document.getElementById('deviation').value || '10';
+  const hold = document.getElementById('hold_days').value || '10';
+  setLoading(true);
+  try{
+    const fd = new FormData();
+    fd.append('limit_up_10d', limit_up);
+    fd.append('deviation_ma20_max', (parseFloat(deviation)/100).toFixed(4));
+    fd.append('hold_days', hold);
+    const r = await fetch('/api/strategy/backtest', {method:'POST', body: fd});
+    const d = await r.json();
+    if(d.status!=='success') throw new Error(d.error);
+    const g=document.getElementById('bt_metrics'); g.innerHTML='';
+    const items=[
+      ['信号数', d.signals, ''],
+      ['平均收益', d.avg_ret+'%', d.avg_ret>=0?'green':'red'],
+      ['胜率', d.win_rate+'%', d.win_rate>=50?'green':'red'],
+      ['全市场基准', d.market_avg_ret+'%', ''],
+      ['策略超额', (d.excess_avg>=0?'+':'')+d.excess_avg+'%', d.excess_avg>=0?'green':'red'],
+      ['最差/最好', d.worst+'%/'+d.best+'%', ''],
+    ];
+    items.forEach(([l,v,cls])=>{
+      const div=document.createElement('div'); div.className='metric';
+      div.innerHTML=`<div class="v ${cls}">${v}</div><div class="l">${l}</div>`;
+      g.appendChild(div);
+    });
+    document.getElementById('backtest_result').style.display='';
+  }catch(e){ alert('回测失败: '+e.message); }
+  setLoading(false);
+}
+
+function setLoading(on){
+  document.getElementById('loading').style.display = on?'':'none';
+}
+</script>
+</body>
+</html>
