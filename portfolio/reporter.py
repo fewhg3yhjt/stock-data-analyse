@@ -17,7 +17,6 @@ import pandas as pd
 
 from StockInvestmentTool.config import Config
 from StockInvestmentTool.datasource.fetcher import StockDataFetcher
-from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 from StockInvestmentTool.strategy.market_state import determine_market_state_from_df
 from StockInvestmentTool.portfolio.manager import PortfolioManager
 from StockInvestmentTool.portfolio.models import (
@@ -88,30 +87,31 @@ class MorningReporter:
         """自选池（未持仓）当前价距支撑位"""
         rows = []
         open_codes = {p.stock_code for p in self.manager.storage.get_open_positions()}
-        with StockDataFetcher() as fetcher:
-            for item in self.manager.get_watchlist():
-                if item.stock_code in open_codes:
-                    continue  # 已持仓的在表3
-                try:
-                    kline = fetcher.get_kline(item.stock_code)
-                    kline = TechnicalIndicators.compute_all(kline)
-                    last = kline.iloc[-1]
-                    current = float(last["close"])
-                    weak = item.weak_support
-                    # 未手动预设时用 MA60 近似
-                    if weak <= 0 and "ma_60" in kline.columns:
-                        weak = float(last.get("ma_60", 0))
-                    dist = (current / weak - 1) * 100 if weak > 0 else None
-                    rows.append({
-                        "code": item.stock_code, "name": item.stock_name,
-                        "current": round(current, 3),
-                        "weak_support": round(weak, 3) if weak > 0 else None,
-                        "distance_pct": round(dist, 2) if dist is not None else None,
-                        "target_capital": item.target_capital,
-                        "action": f"挂单{round(weak,2)}等待" if weak > 0 and current > weak else "已到位，可买入",
-                        "priority": "高" if current <= weak else "中",
-                    })
-                except Exception as e:
+        from StockInvestmentTool.portfolio.monitor import PriceMonitor
+        monitor = PriceMonitor()
+        for item in self.manager.get_watchlist():
+            if item.stock_code in open_codes:
+                continue  # 已持仓的在表3
+            try:
+                # warehouse 优先，baostock 兜底（含技术指标）
+                kline = monitor.fetch_kline(item.stock_code)
+                last = kline.iloc[-1]
+                current = float(last["close"])
+                weak = item.weak_support
+                # 未手动预设时用 MA60 近似
+                if weak <= 0 and "ma_60" in kline.columns:
+                    weak = float(last.get("ma_60", 0))
+                dist = (current / weak - 1) * 100 if weak > 0 else None
+                rows.append({
+                    "code": item.stock_code, "name": item.stock_name,
+                    "current": round(current, 3),
+                    "weak_support": round(weak, 3) if weak > 0 else None,
+                    "distance_pct": round(dist, 2) if dist is not None else None,
+                    "target_capital": item.target_capital,
+                    "action": f"挂单{round(weak,2)}等待" if weak > 0 and current > weak else "已到位，可买入",
+                    "priority": "高" if current <= weak else "中",
+                })
+            except Exception as e:
                     logger.warning("自选 %s 分析失败: %s", item.stock_code, e)
         return rows
 

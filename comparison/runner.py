@@ -108,7 +108,14 @@ class MultiSchemeRunner:
         (kline, dividend_anchor)
         """
         with StockDataFetcher() as fetcher:
-            kline = fetcher.get_kline(code=code, start_date=start_date, end_date=end_date)
+            kline = None
+            try:
+                from StockInvestmentTool.portfolio.monitor import PriceMonitor
+                kline = PriceMonitor().fetch_kline(code, start_date, end_date)
+            except Exception as e:
+                logger.warning("warehouse K线读取失败(%s)，回退 baostock: %s", code, e)
+            if kline is None or kline.empty:
+                kline = fetcher.get_kline(code=code, start_date=start_date, end_date=end_date)
 
             end_dt = datetime.strptime(end_date, "%Y-%m-%d")
             py = end_dt.year

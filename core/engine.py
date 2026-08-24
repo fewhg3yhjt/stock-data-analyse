@@ -156,7 +156,14 @@ class AnalysisEngine:
         if profit_q == 4:
             profit_year -= 1
 
-        kline = fetcher.get_kline(code=code, start_date=start_date, end_date=end_date)
+        kline = None
+        try:
+            from StockInvestmentTool.portfolio.monitor import PriceMonitor
+            kline = PriceMonitor().fetch_kline(code, start_date, end_date)
+        except Exception as e:
+            logger.warning("warehouse K线读取失败(%s)，回退 baostock: %s", code, e)
+        if kline is None or kline.empty:
+            kline = fetcher.get_kline(code=code, start_date=start_date, end_date=end_date)
         basic = fetcher.get_stock_basic(code)
         profit = fetcher.get_profit_data(code, profit_year, profit_q)
         divs = []
