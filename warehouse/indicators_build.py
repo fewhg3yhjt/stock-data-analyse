@@ -73,6 +73,7 @@ class IndicatorsBuilder:
         month_bufs: dict[str, pd.DataFrame] = {}
         done = 0
         t0 = time.time()
+        written_months: set[str] = set()
 
         def _flush():
             for ym, df in month_bufs.items():
@@ -84,6 +85,7 @@ class IndicatorsBuilder:
                 df = df.drop_duplicates(subset=["date", "code"])
                 df = df.sort_values(["date", "code"])
                 self.warehouse.write_indicator_partition(ym, df)
+                written_months.add(ym)
             month_bufs.clear()
 
         for i, code in enumerate(symbols, 1):
@@ -120,6 +122,6 @@ class IndicatorsBuilder:
 
         elapsed = time.time() - t0
         logger.info("指标计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
-                    done, len(month_bufs), elapsed)
-        return {"symbols": done, "months": len(month_bufs),
+                    done, len(written_months), elapsed)
+        return {"symbols": done, "months": len(written_months),
                 "elapsed_sec": round(elapsed, 1)}
