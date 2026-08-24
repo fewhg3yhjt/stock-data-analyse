@@ -35,10 +35,14 @@ class IndicatorsBuilder:
 
     def build_all(self, symbols: Optional[list[str]] = None,
                   max_symbols: Optional[int] = None,
-                  metrics: Optional[list[str]] = None) -> dict:
-        """全市场指标宽表生成（分组一次遍历 + 按月落盘）。
+                  metrics: Optional[list[str]] = None,
+                  flush_every: int = 500) -> dict:
+        """全市场指标宽表生成（分组一次遍历 + 分批落盘）。
 
         需仓库已有 daily 分区（先跑 sync_daily）。
+
+        Args:
+            flush_every: 每处理 N 个标的落盘一次，防止中断丢失全部内存成果。
 
         Returns:
             dict: 标的数 / 覆盖月份 / 耗时
@@ -64,10 +68,24 @@ class IndicatorsBuilder:
             symbols = symbols[:max_symbols]
         logger.info("指标计算: %d 标的", len(symbols))
 
-        # ② 逐标的算指标，按月份累积
+        # ② 逐标的算指标，按月份累积；每 flush_every 个标的落盘一次并清空，
+        #    避免中断丢失全部成果（2C2G 下内存也有界）。
         month_bufs: dict[str, pd.DataFrame] = {}
         done = 0
         t0 = time.time()
+
+        def _flush():
+            for ym, df in month_bufs.items():
+                if df is None or len(df) == 0:
+                    continue
+                existing = self.warehouse.read_indicator(ym)
+                if existing is not None and len(existing):
+                    df = pd.concat([existing, df], ignore_index=True)
+                df = df.drop_duplicates(subset=["date", "code"])
+                df = df.sort_values(["date", "code"])
+                self.warehouse.write_indicator_partition(ym, df)
+            month_bufs.clear()
+
         for i, code in enumerate(symbols, 1):
             frames = per_code.get(code)
             if not frames:
@@ -92,13 +110,13 @@ class IndicatorsBuilder:
                 else:
                     month_bufs[ym] = grp.copy()
             done += 1
-            if i % 500 == 0 or i == len(symbols):
-                logger.info("指标进度 %d/%d，完成 %d 只", i, len(symbols), done)
+            if i % flush_every == 0 or i == len(symbols):
+                _flush()
+                logger.info("指标进度 %d/%d，完成 %d 只（已落盘）", i, len(symbols), done)
 
-        # ③ 统一写盘
-        for ym, df in month_bufs.items():
-            df = df.drop_duplicates(subset=["date", "code"]).sort_values(["date", "code"])
-            self.warehouse.write_indicator_partition(ym, df)
+        # 兜底落盘
+        if month_bufs:
+            _flush()
 
         elapsed = time.time() - t0
         logger.info("指标计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
