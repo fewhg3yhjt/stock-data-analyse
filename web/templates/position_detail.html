@@ -306,26 +306,44 @@ table.mini td.v{color:var(--text);font-weight:500;}
 
  <script>
 function toggle(el) { el.classList.toggle('open'); }
+function showToast(msg, isErr){
+  let t = document.getElementById('toast');
+  if (!t){
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 22px;border-radius:6px;color:#fff;z-index:9999;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.2);';
+    document.body.appendChild(t);
+  }
+  t.style.background = isErr ? '#dc3545' : '#28a745';
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.style.display = 'none', 3000);
+}
 async function changeScheme(){
   const scheme = document.getElementById('scheme-select').value;
   if (!confirm('切换方案为 ' + scheme + '？将重新计算止盈止损位。')) return;
-  const r = await fetch('/portfolio/{{ p.id }}/scheme', { method: 'POST', body: new URLSearchParams({ scheme }) });
-  const d = await r.json();
-  if (d.status === 'success'){ alert('方案已切换，止盈止损位已重算'); location.reload(); }
-  else alert(d.error || '切换失败');
+  try {
+    const r = await fetch('/portfolio/{{ p.id }}/scheme', { method: 'POST', body: new URLSearchParams({ scheme }) });
+    const d = await r.json();
+    if (d.status === 'success'){ showToast('方案已切换，止盈止损位已重算'); setTimeout(() => location.reload(), 600); }
+    else showToast(d.error || '切换失败', true);
+  } catch(e){ showToast('切换失败: ' + e.message, true); }
 }
 async function execOp(){
   const type = document.getElementById('op-type').value;
   const price = parseFloat(document.getElementById('op-price').value);
   const shares = parseFloat(document.getElementById('op-shares').value || 0);
   const reason = document.getElementById('op-reason').value.trim();
-  if (!price || price <= 0){ alert('请填写成交价格'); return; }
+  if (!price || price <= 0){ showToast('请填写成交价格', true); return; }
   const body = new URLSearchParams({ type, price, shares: String(shares), reason });
   const url = type === 'sell_all' ? '/portfolio/{{ p.id }}/close' : '/portfolio/{{ p.id }}/transaction';
-  const r = await fetch(url, { method: 'POST', body });
-  const d = await r.json();
-  if (d.status === 'success'){ alert('操作成功' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : '')); location.reload(); }
-  else alert(d.error || '操作失败');
+  try {
+    const r = await fetch(url, { method: 'POST', body });
+    const d = await r.json();
+    if (d.status === 'success'){ showToast('操作成功' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : '')); setTimeout(() => location.reload(), 600); }
+    else showToast(d.error || '操作失败', true);
+  } catch(e){ showToast('操作失败: ' + e.message, true); }
 }
 </script>
 </body>
