@@ -239,7 +239,7 @@ class StockDataFetcher:
             cls._set_socket_timeout()
             logger.info("baostock 会话已重建")
 
-    def _bs_query(self, query_fn, *args, **kwargs):
+    def _bs_query(self, query_fn, *args, timeout: Optional[float] = None, **kwargs):
         """执行 baostock 查询，带连接自愈 + 看门狗超时。
 
         背景1: 长连接被服务端断开后，baostock 的 send_msg 会返回 None，
@@ -266,17 +266,36 @@ class StockDataFetcher:
             try:
                 # 看门狗：超时抛 TimeoutError，打断 baostock 的 recv 死循环。
                 # signal 仅主线程可用；APScheduler 后台线程里会抛
-                # "signal only works in main thread"，此时跳过 signal 看门狗，
-                # 退化为依赖 socket timeout（_set_socket_timeout 已设）。
+                # "signal only works in main thread"，此时退化为依赖 socket timeout。
                 use_signal = _is_main_thread()
+                query_timeout = timeout if timeout else _QUERY_WATCHDOG_SECONDS
                 if use_signal:
                     signal.signal(signal.SIGALRM, _alarm_handler)
-                    signal.alarm(_QUERY_WATCHDOG_SECONDS)
+                    signal.alarm(int(query_timeout))
+                # 自定义短超时：临时调整 socket timeout（如行业查询）
+                _orig_sock_timeout = None
+                if timeout:
+                    try:
+                        from baostock.util import socketutil as _sock
+                        sock = getattr(_sock.context, "default_socket", None)
+                        if sock is not None:
+                            _orig_sock_timeout = sock.gettimeout()
+                            sock.settimeout(timeout)
+                    except Exception:
+                        pass
                 try:
                     rs = query_fn(*args, **kwargs)
                 finally:
                     if use_signal:
                         signal.alarm(0)  # 取消闹钟
+                    if _orig_sock_timeout is not None:
+                        try:
+                            from baostock.util import socketutil as _sock
+                            sock = getattr(_sock.context, "default_socket", None)
+                            if sock is not None:
+                                sock.settimeout(_orig_sock_timeout)
+                        except Exception:
+                            pass
             except (OSError, ConnectionError, TimeoutError) as e:
                 if attempt == 1:
                     logger.warning("baostock 连接异常(%s)，重连后重试", e)
@@ -778,17 +797,42 @@ class StockDataFetcher:
 
         实测 OK：长江电力 → 'D44电力、热力生产和供应业'。
         失败/未取到 → 返回 ''（调用方按未知行业处理，不阻塞）。
+
+        缓存: 行业是低频静态数据，首次拉取后存 JSON，后续直接读缓存，
+        避免每次实时连 baostock（连接不稳定时会导致接口卡住）。
         """
+        import json as _json
+        from StockInvestmentTool.config import Config as _Config
+
         code = self.normalize_code(code)
+        cache_file = _Config.DATA_DIR / "industry_cache.json"
+        # ① 读缓存
         try:
-            rs = self._bs_query(bs.query_stock_industry, code=code)
+            if cache_file.exists():
+                cache = _json.loads(cache_file.read_text(encoding="utf-8"))
+                if code in cache:
+                    return cache.get(code, "")
+        except Exception:
+            cache = {}
+        # ② 拉取 baostock（短超时 10s，连接不稳时快速失败，不卡页面）
+        industry = ""
+        try:
+            rs = self._bs_query(bs.query_stock_industry, code=code, timeout=10)
             while (rs.error_code == "0") & rs.next():
                 fields = self._parse_fields(rs)
                 row = dict(zip(fields, rs.get_row_data()))
-                return row.get("industry", "") or ""
+                industry = row.get("industry", "") or ""
+                break
         except Exception as e:
             logger.warning("行业数据获取失败(%s): %s，降级空串", code, e)
-        return ""
+            return ""
+        # ③ 写缓存
+        try:
+            cache[code] = industry
+            cache_file.write_text(_json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return industry
 
     # ── V6.0 业绩快照（AkShare 业绩报表，补毛利率）───
 
