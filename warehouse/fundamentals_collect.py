@@ -51,6 +51,9 @@ class FundamentalsCollector:
         """
         if codes is None:
             codes = self.warehouse.all_codes()
+            # 行业主要对股票有意义，跳过 ETF（效率）
+            types = self.warehouse.instrument_types()
+            codes = [c for c in codes if types.get(c) in (None, "stock")]
         if max_symbols:
             codes = codes[:max_symbols]
 
@@ -83,9 +86,13 @@ class FundamentalsCollector:
         """全市场财务史采集，写入 warehouse/fundamentals/<code>.parquet。
 
         已采集（has_fundamentals）的跳过（财务史季度静态，财报更新后重采）。
+        ETF/指数 无个股财务史，自动跳过。
         """
         if codes is None:
             codes = self.warehouse.all_codes()
+        # 只采股票（跳过 ETF/指数，它们无个股财务史）
+        types = self.warehouse.instrument_types()
+        codes = [c for c in codes if types.get(c) in (None, "stock")]
         if max_symbols:
             codes = codes[:max_symbols]
 
