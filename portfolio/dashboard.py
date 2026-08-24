@@ -467,6 +467,45 @@ class DashboardService:
                 "ret_cost": ret_cost, "ret_price": ret_price,
                 "avg_cost": cost_price}
 
+    def _stock_analysis(self, code: str, added_time: str = "") -> dict:
+        """统一个股技术面分析（观察列表 _observe_one 与详情 stock_detail 共用）。
+
+        拉日K（可选按观察起点 added_time 截取）→ compute_context → market_state，
+        汇总技术面字段。数据源统一：warehouse 日线 + advisor 参考价 + 市场状态。
+
+        Returns:
+            {"norm", "kline", "ctx", "market_state",
+             "basic": {code, market_state, weak_support, strong_support,
+                       ma_20, ma_60, trend, year_high}}
+        """
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+        from StockInvestmentTool.portfolio.monitor import PriceMonitor
+        from StockInvestmentTool.strategy.market_state import dashboard_market_state
+
+        norm = StockDataFetcher.normalize_code(code)
+        monitor = PriceMonitor()
+        kline, dividend_anchor = monitor.fetch_context_data(norm)
+        if added_time:
+            import pandas as _pd
+            mask = _pd.to_datetime(kline["date"]) >= _pd.to_datetime(added_time)
+            filtered = kline[mask].reset_index(drop=True)
+            if len(filtered) > 0:
+                kline = filtered
+        ctx = self.manager.advisor.compute_context(kline, dividend_anchor)
+        market_state = dashboard_market_state(kline)
+        basic = {
+            "code": norm,
+            "market_state": market_state,
+            "weak_support": round(ctx.weak_support, 2) if ctx.weak_support else None,
+            "strong_support": round(ctx.strong_support, 2) if ctx.strong_support else None,
+            "ma_20": round(ctx.ma_20, 2) if ctx.ma_20 else None,
+            "ma_60": round(ctx.ma_60, 2) if ctx.ma_60 else None,
+            "trend": ctx.trend,
+            "year_high": round(ctx.year_high, 2) if ctx.year_high else None,
+        }
+        return {"norm": norm, "kline": kline, "ctx": ctx,
+                "market_state": market_state, "basic": basic}
+
     def stock_detail(self, code: str, kind: str = "watch",
                      entry: Optional[dict] = None) -> dict:
         """统一个股详情聚合（观察/自选/持仓共用）。
@@ -485,28 +524,16 @@ class DashboardService:
             entry: {"date","price"} 模拟入场点（自选用，可空）
         """
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
-        from StockInvestmentTool.portfolio.monitor import PriceMonitor
-        from StockInvestmentTool.strategy.market_state import dashboard_market_state
 
         norm = StockDataFetcher.normalize_code(code)
         code_nodot = norm.replace(".", "")
 
-        monitor = PriceMonitor()
-        kline, dividend_anchor = monitor.fetch_context_data(norm)
-        ctx = self.manager.advisor.compute_context(kline, dividend_anchor)
-        market_state = dashboard_market_state(kline)
+        # 技术面（与观察列表共用统一入口）
+        an = self._stock_analysis(code)
+        kline, ctx = an["kline"], an["ctx"]
+        basic = dict(an["basic"])
 
-        basic = {
-            "code": norm,
-            "market_state": market_state,
-            "weak_support": round(ctx.weak_support, 2) if ctx.weak_support else None,
-            "strong_support": round(ctx.strong_support, 2) if ctx.strong_support else None,
-            "ma_20": round(ctx.ma_20, 2) if ctx.ma_20 else None,
-            "ma_60": round(ctx.ma_60, 2) if ctx.ma_60 else None,
-            "trend": ctx.trend,
-            "year_high": round(ctx.year_high, 2) if ctx.year_high else None,
-        }
-
+        # 实时增强字段（现价/涨跌/量/换手/量比/PE/PB）
         rt = self._realtime_enhance([code_nodot]).get(code_nodot, {})
         basic.update({
             "price": rt.get("price"),
@@ -620,28 +647,16 @@ class DashboardService:
         }
 
     def _observe_one(self, item: dict) -> dict:
-        """计算单只观察标的全套字段。"""
-        from StockInvestmentTool.portfolio.monitor import PriceMonitor
-        from StockInvestmentTool.strategy.market_state import dashboard_market_state
-
+        """计算单只观察标的全套字段（技术面走统一 _stock_analysis 入口）。"""
         code = (item.get("code") or "").lower()
         name = item.get("name") or code
         notes = (item.get("notes") or "").strip()
         added_time = item.get("added_time") or ""
 
-        monitor = PriceMonitor()
-        kline, dividend_anchor = monitor.fetch_context_data(code)
-        # 按观察起点截取：从 added_time 起算各类指标；起点后首个交易日之前不生成。
-        # 注意：若起点晚于最新数据（如今天加入，仓库数据止于昨天），过滤后会变空，
-        # 此时降级用完整 kline（观察起点是"从哪天起观察"，不是"从哪天起有数据"）。
-        if added_time:
-            import pandas as _pd
-            mask = _pd.to_datetime(kline["date"]) >= _pd.to_datetime(added_time)
-            filtered = kline[mask].reset_index(drop=True)
-            if len(filtered) > 0:
-                kline = filtered
-        ctx = self.manager.advisor.compute_context(kline, dividend_anchor)
-        market_state = dashboard_market_state(kline)
+        an = self._stock_analysis(code, added_time=added_time)
+        basic = an["basic"]
+        ctx = an["ctx"]
+        market_state = an["market_state"]
 
         return {
             "code": code,
@@ -649,9 +664,9 @@ class DashboardService:
             "price": round(float(ctx.current_price), 2) if ctx.current_price else None,
             "market_state": market_state,
             "risk_light": _risk_light(name),
-            "weak_support": round(ctx.weak_support, 2) if ctx.weak_support else None,
-            "strong_support": round(ctx.strong_support, 2) if ctx.strong_support else None,
-            "ma_20": round(ctx.ma_20, 2) if ctx.ma_20 else None,
+            "weak_support": basic.get("weak_support"),
+            "strong_support": basic.get("strong_support"),
+            "ma_20": basic.get("ma_20"),
             "instruction": _open_instruction(market_state, ctx),
             "notes": notes,
             "added_time": added_time,
