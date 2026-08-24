@@ -90,16 +90,17 @@ tr:last-child td{border-bottom:none;}
           <td>{{ r.name }}</td>
           <td>{{ r.price if r.price is not none else '—' }}</td>
           <td>
-            {% if r.change_pct is not none %}
-            <span style="color:{{ 'var(--green)' if r.change_pct>=0 else 'var(--red)' }};">{{ '%+.2f'|format(r.change_pct) }}%</span>
+            {% set _cp = r.get('change_pct') %}
+            {% if _cp is not none %}
+            <span style="color:{{ 'var(--green)' if _cp>=0 else 'var(--red)' }};">{{ '%+.2f'|format(_cp) }}%</span>
             {% else %}—{% endif %}
           </td>
-          <td>{{ r.volume if r.volume is not none else '—' }}</td>
-          <td>{{ (r.amount_wan/10000)|round(2) ~ '亿' if r.amount_wan is not none else '—' }}</td>
-          <td>{{ (r.turnover ~ '%') if r.turnover is not none else '—' }}</td>
-          <td>{{ r.vol_ratio if r.vol_ratio is not none else '—' }}</td>
-          <td>{{ r.pe_ttm if r.pe_ttm is not none else '—' }}</td>
-          <td>{{ r.pb if r.pb is not none else '—' }}</td>
+          <td>{{ r.get('volume') if r.get('volume') is not none else '—' }}</td>
+          <td>{{ ((r.get('amount_wan') or 0)/10000)|round(2) ~ '亿' if r.get('amount_wan') is not none else '—' }}</td>
+          <td>{{ (r.get('turnover') ~ '%') if r.get('turnover') is not none else '—' }}</td>
+          <td>{{ r.get('vol_ratio') if r.get('vol_ratio') is not none else '—' }}</td>
+          <td>{{ r.get('pe_ttm') if r.get('pe_ttm') is not none else '—' }}</td>
+          <td>{{ r.get('pb') if r.get('pb') is not none else '—' }}</td>
           <td>
             {% set cls = 'green' if r.market_state=='强多' else ('blue' if r.market_state=='弱多' else ('orange' if r.market_state=='震荡' else ('red' if r.market_state=='空头' else 'gray'))) %}
             <span class="tag {{ cls }}">{{ r.market_state }}</span>
