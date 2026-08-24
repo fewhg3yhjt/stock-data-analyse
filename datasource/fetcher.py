@@ -376,14 +376,36 @@ class StockDataFetcher:
 
     @staticmethod
     def detect_type(code: str) -> str:
-        """检测代码类型: stock / etf / index"""
+        """检测代码类型: stock / etf / index
+
+        精确规则（区分 sh/sz/bj 前缀）:
+          - ETF: sh.5xxxxx / sh.51xxxx / sz.15xxxx / sz.16xxxx
+          - 指数: sh.000xxx（上证指数系列）/ sh.9xxxxx / sz.399xxx（深证指数）
+          - 其余为股票（注意 sz.000xxx 是深市主板股票，如平安银行 sz.000001）
+        """
         raw = code.strip().lower()
-        raw = raw.replace("sh.", "").replace("sz.", "").replace("bj.", "")
-        if raw[:2] in ("sh", "sz", "bj"):
-            raw = raw[2:]
-        if raw.startswith(("5", "159")):
+        prefix = raw[:2]
+        digits = raw
+        for p in ("sh.", "sz.", "bj.", "sh", "sz", "bj"):
+            if digits.startswith(p):
+                digits = digits[len(p):]
+                break
+        if not digits.isdigit() or len(digits) < 6:
+            return "stock"
+        d6 = digits[:6]
+        # ETF: 沪 5xxxxx, 深 15/16
+        if prefix in ("sh", "bj") and d6.startswith(("5", "51", "56", "58")):
             return "etf"
-        if raw.startswith(("000", "399", "932")):
+        if prefix == "sz" and d6.startswith(("15", "16", "18")):
+            return "etf"
+        if d6.startswith(("159", "510", "511", "512", "513", "515", "516", "518")):
+            return "etf"
+        # 指数: sh.000xxx（上证指数）, sh.9xxxxx, sz.399xxx（深证）, 中证 000/932
+        if prefix == "sh" and d6.startswith("000"):
+            return "index"
+        if prefix == "sz" and d6.startswith("399"):
+            return "index"
+        if prefix == "bj" and d6.startswith(("000", "932")):
             return "index"
         return "stock"
 
