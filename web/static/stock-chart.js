@@ -16,10 +16,29 @@ window.StockChart = (function(){
 
   function colorOf(key){ return METRIC_COLORS[key] || '#1a73e8'; }
 
+  // 全局 resize 监听（只绑一次），让所有图表随容器/窗口尺寸变化重绘
+  let _resizeBound = false;
+  function ensureResizeHandler(){
+    if (_resizeBound) return;
+    _resizeBound = true;
+    window.addEventListener('resize', function(){
+      Object.values(_charts).forEach(function(c){ try{ c.resize(); }catch(e){} });
+    });
+  }
+
   function init(el){
     const id = el.id || el.getAttribute('data-chart-id') || Math.random().toString(36).slice(2);
     el.setAttribute('data-chart-id', id);
-    if(!_charts[id]) _charts[id] = echarts.init(el);
+    if(!_charts[id]){
+      // echarts.init 在元素尺寸为 0（如动态展开、父容器未就绪）时创建实例不绘制，
+      // 延迟到布局完成后 resize() 强制按真实尺寸重绘
+      const chart = echarts.init(el);
+      requestAnimationFrame(function(){
+        try{ chart.resize(); }catch(e){}
+      });
+      _charts[id] = chart;
+      ensureResizeHandler();
+    }
     return _charts[id];
   }
 
