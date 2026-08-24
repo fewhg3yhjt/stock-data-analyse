@@ -103,28 +103,31 @@ window.StockDetail = (function(){
     }
 
     // 绘制 K 线（收盘 + 点位线）与收益折线 —— 直接用 echarts，同 warroom 可行方案
-    // 观察页展开瞬间容器可能宽度/高度未就绪（0 尺寸 → echarts 只画坐标轴、不画线），
-    // 用 ensureSized 持续重试 resize，直到拿到真实尺寸再重绘。
+    // 观察页展开（detail-row 从 display:none → table-row）瞬间，容器尚未完成布局，
+    // 此时 echarts.init 会拿到 0 尺寸 → 只画出坐标轴、不画曲线。
+    // 因此这里：先等容器有真实尺寸再 init；init 后再多次 resize 兜底。
     let drew = false;
     const charts = [];
+    function sized(el){
+      return el && el.clientWidth > 0 && el.clientHeight > 0;
+    }
+    function resizeChart(chart){
+      if (!chart) return;
+      try{ chart.resize(); }catch(e){}
+    }
     function ensureSized(chart, el){
       if (!chart) return;
-      if (el.clientWidth > 0 && el.clientHeight > 0){
-        try{ chart.resize(); }catch(e){}
-        return;
-      }
+      if (sized(el)){ resizeChart(chart); return; }
       let tries = 0;
       const iv = setInterval(function(){
-        if (el.clientWidth > 0 && el.clientHeight > 0){
-          try{ chart.resize(); }catch(e){}
-          clearInterval(iv); return;
-        }
+        if (sized(el)){ resizeChart(chart); clearInterval(iv); return; }
         if (++tries > 40){ clearInterval(iv); }  // ~4s 上限
       }, 100);
     }
     function renderKline(){
       if (!window.echarts) return false;
       if (!(kData.dates && kData.dates.length)) return false;
+      if (!sized(klineEl)) return false;   // 容器未就绪 → 由 draw 重试
       const chart = echarts.init(klineEl);
       charts.push(chart);
       const opt = {
@@ -142,11 +145,12 @@ window.StockDetail = (function(){
             data:kData.lines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))}});
       }
       chart.setOption(opt, true);
-      requestAnimationFrame(function(){ ensureSized(chart, klineEl); });
+      setTimeout(function(){ ensureSized(chart, klineEl); }, 0);
       return true;
     }
     function renderRet(){
       if (!window.echarts || !retData) return false;
+      if (!sized(retEl)) return false;
       const chart = echarts.init(retEl);
       charts.push(chart);
       chart.setOption({
@@ -158,11 +162,12 @@ window.StockDetail = (function(){
         series:[{name:retData.series[0].name, type:'line', data:retData.series[0].data,
                  showSymbol:false, lineStyle:{width:1.5,color:'#e67e22'}, itemStyle:{color:'#e67e22'}}]
       }, true);
-      requestAnimationFrame(function(){ ensureSized(chart, retEl); });
+      setTimeout(function(){ ensureSized(chart, retEl); }, 0);
       return true;
     }
     function draw(){
       if (!window.echarts) return false;
+      if (!sized(klineEl)) return false;   // 等容器布局完成再画
       let any = false;
       if (renderKline()) any = true;
       if (renderRet()) any = true;
