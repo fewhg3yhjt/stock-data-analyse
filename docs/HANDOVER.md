@@ -55,15 +55,16 @@ A股分析工具，生产环境直接迭代（Docker 容器 `stock-invest`，代
 | PE/PB 回补 | ✅ 4799只 | daily（东财）|
 | 全量指标 | ✅ 6435只 37月 | warehouse/indicators/ |
 | 财务史 | ✅ 4551只 | warehouse/fundamentals/ |
-| 行业 | ⚠️ 仅持仓+自选22只 | meta.db instruments.industry |
-| 000开头深市股票 | ❌ 缺失（待补）| meta.db/daily/fundamentals 均缺 |
+| 行业 | ⚠️ 已补000段+持仓自选（285+只），全市场后台采集中 | meta.db instruments.industry |
+| 000开头深市股票 | ✅ 已补（482只 daily/财务史20只/行业采集中）| meta.db/daily/fundamentals 均有 |
 
 ## 六、关键问题/注意事项
 
-1. **000 开头深市主板股票缺失**（平安银行 sz000001 等）：
-   - 根因：原 `detect_type` 把 000 开头误判 index，导致没采集
-   - 已修复 `detect_type`（`datasource/fetcher.py`），但**需重拉**这些股票的 daily/行业/财务史
-   - 需 baostock/sina 网络稳定时跑增量同步
+1. **000 开头深市主板股票**（平安银行 sz000001 等）：
+   - 原根因：`detect_type` 把 000 开头误判 index，没采集
+   - 已修复 + 已补拉 482 只 daily（腾讯源，267461行，152s）+ 财务史 20 只（新浪限流致大部分暂缺，等解封重跑即可自动续采）
+   - 行业用 baostock 后台补（每只 10s，全量需数小时）
+   - classify 已验证秒回（平安银行 0.15s）
 
 2. **baostock 连接不稳定**：
    - 行业接口慢（每只 1-10s），全量采集不可行，当前只采持仓+自选
@@ -77,17 +78,18 @@ A股分析工具，生产环境直接迭代（Docker 容器 `stock-invest`，代
 ## 七、待办清单（下个会话继续）
 
 ### 🔴 高优先级
-1. **补拉 000 开头深市主板股票**：网络稳定时跑增量同步（`sync_daily`），补 daily + 行业 + 财务史
-2. **全面梳理数据源统一走数据层**：检查 `portfolio/reporter.py`、`dashboard.py` 等是否还有散落实时拉取（baostock/akshare），统一前置到 warehouse
+1. ~~补拉 000 开头深市主板股票~~ ✅ 已补（daily 482只/财务史20只/行业后台采）
+2. ~~全面梳理数据源统一走数据层~~ ✅ 已改（reporter/engine/runner warehouse-first）
 
 ### 🟡 中优先级
-3. 页面所有按钮交互反馈（loading/成功/失败提示）
-4. 行业全量采集（找高效数据源，替代慢的 baostock 行业接口）
-5. 观察池打开慢优化（缓存/并行）
+3. ~~页面所有按钮交互反馈~~ ✅ 已统一（market/position_detail/strategy 补 toast）
+4. 行业全量采集（baostock 后台跑中，4803 只需数小时）
+5. ~~观察池打开慢优化~~ ✅ 已修复（fundflow超时+缓存、DuckDB读取、socket超时，缓存命中0.3s）
 
 ### 🟢 低优先级
 6. 策略验证的历史资金流数据（fundflow 历史未接入）
 7. 指数/ETF 的估值类分析（当前无 PE/PB，daily 是 NaN）
+8. 000 段剩余 462 只财务史（新浪限流中，解封后重跑 `backfill_000_fund.py` 自动续采）
 
 ## 八、常用命令
 
