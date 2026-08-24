@@ -165,10 +165,25 @@ class DashboardService:
         return rows
 
     def _flow_candidates(self, top_n: int) -> list[dict]:
-        """从 fundflow 持续流入榜取候选（只取代码/名称/净额，不阻塞主流程）。"""
+        """从 fundflow 持续流入榜取候选（只取代码/名称/净额，不阻塞主流程）。
+
+        当日缓存 + 短超时：全市场资金流拉取（同花顺）网络不稳时可能卡死，
+        这里缓存当日结果并用线程超时保护，拉不到就降级返回空（不影响观察池主体）。
+        """
         if top_n <= 0:
             return []
-        try:
+        import json
+        from StockInvestmentTool.config import Config
+
+        today = datetime.now().strftime("%Y%m%d")
+        cache_path = Config.DATA_DIR / f"fundflow_candidates_{today}.json"
+        if cache_path.exists():
+            try:
+                return json.loads(cache_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.warning("资金流候选缓存读取失败: %s", e)
+
+        def _fetch() -> list[dict]:
             from StockInvestmentTool.fundflow import analysis, sources
 
             stk_now = sources.fetch_stock("now")
@@ -179,9 +194,30 @@ class DashboardService:
                 out.append({"code": r["code"], "name": r["name"],
                             "notes": f"资金持续流入(3日{r.get('net_days'):.1f}亿)"})
             return out
+
+        out = []
+        try:
+            import threading
+            holder: dict[str, list[dict]] = {"rows": []}
+            def _worker():
+                try:
+                    holder["rows"] = _fetch()
+                except Exception as e:
+                    logger.warning("资金流候选拉取失败: %s", e)
+            t = threading.Thread(target=_worker, daemon=True)
+            t.start()
+            t.join(timeout=15)
+            if t.is_alive():
+                logger.warning("资金流候选拉取超时(>15s)，跳过候选（仅显示 watchlist）")
+            else:
+                out = holder["rows"]
+                try:
+                    cache_path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+                except Exception:
+                    pass
         except Exception as e:
-            logger.warning("资金流候选获取失败: %s", e)
-            return []
+            logger.warning("资金流候选异常: %s", e)
+        return out
 
     def stock_dual_view(self, code: str, days: int = 120) -> dict:
         """单只股票的「天周期历史 + 盘中快照」双视图数据（后端打通）。

@@ -68,26 +68,35 @@ class PriceMonitor:
 
     def _fetch_from_warehouse(self, code_nodot: str,
                               start_date: str, end_date: str) -> pd.DataFrame:
-        """从 warehouse 数据层读取 K 线（按日分区过滤 code+日期区间）。"""
+        """从 warehouse 数据层读取 K 线（DuckDB 跨分区按 code+日期过滤，一次查询）。"""
         try:
+            from pathlib import Path
             w = Warehouse()
-            parts = []
-            start_ts = pd.Timestamp(start_date)
-            end_ts = pd.Timestamp(end_date)
-            for ym in w.available_months("daily"):
-                df = w.read_daily(ym)
-                if df is None or df.empty or "code" not in df.columns:
-                    continue
-                sub = df[(df["code"] == code_nodot)
-                         & (df["date"] >= start_ts) & (df["date"] <= end_ts)]
-                if len(sub):
-                    parts.append(sub)
-            if not parts:
+            months = w.available_months("daily")
+            if not months:
                 return pd.DataFrame()
-            kline = pd.concat(parts, ignore_index=True).sort_values("date")
-            kline = kline.drop_duplicates("date")
-            return kline[["date", "open", "high", "low", "close",
-                          "volume", "amount", "turn", "peTTM", "pbMRQ"]]
+            files = [str(w.daily_partition(ym)) for ym in months]
+            files = [f for f in files if Path(f).exists()]
+            if not files:
+                return pd.DataFrame()
+            import duckdb
+            con = duckdb.connect()
+            try:
+                file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
+                kline = con.execute(
+                    f"""SELECT date, open, high, low, close, volume, amount, turn,
+                               peTTM, pbMRQ
+                        FROM read_parquet({file_list})
+                        WHERE code = '{code_nodot}'
+                          AND date >= DATE '{start_date}'
+                          AND date <= DATE '{end_date}'
+                        ORDER BY date"""
+                ).df()
+            finally:
+                con.close()
+            if kline is None or kline.empty:
+                return pd.DataFrame()
+            return kline.drop_duplicates("date")
         except Exception as e:
             logger.warning("warehouse 读取 %s 失败(%s)，降级 baostock", code_nodot, e)
             return pd.DataFrame()

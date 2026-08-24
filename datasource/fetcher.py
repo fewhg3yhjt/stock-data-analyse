@@ -73,16 +73,34 @@ def _install_send_msg_patch():
                 sock = getattr(_context, "default_socket", None)
                 if sock is not None:
                     # 非阻塞预检：探测 socket 是否已被服务端关闭（recv 返回空字节）
+                    # 用 settimeout(0.2) 替代 MSG_DONTWAIT：非阻塞预检 + 超时保护，
+                    # 避免 MSG_DONTWAIT 在阻塞 socket 上失效导致 recv 阻塞。
                     try:
-                        peek = sock.recv(1, _socket.MSG_PEEK | _socket.MSG_DONTWAIT)
-                        if peek == b"":
-                            raise ConnectionError(
-                                "baostock socket 已被服务端关闭（recv 返回空）")
-                    except (BlockingIOError, _socket.timeout):
-                        pass  # 无数据可读 = 正常等待
+                        old_to = sock.gettimeout()
+                        sock.settimeout(0.2)
+                        try:
+                            peek = sock.recv(1, _socket.MSG_PEEK)
+                            if peek == b"":
+                                raise ConnectionError(
+                                    "baostock socket 已被服务端关闭（recv 返回空）")
+                        finally:
+                            sock.settimeout(old_to)
+                    except _socket.timeout:
+                        pass  # 无数据可读 = 正常等待（0.2s 探测超时）
+                    except (BlockingIOError, OSError):
+                        pass
+                    # 设置整体读超时：baostock 服务端响应慢/卡时，
+                    # recv 阻塞会无限等，这里限制单次收发不超过 12s
+                    try:
+                        sock.settimeout(12)
+                    except Exception:
+                        pass
                 return orig(msg)
             except ConnectionError:
                 raise
+            except _socket.timeout:
+                # 服务端 12s 未响应 → 判定连接失效，触发上层重连
+                raise ConnectionError("baostock socket 读取超时(12s)")
             except Exception as e:
                 logger.debug("send_msg 异常: %s", e)
                 return None
