@@ -138,31 +138,96 @@ class DashboardService:
         return self._refresh_prices(rows)
 
     def _refresh_prices(self, rows: list[dict]) -> list[dict]:
-        """每次打开页面用腾讯实时报价刷新现价/涨跌幅（一次批量请求，轻量）。
+        """每次打开页面用腾讯实时报价刷新现价/涨跌幅，并合并增强字段。
 
-        技术指标（市场状态/支撑/指令）基于日K按日缓存，不随盘中变化；
-        现价则是实时的。腾讯失败时降级保留原价。
+        现价/涨跌实时拉腾讯；量/换手/量比/PE/PB 等增强字段优先当日
+        warehouse/online 快照（10min 采集），缺省用腾讯同批字段。
+        腾讯失败时降级保留原价。
         """
         if not rows:
             return rows
         try:
-            from StockInvestmentTool.screener.sources import tencent_quotes
-
             codes = [r["code"].replace(".", "").lower() for r in rows]
-            quotes = tencent_quotes(codes)
-            by = {q["code"]: q for _, q in quotes.iterrows()}
+            enhance = self._realtime_enhance(codes)
             updated = 0
             for r in rows:
-                q = by.get(r["code"].replace(".", "").lower())
-                if q is not None and q.get("price") not in (None, 0):
+                q = enhance.get(r["code"].replace(".", "").lower())
+                if not q:
+                    continue
+                if q.get("price") not in (None, 0):
                     r["price"] = round(float(q["price"]), 2)
-                    if q.get("change_pct") is not None:
-                        r["change_pct"] = round(float(q["change_pct"]), 2)
                     updated += 1
+                for f in ("change_pct", "volume", "amount_wan", "turnover",
+                          "vol_ratio", "pe_ttm", "pb", "snapshot_time"):
+                    if q.get(f) is not None:
+                        r[f] = q[f]
             logger.info("观察池现价已实时刷新 %d/%d 只", updated, len(rows))
         except Exception as e:
             logger.warning("观察池现价实时刷新失败(降级用缓存价): %s", e)
         return rows
+
+    def _realtime_enhance(self, codes: list[str]) -> dict:
+        """批量取实时增强字段（现价/涨跌/量/换手/量比/PE/PB 等）。
+
+        现价/涨跌实时拉腾讯；其余增强字段优先用当日 warehouse/online 快照
+        （由 WAREHOUSE_ONLINE_SNAPSHOT 每 10 分钟采集），缺省降级到腾讯同批字段，
+        再无则留空。返回 key=无点代码 的 dict。
+        """
+        from StockInvestmentTool.screener.board import normalize
+        from StockInvestmentTool.screener.sources import tencent_quotes
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        norm_codes = [normalize(c) for c in codes]
+        out: dict[str, dict] = {}
+
+        # 腾讯实时（现价/涨跌为主，增强字段兜底）
+        try:
+            quotes = tencent_quotes(norm_codes)
+            for _, q in quotes.iterrows():
+                key = (q.get("code") or "").lower().replace(".", "")
+                if not key:
+                    continue
+                row = out.setdefault(key, {})
+                if q.get("price") not in (None, 0):
+                    row["price"] = round(float(q["price"]), 2)
+                if q.get("change_pct") is not None:
+                    row["change_pct"] = round(float(q["change_pct"]), 2)
+                for f in ("amount_wan", "turnover", "vol_ratio", "pe_ttm", "pb",
+                          "volume", "high", "low", "open", "prev_close"):
+                    v = q.get(f)
+                    if v is not None:
+                        row[f] = round(float(v), 2) if f != "volume" else round(float(v), 0)
+        except Exception as e:
+            logger.warning("腾讯实时增强拉取失败: %s", e)
+
+        # 当日 warehouse online 快照（10min 采集）补充增强字段
+        try:
+            w = Warehouse()
+            today = datetime.now().strftime("%Y-%m-%d")
+            snaps = w.online_snapshots(today)
+            if snaps:
+                import pandas as pd
+                latest = pd.read_csv(snaps[-1], encoding="utf-8-sig")
+                for _, r in latest.iterrows():
+                    key = str(r.get("code", "")).lower().replace(".", "")
+                    if not key:
+                        continue
+                    row = out.setdefault(key, {})
+                    for f in ("price", "change_pct", "turnover", "vol_ratio",
+                              "pe_ttm", "pb", "amount_wan", "high", "low", "open"):
+                        if f in r and f not in row:
+                            try:
+                                v = float(r[f])
+                                if v == v:
+                                    row[f] = round(v, 2)
+                            except (TypeError, ValueError):
+                                pass
+                    if r.get("snapshot_time"):
+                        row["snapshot_time"] = str(r["snapshot_time"])[:19]
+        except Exception as e:
+            logger.warning("当日在线快照读取失败: %s", e)
+
+        return out
 
     def _flow_candidates(self, top_n: int) -> list[dict]:
         """从 fundflow 持续流入榜取候选（只取代码/名称/净额，不阻塞主流程）。
@@ -233,7 +298,23 @@ class DashboardService:
 
         norm = StockDataFetcher.normalize_code(code)
         code_nodot = norm.replace(".", "")
-        result = {"code": code_nodot, "daily_history": {}, "intraday": {}}
+        result = {"code": code_nodot, "name": code_nodot,
+                  "daily_history": {}, "intraday": {}}
+
+        # 标的名称（meta 清单）
+        try:
+            w = Warehouse()
+            conn = w._conn()
+            try:
+                row = conn.execute(
+                    "SELECT name FROM instruments WHERE code=?", (code_nodot,)
+                ).fetchone()
+                if row and row[0]:
+                    result["name"] = row[0]
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning("标的名称读取失败 %s: %s", code, e)
 
         # 框1：天周期历史（从 warehouse 读，避免重复拉网络）
         try:
@@ -383,6 +464,158 @@ class DashboardService:
                 "metrics": metric_series,
                 "ret_cost": ret_cost, "ret_price": ret_price,
                 "avg_cost": cost_price}
+
+    def stock_detail(self, code: str, kind: str = "watch",
+                     entry: Optional[dict] = None) -> dict:
+        """统一个股详情聚合（观察/自选/持仓共用）。
+
+        返回单只股票全套数据：
+          - basic: 基础指标（现价/涨跌/量/成交额/换手/量比/PE/PB/MA20/市场状态/支撑/点位）
+          - daily_history / intraday: 天级K线 + 盘中实时快照（双视图）
+          - lines: 止盈止损点位（图表叠加）
+          - returns: 收益（按 kind + entry）
+                watch    → 模拟收益：基于可调入场价（entry 或默认观察起点价）
+                position → 实际收益：基于实际成本×份额
+
+        Args:
+            code: 股票代码
+            kind: "watch" / "position"
+            entry: {"date","price"} 模拟入场点（自选用，可空）
+        """
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+        from StockInvestmentTool.portfolio.monitor import PriceMonitor
+        from StockInvestmentTool.strategy.market_state import dashboard_market_state
+
+        norm = StockDataFetcher.normalize_code(code)
+        code_nodot = norm.replace(".", "")
+
+        monitor = PriceMonitor()
+        kline, dividend_anchor = monitor.fetch_context_data(norm)
+        ctx = self.manager.advisor.compute_context(kline, dividend_anchor)
+        market_state = dashboard_market_state(kline)
+
+        basic = {
+            "code": norm,
+            "market_state": market_state,
+            "weak_support": round(ctx.weak_support, 2) if ctx.weak_support else None,
+            "strong_support": round(ctx.strong_support, 2) if ctx.strong_support else None,
+            "ma_20": round(ctx.ma_20, 2) if ctx.ma_20 else None,
+            "ma_60": round(ctx.ma_60, 2) if ctx.ma_60 else None,
+            "trend": ctx.trend,
+            "year_high": round(ctx.year_high, 2) if ctx.year_high else None,
+        }
+
+        rt = self._realtime_enhance([code_nodot]).get(code_nodot, {})
+        basic.update({
+            "price": rt.get("price"),
+            "change_pct": rt.get("change_pct"),
+            "volume": rt.get("volume"),
+            "amount_wan": rt.get("amount_wan"),
+            "turnover": rt.get("turnover"),
+            "vol_ratio": rt.get("vol_ratio"),
+            "pe_ttm": rt.get("pe_ttm"),
+            "pb": rt.get("pb"),
+            "snapshot_time": rt.get("snapshot_time"),
+        })
+
+        dual = self.stock_dual_view(norm)
+
+        lines = []
+        if ctx.weak_support:
+            lines.append({"name": "弱支撑", "value": round(ctx.weak_support, 2), "color": "#e67e22"})
+        if ctx.strong_support:
+            lines.append({"name": "强支撑", "value": round(ctx.strong_support, 2), "color": "#e67e22"})
+        if ctx.year_high:
+            lines.append({"name": "止盈预警(前高90%)", "value": round(ctx.year_high * 0.9, 2), "color": "#28a745"})
+            lines.append({"name": "止盈硬上限", "value": round(ctx.year_high * 1.05, 2), "color": "#1a73e8"})
+
+        returns = None
+        if kind == "position":
+            pos = None
+            for p in self.manager.storage.get_open_positions():
+                if StockDataFetcher.normalize_code(p.stock_code) == norm:
+                    pos = p
+                    break
+            if pos is not None:
+                cb = self.manager.cost_basis(pos.id)
+                returns = self._compute_return(kline, start_date=pos.buy_date,
+                                               cost_price=cb["cost_price"], shares=cb["shares"])
+                basic["entry_price"] = cb["cost_price"]
+                basic["entry_date"] = pos.buy_date
+                basic["shares"] = cb["shares"]
+        else:
+            entry_price = None
+            entry_date = ""
+            if entry and entry.get("price"):
+                entry_price = float(entry["price"])
+                entry_date = entry.get("date") or ""
+            elif entry and entry.get("date"):
+                entry_date = entry["date"]
+                entry_price = self._price_on_date(kline, entry_date)
+            else:
+                wl = None
+                for w in self.manager.get_watchlist():
+                    if w.stock_code and StockDataFetcher.normalize_code(w.stock_code) == norm:
+                        wl = w
+                        break
+                if wl and wl.sim_entry and wl.sim_entry.get("price"):
+                    entry_price = float(wl.sim_entry["price"])
+                    entry_date = wl.sim_entry.get("date") or ""
+                elif wl and wl.added_time:
+                    entry_date = wl.added_time
+                    entry_price = self._price_on_date(kline, wl.added_time)
+            if entry_price and entry_price > 0:
+                returns = self._compute_return(kline, start_date=entry_date or "",
+                                               cost_price=entry_price, shares=0)
+            basic["entry_price"] = entry_price
+            basic["entry_date"] = entry_date or ""
+
+        return {
+            "code": norm,
+            "basic": basic,
+            "daily_history": dual.get("daily_history", {}),
+            "intraday": dual.get("intraday", {}),
+            "lines": lines,
+            "returns": returns,
+        }
+
+    @staticmethod
+    def _price_on_date(kline, date: str) -> Optional[float]:
+        """取 kline 中指定日期（或其后首个交易日）的收盘价。"""
+        import pandas as _pd
+        if kline is None or kline.empty or not date:
+            return None
+        try:
+            dates = _pd.to_datetime(kline["date"])
+            sd = _pd.to_datetime(date)
+            after = dates[dates >= sd]
+            if len(after) == 0:
+                return None
+            idx = dates[dates == after.iloc[0]].index[0]
+            return round(float(kline.loc[idx, "close"]), 2)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _compute_return(kline, start_date: str, cost_price, shares: float = 0.0):
+        """算收益明细（累计收益率序列），附最后值。"""
+        from StockInvestmentTool.analysis.returns import compute_returns
+        if kline is None or kline.empty:
+            return None
+        r = compute_returns(kline, start_date=start_date,
+                            cost_price=cost_price, shares=shares)
+        if r is None or r.empty:
+            return None
+        last = r.iloc[-1]
+        return {
+            "dates": [str(d)[:10] for d in r["date"]],
+            "ret_pct": [round(float(x), 2) if x == x else None for x in r["ret_pct"]],
+            "close": [round(float(x), 2) if x == x else None for x in r["close"]],
+            "latest_close": round(float(last["close"]), 2),
+            "ret_pct_latest": round(float(last["ret_pct"]), 2),
+            "ret_amount_latest": round(float(last["ret_amount"]), 2),
+            "cost_price": cost_price,
+        }
 
     def _observe_one(self, item: dict) -> dict:
         """计算单只观察标的全套字段。"""

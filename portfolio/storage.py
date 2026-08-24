@@ -88,7 +88,8 @@ CREATE TABLE IF NOT EXISTS watchlist (
     extreme_anchor REAL NOT NULL DEFAULT 0,
     notes TEXT NOT NULL DEFAULT '',
     added_time TEXT NOT NULL DEFAULT '',
-    source TEXT NOT NULL DEFAULT 'manual'
+    source TEXT NOT NULL DEFAULT 'manual',
+    sim_entry TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS advices (
@@ -152,6 +153,9 @@ class PortfolioStorage:
             # 迁移：watchlist 增加 source（观察池来源 manual/holding/strategy）
             if "source" not in cols:
                 conn.execute("ALTER TABLE watchlist ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+            # 迁移：watchlist 增加 sim_entry（模拟收益入场点 JSON）
+            if "sim_entry" not in cols:
+                conn.execute("ALTER TABLE watchlist ADD COLUMN sim_entry TEXT NOT NULL DEFAULT '{}'")
             # 确保默认组合
             cur = conn.execute("SELECT id FROM portfolios WHERE id=1")
             if cur.fetchone() is None:
@@ -370,6 +374,7 @@ class PortfolioStorage:
             extreme_anchor=row["extreme_anchor"], notes=row["notes"],
             added_time=row["added_time"],
             source=row["source"] if "source" in row.keys() else "manual",
+            sim_entry=json_loads(row["sim_entry"]) if "sim_entry" in row.keys() else {},
         )
 
     def add_watchlist(self, item: WatchlistItem) -> WatchlistItem:
@@ -381,14 +386,22 @@ class PortfolioStorage:
             cur = conn.execute(
                 """INSERT INTO watchlist
                    (stock_code, stock_name, asset_type, target_capital,
-                    weak_support, strong_support, extreme_anchor, notes, added_time, source)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    weak_support, strong_support, extreme_anchor, notes, added_time, source, sim_entry)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (item.stock_code, item.stock_name, item.asset_type, item.target_capital,
                  item.weak_support, item.strong_support, item.extreme_anchor, item.notes,
-                 item.added_time, item.source),
+                 item.added_time, item.source, json_dumps(item.sim_entry)),
             )
             item.id = cur.lastrowid
         return item
+
+    def update_watchlist_sim_entry(self, item_id: int, sim_entry: dict):
+        """更新自选模拟收益入场点（{"date": "...", "price": x}）。"""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE watchlist SET sim_entry=? WHERE id=?",
+                (json_dumps(sim_entry), item_id),
+            )
 
     def update_watchlist_source(self, item_id: int, source: str):
         with self._connect() as conn:

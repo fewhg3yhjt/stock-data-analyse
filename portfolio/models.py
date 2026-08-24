@@ -200,6 +200,7 @@ class WatchlistItem:
     notes: str = ""
     added_time: str = ""             # 观察/自选加入时间（默认当天，可回看；晚于当天视为未生效）
     source: str = WL_SOURCE_MANUAL   # 来源: manual/holding/strategy
+    sim_entry: dict = field(default_factory=dict)  # 模拟收益入场点: {"date": "YYYY-MM-DD", "price": float}
 
     def to_dict(self) -> dict:
         return {
@@ -214,6 +215,7 @@ class WatchlistItem:
             "notes": self.notes,
             "added_time": self.added_time,
             "source": self.source,
+            "sim_entry": self.sim_entry,
         }
 
 

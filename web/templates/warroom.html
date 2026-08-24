@@ -6,6 +6,8 @@
 <title>StockInvestmentTool - 持仓</title>
 <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
 <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<script src="/static/stock-chart.js"></script>
+<script src="/static/stock-detail.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -67,6 +69,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .note{font-size:13px;color:var(--text2);}
 .empty{padding:30px;text-align:center;color:var(--text2);}
 .detail{font-size:12px;color:var(--text2);margin-top:6px;}
+.metric-grid .m{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:6px 10px;text-align:center;}
+.metric-grid .m .l{font-size:11px;color:var(--text2);}
+.metric-grid .m .v{font-size:14px;font-weight:600;}
 </style>
 </head>
 <body>
@@ -157,6 +162,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
             <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                href="/portfolio/{{ p.id }}" title="加仓/减仓/平仓操作"><i class="fas fa-arrows-rotate"></i> 操作</a>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+               onclick="toggleDetail(this,'{{ p.stock_code }}')" data-code="{{ p.stock_code }}"
+               title="基础指标 + 天级K线 + 盘中实时 + 实际收益"><i class="fas fa-chart-simple"></i> 详情</button>
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                onclick="toggleReturn(this)" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}" data-cost="{{ p.avg_cost }}"
                title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#28a745;"
@@ -189,6 +197,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
           <div class="pos-metric buy"><div class="v">{{ p.buy_more.trigger_price }}</div><div class="l">💰补仓线{{ p.buy_more.label }}</div></div>
           {% endif %}
         </div>
+        <div class="detail-box" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;"></div>
         <div class="return-box" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
           <div class="return-loading" style="color:var(--text2);font-size:13px;">收益加载中…</div>
         </div>
@@ -255,6 +264,14 @@ async function refreshAll(){
     }
   } catch(e) { showToast('刷新失败: ' + e.message); }
   btn.style.opacity = 1;
+}
+async function toggleDetail(btn, code){
+  const box = btn.closest('.pos').querySelector('.detail-box');
+  if (box.style.display !== 'none'){ box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="color:var(--text2);font-size:13px;">加载中…</div>';
+  window.StockDetail.load(code, 'position', box)
+    .catch(err => { box.innerHTML = '<span style="color:#c62828;font-size:13px;">' + err.message + '</span>'; });
 }
 async function toggleReturn(btn){
   const box = btn.closest('.pos').querySelector('.return-box');

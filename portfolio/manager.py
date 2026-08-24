@@ -594,6 +594,21 @@ class PortfolioManager:
             raise ValueError(f"自选不存在: {item_id}")
         self.storage.update_watchlist_notes(item_id, notes)
 
+    def set_watchlist_sim_entry(self, item_id: int, entry_date: str = "",
+                                entry_price: float = 0.0):
+        """设置自选模拟收益入场点（日期 + 入场价，至少一项）。"""
+        item = self.storage.get_watchlist_item(item_id)
+        if item is None:
+            raise ValueError(f"自选不存在: {item_id}")
+        sim_entry = dict(item.sim_entry or {})
+        if entry_date:
+            sim_entry["date"] = entry_date[:10]
+        if entry_price and entry_price > 0:
+            sim_entry["price"] = round(float(entry_price), 4)
+        elif entry_price is not None and entry_price <= 0:
+            sim_entry.pop("price", None)
+        self.storage.update_watchlist_sim_entry(item_id, sim_entry)
+
     def list_transactions(self) -> list[dict]:
         """全量交易流水（含股票名），供操作日志/笔记展示。"""
         rows = []

@@ -1169,6 +1169,59 @@ def api_stock_chart_series():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/stock/detail", methods=["POST"])
+def api_stock_detail():
+    """统一个股详情（观察/自选/持仓共用）：基础指标 + 天级/盘中双视图 + 收益。
+
+    Args:
+        code: 股票代码
+        kind: watch / position
+        entry_date / entry_price: 自选模拟收益入场点（可选）
+    """
+    from StockInvestmentTool.portfolio.dashboard import DashboardService
+
+    try:
+        code = (flask.request.form.get("code") or "").strip()
+        kind = (flask.request.form.get("kind") or "watch").strip()
+        if not code:
+            return flask.jsonify({"status": "error", "error": "缺少代码"}), 400
+        entry = None
+        ed = (flask.request.form.get("entry_date") or "").strip()
+        ep = (flask.request.form.get("entry_price") or "").strip()
+        if ed or ep:
+            entry = {}
+            if ed:
+                entry["date"] = ed[:10]
+            if ep:
+                try:
+                    entry["price"] = float(ep)
+                except (ValueError, TypeError):
+                    pass
+        data = DashboardService(_get_manager()).stock_detail(code, kind=kind, entry=entry)
+        return flask.jsonify({"status": "success", **data})
+    except Exception as e:
+        logger.exception("个股详情失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/watchlist/<int:item_id>/sim_entry", methods=["POST"])
+def api_watchlist_sim_entry(item_id):
+    """设置自选模拟收益入场点（日期 + 价格，可单独更新一项）。"""
+    mgr = _get_manager()
+    ed = (flask.request.form.get("entry_date") or "").strip()
+    ep = (flask.request.form.get("entry_price") or "").strip()
+    try:
+        price = float(ep) if ep else 0.0
+    except (ValueError, TypeError):
+        return flask.jsonify({"status": "error", "error": "价格必须为数字"}), 400
+    try:
+        mgr.set_watchlist_sim_entry(item_id, entry_date=ed[:10] if ed else "", entry_price=price)
+        return flask.jsonify({"status": "success"})
+    except Exception as e:
+        logger.exception("设置模拟入场点失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
 @web_app.route("/returns/export", methods=["GET"])
 def returns_export():
     """导出全部持仓/自选的收益明细 + 汇总到 xlsx。"""
