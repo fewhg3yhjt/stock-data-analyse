@@ -166,8 +166,8 @@ window.StockDetail = (function(){
       return true;
     }
     function draw(){
-      if (!window.echarts) return false;
-      if (!sized(klineEl)) return false;   // 等容器布局完成再画
+      if (!window.echarts){ return false; }
+      if (!sized(klineEl)){ return false; }   // 等容器布局完成再画
       let any = false;
       if (renderKline()) any = true;
       if (renderRet()) any = true;
@@ -191,6 +191,11 @@ window.StockDetail = (function(){
       container._ro = ro;
     }
     if (opts.onChart) opts.onChart(drew, klineEl);
+    console.log('[StockDetail]', d.code, 'drew='+drew,
+      'echarts='+!!window.echarts,
+      'kline size='+klineEl.clientWidth+'x'+klineEl.clientHeight,
+      'ret size='+(retEl.style.display==='none'?'hidden':retEl.clientWidth+'x'+retEl.clientHeight),
+      'kData.dates='+(kData.dates||[]).length);
 
     // 模拟入场点事件
     if (kind === 'watch' && opts.onSimEntry){
