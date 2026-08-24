@@ -150,6 +150,14 @@ window.StockDetail = (function(){
         console.log('[Kline] init后 getWidth='+chart.getWidth()+' getHeight='+chart.getHeight()+
           ' dom='+chart.getDom().clientWidth+'x'+chart.getDom().clientHeight+
           ' canvas='+(chart.getDom().querySelector('canvas')?chart.getDom().querySelector('canvas').width+'x'+chart.getDom().querySelector('canvas').height:'无canvas'));
+        const cv = chart.getDom().querySelector('canvas');
+        if (cv){
+          const r = cv.getBoundingClientRect();
+          console.log('[Canvas] style='+cv.style.width+'x'+cv.style.height+
+            ' rect='+Math.round(r.width)+'x'+Math.round(r.height)+' top='+Math.round(r.top)+' left='+Math.round(r.left)+
+            ' 位图='+cv.width+'x'+cv.height+
+            ' 容器rect='+JSON.stringify((function(){const rr=klineEl.getBoundingClientRect();return {w:Math.round(rr.width),h:Math.round(rr.height),top:Math.round(rr.top)};})()));
+        }
       }catch(e){ console.log('[Kline] 诊断异常', e.message); }
       return true;
     }
