@@ -123,15 +123,17 @@ window.StockChart = (function(){
         <input type="checkbox" value="${key}" onchange="StockChart._metricChanged()"> ${metrics[key]}`;
       container.appendChild(lbl);
     });
-    window.StockChart._metricHandler = onChange;
+    _metricHandler = onChange;
   }
 
-  window.StockChart._metricChanged = function(){
+  // 勾选回调：在模块赋值完成后由 StockChart._metricChanged 暴露，避免加载期引用未定义
+  let _metricHandler = null;
+  function _metricChanged(){
     const container = document.querySelector('.metric-selector');
-    if(!container || !window.StockChart._metricHandler) return;
+    if(!container || !_metricHandler) return;
     const selected = Array.from(container.querySelectorAll('input:checked')).map(i=>i.value);
-    window.StockChart._metricHandler(selected);
-  };
+    _metricHandler(selected);
+  }
 
-  return { drawLine, drawKLine, metricSelector, colorOf };
+  return { drawLine, drawKLine, metricSelector, colorOf, _metricChanged };
 })();

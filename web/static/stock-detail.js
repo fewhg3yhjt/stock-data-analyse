@@ -32,6 +32,7 @@ window.StockDetail = (function(){
 
   function load(code, kind, container, opts){
     opts = opts || {};
+    if (opts.onStart) opts.onStart(code);
     const fd = new FormData();
     fd.append('code', code);
     fd.append('kind', kind || 'watch');
@@ -42,8 +43,10 @@ window.StockDetail = (function(){
       .then(d => {
         if (d.status !== 'success') throw new Error(d.error || '加载失败');
         render(container, d, kind, opts);
+        if (opts.onDone) opts.onDone(code, d);
         return d;
-      });
+      })
+      .catch(err => { if (opts.onError) opts.onError(code, err); throw err; });
   }
 
   function render(container, d, kind, opts){
@@ -75,41 +78,8 @@ window.StockDetail = (function(){
         <span>最新收盘 <b>${fmt(ret.latest_close)}</b></span>
       </div>` : '';
 
-    const marketCls = { '强多':'green','弱多':'blue','震荡':'orange','空头':'red' }[b.market_state] || 'gray';
-
-    // 全量指标表：固定表头 + 单行数据（含列表未展示的字段）
-    const metricDefs = [
-      ['现价', fmt(b.price)],
-      ['涨跌幅', pctHtml(b.change_pct)],
-      ['成交量', volFmt(b.volume)],
-      ['成交额', b.amount_wan ? (b.amount_wan/10000).toFixed(2)+'亿' : '—'],
-      ['换手率', b.turnover != null ? fmt(b.turnover)+'%' : '—'],
-      ['量比', fmt(b.vol_ratio)],
-      ['PE(TTM)', fmt(b.pe_ttm)],
-      ['PB', fmt(b.pb)],
-      ['MA20', fmt(b.ma_20)],
-      ['MA60', fmt(b.ma_60)],
-      ['市场状态', `<span class="tag ${marketCls}">${b.market_state||'—'}</span>`],
-      ['弱支撑', fmt(b.weak_support)],
-      ['强支撑', fmt(b.strong_support)],
-      ['年内高点', fmt(b.year_high)],
-      ['趋势', (b.trend||'—')],
-    ];
-    const metricTable = `
-      <div class="metric-table-wrap" style="overflow-x:auto;margin-bottom:12px;">
-        <table class="metric-table" style="width:100%;border-collapse:collapse;font-size:12px;">
-          <thead><tr>
-            ${metricDefs.map(d=>`<th style="position:sticky;top:0;background:var(--surface2);color:var(--text2);font-weight:500;padding:6px 10px;border:1px solid var(--border);white-space:nowrap;">${d[0]}</th>`).join('')}
-          </tr></thead>
-          <tbody><tr>
-            ${metricDefs.map(d=>`<td style="padding:7px 10px;border:1px solid var(--border);text-align:center;white-space:nowrap;font-weight:600;">${d[1]}</td>`).join('')}
-          </tr></tbody>
-        </table>
-      </div>`;
-
     container.innerHTML = `
       ${simRow}
-      ${metricTable}
       ${iv.price || iv.price===0 ? `<div class="intraday-note" style="font-size:11px;color:var(--text2);margin-bottom:8px;">
           <i class="fas fa-clock"></i> 盘中快照 ${fmt(iv.snapshot_time)}：现价 ${fmt(iv.price)}，涨跌 ${pctHtml(iv.change_pct)}，换手 ${fmt(iv.turnover)}%，量比 ${fmt(iv.vol_ratio)}</div>` : ''}
       <div class="chart kline-chart" style="width:100%;height:300px;"></div>
@@ -132,11 +102,71 @@ window.StockDetail = (function(){
       retEl.style.display = 'none';
     }
 
-    // 等待 echarts 就绪后绘制（自托管秒级，但防时序竞争）
+    // 绘制 K 线（收盘 + 点位线）与收益折线 —— 直接用 echarts，同 warroom 可行方案
+    // 观察页展开瞬间容器可能宽度/高度未就绪（0 尺寸 → echarts 只画坐标轴、不画线），
+    // 用 ensureSized 持续重试 resize，直到拿到真实尺寸再重绘。
+    let drew = false;
+    const charts = [];
+    function ensureSized(chart, el){
+      if (!chart) return;
+      if (el.clientWidth > 0 && el.clientHeight > 0){
+        try{ chart.resize(); }catch(e){}
+        return;
+      }
+      let tries = 0;
+      const iv = setInterval(function(){
+        if (el.clientWidth > 0 && el.clientHeight > 0){
+          try{ chart.resize(); }catch(e){}
+          clearInterval(iv); return;
+        }
+        if (++tries > 40){ clearInterval(iv); }  // ~4s 上限
+      }, 100);
+    }
+    function renderKline(){
+      if (!window.echarts) return false;
+      if (!(kData.dates && kData.dates.length)) return false;
+      const chart = echarts.init(klineEl);
+      charts.push(chart);
+      const opt = {
+        tooltip:{trigger:'axis'}, legend:{top:0},
+        grid:{left:55, right:30, top:34, bottom:50},
+        xAxis:{type:'category', data:kData.dates, boundaryGap:false},
+        yAxis:{type:'value', scale:true},
+        dataZoom:[{type:'inside'},{type:'slider', height:16}],
+        series:[{name:'收盘', type:'line', data:kData.closes, showSymbol:false,
+                 lineStyle:{width:1.5,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'}}]
+      };
+      if (kData.lines && kData.lines.length){
+        opt.series.push({name:'点位', type:'line', data:[], silent:true,
+          markLine:{symbol:'none', label:{formatter:p=>p.name, position:'insideEndTop', fontSize:10},
+            data:kData.lines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))}});
+      }
+      chart.setOption(opt, true);
+      requestAnimationFrame(function(){ ensureSized(chart, klineEl); });
+      return true;
+    }
+    function renderRet(){
+      if (!window.echarts || !retData) return false;
+      const chart = echarts.init(retEl);
+      charts.push(chart);
+      chart.setOption({
+        tooltip:{trigger:'axis'}, legend:{top:0},
+        grid:{left:55, right:30, top:34, bottom:40},
+        xAxis:{type:'category', data:retData.dates, boundaryGap:false},
+        yAxis:{type:'value', scale:true, axisLabel:{formatter:'{value}%'}},
+        dataZoom:[{type:'inside'}],
+        series:[{name:retData.series[0].name, type:'line', data:retData.series[0].data,
+                 showSymbol:false, lineStyle:{width:1.5,color:'#e67e22'}, itemStyle:{color:'#e67e22'}}]
+      }, true);
+      requestAnimationFrame(function(){ ensureSized(chart, retEl); });
+      return true;
+    }
     function draw(){
-      if (!window.StockChart || !window.echarts){ return false; }
-      if (kData.dates && kData.dates.length) window.StockChart.drawKLine(klineEl, kData);
-      if (retData) window.StockChart.drawLine(retEl, retData, {yFormatter:'{value}%'});
+      if (!window.echarts) return false;
+      let any = false;
+      if (renderKline()) any = true;
+      if (renderRet()) any = true;
+      drew = any;
       return true;
     }
     if (!draw()){
@@ -146,6 +176,16 @@ window.StockDetail = (function(){
         if (++tries > 40){ clearInterval(iv2); }  // ~4s 上限
       }, 100);
     }
+    // 折行/关闭后无用时清理实例，避免泄漏与重复初始化
+    if (container._ro) try{ container._ro.disconnect(); }catch(e){}
+    if (window.ResizeObserver){
+      const ro = new ResizeObserver(function(){
+        charts.forEach(function(c){ try{ c.resize(); }catch(e){} });
+      });
+      ro.observe(container);
+      container._ro = ro;
+    }
+    if (opts.onChart) opts.onChart(drew, klineEl);
 
     // 模拟入场点事件
     if (kind === 'watch' && opts.onSimEntry){

@@ -667,6 +667,9 @@ class DashboardService:
             "weak_support": basic.get("weak_support"),
             "strong_support": basic.get("strong_support"),
             "ma_20": basic.get("ma_20"),
+            "ma_60": basic.get("ma_60"),
+            "year_high": basic.get("year_high"),
+            "trend": basic.get("trend"),
             "instruction": _open_instruction(market_state, ctx),
             "notes": notes,
             "added_time": added_time,
@@ -679,8 +682,9 @@ class DashboardService:
         name = item.get("name") or code
         return {
             "code": code, "name": name, "price": None, "market_state": "数据缺失",
-            "risk_light": "🟡待核", "weak_support": None, "strong_support": None,
-            "ma_20": None, "instruction": f"⚠️ 数据获取失败：{err[:60]}",
+            "risk_light": "🟡待核",             "weak_support": None, "strong_support": None,
+            "ma_20": None, "ma_60": None, "year_high": None, "trend": None,
+            "instruction": f"⚠️ 数据获取失败：{err[:60]}",
             "notes": item.get("notes") or "", "ok": False,
         }
 
