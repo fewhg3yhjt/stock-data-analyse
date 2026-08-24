@@ -102,27 +102,13 @@ window.StockDetail = (function(){
       retEl.style.display = 'none';
     }
 
-    // 绘制 K 线（收盘 + 点位线）与收益折线 —— 直接用 echarts，同 warroom 可行方案
-    // 观察页展开（detail-row 从 display:none → table-row）瞬间，容器尚未完成布局，
-    // 此时 echarts.init 会拿到 0 尺寸 → 只画出坐标轴、不画曲线。
-    // 因此这里：先等容器有真实尺寸再 init；init 后再多次 resize 兜底。
+    // 绘制 K 线（收盘 + 点位线）与收益折线 —— 与 warroom 的 loadStockChart 一致：
+    // 等待容器布局完成(有真实尺寸)后，直接用 echarts.init + setOption，不做额外 resize 干扰。
+    // (此前加了 ensureSized/resize 兜底反而导致曲线不显示)
     let drew = false;
     const charts = [];
     function sized(el){
       return el && el.clientWidth > 0 && el.clientHeight > 0;
-    }
-    function resizeChart(chart){
-      if (!chart) return;
-      try{ chart.resize(); }catch(e){}
-    }
-    function ensureSized(chart, el){
-      if (!chart) return;
-      if (sized(el)){ resizeChart(chart); return; }
-      let tries = 0;
-      const iv = setInterval(function(){
-        if (sized(el)){ resizeChart(chart); clearInterval(iv); return; }
-        if (++tries > 40){ clearInterval(iv); }  // ~4s 上限
-      }, 100);
     }
     function renderKline(){
       if (!window.echarts) return false;
@@ -145,20 +131,9 @@ window.StockDetail = (function(){
             data:kData.lines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))}});
       }
       chart.setOption(opt, true);
-      setTimeout(function(){ ensureSized(chart, klineEl); }, 0);
       try{
-        console.log('[Kline] init后 getWidth='+chart.getWidth()+' getHeight='+chart.getHeight()+
-          ' dom='+chart.getDom().clientWidth+'x'+chart.getDom().clientHeight+
-          ' canvas='+(chart.getDom().querySelector('canvas')?chart.getDom().querySelector('canvas').width+'x'+chart.getDom().querySelector('canvas').height:'无canvas'));
-        const cv = chart.getDom().querySelector('canvas');
-        if (cv){
-          const r = cv.getBoundingClientRect();
-          console.log('[Canvas] style='+cv.style.width+'x'+cv.style.height+
-            ' rect='+Math.round(r.width)+'x'+Math.round(r.height)+' top='+Math.round(r.top)+' left='+Math.round(r.left)+
-            ' 位图='+cv.width+'x'+cv.height+
-            ' 容器rect='+JSON.stringify((function(){const rr=klineEl.getBoundingClientRect();return {w:Math.round(rr.width),h:Math.round(rr.height),top:Math.round(rr.top)};})()));
-        }
-      }catch(e){ console.log('[Kline] 诊断异常', e.message); }
+        console.log('[Kline] getWidth='+chart.getWidth()+' getHeight='+chart.getHeight()+' drew=true');
+      }catch(e){}
       return true;
     }
     function renderRet(){
@@ -175,12 +150,11 @@ window.StockDetail = (function(){
         series:[{name:retData.series[0].name, type:'line', data:retData.series[0].data,
                  showSymbol:false, lineStyle:{width:1.5,color:'#e67e22'}, itemStyle:{color:'#e67e22'}}]
       }, true);
-      setTimeout(function(){ ensureSized(chart, retEl); }, 0);
       return true;
     }
     function draw(){
-      if (!window.echarts){ return false; }
-      if (!sized(klineEl)){ return false; }   // 等容器布局完成再画
+      if (!window.echarts) return false;
+      if (!sized(klineEl)) return false;   // 等容器布局完成再画
       let any = false;
       if (renderKline()) any = true;
       if (renderRet()) any = true;
@@ -207,7 +181,6 @@ window.StockDetail = (function(){
     console.log('[StockDetail]', d.code, 'drew='+drew,
       'echarts='+!!window.echarts,
       'kline size='+klineEl.clientWidth+'x'+klineEl.clientHeight,
-      'ret size='+(retEl.style.display==='none'?'hidden':retEl.clientWidth+'x'+retEl.clientHeight),
       'kData.dates='+(kData.dates||[]).length);
 
     // 模拟入场点事件
