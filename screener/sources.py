@@ -138,6 +138,7 @@ def _parse_tencent_line(line: str) -> Optional[dict]:
         "price": f(3),
         "prev_close": f(4),
         "open": f(5),
+        "volume": f(6),          # 成交量(手)
         "high": f(33),
         "low": f(34),
         "amount_wan": f(37),     # 成交额(万元)

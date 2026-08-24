@@ -147,11 +147,13 @@ class DashboardService:
         if not rows:
             return rows
         try:
-            codes = [r["code"].replace(".", "").lower() for r in rows]
+            from StockInvestmentTool.screener.board import normalize
+            # 观察池行代码可能无前缀（601899），增强 dict 以带前缀 key（sh601899）存储
+            codes = [normalize(r["code"]) for r in rows]
             enhance = self._realtime_enhance(codes)
             updated = 0
             for r in rows:
-                q = enhance.get(r["code"].replace(".", "").lower())
+                q = enhance.get(normalize(r["code"]))
                 if not q:
                     continue
                 if q.get("price") not in (None, 0):
