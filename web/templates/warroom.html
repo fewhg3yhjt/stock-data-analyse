@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>StockInvestmentTool - 持仓</title>
 <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
-<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<script src="/static/echarts.min.js"></script>
 <script>if(!window.echarts){document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script>')}</script>
 <script src="/static/stock-chart.js"></script>
 <script src="/static/stock-detail.js"></script>
@@ -107,8 +107,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
       <div class="stat-card"><div class="value">{{ data.summary.position_count or 0 }}</div><div class="label">总持仓只数</div></div>
       <div class="stat-card blue"><div class="value">{{ "%.0f"|format(data.summary.total_cost or 0) }}</div><div class="label">总投入成本(元)</div></div>
       <div class="stat-card blue"><div class="value">{{ "%.0f"|format(data.summary.total_market_value or 0) }}</div><div class="label">当前总市值(元)</div></div>
-      <div class="stat-card {% if (data.summary.total_pnl or 0)>0 %}green{% else %}red{% endif %}"><div class="value">{{ "%+.0f"|format(data.summary.total_pnl or 0) }}</div><div class="label">总浮动盈亏·未实现(元)</div></div>
-      <div class="stat-card {% if (data.summary.total_pnl_pct or 0)>0 %}green{% else %}red{% endif %}"><div class="value">{{ "%+.2f"|format(data.summary.total_pnl_pct or 0) }}%</div><div class="label">总浮动盈亏比例</div></div>
+      <div class="stat-card {% if (data.summary.total_pnl or 0)>0 %}red{% else %}green{% endif %}"><div class="value">{{ "%+.0f"|format(data.summary.total_pnl or 0) }}</div><div class="label">总浮动盈亏·未实现(元)</div></div>
+      <div class="stat-card {% if (data.summary.total_pnl_pct or 0)>0 %}red{% else %}green{% endif %}"><div class="value">{{ "%+.2f"|format(data.summary.total_pnl_pct or 0) }}%</div><div class="label">总浮动盈亏比例</div></div>
       <div class="stat-card"><div class="value">{{ "%.0f"|format(data.cash or 0) }}</div><div class="label">可用现金(元)</div></div>
     </div>
     <div class="risk-banner {% if '危机' in data.risk_status %}crisis{% elif '防守' in data.risk_status %}warn{% else %}ok{% endif %}">
@@ -135,7 +135,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
               <td>{{ "%.2f"|format(t.price) }}</td>
               <td>{{ "{:,.0f}".format(t.shares) }}</td>
               <td>{{ "{:,.0f}".format(t.amount) }}</td>
-              <td class="{{ 'green' if (t.pnl or 0)>=0 else 'red' }}">{{ "%+.2f"|format(t.pnl) if t.pnl else '—' }}</td>
+              <td class="{{ 'red' if (t.pnl or 0)>=0 else 'green' }}">{{ "%+.2f"|format(t.pnl) if t.pnl else '—' }}</td>
               <td style="font-size:12px;color:var(--text2);">{{ t.reason }}</td>
             </tr>
           {% endfor %}
@@ -159,7 +159,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
           <span>
             <span class="tag gray">{{ p.scheme_name }}</span>
             <span class="tag blue">类型{{ p.stock_type }}</span>
-            <span class="tag {% if (p.unrealized_pnl_pct or 0)>=0 %}green{% else %}red{% endif %}">{{ "%+.2f"|format(p.unrealized_pnl_pct or 0) }}%</span>
+            <span class="tag {% if (p.unrealized_pnl_pct or 0)>=0 %}red{% else %}green{% endif %}">{{ "%+.2f"|format(p.unrealized_pnl_pct or 0) }}%</span>
             <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                href="/portfolio/{{ p.id }}" title="加仓/减仓/平仓操作"><i class="fas fa-arrows-rotate"></i> 操作</a>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"

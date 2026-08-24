@@ -13,8 +13,9 @@ window.StockDetail = (function(){
     return n.toFixed(nd === undefined ? 2 : nd);
   }
   function color(pct){
+    // 国人习惯：红涨绿跌
     if (pct === null || pct === undefined || isNaN(pct)) return 'var(--text2)';
-    return pct > 0 ? 'var(--green)' : (pct < 0 ? 'var(--red)' : 'var(--text2)');
+    return pct > 0 ? 'var(--red)' : (pct < 0 ? 'var(--green)' : 'var(--text2)');
   }
   function pctHtml(v, suffix){
     if (v === null || v === undefined || isNaN(Number(v))) return '—';
@@ -76,22 +77,39 @@ window.StockDetail = (function(){
 
     const marketCls = { '强多':'green','弱多':'blue','震荡':'orange','空头':'red' }[b.market_state] || 'gray';
 
+    // 全量指标表：固定表头 + 单行数据（含列表未展示的字段）
+    const metricDefs = [
+      ['现价', fmt(b.price)],
+      ['涨跌幅', pctHtml(b.change_pct)],
+      ['成交量', volFmt(b.volume)],
+      ['成交额', b.amount_wan ? (b.amount_wan/10000).toFixed(2)+'亿' : '—'],
+      ['换手率', b.turnover != null ? fmt(b.turnover)+'%' : '—'],
+      ['量比', fmt(b.vol_ratio)],
+      ['PE(TTM)', fmt(b.pe_ttm)],
+      ['PB', fmt(b.pb)],
+      ['MA20', fmt(b.ma_20)],
+      ['MA60', fmt(b.ma_60)],
+      ['市场状态', `<span class="tag ${marketCls}">${b.market_state||'—'}</span>`],
+      ['弱支撑', fmt(b.weak_support)],
+      ['强支撑', fmt(b.strong_support)],
+      ['年内高点', fmt(b.year_high)],
+      ['趋势', (b.trend||'—')],
+    ];
+    const metricTable = `
+      <div class="metric-table-wrap" style="overflow-x:auto;margin-bottom:12px;">
+        <table class="metric-table" style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr>
+            ${metricDefs.map(d=>`<th style="position:sticky;top:0;background:var(--surface2);color:var(--text2);font-weight:500;padding:6px 10px;border:1px solid var(--border);white-space:nowrap;">${d[0]}</th>`).join('')}
+          </tr></thead>
+          <tbody><tr>
+            ${metricDefs.map(d=>`<td style="padding:7px 10px;border:1px solid var(--border);text-align:center;white-space:nowrap;font-weight:600;">${d[1]}</td>`).join('')}
+          </tr></tbody>
+        </table>
+      </div>`;
+
     container.innerHTML = `
       ${simRow}
-      <div class="metric-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:8px;margin-bottom:12px;">
-        <div class="m"><div class="l">现价</div><div class="v">${fmt(b.price)}</div></div>
-        <div class="m"><div class="l">涨跌幅</div><div class="v">${pctHtml(b.change_pct)}</div></div>
-        <div class="m"><div class="l">成交量</div><div class="v">${volFmt(b.volume)}</div></div>
-        <div class="m"><div class="l">成交额</div><div class="v">${b.amount_wan ? (b.amount_wan/10000).toFixed(2)+'亿' : '—'}</div></div>
-        <div class="m"><div class="l">换手率</div><div class="v">${fmt(b.turnover)}%</div></div>
-        <div class="m"><div class="l">量比</div><div class="v">${fmt(b.vol_ratio)}</div></div>
-        <div class="m"><div class="l">PE(TTM)</div><div class="v">${fmt(b.pe_ttm)}</div></div>
-        <div class="m"><div class="l">PB</div><div class="v">${fmt(b.pb)}</div></div>
-        <div class="m"><div class="l">MA20</div><div class="v">${fmt(b.ma_20)}</div></div>
-        <div class="m"><div class="l">MA60</div><div class="v">${fmt(b.ma_60)}</div></div>
-        <div class="m"><div class="l">市场状态</div><div class="v"><span class="tag ${marketCls}">${b.market_state||'—'}</span></div></div>
-        <div class="m"><div class="l">弱/强支撑</div><div class="v">${fmt(b.weak_support)}/${fmt(b.strong_support)}</div></div>
-      </div>
+      ${metricTable}
       ${iv.price || iv.price===0 ? `<div class="intraday-note" style="font-size:11px;color:var(--text2);margin-bottom:8px;">
           <i class="fas fa-clock"></i> 盘中快照 ${fmt(iv.snapshot_time)}：现价 ${fmt(iv.price)}，涨跌 ${pctHtml(iv.change_pct)}，换手 ${fmt(iv.turnover)}%，量比 ${fmt(iv.vol_ratio)}</div>` : ''}
       <div class="chart kline-chart" style="width:100%;height:300px;"></div>
@@ -102,17 +120,31 @@ window.StockDetail = (function(){
     // K线（收盘 + 点位）
     const klineEl = container.querySelector('.kline-chart');
     const kData = { dates: h.dates || [], series:[{name:'收盘', key:'close', data: h.closes || []}], lines: d.lines || [] };
-    if (window.StockChart) window.StockChart.drawKLine(klineEl, kData);
 
     // 收益折线
     const retEl = container.querySelector('.returns-chart');
+    let retData = null;
     if (ret && ret.dates && ret.dates.length){
-      const retData = { dates: ret.dates, series:[
+      retData = { dates: ret.dates, series:[
         {name: kind==='position'?'实际收益%':'模拟收益%', key:'ret_pct', data: ret.ret_pct}
       ]};
-      if (window.StockChart) window.StockChart.drawLine(retEl, retData, {yFormatter:'{value}%'});
     } else {
       retEl.style.display = 'none';
+    }
+
+    // 等待 echarts 就绪后绘制（自托管秒级，但防时序竞争）
+    function draw(){
+      if (!window.StockChart || !window.echarts){ return false; }
+      if (kData.dates && kData.dates.length) window.StockChart.drawKLine(klineEl, kData);
+      if (retData) window.StockChart.drawLine(retEl, retData, {yFormatter:'{value}%'});
+      return true;
+    }
+    if (!draw()){
+      let tries = 0;
+      const iv2 = setInterval(function(){
+        if (draw()){ clearInterval(iv2); return; }
+        if (++tries > 40){ clearInterval(iv2); }  // ~4s 上限
+      }, 100);
     }
 
     // 模拟入场点事件
