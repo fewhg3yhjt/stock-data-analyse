@@ -130,6 +130,23 @@ def cmd_backfill(args):
         print(f"✅ 批量回补: {r['rows']} 行, 失败 {r['failed']}")
 
 
+def cmd_fundamentals(args):
+    """采集行业 + 财务史 进数据层（meta.db + fundamentals 分区）。"""
+    from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
+    fc = FundamentalsCollector()
+    result = {}
+    if args.kind in ("industry", "all"):
+        r = fc.collect_industry(max_symbols=args.max_symbols,
+                                refresh_all=args.refresh)
+        result["industry"] = r
+        print(f"✅ 行业采集: 更新 {r['updated']}, 跳过 {r['skipped']}")
+    if args.kind in ("financial", "all"):
+        r = fc.collect_fundamentals(max_symbols=args.max_symbols)
+        result["financial"] = r
+        print(f"✅ 财务史采集: 完成 {r['done']}, 跳过 {r['skipped']}, 失败 {r['failed']}")
+    return result
+
+
 def cmd_status(args):
     """仓库状态总览。"""
     from StockInvestmentTool.warehouse.storage import Warehouse
@@ -205,6 +222,12 @@ def main(argv: list[str] | None = None):
     p_backfill.add_argument("--start", required=True, help="YYYY-MM-DD")
     p_backfill.add_argument("--end", required=True, help="YYYY-MM-DD")
 
+    p_fund = sub.add_parser("fundamentals", help="采集行业+财务史进数据层")
+    p_fund.add_argument("--kind", choices=["industry", "financial", "all"],
+                        default="all", help="采集类型")
+    p_fund.add_argument("--max-symbols", type=int, default=None)
+    p_fund.add_argument("--refresh", action="store_true", help="行业强制重采(默认跳过已采)")
+
     sub.add_parser("status", help="仓库状态")
 
     args = parser.parse_args(argv)
@@ -212,7 +235,8 @@ def main(argv: list[str] | None = None):
 
     handlers = {"init": cmd_init, "sync": cmd_sync, "factors": cmd_factors,
                 "scan": cmd_scan, "online": cmd_online, "status": cmd_status,
-                "reset": cmd_reset, "process": cmd_process, "backfill": cmd_backfill}
+                "reset": cmd_reset, "process": cmd_process, "backfill": cmd_backfill,
+                "fundamentals": cmd_fundamentals}
     try:
         handlers[args.cmd](args)
     except Exception as e:

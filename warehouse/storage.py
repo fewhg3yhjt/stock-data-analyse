@@ -23,6 +23,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 # 日线标准列（baostock query_history_k_data_plus 常用字段）
@@ -54,9 +56,11 @@ class Warehouse:
         self.daily_dir = self.base_dir / "daily"
         self.factor_dir = self.base_dir / "factors"
         self.indicator_dir = self.base_dir / "indicators"
+        self.fundamental_dir = self.base_dir / "fundamentals"
         self.online_dir = self.base_dir / "online"
         self.meta_db_path = self.base_dir / "meta.db"
-        for d in (self.daily_dir, self.factor_dir, self.indicator_dir, self.online_dir):
+        for d in (self.daily_dir, self.factor_dir, self.indicator_dir,
+                  self.fundamental_dir, self.online_dir):
             d.mkdir(parents=True, exist_ok=True)
         self._init_meta()
 
@@ -80,9 +84,14 @@ class Warehouse:
                     type TEXT,                    -- stock/etf/index
                     board TEXT,
                     listed_date TEXT,
+                    industry TEXT DEFAULT '',     -- 证监会行业（如 I64互联网和相关服务）
                     updated_at TEXT
                 )
             """)
+            # 迁移：老库加 industry 列
+            cols = {r[1] for r in c.execute("PRAGMA table_info(instruments)").fetchall()}
+            if "industry" not in cols:
+                c.execute("ALTER TABLE instruments ADD COLUMN industry TEXT DEFAULT ''")
             c.execute("""
                 CREATE TABLE IF NOT EXISTS daily_manifest (
                     month TEXT PRIMARY KEY,       -- YYYY-MM
@@ -101,23 +110,48 @@ class Warehouse:
                     updated_at TEXT
                 )
             """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS fundamental_manifest (
+                    code TEXT PRIMARY KEY,        -- sh600900
+                    rows INTEGER,
+                    last_period TEXT,             -- 最新报告期
+                    updated_at TEXT
+                )
+            """)
 
     def upsert_instruments(self, rows: Iterable[dict]):
-        """批量写入/更新标的清单。rows: [{code,name,type,board,listed_date}]"""
+        """批量写入/更新标的清单。rows: [{code,name,type,board,listed_date,industry}]"""
         rows = list(rows)
         if not rows:
             return
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self._conn() as c:
             c.executemany(
-                """INSERT INTO instruments(code,name,type,board,listed_date,updated_at)
-                   VALUES(?,?,?,?,?,?)
+                """INSERT INTO instruments(code,name,type,board,listed_date,industry,updated_at)
+                   VALUES(?,?,?,?,?,?,?)
                    ON CONFLICT(code) DO UPDATE SET
                      name=excluded.name, type=excluded.type, board=excluded.board,
-                     listed_date=excluded.listed_date, updated_at=excluded.updated_at""",
+                     listed_date=excluded.listed_date, industry=excluded.industry,
+                     updated_at=excluded.updated_at""",
                 [(r.get("code"), r.get("name"), r.get("type"), r.get("board"),
-                  r.get("listed_date"), now) for r in rows],
+                  r.get("listed_date"), r.get("industry", ""), now) for r in rows],
             )
+
+    def update_industry(self, code: str, industry: str):
+        """更新单只标的行业（低频静态，采集后写入）。"""
+        with self._conn() as c:
+            c.execute(
+                "UPDATE instruments SET industry=?, updated_at=? WHERE code=?",
+                (industry, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), code),
+            )
+
+    def get_industry(self, code: str) -> str:
+        """查询标的行业（meta.db）。"""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT industry FROM instruments WHERE code=?", (code,)
+            ).fetchone()
+        return (row[0] or "") if row else ""
 
     def all_codes(self) -> list[str]:
         with self._conn() as c:
@@ -196,6 +230,53 @@ class Warehouse:
     def read_indicator(self, month: str):
         """读取某月指标分区"""
         return self._read_partition(self.indicator_dir, month)
+
+    # ── 基本面层（fundamentals）───────────────────────
+
+    def fundamental_path(self, code: str) -> Path:
+        """单只标的基本面分区文件（按 code 存，季度报告数据）。"""
+        return self.fundamental_dir / f"{code}.parquet"
+
+    def write_fundamentals(self, code: str, df) -> int:
+        """写入单只标的基本面历史（按 code 覆盖写）。返回行数。"""
+        path = self.fundamental_path(code)
+        try:
+            df.to_parquet(path, index=False, engine="pyarrow",
+                          compression="zstd" if _has("pyarrow") else "snappy")
+        except Exception as e:
+            logger.error("写基本面 %s 失败: %s", code, e)
+            raise
+        # 更新 manifest
+        last_period = str(df["stat_date"].max())[:10] if "stat_date" in df.columns else ""
+        with self._conn() as c:
+            c.execute(
+                """INSERT INTO fundamental_manifest(code,rows,last_period,updated_at)
+                   VALUES(?,?,?,?)
+                   ON CONFLICT(code) DO UPDATE SET
+                     rows=excluded.rows, last_period=excluded.last_period,
+                     updated_at=excluded.updated_at""",
+                (code, int(len(df)), last_period,
+                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            )
+        logger.info("基本面已写入: %s (%d 行)", code, len(df))
+        return len(df)
+
+    def read_fundamentals(self, code: str):
+        """读取单只标的基本面历史（DataFrame 或 None）。"""
+        path = self.fundamental_path(code)
+        if not path.exists():
+            return None
+        try:
+            df = pd.read_parquet(path)
+            if "stat_date" in df.columns:
+                df["stat_date"] = pd.to_datetime(df["stat_date"])
+            return df
+        except Exception as e:
+            logger.warning("基本面读取失败 %s: %s", path, e)
+            return None
+
+    def has_fundamentals(self, code: str) -> bool:
+        return self.fundamental_path(code).exists()
 
     def write_daily_partition(self, month: str, df) -> int:
         """把某月日线分区整体覆写。df 需含 code/date 等列。返回写入行数。"""

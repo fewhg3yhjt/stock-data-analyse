@@ -376,16 +376,27 @@ def api_classify():
             return flask.jsonify({"status": "success", "stock_type": "E",
                                   "industry": "场内ETF/LOF", "roe": 0, "rev_growth": 0})
         fetcher = StockDataFetcher()
-        industry = fetcher.get_stock_industry(code)
+        # 行业：优先读数据层 meta.db（采集后写入），无则实时拉+写缓存
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        wh = Warehouse()
+        code_nodot = code.replace(".", "")
+        industry = wh.get_industry(code_nodot)
+        if not industry:
+            industry = fetcher.get_stock_industry(code)
+            if industry:
+                wh.update_industry(code_nodot, industry)
+        # 财务史：优先读数据层 fundamentals 分区，无则实时拉
         roe = rev_growth = 0.0
-        try:
+        fund = wh.read_fundamentals(code_nodot)
+        if fund is None or fund.empty:
             df = fetcher.get_fundamental_history(code, years=1)
             if df is not None and not df.empty:
-                row = df.iloc[-1]
-                roe = float(row.get("roe") or 0)
-                rev_growth = float(row.get("revenue_yoy") or 0)
-        except Exception:
-            pass
+                wh.write_fundamentals(code_nodot, df)
+                fund = df
+        if fund is not None and not fund.empty:
+            row = fund.iloc[-1]
+            roe = float(row.get("roe") or 0)
+            rev_growth = float(row.get("revenue_yoy") or 0)
         stype = classify_stock(industry=industry, roe=roe,
                                revenue_growth=rev_growth, div_yield=0, pe=0)
         return flask.jsonify({"status": "success", "stock_type": stype,
