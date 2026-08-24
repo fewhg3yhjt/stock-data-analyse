@@ -146,6 +146,11 @@ window.StockDetail = (function(){
       }
       chart.setOption(opt, true);
       setTimeout(function(){ ensureSized(chart, klineEl); }, 0);
+      try{
+        console.log('[Kline] init后 getWidth='+chart.getWidth()+' getHeight='+chart.getHeight()+
+          ' dom='+chart.getDom().clientWidth+'x'+chart.getDom().clientHeight+
+          ' canvas='+(chart.getDom().querySelector('canvas')?chart.getDom().querySelector('canvas').width+'x'+chart.getDom().querySelector('canvas').height:'无canvas'));
+      }catch(e){ console.log('[Kline] 诊断异常', e.message); }
       return true;
     }
     function renderRet(){
