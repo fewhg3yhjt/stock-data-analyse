@@ -124,7 +124,27 @@ window.StockDetail = (function(){
       const pad = (yMax - yMin) * 0.05 || 0.1;
 
       const opt = {
-        tooltip:{trigger:'axis'}, legend:{top:0},
+        tooltip:{
+          trigger:'axis',
+          formatter: function(params){
+            let out = '';
+            if (params && params.length){
+              out += '<div style="font-weight:600;margin-bottom:2px;">' + params[0].axisValue + '</div>';
+              params.forEach(function(p){
+                if (p.value === null || p.value === undefined) return;
+                out += (p.marker || '') + ' ' + p.seriesName + '：' + p.value + '<br/>';
+              });
+            }
+            if (kLines && kLines.length){
+              kLines.forEach(function(l){
+                out += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + (l.color||'#999') + ';margin-right:5px;"></span>'
+                    + l.name + '：' + l.value + '<br/>';
+              });
+            }
+            return out;
+          }
+        },
+        legend:{top:0},
         grid:{left:55, right:30, top:34, bottom:50},
         xAxis:{type:'category', data:kDates, boundaryGap:false},
         yAxis:{type:'value', scale:true, min: yMin - pad, max: yMax + pad},
