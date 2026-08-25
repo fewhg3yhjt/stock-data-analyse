@@ -226,8 +226,8 @@ window.StockDetail = (function(){
       disposeChart(klineEl);
       const chart = echarts.init(klineEl);
       charts.push(chart);
-      // 首尾各留一个空类目，避免最早/最新一根K线贴在绘图区边缘而看不见。
-      const chartDates = ['', ...kDates, ''];
+      // boundaryGap 自带首尾内边距，不加额外空类目：120根均匀铺满、最新K线贴右。
+      const chartDates = kDates;
       // yAxis 范围：收盘 + 高/低 + 点位，避免点位或影线超出可视区
       let yMin = Infinity, yMax = -Infinity;
       const scan = (v) => { const n = Number(v); if(!isNaN(n)){ if(n<yMin)yMin=n; if(n>yMax)yMax=n; } };
@@ -261,12 +261,7 @@ window.StockDetail = (function(){
       });
       // 成交量副图（grid1 / yAxis1 / xAxis1）
       series.push({ name:'成交量', type:'bar', xAxisIndex:1, yAxisIndex:1,
-        data:[{value:null}, ...volData, {value:null}], barWidth:'60%' });
-      series.forEach(function(s){
-        // 首尾各补一个「无数据」占位；candlestick 须用 '-'（null 会在
-        // getInitialData 里读 null.value 抛错），成交量已用 {value:null} 占位。
-        if (Array.isArray(s.data) && s.data.length === kDates.length) s.data = ['-', ...s.data, '-'];
-      });
+        data:volData, barWidth:'60%' });
 
       const opt = {
         tooltip:{
@@ -318,7 +313,7 @@ window.StockDetail = (function(){
         ],
         dataZoom:[
           { type:'inside', xAxisIndex:[0,1] },
-          // 默认展示全量历史（含首尾空类目），首尾K线都不贴边；滑块可聚焦任一段。
+          // 默认展示全量历史，最新K线贴近右边界（boundaryGap 留首尾内边距）。
           { type:'slider', xAxisIndex:[0,1], bottom:6, height:18,
             start:0, end:100,
             handleSize:'130%', showDetail:false }
