@@ -226,8 +226,8 @@ window.StockDetail = (function(){
       disposeChart(klineEl);
       const chart = echarts.init(klineEl);
       charts.push(chart);
-      // 末尾留一个空类目，避免最新一根K线贴在绘图区边缘而看不见。
-      const chartDates = kDates.concat(['']);
+      // 首尾各留一个空类目，避免最早/最新一根K线贴在绘图区边缘而看不见。
+      const chartDates = ['', ...kDates, ''];
       // yAxis 范围：收盘 + 高/低 + 点位，避免点位或影线超出可视区
       let yMin = Infinity, yMax = -Infinity;
       const scan = (v) => { const n = Number(v); if(!isNaN(n)){ if(n<yMin)yMin=n; if(n>yMax)yMax=n; } };
@@ -261,11 +261,11 @@ window.StockDetail = (function(){
       });
       // 成交量副图（grid1 / yAxis1 / xAxis1）
       series.push({ name:'成交量', type:'bar', xAxisIndex:1, yAxisIndex:1,
-        data:volData.concat([{value:null}]), barWidth:'60%' });
+        data:[{value:null}, ...volData, {value:null}], barWidth:'60%' });
       series.forEach(function(s){
-        // 用 ECharts 的「无数据」哨兵 '-' 补齐末尾空类目；用 null 会让 candlestick
-        // 在 getInitialData 里读 null.value 抛错。
-        if (Array.isArray(s.data) && s.data.length === kDates.length) s.data = s.data.concat(['-']);
+        // 首尾各补一个「无数据」占位；candlestick 须用 '-'（null 会在
+        // getInitialData 里读 null.value 抛错），成交量已用 {value:null} 占位。
+        if (Array.isArray(s.data) && s.data.length === kDates.length) s.data = ['-', ...s.data, '-'];
       });
 
       const opt = {
@@ -279,6 +279,7 @@ window.StockDetail = (function(){
               if (p.seriesType === 'candlestick'){
                 // ECharts candlestick 的 value 带 dataIndex 前缀: [dataIndex, open, close, lowest, highest]
                 const v = p.value || [];
+                if (v === '-' || v.length < 2) return;
                 let o, c, l, h;
                 if (v.length >= 5){ o = v[1]; c = v[2]; l = v[3]; h = v[4]; }
                 else { o = v[0]; c = v[1]; l = v[2]; h = v[3]; }
