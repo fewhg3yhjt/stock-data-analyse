@@ -116,19 +116,28 @@ window.StockDetail = (function(){
       if (!sized(klineEl)) return false;   // 容器未就绪 → 由 draw 重试
       const chart = echarts.init(klineEl);
       charts.push(chart);
+      // yAxis 范围：以收盘价为主，并纳入所有点位，避免点位(如止盈硬上限)超出可视区
+      let yMin = Infinity, yMax = -Infinity;
+      kCloses.forEach(v => { if (v === null || v === undefined || isNaN(Number(v))) return; const n=Number(v); if(n<yMin)yMin=n; if(n>yMax)yMax=n; });
+      (kLines||[]).forEach(l => { const n = Number(l.value); if(!isNaN(n)){ if(n<yMin)yMin=n; if(n>yMax)yMax=n; } });
+      if (!isFinite(yMin)){ yMin = 0; yMax = 1; }
+      const pad = (yMax - yMin) * 0.05 || 0.1;
+
       const opt = {
         tooltip:{trigger:'axis'}, legend:{top:0},
         grid:{left:55, right:30, top:34, bottom:50},
         xAxis:{type:'category', data:kDates, boundaryGap:false},
-        yAxis:{type:'value', scale:true},
+        yAxis:{type:'value', scale:true, min: yMin - pad, max: yMax + pad},
         dataZoom:[{type:'inside'},{type:'slider', height:16}],
         series:[{name:'收盘', type:'line', data:kCloses, showSymbol:false,
                  lineStyle:{width:1.5,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'}}]
       };
       if (kLines && kLines.length){
-        opt.series.push({name:'点位', type:'line', data:[], silent:true,
-          markLine:{symbol:'none', label:{formatter:p=>p.name, position:'insideEndTop', fontSize:10},
-            data:kLines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))}});
+        opt.series[0].markLine = {
+          symbol:'none',
+          label:{formatter:p=>p.name, position:'insideEndTop', fontSize:10},
+          data:kLines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))
+        };
       }
       chart.setOption(opt, true);
       return true;
