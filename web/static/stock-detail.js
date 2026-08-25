@@ -53,6 +53,7 @@ window.StockDetail = (function(){
     const b = d.basic || {};
     const h = d.daily_history || {};
     const iv = d.intraday || {};
+    const it = d.intraday_trend || {};
     const ret = d.returns;
 
     let simRow = '';
@@ -70,7 +71,9 @@ window.StockDetail = (function(){
     }
 
     const hasEntry = b.entry_price;
-    const retBlock = ret ? `
+    // 收益显示控制：观察页(无 onSimEntry)不展示收益，自选(onSimEntry)/持仓(position)展示
+    const showReturn = kind === 'position' || !!opts.onSimEntry;
+    const retBlock = (showReturn && ret) ? `
       <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin-top:8px;">
         <span>${kind==='position'?'实际收益率':'模拟收益率'} ${pctHtml(ret.ret_pct_latest)}</span>
         ${kind==='position' ? `<span>浮动盈亏 <b style="color:${color(ret.ret_amount_latest)}">${fmt(ret.ret_amount_latest)} 元</b></span>` : ''}
@@ -78,63 +81,134 @@ window.StockDetail = (function(){
         <span>最新收盘 <b>${fmt(ret.latest_close)}</b></span>
       </div>` : '';
 
+    function mcapFmt(v){
+      if (v === null || v === undefined || isNaN(Number(v))) return '—';
+      const n = Number(v);
+      if (n >= 10000) return (n/10000).toFixed(2) + '万亿';
+      return n.toFixed(1) + '亿';
+    }
+    function handFmt(v){
+      if (v === null || v === undefined || isNaN(Number(v))) return '—';
+      const n = Number(v);
+      if (n >= 1e8) return (n/1e8).toFixed(2) + '亿手';
+      if (n >= 1e4) return (n/1e4).toFixed(1) + '万手';
+      return n + '手';
+    }
+
+    // 实时报价面板（现价/涨跌/开高低/量额/换手/量比/PE/PB/市值/振幅）
+    const chg = Number(b.change_pct);
+    const chgColor = color(chg);
+    const quotePanel = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:4px 16px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin-bottom:10px;font-size:13px;">
+        <div style="grid-column:1/-1;display:flex;align-items:baseline;gap:12px;margin-bottom:4px;">
+          <span style="font-size:24px;font-weight:700;color:${chgColor};">${fmt(b.price)}</span>
+          <span style="font-size:15px;font-weight:600;color:${chgColor};">${chg>=0?'+':''}${fmt(chg)}%</span>
+          <span style="font-size:11px;color:var(--text2);"><i class="fas fa-clock"></i> ${b.snapshot_time || iv.snapshot_time || '—'}</span>
+        </div>
+        <div><span style="color:var(--text2);">今开</span> <b>${fmt(b.open)}</b></div>
+        <div><span style="color:var(--text2);">昨收</span> <b>${fmt(b.prev_close)}</b></div>
+        <div><span style="color:var(--text2);">最高</span> <b style="color:var(--red);">${fmt(b.high)}</b></div>
+        <div><span style="color:var(--text2);">最低</span> <b style="color:var(--green);">${fmt(b.low)}</b></div>
+        <div><span style="color:var(--text2);">成交量</span> <b>${handFmt(b.volume)}</b></div>
+        <div><span style="color:var(--text2);">成交额</span> <b>${b.amount_wan!=null?(b.amount_wan/10000).toFixed(2)+'亿':'—'}</b></div>
+        <div><span style="color:var(--text2);">换手率</span> <b>${b.turnover!=null?fmt(b.turnover)+'%':'—'}</b></div>
+        <div><span style="color:var(--text2);">量比</span> <b>${fmt(b.vol_ratio)}</b></div>
+        <div><span style="color:var(--text2);">PE(TTM)</span> <b>${fmt(b.pe_ttm)}</b></div>
+        <div><span style="color:var(--text2);">PB</span> <b>${fmt(b.pb)}</b></div>
+        <div><span style="color:var(--text2);">总市值</span> <b>${mcapFmt(b.total_mcap)}</b></div>
+        <div><span style="color:var(--text2);">流通市值</span> <b>${mcapFmt(b.float_mcap)}</b></div>
+        <div><span style="color:var(--text2);">振幅</span> <b>${b.amplitude!=null?fmt(b.amplitude)+'%':'—'}</b></div>
+      </div>`;
+
+    // 盘中走势（10分钟粒度快照序列，有则展示）
+    const hasTrend = it && it.times && it.times.length > 0;
+
     container.innerHTML = `
       ${simRow}
-      ${iv.price || iv.price===0 ? `<div class="intraday-note" style="font-size:11px;color:var(--text2);margin-bottom:8px;">
-          <i class="fas fa-clock"></i> 盘中快照 ${fmt(iv.snapshot_time)}：现价 ${fmt(iv.price)}，涨跌 ${pctHtml(iv.change_pct)}，换手 ${fmt(iv.turnover)}%，量比 ${fmt(iv.vol_ratio)}</div>` : ''}
-      <div class="chart kline-chart" style="width:100%;height:300px;"></div>
-      <div class="returns-chart" style="width:100%;height:220px;margin-top:10px;"></div>
+      ${quotePanel}
+      ${hasTrend ? `<div class="chart intraday-trend-chart" style="width:100%;height:180px;"></div>` : ''}
+      <div class="chart kline-chart" style="width:100%;height:320px;"></div>
+      <div class="chart volume-chart" style="width:100%;height:130px;"></div>
+      ${showReturn ? `<div class="returns-chart" style="width:100%;height:220px;margin-top:10px;"></div>` : ''}
       ${retBlock}
     `;
 
-    // K线（收盘 + 点位）
+    // K线数据（OHLCV + 均线 + 点位）
     const klineEl = container.querySelector('.kline-chart');
+    const volEl = container.querySelector('.volume-chart');
+    const trendEl = container.querySelector('.intraday-trend-chart');
+    const retEl = container.querySelector('.returns-chart');
     const kDates = h.dates || [];
     const kCloses = h.closes || [];
+    const kOpens = h.opens || [];
+    const kHighs = h.highs || [];
+    const kLows = h.lows || [];
+    const kVolumes = h.volumes || [];
+    const kMas = h.mas || {};
     const kLines = d.lines || [];
 
-    // 收益折线
-    const retEl = container.querySelector('.returns-chart');
+    // 收益折线数据
     let retData = null;
-    if (ret && ret.dates && ret.dates.length){
+    if (showReturn && ret && ret.dates && ret.dates.length){
       retData = { dates: ret.dates, series:[
         {name: kind==='position'?'实际收益%':'模拟收益%', key:'ret_pct', data: ret.ret_pct}
       ]};
-    } else {
-      retEl.style.display = 'none';
     }
 
-    // 绘制 K 线（收盘 + 点位线）与收益折线 —— 直接用 echarts，同 warroom 可行方案
+    // 绘制 K线(蜡烛+均线+点位) / 成交量 / 盘中走势 / 收益 —— 直接用 echarts
     let drew = false;
     const charts = [];
     function sized(el){
       return el && el.clientWidth > 0 && el.clientHeight > 0;
     }
+    const maColors = { MA5:'#8e44ad', MA10:'#2980b9', MA20:'#e67e22', MA60:'#27ae60' };
     function renderKline(){
       if (!window.echarts) return false;
       if (!(kDates && kDates.length)) return false;
       if (!sized(klineEl)) return false;   // 容器未就绪 → 由 draw 重试
       const chart = echarts.init(klineEl);
       charts.push(chart);
-      // yAxis 范围：以收盘价为主，并纳入所有点位，避免点位(如止盈硬上限)超出可视区
+      // yAxis 范围：收盘 + 高/低 + 点位，避免点位或影线超出可视区
       let yMin = Infinity, yMax = -Infinity;
-      kCloses.forEach(v => { if (v === null || v === undefined || isNaN(Number(v))) return; const n=Number(v); if(n<yMin)yMin=n; if(n>yMax)yMax=n; });
-      (kLines||[]).forEach(l => { const n = Number(l.value); if(!isNaN(n)){ if(n<yMin)yMin=n; if(n>yMax)yMax=n; } });
+      const scan = (v) => { const n = Number(v); if(!isNaN(n)){ if(n<yMin)yMin=n; if(n>yMax)yMax=n; } };
+      kCloses.forEach(scan); kHighs.forEach(scan); kLows.forEach(scan);
+      (kLines||[]).forEach(l => scan(l.value));
       if (!isFinite(yMin)){ yMin = 0; yMax = 1; }
       const pad = (yMax - yMin) * 0.05 || 0.1;
+
+      const hasOHLC = kOpens.some(v => v !== null && v !== undefined);
+      const series = [];
+      if (hasOHLC){
+        const klineData = kDates.map((_, i) => [kOpens[i], kCloses[i], kLows[i], kHighs[i]]);
+        series.push({ name:'K线', type:'candlestick', data:klineData,
+          itemStyle:{ color:'#ef5350', color0:'#26a69a', borderColor:'#ef5350', borderColor0:'#26a69a' } });
+      } else {
+        series.push({ name:'收盘', type:'line', data:kCloses, showSymbol:false,
+          lineStyle:{width:1.5,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'} });
+      }
+      ['MA5','MA10','MA20','MA60'].forEach(function(n){
+        const data = kMas[n];
+        if (data && data.some(v => v !== null && v !== undefined)){
+          series.push({ name:n, type:'line', data:data, showSymbol:false,
+            lineStyle:{width:1, color:maColors[n]}, itemStyle:{color:maColors[n]} });
+        }
+      });
 
       const opt = {
         tooltip:{
           trigger:'axis',
+          axisPointer:{ type:'cross' },
           formatter: function(params){
-            let out = '';
-            if (params && params.length){
-              out += '<div style="font-weight:600;margin-bottom:2px;">' + params[0].axisValue + '</div>';
-              params.forEach(function(p){
-                if (p.value === null || p.value === undefined) return;
+            if (!params || !params.length) return '';
+            let out = '<div style="font-weight:600;margin-bottom:2px;">' + params[0].axisValue + '</div>';
+            params.forEach(function(p){
+              if (p.seriesType === 'candlestick'){
+                const v = p.value || [];
+                out += '<span>开 <b>' + v[0] + '</b>　高 <b>' + v[3] + '</b>　低 <b>' + v[2] + '</b>　收 <b>' + v[1] + '</b></span><br/>';
+              } else if (p.seriesName && p.value !== null && p.value !== undefined){
                 out += (p.marker || '') + ' ' + p.seriesName + '：' + p.value + '<br/>';
-              });
-            }
+              }
+            });
             if (kLines && kLines.length){
               kLines.forEach(function(l){
                 out += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + (l.color||'#999') + ';margin-right:5px;"></span>'
@@ -149,11 +223,10 @@ window.StockDetail = (function(){
         xAxis:{type:'category', data:kDates, boundaryGap:false},
         yAxis:{type:'value', scale:true, min: yMin - pad, max: yMax + pad},
         dataZoom:[{type:'inside'},{type:'slider', height:16}],
-        series:[{name:'收盘', type:'line', data:kCloses, showSymbol:false,
-                 lineStyle:{width:1.5,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'}}]
+        series: series
       };
       if (kLines && kLines.length){
-        opt.series[0].markLine = {
+        series[0].markLine = {
           symbol:'none',
           label:{formatter:p=>p.name, position:'insideEndTop', fontSize:10},
           data:kLines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))
@@ -162,9 +235,50 @@ window.StockDetail = (function(){
       chart.setOption(opt, true);
       return true;
     }
+    function renderVolume(){
+      if (!window.echarts) return false;
+      if (!(kDates && kDates.length)) return false;
+      if (!sized(volEl)) return false;
+      const chart = echarts.init(volEl);
+      charts.push(chart);
+      const volData = kDates.map((_, i) => {
+        const o = kOpens[i], c = kCloses[i];
+        const up = (c !== null && c !== undefined && o !== null && o !== undefined) ? (Number(c) >= Number(o)) : true;
+        return { value: kVolumes[i], itemStyle:{ color: up ? '#ef5350' : '#26a69a' } };
+      });
+      chart.setOption({
+        tooltip:{ trigger:'axis', formatter: function(p){
+          if (!p || !p.length) return '';
+          const v = p[0].value;
+          return p[0].axisValue + '<br/>成交量：' + (v === null || v === undefined ? '—' : v);
+        }},
+        grid:{left:55, right:30, top:8, bottom:24},
+        xAxis:{type:'category', data:kDates, boundaryGap:false, axisLabel:{show:false}},
+        yAxis:{type:'value', scale:true},
+        series:[{ name:'成交量', type:'bar', data:volData, barWidth:'60%' }]
+      }, true);
+      return true;
+    }
+    function renderTrend(){
+      if (!window.echarts || !hasTrend) return false;
+      if (!sized(trendEl)) return false;
+      const chart = echarts.init(trendEl);
+      charts.push(chart);
+      chart.setOption({
+        title:{ text:'盘中走势（10分钟快照）', left:0, top:0, textStyle:{fontSize:12, color:'#6b7280', fontWeight:'normal'} },
+        tooltip:{trigger:'axis'},
+        grid:{left:55, right:30, top:30, bottom:24},
+        xAxis:{type:'category', data:it.times, boundaryGap:false},
+        yAxis:{type:'value', scale:true},
+        series:[{ name:'价格', type:'line', data:it.prices, showSymbol:false,
+          lineStyle:{width:1.5, color:'#1a73e8'}, itemStyle:{color:'#1a73e8'},
+          areaStyle:{ color:'rgba(26,115,232,0.08)' } }]
+      }, true);
+      return true;
+    }
     function renderRet(){
       if (!window.echarts || !retData) return false;
-      if (!sized(retEl)) return false;
+      if (!retEl || !sized(retEl)) return false;
       const chart = echarts.init(retEl);
       charts.push(chart);
       chart.setOption({
@@ -183,7 +297,9 @@ window.StockDetail = (function(){
       if (!sized(klineEl)) return false;   // 等容器布局完成再画
       let any = false;
       if (renderKline()) any = true;
-      if (renderRet()) any = true;
+      if (renderVolume()) any = true;
+      if (renderTrend()) any = true;
+      if (showReturn && renderRet()) any = true;
       drew = any;
       return true;
     }

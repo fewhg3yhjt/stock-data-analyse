@@ -195,7 +195,8 @@ class DashboardService:
                 if q.get("change_pct") is not None:
                     row["change_pct"] = round(float(q["change_pct"]), 2)
                 for f in ("amount_wan", "turnover", "vol_ratio", "pe_ttm", "pb",
-                          "volume", "high", "low", "open", "prev_close"):
+                          "volume", "high", "low", "open", "prev_close",
+                          "amplitude", "float_mcap", "total_mcap"):
                     v = q.get(f)
                     if v is not None:
                         row[f] = round(float(v), 2) if f != "volume" else round(float(v), 0)
@@ -332,19 +333,28 @@ class DashboardService:
             if history:
                 import pandas as pd
                 hdf = pd.concat(history, ignore_index=True).sort_values("date").tail(days)
+                closes_s = pd.to_numeric(hdf["close"], errors="coerce")
+                mas = {}
+                for n in (5, 10, 20, 60):
+                    ma = closes_s.rolling(n).mean()
+                    mas[f"MA{n}"] = [round(float(x), 2) if x == x else None for x in ma]
                 result["daily_history"] = {
                     "dates": [str(d)[:10] for d in hdf["date"]],
                     "closes": [round(float(x), 2) if x == x else None for x in hdf["close"]],
+                    "opens": [round(float(x), 2) if x == x else None for x in hdf.get("open", pd.Series([None]*len(hdf)))],
+                    "highs": [round(float(x), 2) if x == x else None for x in hdf.get("high", pd.Series([None]*len(hdf)))],
+                    "lows": [round(float(x), 2) if x == x else None for x in hdf.get("low", pd.Series([None]*len(hdf)))],
                     "volumes": [round(float(x), 0) if x == x else None for x in hdf["volume"]],
                     "amounts": [round(float(x), 2) if x == x else None for x in hdf.get("amount", pd.Series([None]*len(hdf)))],
                     "turns": [round(float(x), 2) if x == x else None for x in hdf.get("turn", pd.Series([None]*len(hdf)))],
                     "pe": [round(float(x), 2) if x == x else None for x in hdf.get("peTTM", pd.Series([None]*len(hdf)))],
                     "pb": [round(float(x), 2) if x == x else None for x in hdf.get("pbMRQ", pd.Series([None]*len(hdf)))],
+                    "mas": mas,
                 }
         except Exception as e:
             logger.warning("天周期历史读取失败 %s: %s", code, e)
 
-        # 框2：盘中快照（当日最新）
+        # 框2：盘中快照（当日最新）+ 当日走势（10分钟粒度序列）
         try:
             today = datetime.now().strftime("%Y-%m-%d")
             w = Warehouse()
@@ -364,6 +374,26 @@ class DashboardService:
                         "pb": round(float(r["pb"]), 2) if r.get("pb") == r.get("pb") else None,
                         "snapshot_time": str(r.get("snapshot_time", ""))[:19],
                     }
+                # 当日盘中走势：把当日所有快照里该 code 的价格按时间连成序列（10分钟粒度近似）
+                times, prices = [], []
+                for sp in snaps:
+                    try:
+                        sdf = pd.read_csv(sp, encoding="utf-8-sig")
+                    except Exception:
+                        continue
+                    if "code" not in sdf.columns:
+                        continue
+                    hit = sdf[sdf["code"] == code_nodot]
+                    if not len(hit):
+                        continue
+                    r = hit.iloc[0]
+                    p = r.get("price")
+                    t = str(r.get("snapshot_time", ""))[:16]
+                    if p == p and t:  # 非 NaN 且有时间
+                        times.append(t)
+                        prices.append(round(float(p), 2))
+                if times:
+                    result["intraday_trend"] = {"times": times, "prices": prices}
         except Exception as e:
             logger.warning("盘中快照读取失败 %s: %s", code, e)
 
@@ -545,6 +575,13 @@ class DashboardService:
             "pe_ttm": rt.get("pe_ttm"),
             "pb": rt.get("pb"),
             "snapshot_time": rt.get("snapshot_time"),
+            "high": rt.get("high"),
+            "low": rt.get("low"),
+            "open": rt.get("open"),
+            "prev_close": rt.get("prev_close"),
+            "amplitude": rt.get("amplitude"),
+            "float_mcap": rt.get("float_mcap"),
+            "total_mcap": rt.get("total_mcap"),
         })
 
         dual = self.stock_dual_view(norm)
@@ -604,6 +641,7 @@ class DashboardService:
             "basic": basic,
             "daily_history": dual.get("daily_history", {}),
             "intraday": dual.get("intraday", {}),
+            "intraday_trend": dual.get("intraday_trend", {}),
             "lines": lines,
             "returns": returns,
         }
