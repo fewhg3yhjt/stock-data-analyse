@@ -256,7 +256,8 @@ window.StockDetail = (function(){
         ],
         xAxis:[
           { type:'category', data:kDates, boundaryGap:false, axisLabel:{show:false} },
-          { type:'category', data:kDates, gridIndex:1, boundaryGap:false }
+          { type:'category', data:kDates, gridIndex:1, boundaryGap:false,
+            axisLabel:{ formatter: function(v){ return v ? String(v).slice(5) : ''; }, hideOverlap:true } }
         ],
         yAxis:[
           { type:'value', scale:true, min: yMin - pad, max: yMax + pad },
@@ -265,7 +266,8 @@ window.StockDetail = (function(){
         ],
         dataZoom:[
           { type:'inside', xAxisIndex:[0,1] },
-          { type:'slider', xAxisIndex:[0,1], bottom:6, height:18 }
+          { type:'slider', xAxisIndex:[0,1], bottom:6, height:18, start:0, end:100,
+            handleSize:'130%', showDetail:false }
         ],
         series: series
       };
