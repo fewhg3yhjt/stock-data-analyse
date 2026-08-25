@@ -18,6 +18,7 @@ import pandas as pd
 
 from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 from StockInvestmentTool.datasource.indicators import TechnicalIndicators, ValuationHelper
+from StockInvestmentTool.datasource.base import get_default_datasource
 from StockInvestmentTool.warehouse.storage import Warehouse
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,10 @@ class PriceMonitor:
         fetcher: 数据获取器（可选，默认新建）
     """
 
-    def __init__(self, fetcher: Optional[StockDataFetcher] = None):
+    def __init__(self, fetcher: Optional[StockDataFetcher] = None, datasource=None):
         # 懒加载: 纯 DB 操作（list/show）不应触发 baostock 登录
         self._fetcher = fetcher
+        self.datasource = datasource  # 可注入统一数据源（默认 FallbackDataSource）
 
     @property
     def fetcher(self) -> StockDataFetcher:
@@ -52,19 +54,21 @@ class PriceMonitor:
             含 ma/volume_ma/low_3m/year_low 等指标的 DataFrame
         """
         code = StockDataFetcher.normalize_code(code)
-        code_nodot = code.replace(".", "")
         if end_date is None:
             end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
         if start_date is None:
             start_date = (datetime.now() - timedelta(days=365 * DEFAULT_LOOKBACK_YEARS)).strftime("%Y-%m-%d")
 
-        # 优先读 warehouse 数据层（本地全量，无网络）
-        kline = self._fetch_from_warehouse(code_nodot, start_date, end_date)
-        if kline is None or kline.empty:
-            # 兜底: baostock 实时拉取
-            logger.info("warehouse 无 %s 数据，fallback baostock", code)
-            kline = self.fetcher.get_kline(code, start_date, end_date)
+        # 统一数据源（warehouse 优先、baostock 兜底，收敛散落 if-else —— FR-1.4）
+        kline = self.delegate_fetch_kline(code, start_date, end_date)
         return TechnicalIndicators.compute_all(kline)
+
+    def delegate_fetch_kline(self, code: str,
+                             start_date: Optional[str] = None,
+                             end_date: Optional[str] = None) -> pd.DataFrame:
+        """把取数委托给统一 DataSource（FallbackDataSource）。"""
+        ds = self.datasource or get_default_datasource()
+        return ds.fetch_kline(code, start_date, end_date)
 
     def _fetch_from_warehouse(self, code_nodot: str,
                               start_date: str, end_date: str) -> pd.DataFrame:

@@ -320,52 +320,45 @@ class DashboardService:
         except Exception as e:
             logger.warning("标的名称读取失败 %s: %s", code, e)
 
-        # 框1：天周期历史（从 warehouse 读，避免重复拉网络）
+        # 框1：天周期历史（DuckDB 单查询，替代逐月 read_parquet —— FR-1.4/P1）
         try:
-            w = Warehouse()
+            from StockInvestmentTool.datasource.base import WarehouseSource
             import pandas as _pd
 
-            def _collect(month_kind: str, months: list[str]):
-                """按月份分区拼接某只股票的记录，返回按 date 排序的 DataFrame（空则 None）。"""
-                parts = []
-                if month_kind == "daily":
-                    read_fn = w.read_daily
-                else:  # indicator
-                    read_fn = w.read_indicator
-                for ym in months:
-                    df = read_fn(ym)
-                    if df is None or df.empty or "code" not in df.columns:
-                        continue
-                    sub = df[df["code"] == code_nodot]
-                    if len(sub):
-                        parts.append(sub)
-                if not parts:
-                    return None
-                return _pd.concat(parts, ignore_index=True).sort_values("date").reset_index(drop=True)
-
-            months = w.available_months("daily")
-            hdf = _collect("daily", months)
-            if hdf is not None:
+            hdf = WarehouseSource().fetch_daily_series(code_nodot, days)
+            if hdf is not None and not hdf.empty:
                 hdf = hdf.tail(days).reset_index(drop=True)
                 closes_s = _pd.to_numeric(hdf["close"], errors="coerce")
 
                 # 复用 indicators 分区里已预计算的均线（与 daily 同源、按日期对齐），
                 # 指标是离线批处理算好落盘的，不在此重复现算；缺失时回退本地现算。
                 mas = {}
-                ind = _collect("indicator", w.available_months("indicator"))
-                ma_avail = {"MA5": "MA5", "MA10": "MA10", "MA20": "MA20", "MA60": "MA60"}
-                if ind is not None and not ind.empty:
-                    ind = ind.tail(days).reset_index(drop=True)
-                    # 只保留需要的均线列 + date，按 date 左连到 hdf（join 后顺序恢复 date 排序）。
-                    keep = [c for c in ma_avail.values() if c in ind.columns]
-                    if keep:
-                        merged = _pd.merge(
-                            hdf[["date"]], ind[["date"] + keep], on="date", how="left"
-                        ).sort_values("date").reset_index(drop=True)
-                        for n, col in ma_avail.items():
-                            if col in keep:
-                                s = _pd.to_numeric(merged[col], errors="coerce")
-                                mas[n] = [round(float(x), 2) if x == x else None for x in s]
+                try:
+                    _tmp = Warehouse()
+                    ind_orig = None
+                    for ym in _tmp.available_months("indicator"):
+                        d = _tmp.read_indicator(ym)
+                        if d is None or d.empty or "code" not in d.columns:
+                            continue
+                        sub = d[d["code"] == code_nodot]
+                        if len(sub):
+                            ind_orig = sub if ind_orig is None else _pd.concat([ind_orig, sub])
+                    if ind_orig is not None:
+                        ind_orig = ind_orig.sort_values("date").tail(days).reset_index(drop=True)
+                        keep = [c for c in ("MA5", "MA10", "MA20", "MA60") if c in ind_orig.columns]
+                        if keep:
+                            merged = _pd.merge(
+                                hdf[["date"]], ind_orig[["date"] + keep],
+                                on="date", how="left"
+                            ).sort_values("date").reset_index(drop=True)
+                            for n, col in {"MA5": "MA5", "MA10": "MA10",
+                                           "MA20": "MA20", "MA60": "MA60"}.items():
+                                if col in keep:
+                                    s = _pd.to_numeric(merged[col], errors="coerce")
+                                    mas[n] = [round(float(x), 2) if x == x else None for x in s]
+                except Exception as e:
+                    logger.warning("指标分区读取失败 %s: %s", code, e)
+
                 # 指标分区缺失该标的时，回退为本地按收盘价现算（保证 MA 可用）。
                 if not mas:
                     for n in (5, 10, 20, 60):
@@ -466,7 +459,7 @@ class DashboardService:
              ret_cost, ret_price, avg_cost}
         """
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
-        from StockInvestmentTool.warehouse.storage import Warehouse
+        from StockInvestmentTool.datasource.base import WarehouseSource
         from StockInvestmentTool.indicators.engine import IndicatorRegistry
 
         norm = StockDataFetcher.normalize_code(code)
@@ -474,24 +467,19 @@ class DashboardService:
         if metrics is None:
             metrics = ["MA20", "MA60"]
 
-        # 读 warehouse 日线
-        w = Warehouse()
-        parts = []
-        for ym in w.available_months("daily"):
-            df = w.read_daily(ym)
-            if df is None or df.empty or "code" not in df.columns:
-                continue
-            sub = df[df["code"] == code_nodot]
-            if len(sub):
-                parts.append(sub)
-        if not parts:
+        # 读 warehouse 日线（DuckDB 单查询，替代逐月 read_parquet —— FR-1.4/P1）
+        try:
+            kline = WarehouseSource().fetch_daily_series(code_nodot, days * 2)
+        except Exception as e:
+            logger.warning("图表序列读取失败 %s: %s", code, e)
+            kline = None
+        if kline is None or kline.empty:
             return {"code": code_nodot, "dates": [], "closes": [],
                     "metrics": [], "ret_cost": [], "ret_price": [],
                     "avg_cost": cost_price}
-        import pandas as pd
-        kline = pd.concat(parts, ignore_index=True).sort_values("date").tail(days * 2)
 
         # 计算指标（指标体系，日线）
+        import pandas as pd
         reg = IndicatorRegistry()
         ind_series = reg.compute(kline, metrics)
 
