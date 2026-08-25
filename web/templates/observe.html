@@ -8,7 +8,7 @@
 <script src="/static/echarts.min.js?v=3"></script>
 <script>if(!window.echarts){document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script>')}</script>
 <script src="/static/stock-chart.js?v=3"></script>
-<script src="/static/stock-detail.js?v=4"></script>
+<script src="/static/stock-detail.js?v=7"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -52,6 +52,8 @@ tr:last-child td{border-bottom:none;}
 .metric-grid .m{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:6px 10px;text-align:center;}
 .metric-grid .m .l{font-size:11px;color:var(--text2);}
 .metric-grid .m .v{font-size:14px;font-weight:600;}
+/* 详情行位于超宽观察表内，图表必须锁定到桌面视口宽度，不能继承整张表的宽度。 */
+.detail-row .stock-detail-box{width:min(1352px,calc(100vw - 90px));max-width:100%;}
 </style>
 </head>
 <body>

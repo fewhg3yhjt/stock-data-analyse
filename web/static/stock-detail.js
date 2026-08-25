@@ -210,15 +210,24 @@ window.StockDetail = (function(){
     function sized(el){
       return el && el.clientWidth > 0 && el.clientHeight > 0;
     }
+    function disposeChart(el){
+      const prev = echarts.getInstanceByDom(el);
+      if (!prev) return;
+      try{ prev.dispose(); }catch(e){}
+      const idx = charts.indexOf(prev);
+      if (idx >= 0) charts.splice(idx, 1);
+    }
     const maColors = { MA5:'#8e44ad', MA10:'#2980b9', MA20:'#e67e22', MA60:'#27ae60' };
     // K线 + 成交量 合并为同一个实例：两个 grid，共享 dataZoom，一个滑块联动两张图
     function renderKlineVolume(){
       if (!window.echarts) return false;
       if (!(kDates && kDates.length)) return false;
       if (!sized(klineEl)) return false;   // 容器未就绪 → 由 draw 重试
-      const prev = echarts.getInstanceByDom(klineEl); if (prev){ try{ prev.dispose(); }catch(e){} }
+      disposeChart(klineEl);
       const chart = echarts.init(klineEl);
       charts.push(chart);
+      // 末尾留一个空类目，避免最新一根K线贴在绘图区边缘而看不见。
+      const chartDates = kDates.concat(['']);
       // yAxis 范围：收盘 + 高/低 + 点位，避免点位或影线超出可视区
       let yMin = Infinity, yMax = -Infinity;
       const scan = (v) => { const n = Number(v); if(!isNaN(n)){ if(n<yMin)yMin=n; if(n>yMax)yMax=n; } };
@@ -251,7 +260,11 @@ window.StockDetail = (function(){
         }
       });
       // 成交量副图（grid1 / yAxis1 / xAxis1）
-      series.push({ name:'成交量', type:'bar', xAxisIndex:1, yAxisIndex:1, data:volData, barWidth:'60%' });
+      series.push({ name:'成交量', type:'bar', xAxisIndex:1, yAxisIndex:1,
+        data:volData.concat([{value:null}]), barWidth:'60%' });
+      series.forEach(function(s){
+        if (Array.isArray(s.data) && s.data.length === kDates.length) s.data = s.data.concat([null]);
+      });
 
       const opt = {
         tooltip:{
@@ -284,14 +297,15 @@ window.StockDetail = (function(){
           }
         },
         legend:{top:0},
+        animation:false,
         axisPointer:{ link:[{ xAxisIndex:'all' }] },
         grid:[
           { left:58, right:24, top:34, height:'58%' },
           { left:58, right:24, top:'70%', height:'20%' }
         ],
         xAxis:[
-          { type:'category', data:kDates, boundaryGap:false, axisLabel:{show:false} },
-          { type:'category', data:kDates, gridIndex:1, boundaryGap:false,
+          { type:'category', data:chartDates, boundaryGap:true, axisLabel:{show:false} },
+          { type:'category', data:chartDates, gridIndex:1, boundaryGap:true,
             axisLabel:{ formatter: function(v){ return v ? String(v).slice(5) : ''; }, hideOverlap:true } }
         ],
         yAxis:[
@@ -303,7 +317,7 @@ window.StockDetail = (function(){
           { type:'inside', xAxisIndex:[0,1] },
           // 默认聚焦最近一段交易日，避免首次打开时停在历史左侧；滑块仍可回看全量历史。
           { type:'slider', xAxisIndex:[0,1], bottom:6, height:18,
-            startValue:Math.max(0, kDates.length - 60), endValue:Math.max(0, kDates.length - 1),
+            startValue:Math.max(0, kDates.length - 60), endValue:chartDates.length - 1,
             handleSize:'130%', showDetail:false }
         ],
         series: series
@@ -316,6 +330,11 @@ window.StockDetail = (function(){
         };
       }
       chart.setOption(opt, true);
+      // 显式同步到最新数据，避免 ECharts 或复用的 dataZoom 状态覆盖初始范围。
+      try{
+        chart.dispatchAction({type:'dataZoom', dataZoomIndex:1,
+          startValue:Math.max(0, kDates.length - 60), endValue:chartDates.length - 1});
+      }catch(e){}
       const kr = container.querySelector('#krange');
       if (kr) kr.textContent = '日K区间：' + (kDates[0]||'—') + ' ~ ' + (kDates[kDates.length-1]||'—') + '（共 ' + kDates.length + ' 个交易日）';
       try{ requestAnimationFrame(function(){ chart.resize(); }); }catch(e){}
@@ -324,11 +343,12 @@ window.StockDetail = (function(){
     function renderTrend(){
       if (!window.echarts || !hasTrend) return false;
       if (!sized(trendEl)) return false;
-      const prev = echarts.getInstanceByDom(trendEl); if (prev){ try{ prev.dispose(); }catch(e){} }
+      disposeChart(trendEl);
       const chart = echarts.init(trendEl);
       charts.push(chart);
       chart.setOption({
         title:{ text:'盘中走势（' + (it.day || '当日') + ' 快照源）', left:0, top:0, textStyle:{fontSize:12, color:'#6b7280', fontWeight:'normal'} },
+        animation:false,
         tooltip:{trigger:'axis'},
         grid:{left:55, right:30, top:30, bottom:24},
         xAxis:{type:'category', data:it.times, boundaryGap:false},
@@ -344,10 +364,11 @@ window.StockDetail = (function(){
     function renderRet(){
       if (!window.echarts || !retData) return false;
       if (!retEl || !sized(retEl)) return false;
+      disposeChart(retEl);
       const chart = echarts.init(retEl);
       charts.push(chart);
       chart.setOption({
-        tooltip:{trigger:'axis'}, legend:{top:0},
+        tooltip:{trigger:'axis'}, legend:{top:0}, animation:false,
         grid:{left:55, right:30, top:34, bottom:40},
         xAxis:{type:'category', data:retData.dates, boundaryGap:false},
         yAxis:{type:'value', scale:true, axisLabel:{formatter:'{value}%'}},
