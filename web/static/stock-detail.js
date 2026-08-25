@@ -263,7 +263,9 @@ window.StockDetail = (function(){
       series.push({ name:'成交量', type:'bar', xAxisIndex:1, yAxisIndex:1,
         data:volData.concat([{value:null}]), barWidth:'60%' });
       series.forEach(function(s){
-        if (Array.isArray(s.data) && s.data.length === kDates.length) s.data = s.data.concat([null]);
+        // 用 ECharts 的「无数据」哨兵 '-' 补齐末尾空类目；用 null 会让 candlestick
+        // 在 getInitialData 里读 null.value 抛错。
+        if (Array.isArray(s.data) && s.data.length === kDates.length) s.data = s.data.concat(['-']);
       });
 
       const opt = {
