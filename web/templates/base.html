@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}StockInvestmentTool{% endblock %}</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<link rel="stylesheet" href="/static/base.css?v=1">
+<!-- FR-5.2 echarts 懒加载：非图表页（未声明 need_chart）不加载 1MB 资源 -->
+{% block head %}{% endblock %}
+</head>
+<body>
+{% block body %}{% endblock %}
+<div class="toast" id="toast"></div>
+</body>
+</html>

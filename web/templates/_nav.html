@@ -1,11 +1,6 @@
-{# 统一导航（7 项）— 各模板用 {% set active='xxx' %}{% include '_nav.html' %}
-   内联完整 header/nav 样式，保证所有页面（含旧页面）渲染一致 #}
-<style>
-.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:28px;padding-bottom:22px;border-bottom:1px solid var(--border);}
-.header .nav{font-size:14px;}
-.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
-.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
-</style>
+{# 统一导航（FR-4.2）— 各模板用 {% set active='xxx' %}{% include '_nav.html' %}
+   样式统一到 base.css（.header .nav 等），不再各自内联 #}
+{% if active %}
 <div class="nav">
   <a href="/market" {% if active=='market' %}class="active"{% endif %}><i class="fas fa-chart-line"></i> 大盘</a>
   <a href="/dashboard/observe" {% if active=='observe' %}class="active"{% endif %}><i class="fas fa-satellite-dish"></i> 观察</a>
@@ -18,3 +13,4 @@
   <a href="/dashboard/review" {% if active=='review' %}class="active"{% endif %}><i class="fas fa-book-open"></i> 复盘</a>
   <a href="/settings" {% if active=='settings' %}class="active"{% endif %}><i class="fas fa-gear"></i> 管理</a>
 </div>
+{% endif %}
