@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 策略编排器</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;
+  --text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;
+  --red:#dc3545;--green:#28a745;--orange:#e67e22;--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.07);
+}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;font-size:15px;}
+.app{max-width:1280px;margin:0 auto;padding:28px 22px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
+.card h2{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.card h2 i{color:var(--accent);}
+.layout{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+@media(max-width:900px){.layout{grid-template-columns:1fr;}}
+.form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.form-group label{font-size:13px;color:var(--text2);font-weight:500;}
+.form-group input,.form-group select,.form-group textarea{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:14px;outline:none;}
+.form-group input:focus,.form-group select:focus{border-color:var(--accent);}
+.btn{padding:8px 18px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;}
+.btn-sm{padding:5px 12px;font-size:13px;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-ghost{background:var(--surface2);color:var(--accent);border:1px solid var(--border);}
+.btn-ghost:hover{background:var(--border);}
+.btn-danger{background:#fbe9e7;color:var(--red);}
+.btn-danger:hover{background:var(--red);color:#fff;}
+.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);margin-right:6px;cursor:pointer;border:1px solid var(--border);}
+.tag.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.tag-buy{background:#e8f5e9;color:var(--green);}
+.tag-sell{background:#fbe9e7;color:var(--red);}
+.rule-box{border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:12px;background:var(--surface2);}
+.rule-box .rule-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+.rule-box h4{font-size:14px;display:flex;align-items:center;gap:8px;}
+table.kv{width:100%;border-collapse:collapse;font-size:13px;}
+table.kv th,table.kv td{border:1px solid var(--border);padding:6px 10px;text-align:left;}
+table.kv th{background:var(--surface2);font-weight:600;}
+textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier New',monospace;font-size:12.5px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--text);line-height:1.5;white-space:pre;overflow:auto;}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--red);font-size:14px;margin-bottom:14px;}
+.toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
+.help{font-size:12px;color:var(--text2);}
+.mode-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;}
+.modal{background:var(--surface);border-radius:10px;padding:20px;max-width:520px;width:90%;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-cogs"></i> 策略编排器</h1>
+      <div class="sub">选择指标 → 组装规则 → 生成方案 YAML → 保存（全程无手写 YAML）</div>
+    </div>
+    {% set active = 'settings' %}{% include '_nav.html' %}
+  </div>
+
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+  <div class="mode-row">
+    <button class="btn btn-ghost btn-sm" onclick="loadSchemeList()"><i class="fas fa-list"></i> 方案列表</button>
+    <button class="btn btn-ghost btn-sm" onclick="newScheme()"><i class="fas fa-file-plus"></i> 新建方案</button>
+    <button class="btn btn-ghost btn-sm" onclick="loadFromExisting()"><i class="fas fa-copy"></i> 从现有复制</button>
+  </div>
+
+  <div class="layout">
+    <!-- 左：表单 -->
+    <div class="card">
+      <h2><i class="fas fa-pen-ruler"></i> 方案配置</h2>
+
+      <div class="form-group"><label>方案名</label>
+        <input id="f-name" placeholder="如 my_growth"></div>
+      <div class="form-group"><label>版本</label>
+        <input id="f-version" value="1.0"></div>
+      <div class="form-group"><label>描述</label>
+        <input id="f-desc" placeholder="方案说明"></div>
+      <div class="form-group"><label>适用类型</label>
+        <div id="f-types" style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="tag" data-t="A">A</span><span class="tag" data-t="B">B</span>
+          <span class="tag" data-t="C">C</span><span class="tag" data-t="D">D</span>
+          <span class="tag" data-t="E">E</span>
+        </div>
+      </div>
+
+      <div style="margin:6px 0 4px;font-weight:600;font-size:14px;"><i class="fas fa-cart-plus"></i> 买点规则</div>
+      <div id="buy-rules"></div>
+      <div style="margin-bottom:16px;">
+        <select id="add-buy-type" style="max-width:320px;"></select>
+        <button class="btn btn-ghost btn-sm" onclick="addRule('buy')"><i class="fas fa-plus"></i> 添加买点规则</button>
+      </div>
+
+      <div style="margin:6px 0 4px;font-weight:600;font-size:14px;"><i class="fas fa-cart-arrow-down"></i> 卖点规则</div>
+      <div id="sell-rules"></div>
+      <div style="margin-bottom:16px;">
+        <select id="add-sell-type" style="max-width:320px;"></select>
+        <button class="btn btn-ghost btn-sm" onclick="addRule('sell')"><i class="fas fa-plus"></i> 添加卖点规则</button>
+      </div>
+
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px;"><i class="fas fa-shield"></i> 风控</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="form-group"><label>回撤止盈阈值</label><input id="r-drawdown" type="number" step="0.01" value="0.08"></div>
+        <div class="form-group"><label>回撤保护最小利润</label><input id="r-minprof" type="number" step="0.01" value="0.06"></div>
+        <div class="form-group"><label>放量倍数</label><input id="r-surge" type="number" step="0.1" value="1.8"></div>
+        <div class="form-group"><label>技术止损</label><select id="r-tech"><option value="true">启用</option><option value="false">停用</option></select></div>
+      </div>
+
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px;"><i class="fas fa-flask"></i> 回测</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="form-group"><label>初始资金</label><input id="b-cash" type="number" value="100000"></div>
+        <div class="form-group"><label>网格优化</label><select id="b-opt"><option value="true">启用</option><option value="false">停用(固定参数)</option></select></div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:6px;">
+        <button class="btn btn-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
+        <button class="btn btn-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
+        <span class="help" id="save-hint"></span>
+      </div>
+    </div>
+
+    <!-- 右：指标列表 + YAML 预览 -->
+    <div>
+      <div class="card">
+        <h2><i class="fas fa-chart-simple"></i> 指标库（可引用）</h2>
+        <div class="form-group"><label>搜索</label><input id="ind-search" placeholder="输入指标名过滤…" oninput="renderIndicators()"></div>
+        <div id="ind-list" style="max-height:320px;overflow:auto;"></div>
+      </div>
+      <div class="card">
+        <h2><i class="fas fa-file-code"></i> YAML 预览</h2>
+        <textarea class="code" id="yaml-preview" placeholder="配置表单后，点击「生成预览」…"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn btn-ghost btn-sm" onclick="copyYaml()"><i class="fas fa-copy"></i> 复制</button>
+          <span class="help" id="validate-hint"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 方案列表 / 模板选择 / 从现有复制 弹窗 -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <h3 id="modal-title" style="margin-bottom:14px;"></h3>
+    <div id="modal-body" style="max-height:480px;overflow:auto;"></div>
+    <div style="text-align:right;margin-top:16px;">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+let RULES = {buy:[], sell:[]};   // [{type,label,kind,description,schema,params}]
+let INDICATORS = {base:[],composite:[],code:[]};
+let TYPES = [];
+
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',2800);}
+function openModal(title){document.getElementById('modal-title').textContent=title;document.getElementById('modal-bg').style.display='flex';}
+function closeModal(){document.getElementById('modal-bg').style.display='none';}
+
+async function init(){
+  await loadIndicators();
+  await loadRuleSchemas();
+  document.querySelectorAll('#f-types .tag').forEach(t=>t.addEventListener('click',()=>{
+    t.classList.toggle('active');
+  }));
+}
+
+async function loadIndicators(){
+  try{
+    const r=await fetch('/api/indicators');const d=await r.json();
+    if(d.status==='success'){INDICATORS=d.groups;renderIndicators();}
+  }catch(e){console.error(e);}
+}
+function renderIndicators(){
+  const q=(document.getElementById('ind-search').value||'').toLowerCase();
+  const el=document.getElementById('ind-list');el.innerHTML='';
+  const groups=[['基础','base','#e8f5e9'],['组合','composite','#fff8e1'],['代码','code','#e3f2fd']];
+  for(const [label,key,bg] of groups){
+    const items=(INDICATORS[key]||[]).filter(i=>i.name.toLowerCase().includes(q));
+    if(!items.length)continue;
+    let html=`<div style="font-weight:700;font-size:13px;margin:8px 0 4px;color:var(--text2)">${label}</div>`;
+    for(const i of items){
+      html+=`<div style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;margin-bottom:5px;background:${bg};">
+        <span style="font-weight:600">${i.name}</span>
+        <span class="help" style="margin-left:6px">${i.expr||'代码指标'}</span>
+        <div class="help">${i.description||''}</div>
+      </div>`;
+    }
+    el.insertAdjacentHTML('beforeend',html);
+  }
+  if(!el.innerHTML) el.innerHTML='<div class="help">无匹配指标</div>';
+}
+
+async function loadRuleSchemas(){
+  try{
+    const r=await fetch('/api/rules/schema');const d=await r.json();
+    if(d.status==='success'){
+      RULES.buyPath=d.rules.filter(x=>x.kind==='buy');
+      RULES.sellPath=d.rules.filter(x=>x.kind==='sell');
+      fillTypeSelect('buy');fillTypeSelect('sell');
+    }
+  }catch(e){console.error(e);}
+}
+function fillTypeSelect(kind){
+  const sel=document.getElementById(kind==='buy'?'add-buy-type':'add-sell-type');
+  const rules=RULES[kind==='buy'?'buyPath':'sellPath']||[];
+  sel.innerHTML=rules.map(r=>`<option value="${r.type}">${r.type} - ${r.description}</option>`).join('');
+}
+
+function newScheme(){
+  closeModal();
+  document.getElementById('f-name').value='new_scheme';
+  document.getElementById('f-version').value='1.0';
+  document.getElementById('f-desc').value='新建策略方案';
+  document.querySelectorAll('#f-types .tag').forEach(t=>t.classList.add('active'));
+  document.getElementById('buy-rules').innerHTML='';
+  document.getElementById('sell-rules').innerHTML='';
+  document.getElementById('yaml-preview').value='';
+}
+
+function addRule(kind){
+  const sel=document.getElementById(kind==='buy'?'add-buy-type':'add-sell-type');
+  const type=sel.value;if(!type)return;
+  const rules=RULES[kind==='buy'?'buyPath':'sellPath']||[];
+  const meta=rules.find(r=>r.type===type);
+  if(!meta)return;
+  renderRule(kind, {type:meta.type, kind, label:meta.type, description:meta.description,
+    schema:meta.schema, params:{}});
+}
+
+let ruleCount=0;
+function renderRule(kind, rule){
+  const wrap=document.getElementById(kind==='buy'?'buy-rules':'sell-rules');
+  const id='rule-'+kind+'-'+(ruleCount++);
+  const kindColor=kind==='buy'?'tag-buy':'tag-sell';
+  let fields=rule.schema.map(f=>renderField(f, rule)).join('');
+  const box=document.createElement('div');
+  box.className='rule-box';box.id=id;
+  box.innerHTML=`<div class="rule-head">
+      <h4><span class="tag ${kindColor}">${kind==='buy'?'买点':'卖点'}</span> ${rule.label} <span class="help">${rule.description||''}</span></h4>
+      <button class="btn btn-danger btn-sm" onclick="this.parentElement.parentElement.remove()"><i class="fas fa-trash"></i></button>
+    </div>
+    <input type="hidden" data-kind="${kind}" data-type="${rule.type}" data-rule='${JSON.stringify(rule)}'>
+    <div class="rule-fields">${fields}</div>`;
+  wrap.appendChild(box);
+}
+
+function renderField(f, rule){
+  const key=f.key,label=f.label,type=f.type,def=f.default;
+  if(type==='map_list'||type==='list'){
+    // 简易可增删表格
+    return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
+      <div data-f="${key}" class="custom-list" style="font-size:13px;"></div>
+      <button class="btn btn-ghost btn-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 加一行</button></div>`;
+  }
+  if(type==='select'){
+    const opts=(f.options||[]).map(o=>`<option value="${JSON.stringify(o)}">${o}</option>`).join('');
+    return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
+      <select data-f="${key}">${opts}<option value="" selected>默认</option></select></div>`;
+  }
+  if(type==='map'){
+    return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
+      <textarea data-f="${key}" placeholder='JSON 键值，如 {"A":0.15,"B":0.15}'>${JSON.stringify(def||{})}</textarea></div>`;
+  }
+  return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
+    <input data-f="${key}" type="${type==='number'?'number':'text'}" value="${def!=null?def:''}"></div>`;
+}
+
+function addListRow(btn,key){
+  const host=btn.previousElementSibling;
+  const row=document.createElement('div');
+  row.className='kv-row';
+  row.style.cssText='display:flex;gap:6px;margin-bottom:5px;align-items:center;';
+  row.innerHTML=`<input data-k style="flex:1" placeholder="键(如 label/task/name/position_index/ratio)"><input data-v style="flex:1" placeholder="值">
+    <button class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button>`;
+  host.appendChild(row);
+}
+
+function collectList(target){
+  // 简易键值对列表，宿主 data-f 处收集
+}
+
+function collectRuleParams(ruleBox){
+  const params={};
+  ruleBox.querySelectorAll('.form-group').forEach(g=>{
+    const inp=g.querySelector('[data-f]');
+    if(!inp)return;
+    const key=inp.dataset.f;if(!key)return;
+    let val=inp.value;
+    if(inp.tagName==='SELECT'){ if(val===''){} else { try{params[key]=JSON.parse(val);}catch(e){params[key]=val;} } }
+    else if(inp.tagName==='TEXTAREA'){ if(val.trim()){ try{params[key]=JSON.parse(val);}catch(e){params[key]=val;} } }
+    else if(inp.type==='number'){ if(val!=='')params[key]=parseFloat(val); }
+    else if(val!==''){ try{params[key]=JSON.parse(val);}catch(e){params[key]=val;} }
+  });
+  // 处理自定义 kv 列表
+  ruleBox.querySelectorAll('.custom-list').forEach(listHost=>{
+    if(listHost.classList.contains('collected'))return;
+    listHost.classList.add('collected');
+  });
+  return params;
+}
+
+function collectAllRules(kind){
+  return Array.from(document.querySelectorAll(`#${kind}-rules .rule-box`)).map(box=>{
+    const type=box.querySelector('input[data-type]').dataset.type;
+    return {type, params:collectRuleParams(box)};
+  });
+}
+
+function collectModel(){
+  const types=Array.from(document.querySelectorAll('#f-types .tag.active')).map(t=>t.dataset.t);
+  return {
+    name:document.getElementById('f-name').value||'new_scheme',
+    version:document.getElementById('f-version').value||'1.0',
+    description:document.getElementById('f-desc').value||'',
+    applicable_types:types.length?types:['A','B','C','D','E'],
+    buy_rules:collectAllRules('buy'),
+    sell_rules:collectAllRules('sell'),
+    risk:{
+      drawdown_stop:parseFloat(document.getElementById('r-drawdown').value||0.08),
+      min_profit_for_dd:parseFloat(document.getElementById('r-minprof').value||0.06),
+      volume_surge_threshold:parseFloat(document.getElementById('r-surge').value||1.8),
+      technical_stop_enabled:document.getElementById('r-tech').value==='true',
+      stop_loss_by_type:{}
+    },
+    backtest:{
+      initial_cash:parseFloat(document.getElementById('b-cash').value||100000),
+      optimize:document.getElementById('b-opt').value==='true',
+      grid_search:{}
+    }
+  };
+}
+
+async function renderPreview(){
+  const model=collectModel();
+  const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
+  const d=await r.json();
+  if(d.status==='success'){
+    document.getElementById('yaml-preview').value=d.yaml;
+    const v=await validateYaml(d.yaml);
+  }else{
+    document.getElementById('yaml-preview').value='# 生成失败: '+d.error;
+    document.getElementById('validate-hint').textContent=d.error;
+  }
+}
+
+async function validateYaml(content){
+  const r=await fetch('/api/schemes/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
+  const d=await r.json();
+  const hint=document.getElementById('validate-hint');
+  if(d.status==='success'){hint.textContent='✓ 校验通过';hint.style.color='var(--green)';}
+  else{try{const cv=await (await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collectModel())})).json();hint.textContent=cv.error||'校验失败';}catch(e){hint.textContent=d.error;}}
+}
+
+async function saveScheme(){
+  const model=collectModel();
+  const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
+  const d=await r.json();
+  if(d.status!=='success'){showToast('生成失败: '+d.error);return;}
+  const s=await fetch('/api/schemes/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:model.name,content:d.yaml})});
+  const sd=await s.json();
+  if(sd.status==='success'){showToast('方案已保存: '+sd.name);document.getElementById('save-hint').textContent='最新版本 '+sd.version;}
+  else showToast('保存失败: '+sd.error);
+}
+
+function copyYaml(){
+  const t=document.getElementById('yaml-preview');
+  navigator.clipboard.writeText(t.value).then(()=>showToast('已复制 YAML'));
+}
+
+// 方案列表管理
+async function loadSchemeList(){
+  const r=await fetch('/api/schemes/list');const d=await r.json();
+  if(d.status!=='success'){showToast(d.error);return;}
+  const body=document.getElementById('modal-body');
+  let html='<table class="kv"><tr><th>名称</th><th>版本</th><th>状态</th><th>操作</th></tr>';
+  for(const s of d.schemes){
+    html+=`<tr><td>${s.name}${s.is_builtin?'<span class="help">(内置)</span>':''}</td>
+      <td>${s.version}</td><td>${s.enabled?'#'+'x':'#x'}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="editScheme('${s.name}')">编辑</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleScheme('${s.name}',${!s.enabled})">${s.enabled?'停用':'启用'}</button>
+        ${s.is_builtin?'':'<button class="btn btn-danger btn-sm" onclick="delScheme(\''+s.name+'\')">删除</button>'}
+      </td></tr>`;
+  }
+  html+='</table>';
+  body.innerHTML=html;
+  openModal('方案列表');
+}
+async function editScheme(name){
+  closeModal();
+  const r=await fetch('/schemes/raw?name='+encodeURIComponent(name));
+  const d=await r.json();
+  if(d.status==='success'){ loadFromYaml(d.content); }
+}
+async function loadFromYaml(content){
+  const r=await fetch('/api/schemes/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
+  const d=await r.json();
+  if(d.status!=='success'){showToast('解析失败: '+d.error);return;}
+  const m=d.model;
+  document.getElementById('f-name').value=m.name;
+  document.getElementById('f-version').value=m.version;
+  document.getElementById('f-desc').value=m.description;
+  document.querySelectorAll('#f-types .tag').forEach(t=>t.classList.toggle('active',(m.applicable_types||[]).includes(t.dataset.t)));
+  document.getElementById('buy-rules').innerHTML='';
+  document.getElementById('sell-rules').innerHTML='';
+  for(const b of m.buy_rules||[]){renderRuleFromType('buy', b.type, b.params);}
+  for(const s of m.sell_rules||[]){renderRuleFromType('sell', s.type, s.params);}
+  if(m.risk){Object.assign(document.getElementById('r-drawdown'),{value:m.risk.drawdown_stop});
+    document.getElementById('r-minprof').value=m.risk.min_profit_for_dd;
+    document.getElementById('r-surge').value=m.risk.volume_surge_threshold;
+    document.getElementById('r-tech').value=m.risk.technical_stop_enabled?'true':'false';}
+  if(m.backtest){document.getElementById('b-cash').value=m.backtest.initial_cash;
+    document.getElementById('b-opt').value=m.backtest.optimize?'true':'false';}
+  document.getElementById('yaml-preview').value=content;
+}
+function renderRuleFromType(kind,type,params){
+  const rules=RULES[kind==='buy'?'buyPath':'sellPath']||[];
+  const meta=rules.find(r=>r.type===type);
+  if(!meta)return;
+  renderRule(kind,{type,kind,label:type,description:meta.description,schema:meta.schema,params:params||{}});
+  const box=document.querySelector(`#${kind}-rules .rule-box:last-child`);
+  // 回填已保存参数
+  for(const [k,v] of Object.entries(params||{})){
+    box.querySelectorAll('[data-f]').forEach(inp=>{
+      if(inp.dataset.f!==k)return;
+      if(inp.tagName==='TEXTAREA')inp.value=typeof v==='string'?v:JSON.stringify(v);
+      else if(inp.tagName==='SELECT'){inp.value='';(inp.options);}
+      else if(inp.type==='number')inp.value=v;
+      else inp.value=typeof v==='string'?v:JSON.stringify(v);
+    });
+  }
+}
+async function toggleScheme(name,enabled){
+  const s=await fetch('/api/schemes/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,enabled})});
+  const d=await s.json();showToast(d.status==='success'?(enabled?'已启用':'已停用'):d.error);loadSchemeList();
+}
+async function delScheme(name){
+  if(!confirm('删除方案 '+name+'？'))return;
+  const s=await fetch('/api/schemes/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  const d=await s.json();showToast(d.status==='success'?'已删除':d.error);loadSchemeList();
+}
+async function loadFromExisting(){
+  const r=await fetch('/api/schemes/list');const d=await r.json();
+  if(d.status!=='success'){showToast(d.error);return;}
+  const body=document.getElementById('modal-body');
+  let html='<div class="help" style="margin-bottom:10px">选择一个方案作为模板复制</div><select id="clone-src" style="width:100%;margin-bottom:12px;">';
+  for(const s of d.schemes)html+=`<option value="${s.name}">${s.name}</option>`;
+  html+='</select><div class="form-group"><label>新方案名</label><input id="clone-name" placeholder="新方案名"></div>';
+  html+='<button class="btn btn-primary btn-sm" onclick="doClone()">复制</button>';
+  body.innerHTML=html;openModal('复制方案');
+}
+async function doClone(){
+  const src=document.getElementById('clone-src').value;
+  const new_name=document.getElementById('clone-name').value;
+  if(!new_name){showToast('请填写新方案名');return;}
+  const s=await fetch('/api/schemes/clone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src,new_name})});
+  const d=await s.json();
+  if(d.status==='success'){closeModal();showToast('已复制为 '+new_name);editScheme(new_name);}
+  else showToast('复制失败: '+d.error);
+}
+
+init();
+</script>
+</body>
+</html>

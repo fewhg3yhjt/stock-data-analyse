@@ -175,6 +175,215 @@ def scheme_raw():
         return flask.jsonify({"status": "error", "error": str(e)}), 404
 
 
+# ── FR-2 策略编排器 API ────────────────────────────────────
+
+@web_app.route("/api/indicators", methods=["GET"])
+def api_indicators():
+    """列出指标体系（基础/组合/代码），供策略编排器引用（I1）。"""
+    from StockInvestmentTool.indicators.engine import IndicatorRegistry
+    try:
+        reg = IndicatorRegistry()
+        groups = {"base": [], "composite": [], "code": []}
+        for name in reg.all_names():
+            d = reg.get(name)
+            if d is None:
+                continue
+            kind = d.kind if d.kind in groups else "composite"
+            groups[kind].append({
+                "name": d.name,
+                "kind": d.kind,
+                "expr": d.expr,
+                "description": d.description,
+                "applies_to": d.applies_to,
+            })
+        return flask.jsonify({"status": "success", "groups": groups,
+                              "count": len(reg.all_names())})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/rules/schema", methods=["GET"])
+def api_rules_schema():
+    """返回规则 type 与参数 schema，供前端动态渲染表单（I1b）。"""
+    from StockInvestmentTool.strategy.rule_registry import get_rule_registry
+    kind = flask.request.args.get("kind", "")
+    try:
+        reg = get_rule_registry()
+        if kind in ("buy", "sell"):
+            schemas = [reg.get(kind, t).to_dict() for t in reg.types(kind)]
+        else:
+            schemas = reg.describe()
+        return flask.jsonify({"status": "success", "rules": schemas})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/schemes/compose", methods=["POST"])
+def api_schemes_compose():
+    """结构化模型 → YAML 预览（I2）。"""
+    from StockInvestmentTool.core import composer
+    try:
+        model = flask.request.get_json(force=True, silent=True) or {}
+        content = composer.model_to_yaml(model)
+        return flask.jsonify({"status": "success", "yaml": content})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/parse", methods=["POST"])
+def api_schemes_parse():
+    """既有 YAML → 结构化模型（前端编辑回填）。"""
+    from StockInvestmentTool.core import composer
+    try:
+        content = flask.request.get_json(force=True, silent=True) or {}
+        model = composer.yaml_to_model(content.get("content", ""))
+        return flask.jsonify({"status": "success", "model": model})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/save", methods=["POST"])
+def api_schemes_save():
+    """保存方案（原子写入 + 记录版本）（I3）。"""
+    from StockInvestmentTool.core import scheme_store
+    from StockInvestmentTool.core.registry import SchemeRegistry
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        name = (payload.get("name") or "").strip()
+        content = payload.get("content") or ""
+        if not name:
+            return flask.jsonify({"status": "error", "error": "缺少方案名"}), 400
+        res = scheme_store.save_scheme(name, content)
+        # 重载注册中心使新方案立即生效（免重启）
+        SchemeRegistry().reload()
+        return flask.jsonify({"status": "success", **res})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/list", methods=["GET"])
+def api_schemes_list():
+    """列出全部方案（内置 + 用户，含启停/默认），供方案管理页（FR-2.5）。"""
+    from StockInvestmentTool.core import scheme_store
+    from StockInvestmentTool.core.registry import SchemeRegistry
+    try:
+        builtin = [
+            {
+                "name": s.name, "version": s.version,
+                "description": s.description,
+                "applicable_types": list(s.applicable_types),
+                "enabled": True, "default": False, "is_builtin": True,
+                "source": s.source,
+            }
+            for s in SchemeRegistry().list()
+        ]
+        user = scheme_store.list_scheme_stores()
+        return flask.jsonify({"status": "success", "schemes": builtin + user})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/schemes/versions", methods=["GET"])
+def api_schemes_versions():
+    """方案版本历史（I3b）。"""
+    from StockInvestmentTool.core import scheme_store
+    name = flask.request.args.get("name", "")
+    try:
+        return flask.jsonify({"status": "success",
+                              "versions": scheme_store.read_versions(name)})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/schemes/toggle", methods=["POST"])
+def api_schemes_toggle():
+    """方案启用/停用（I3c）。"""
+    from StockInvestmentTool.core import scheme_store
+    from StockInvestmentTool.core.registry import SchemeRegistry
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        name = (payload.get("name") or "").strip()
+        enabled = bool(payload.get("enabled", True))
+        scheme_store.set_enabled(name, enabled)
+        SchemeRegistry().reload()
+        return flask.jsonify({"status": "success", "name": name, "enabled": enabled})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/default", methods=["POST"])
+def api_schemes_default():
+    """设置为默认方案。"""
+    from StockInvestmentTool.core import scheme_store
+    from StockInvestmentTool.core.registry import SchemeRegistry
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        name = (payload.get("name") or "").strip()
+        scheme_store.set_default(name)
+        SchemeRegistry().reload()
+        return flask.jsonify({"status": "success", "name": name})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/clone", methods=["POST"])
+def api_schemes_clone():
+    """从现有方案复制（FR-2.5）。"""
+    from StockInvestmentTool.core import scheme_store
+    from StockInvestmentTool.core.registry import SchemeRegistry
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        src = (payload.get("src") or "").strip()
+        new_name = (payload.get("new_name") or "").strip()
+        if not new_name:
+            return flask.jsonify({"status": "error", "error": "缺少新方案名"}), 400
+        res = scheme_store.clone_scheme(src, new_name)
+        SchemeRegistry().reload()
+        return flask.jsonify({"status": "success", **res})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/delete", methods=["POST"])
+def api_schemes_delete():
+    """删除方案（内置保护）。"""
+    from StockInvestmentTool.core import scheme_store
+    from StockInvestmentTool.core.registry import SchemeRegistry
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        name = (payload.get("name") or "").strip()
+        scheme_store.delete_scheme(name)
+        SchemeRegistry().reload()
+        return flask.jsonify({"status": "success", "name": name})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/rollback", methods=["POST"])
+def api_schemes_rollback():
+    """回滚方案到历史版本。"""
+    from StockInvestmentTool.core import scheme_store
+    from StockInvestmentTool.core.registry import SchemeRegistry
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        name = (payload.get("name") or "").strip()
+        ts = float(payload.get("ts", 0))
+        content = scheme_store.rollback_version(name, ts)
+        if content is None:
+            return flask.jsonify({"status": "error", "error": "未找到对应版本"}), 404
+        res = scheme_store.save_scheme(name, content)
+        SchemeRegistry().reload()
+        return flask.jsonify({"status": "success", **res})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/strategy-composer", methods=["GET"])
+def strategy_composer_page():
+    """策略编排器页面（表单 → YAML 预览 → 保存）。"""
+    return flask.render_template("strategy_composer.html", error=None)
+
+
 @web_app.route("/analyze", methods=["POST"])
 def analyze():
     """执行分析（同步等待结果）"""

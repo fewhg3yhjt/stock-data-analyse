@@ -104,10 +104,18 @@ class SchemeRegistry:
         """重新扫描目录（配置热更新）"""
         self._load_all()
 
+    # ── 启停 / 默认（FR-2.4，配合 scheme_store 状态）─────────
+
+    def enabled(self) -> list[SchemeConfig]:
+        """返回启用的方案（过滤停用）。"""
+        from StockInvestmentTool.core import scheme_store
+        return [s for s in self._schemes.values() if scheme_store.is_enabled(s.name)]
+
     # ── 查询 ──────────────────────────────────────────
 
     def list(self) -> list[SchemeSummary]:
-        """列出所有方案摘要"""
+        """列出所有方案摘要（含启停/默认状态）。"""
+        from StockInvestmentTool.core import scheme_store
         return [
             SchemeSummary(
                 name=s.name,
@@ -117,6 +125,7 @@ class SchemeRegistry:
                 source=str(self._sources.get(s.name, "")),
             )
             for s in self._schemes.values()
+            if scheme_store.is_enabled(s.name)
         ]
 
     def get(self, name: str) -> SchemeConfig:
@@ -138,8 +147,14 @@ class SchemeRegistry:
     def get_default(self, stock_type: str = "B") -> SchemeConfig:
         """获取某股票类型对应的默认方案
 
-        优先匹配名称含 stock_type 的方案，否则返回 default_value。
+        优先匹配名称含 stock_type 的方案，其次回退用户标记的默认方案，
+        否则返回 default_value。
         """
+        from StockInvestmentTool.core import scheme_store
+        # 用户显式标记的默认
+        for s in self._schemes.values():
+            if scheme_store.is_default(s.name) and scheme_store.is_enabled(s.name):
+                return s
         for s in self._schemes.values():
             if s.name == f"default_{stock_type.lower()}":
                 return s
