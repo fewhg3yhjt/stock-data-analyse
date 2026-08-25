@@ -102,6 +102,14 @@ window.StockDetail = (function(){
       if (Math.abs(hands) >= 1e4) return (hands/1e4).toFixed(1) + '万手';
       return Math.round(hands) + '手';
     }
+    // 副图 Y 轴短格式：不带「手」，只留 万/亿
+    function volShortFmt(v){
+      if (v === null || v === undefined || isNaN(Number(v))) return '';
+      const hands = Number(v) / 100;
+      if (Math.abs(hands) >= 1e8) return (hands/1e8).toFixed(1) + '亿';
+      if (Math.abs(hands) >= 1e4) return Math.round(hands/1e4) + '万';
+      return String(Math.round(hands));
+    }
 
     // 实时报价面板（现价/涨跌/开高低/量额/换手/量比/PE/PB/市值/振幅）
     const chg = Number(b.change_pct);
@@ -135,8 +143,7 @@ window.StockDetail = (function(){
       ${simRow}
       ${quotePanel}
       ${hasTrend ? `<div class="chart intraday-trend-chart" style="width:100%;height:180px;"></div>` : ''}
-      <div class="chart kline-chart" style="width:100%;height:320px;"></div>
-      <div class="chart volume-chart" style="width:100%;height:130px;"></div>
+      <div class="chart kline-chart" style="width:100%;height:470px;"></div>
       ${showReturn ? `<div class="returns-chart" style="width:100%;height:220px;margin-top:10px;"></div>` : ''}
       ${retBlock}
     `;
@@ -170,7 +177,8 @@ window.StockDetail = (function(){
       return el && el.clientWidth > 0 && el.clientHeight > 0;
     }
     const maColors = { MA5:'#8e44ad', MA10:'#2980b9', MA20:'#e67e22', MA60:'#27ae60' };
-    function renderKline(){
+    // K线 + 成交量 合并为同一个实例：两个 grid，共享 dataZoom，一个滑块联动两张图
+    function renderKlineVolume(){
       if (!window.echarts) return false;
       if (!(kDates && kDates.length)) return false;
       if (!sized(klineEl)) return false;   // 容器未就绪 → 由 draw 重试
@@ -185,22 +193,30 @@ window.StockDetail = (function(){
       const pad = (yMax - yMin) * 0.05 || 0.1;
 
       const hasOHLC = kOpens.some(v => v !== null && v !== undefined);
+      const klineData = kDates.map((_, i) => [kOpens[i], kCloses[i], kLows[i], kHighs[i]]);
+      const volData = kDates.map((_, i) => {
+        const o = kOpens[i], c = kCloses[i];
+        const up = (c !== null && c !== undefined && o !== null && o !== undefined) ? (Number(c) >= Number(o)) : true;
+        return { value: kVolumes[i], itemStyle:{ color: up ? '#ef5350' : '#26a69a' } };
+      });
+
       const series = [];
       if (hasOHLC){
-        const klineData = kDates.map((_, i) => [kOpens[i], kCloses[i], kLows[i], kHighs[i]]);
-        series.push({ name:'K线', type:'candlestick', data:klineData,
+        series.push({ name:'K线', type:'candlestick', xAxisIndex:0, yAxisIndex:0, data:klineData,
           itemStyle:{ color:'#ef5350', color0:'#26a69a', borderColor:'#ef5350', borderColor0:'#26a69a' } });
       } else {
-        series.push({ name:'收盘', type:'line', data:kCloses, showSymbol:false,
+        series.push({ name:'收盘', type:'line', xAxisIndex:0, yAxisIndex:0, data:kCloses, showSymbol:false,
           lineStyle:{width:1.5,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'} });
       }
       ['MA5','MA10','MA20','MA60'].forEach(function(n){
         const data = kMas[n];
         if (data && data.some(v => v !== null && v !== undefined)){
-          series.push({ name:n, type:'line', data:data, showSymbol:false,
+          series.push({ name:n, type:'line', xAxisIndex:0, yAxisIndex:0, data:data, showSymbol:false,
             lineStyle:{width:1, color:maColors[n]}, itemStyle:{color:maColors[n]} });
         }
       });
+      // 成交量副图（grid1 / yAxis1 / xAxis1）
+      series.push({ name:'成交量', type:'bar', xAxisIndex:1, yAxisIndex:1, data:volData, barWidth:'60%' });
 
       const opt = {
         tooltip:{
@@ -217,6 +233,8 @@ window.StockDetail = (function(){
                 if (v.length >= 5){ o = v[1]; c = v[2]; l = v[3]; h = v[4]; }
                 else { o = v[0]; c = v[1]; l = v[2]; h = v[3]; }
                 out += '<span>开 <b>' + o + '</b>　高 <b>' + h + '</b>　低 <b>' + l + '</b>　收 <b>' + c + '</b></span><br/>';
+              } else if (p.seriesName === '成交量'){
+                out += '成交量：<b>' + volHandFmt(p.value) + '</b><br/>';
               } else if (p.seriesName && p.value !== null && p.value !== undefined){
                 out += (p.marker || '') + ' ' + p.seriesName + '：' + p.value + '<br/>';
               }
@@ -224,17 +242,31 @@ window.StockDetail = (function(){
             if (kLines && kLines.length){
               kLines.forEach(function(l){
                 out += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + (l.color||'#999') + ';margin-right:5px;"></span>'
-                    + l.name + '：' + l.value + '<br/>';
+                     + l.name + '：' + l.value + '<br/>';
               });
             }
             return out;
           }
         },
         legend:{top:0},
-        grid:{left:55, right:30, top:34, bottom:50},
-        xAxis:{type:'category', data:kDates, boundaryGap:false},
-        yAxis:{type:'value', scale:true, min: yMin - pad, max: yMax + pad},
-        dataZoom:[{type:'inside'},{type:'slider', height:16}],
+        axisPointer:{ link:[{ xAxisIndex:'all' }] },
+        grid:[
+          { left:58, right:24, top:34, height:'58%' },
+          { left:58, right:24, top:'70%', height:'20%' }
+        ],
+        xAxis:[
+          { type:'category', data:kDates, boundaryGap:false, axisLabel:{show:false} },
+          { type:'category', data:kDates, gridIndex:1, boundaryGap:false }
+        ],
+        yAxis:[
+          { type:'value', scale:true, min: yMin - pad, max: yMax + pad },
+          { type:'value', scale:true, gridIndex:1, splitNumber:2,
+            axisLabel:{ formatter: function(v){ return volShortFmt(v); } } }
+        ],
+        dataZoom:[
+          { type:'inside', xAxisIndex:[0,1] },
+          { type:'slider', xAxisIndex:[0,1], bottom:6, height:18 }
+        ],
         series: series
       };
       if (kLines && kLines.length){
@@ -245,31 +277,6 @@ window.StockDetail = (function(){
         };
       }
       chart.setOption(opt, true);
-      return true;
-    }
-    function renderVolume(){
-      if (!window.echarts) return false;
-      if (!(kDates && kDates.length)) return false;
-      if (!sized(volEl)) return false;
-      const chart = echarts.init(volEl);
-      charts.push(chart);
-      const volData = kDates.map((_, i) => {
-        const o = kOpens[i], c = kCloses[i];
-        const up = (c !== null && c !== undefined && o !== null && o !== undefined) ? (Number(c) >= Number(o)) : true;
-        return { value: kVolumes[i], itemStyle:{ color: up ? '#ef5350' : '#26a69a' } };
-      });
-      chart.setOption({
-        tooltip:{ trigger:'axis', formatter: function(p){
-          if (!p || !p.length) return '';
-          const v = p[0].value;
-          return p[0].axisValue + '<br/>成交量：' + (v === null || v === undefined ? '—' : volHandFmt(v));
-        }},
-        grid:{left:55, right:30, top:8, bottom:24},
-        xAxis:{type:'category', data:kDates, boundaryGap:false, axisLabel:{show:false}},
-        yAxis:{type:'value', scale:true,
-          axisLabel:{ formatter: function(v){ return volHandFmt(v); } }},
-        series:[{ name:'成交量', type:'bar', data:volData, barWidth:'60%' }]
-      }, true);
       return true;
     }
     function renderTrend(){
@@ -309,8 +316,7 @@ window.StockDetail = (function(){
       if (!window.echarts) return false;
       if (!sized(klineEl)) return false;   // 等容器布局完成再画
       let any = false;
-      if (renderKline()) any = true;
-      if (renderVolume()) any = true;
+      if (renderKlineVolume()) any = true;
       if (renderTrend()) any = true;
       if (showReturn && renderRet()) any = true;
       drew = any;
