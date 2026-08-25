@@ -1591,6 +1591,91 @@ def settings_save_notify():
         return flask.jsonify({"status": "error", "error": str(e)}), 400
 
 
+# ── FR-3 通知编排器 API ────────────────────────────────────
+
+@web_app.route("/api/notify/rules", methods=["GET", "POST"])
+def api_notify_rules():
+    """触发器 CRUD（I4）：GET 列表 / POST 保存。"""
+    from StockInvestmentTool.notifier import triggers
+    if flask.request.method == "GET":
+        try:
+            return flask.jsonify({"status": "success",
+                                  "rules": triggers.load_triggers(),
+                                  "schedule_modes": triggers.SCHEDULE_MODES})
+        except Exception as e:
+            return flask.jsonify({"status": "error", "error": str(e)}), 500
+    # POST 保存
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        rules = payload.get("rules") or []
+        triggers.save_triggers(rules)
+        # 免重启：重挂定时任务（见 init_scheduler 读取最新配置）
+        try:
+            from StockInvestmentTool.web.scheduler import _reload_scheduler_jobs
+            _reload_scheduler_jobs(flask.current_app)
+        except Exception as e:
+            logger.warning("通知触发器重挂失败: %s", e)
+        return flask.jsonify({"status": "success", "count": len(rules)})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/notify/config", methods=["GET"])
+def api_notify_config():
+    """渠道 + 邮件收件人配置状态（I5 相关，不回显明文）。"""
+    from StockInvestmentTool.portfolio import settings as s
+    from StockInvestmentTool.notifier import triggers
+    try:
+        webhook = s.webhook_status()
+        mail = triggers.mail_config_status()
+        return flask.jsonify({"status": "success", "webhook": webhook, "mail": mail})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/notify/mail", methods=["POST"])
+def api_notify_mail():
+    """保存邮件收件人 + SMTP 配置（I5，补全 email.to）。"""
+    from StockInvestmentTool.notifier import triggers
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        to = payload.get("to") or []
+        if isinstance(to, str):
+            to = [x.strip() for x in to.split(",") if x.strip()]
+        triggers.set_email_recipients(to)
+        return flask.jsonify({"status": "success", "to": to})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/notify/test", methods=["POST"])
+def api_notify_test():
+    """测试发送（I5）：按渠道 + 样例条件发一条测试通知。"""
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        channel = payload.get("channel", "feishu")
+        to = payload.get("to") or ""
+        from StockInvestmentTool.notifier.core import (
+            Digest, NotificationFragment, TOPIC_SUMMARY, live_send_digest,
+        )
+        digest = Digest(
+            sections=[{"topic": TOPIC_SUMMARY, "title": "📡 测试通知",
+                       "lines": [f"这是一条来自 StockInvestmentTool 的测试消息（渠道 {channel}）。"]}],
+            meta={"subject": " 📡 测试通知"},
+        )
+        result = live_send_digest(digest, channel, url=payload.get("url") or "",
+                                  subject="📡 测试通知", to=to or None)
+        return flask.jsonify({"status": "success", "result": result})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/notify-center", methods=["GET"])
+def notify_center_page():
+    """通知编排器页面（触发器/时间频率/渠道/邮箱可视化配置）。"""
+    return flask.render_template("notify_composer.html", error=None)
+
+
 @web_app.route("/market", methods=["GET"])
 def market_page():
     """大盘页：指数 / 板块 / 持仓折线"""

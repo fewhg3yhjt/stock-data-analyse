@@ -187,31 +187,10 @@ def init_scheduler(app) -> None:
             id="online_snapshot", misfire_grace_time=600, coalesce=True,
         )
         logger.info("盘中观察池快照已启动: 每 10 分钟")
-    # 盘中持仓操作提醒：刷新持仓，仅推「有操作建议」的（止盈/止损/加仓）
-    # 策略配置在 notifier/notify_settings.yaml（管理台可编辑）
-    ns = _load_notify_settings()
-    intraday = ns.get("intraday") or {}
-    if intraday.get("enabled"):
-        monitor_min = int(intraday.get("interval_minutes", 10))
-        scheduler.add_job(
-            run_actionable_monitor, CronTrigger(minute=f"*/{monitor_min}", timezone=TZ),
-            id="actionable_monitor", misfire_grace_time=600, coalesce=True,
-        )
-        logger.info("盘中持仓操作提醒已启动: 每 %d 分钟", monitor_min)
-    # 盘后全持仓汇总：每日定时发送全部持仓状态
-    post_close = ns.get("post_close") or {}
-    if post_close.get("enabled"):
-        pc_time = post_close.get("time", "15:35")
-        try:
-            pc_hh, pc_mm = str(pc_time).split(":")
-            pc_hh, pc_mm = int(pc_hh), int(pc_mm)
-        except (ValueError, TypeError):
-            pc_hh, pc_mm = 15, 35
-        scheduler.add_job(
-            run_post_close_summary, CronTrigger(hour=pc_hh, minute=pc_mm, timezone=TZ),
-            id="post_close_summary", misfire_grace_time=3600, coalesce=True,
-        )
-        logger.info("盘后持仓汇总已启动: %02d:%02d", pc_hh, pc_mm)
+
+    # 通知触发器（FR-3.4 免重启：按触发器配置挂载，保存后重挂即可）
+    _schedule_from_triggers(scheduler)
+
     scheduler.start()
     app.extensions["scheduler"] = scheduler
     logger.info("每日定时任务已启动: %02d:%02d (%s)", hour, minute, TZ)
@@ -224,6 +203,152 @@ def _load_notify_settings() -> dict:
         return load_notify_settings()
     except Exception:
         return {}
+
+
+def _schedule_from_triggers(scheduler) -> None:
+    """按触发器配置挂载定时任务（免重启生效 FR-3.4）。
+
+    读取最新 triggers（notifier/notify_rules.yaml），每次保存后调用
+    `_reload_scheduler_jobs` 重建作业，无需重启容器。
+    """
+    from StockInvestmentTool.notifier import triggers
+    from apscheduler.triggers.cron import CronTrigger
+
+    # 去掉旧的触发器作业（保留 daily_tasks / online_snapshot）
+    for job in scheduler.get_jobs():
+        if job.id in ("actionable_monitor", "post_close_summary"):
+            job.remove()
+        elif job.id.startswith("trigger_"):
+            job.remove()
+
+    for rule in triggers.enabled_triggers():
+        sched = rule.get("schedule") or {}
+        mode = sched.get("mode")
+        rid = rule.get("id") or rule.get("name")
+        channel = rule.get("channel", "feishu")
+        instant = rule.get("priority") == "instant"
+        try:
+            if mode == "intraday":
+                minutes = min(max(int(sched.get("interval_minutes", 10)), 5), 120)
+                scheduler.add_job(
+                    lambda r=rule: run_trigger_rule(r),
+                    CronTrigger(minute=f"*/{minutes}", timezone=TZ),
+                    id=f"trigger_{rid}", misfire_grace_time=600, coalesce=True,
+                    replace_existing=True,
+                )
+                logger.info("通知触发器已挂载: %s（盘中每 %d 分钟，%s）", rid, minutes, channel)
+            elif mode in ("post_close", "daily"):
+                t = str(sched.get("time", "15:35"))
+                try:
+                    hh, mm = int(t.split(":")[0]), int(t.split(":")[1])
+                except (ValueError, TypeError):
+                    hh, mm = 15, 35
+                scheduler.add_job(
+                    lambda r=rule: run_trigger_rule(r),
+                    CronTrigger(hour=hh, minute=mm, timezone=TZ),
+                    id=f"trigger_{rid}", misfire_grace_time=3600, coalesce=True,
+                    replace_existing=True,
+                )
+                logger.info("通知触发器已挂载: %s（%s %02d:%02d，%s）", rid, mode, hh, mm, channel)
+        except Exception as e:
+            logger.error("通知触发器挂载失败 %s: %s", rid, e)
+
+
+def run_trigger_rule(rule: dict) -> dict:
+    """执行一条触发器规则：按条件过滤持仓/信号，聚合发送。"""
+    from StockInvestmentTool.notifier.core import (
+        NotificationFragment, MessageAggregator, TOPIC_ORDERS,
+        TOPIC_PRICE, TOPIC_SUMMARY, PRIORITY_BATCH, live_send_digest,
+    )
+    from StockInvestmentTool.portfolio.manager import PortfolioManager
+    from StockInvestmentTool.portfolio.dashboard import DashboardService
+
+    logger.info("执行通知触发器: %s", rule.get("name"))
+    try:
+        mgr = PortfolioManager()
+        mgr.refresh_all()
+        data = DashboardService(mgr).war_room()
+    except Exception as e:
+        logger.error("触发器数据获取失败: %s", e)
+        return {"ok": False, "error": str(e)}
+
+    # 组装片段（topic 分节）
+    agg = MessageAggregator()
+    cond_types = {c.get("type") for c in rule.get("conditions", []) if isinstance(c, dict)}
+
+    # 操作建议类条件
+    if "action" in cond_types or not cond_types:
+        orders_lines = _orders_lines(data)
+        if orders_lines:
+            agg.add(NotificationFragment(TOPIC_ORDERS, "⚔️ 今日持仓指令",
+                                         orders_lines, PRIORITY_BATCH))
+
+    # 价格阈值类（自选）
+    if "price_change" in cond_types:
+        price_lines = _watch_price_lines()
+        if price_lines:
+            agg.add(NotificationFragment(TOPIC_PRICE, "💰 自选价格提醒",
+                                         price_lines, PRIORITY_BATCH))
+
+    digest = agg.digest(meta={"subject": f"股票通知 {datetime.now():%Y-%m-%d}"})
+    if digest is None:
+        logger.info("触发器 %s 无触发内容，跳过", rule.get("name"))
+        return {"ok": True, "skipped": True}
+
+    channel = rule.get("channel", "feishu")
+    kwargs = {}
+    if channel in ("email", "mail", "smtp"):
+        kwargs["subject"] = digest.meta.get("subject", "股票通知")
+        if rule.get("use_email_to"):
+            kwargs["to"] = rule.get("use_email_to")
+    return live_send_digest(digest, channel, **kwargs)
+
+
+def _orders_lines(data: dict) -> list[str]:
+    """持仓指令 → 文本行（含操作建议/盈亏）。"""
+    positions = data.get("positions") or []
+    if not positions:
+        return []
+    lines = [f"持仓 {data.get('summary', {}).get('position_count', 0)} 只 | "
+             f"总盈亏 {data.get('summary', {}).get('total_pnl_pct', '—')}%"]
+    for p in positions:
+        adv = p.get("advice") or {}
+        label = p.get("advice_label") or "—"
+        reason = (adv.get("reason") or "")[:60]
+        line = (f"{p.get('stock_name')}({p.get('stock_code')}): {label}"
+                f" 现价{p.get('current_price')} 盈亏{p.get('unrealized_pnl_pct')}%")
+        if reason:
+            line += f"｜{reason}"
+        lines.append(line)
+    return lines
+
+
+def _watch_price_lines() -> list[str]:
+    """自选价格阈值触发 → 文本行。"""
+    try:
+        from StockInvestmentTool.notifier.notify import NotifyRules, build_price_messages
+        from StockInvestmentTool.screener.sources import tencent_quotes
+
+        rules = NotifyRules.from_yaml()
+        codes = [w["code"] for w in rules.watchlist if w.get("code")]
+        if not codes:
+            return []
+        quotes = tencent_quotes(codes).to_dict("records")
+        return build_price_messages(rules, quotes)
+    except Exception as e:
+        logger.warning("价格阈值检查失败: %s", e)
+        return []
+
+
+def _reload_scheduler_jobs(app) -> None:
+    """免重启：保存通知配置后重挂触发器作业。"""
+    sched = app.extensions.get("scheduler") if app else None
+    if sched is None:
+        return
+    try:
+        _schedule_from_triggers(sched)
+    except Exception as e:
+        logger.error("重挂通知触发器失败: %s", e)
 
 
 # ── 通知去重（避免盘中每10分钟重复推送同一建议）──────────────

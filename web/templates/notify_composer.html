@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockInvestmentTool - 通知编排器</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;
+  --text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;
+  --red:#dc3545;--green:#28a745;--orange:#e67e22;--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.07);
+}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;font-size:15px;}
+.app{max-width:1200px;margin:0 auto;padding:28px 22px 60px;}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.header h1 i{color:var(--accent);}
+.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
+.card h2{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.card h2 i{color:var(--accent);}
+.form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.form-group label{font-size:13px;color:var(--text2);font-weight:500;}
+.form-group input,.form-group select,.form-group textarea{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:14px;outline:none;}
+.btn{padding:8px 18px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;}
+.btn-sm{padding:5px 12px;font-size:13px;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-ghost{background:var(--surface2);color:var(--accent);border:1px solid var(--border);}
+.btn-ghost:hover{background:var(--border);}
+.btn-danger{background:#fbe9e7;color:var(--red);}
+.btn-danger:hover{background:var(--red);color:#fff;}
+.rule-box{border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:12px;background:var(--surface2);}
+.rule-box .rule-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;}
+.rule-box h4{font-size:14px;display:flex;align-items:center;gap:8px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+@media(max-width:700px){.grid2{grid-template-columns:1fr;}}
+.help{font-size:12px;color:var(--text2);}
+.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);margin-right:6px;border:1px solid var(--border);}
+.tag.instant{background:#fbe9e7;color:var(--red);}
+.tag.batch{background:#e8f5e9;color:var(--green);}
+.tag.on{background:#e8f5e9;color:var(--green);border-color:var(--green);}
+.tag.off{background:#fbe9e7;color:var(--red);border-color:var(--red);}
+table.kv{width:100%;border-collapse:collapse;font-size:13px;}
+table.kv th,table.kv td{border:1px solid var(--border);padding:6px 10px;text-align:left;}
+table.kv th{background:var(--surface2);font-weight:600;}
+.toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
+.status-tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;}
+.status-tag.ok{background:#e8f5e9;color:var(--green);}
+.status-tag.no{background:#eceff1;color:var(--text2);}
+.divider{height:1px;background:var(--border);margin:18px 0;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <h1><i class="fas fa-bell"></i> 通知编排器</h1>
+      <div class="sub">何时通知 · 什么条件 · 什么渠道 —— 配置即时生效（免重启）</div>
+    </div>
+    {% set active = 'settings' %}{% include '_nav.html' %}
+  </div>
+
+  {% if error %}<div class="error" style="color:var(--red);background:#fbe9e7;border-radius:6px;padding:12px;margin-bottom:14px;">{{ error }}</div>{% endif %}
+
+  <!-- 触发器 -->
+  <div class="card">
+    <h2><i class="fas fa-filter"></i> 触发器规则（条件 × 时间 × 渠道）</h2>
+    <div id="rules-list"></div>
+    <button class="btn btn-ghost btn-sm" onclick="addRule()"><i class="fas fa-plus"></i> 添加触发器</button>
+    <div style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="saveRules()"><i class="fas fa-save"></i> 保存触发器（即时生效）</button>
+      <span class="help" id="save-hint"></span>
+    </div>
+  </div>
+
+  <!-- 渠道 + 邮件 -->
+  <div class="card">
+    <h2><i class="fas fa-paper-plane"></i> 渠道与邮件收件人</h2>
+    <div class="grid2">
+      <div class="form-group"><label>webhook 渠道</label>
+        <select id="channel">
+          <option value="feishu">飞书 feishu</option>
+          <option value="wecom">企业微信 wecom</option>
+          <option value="email">邮件 email</option>
+        </select>
+        <span class="help" id="channel-status"></span>
+      </div>
+      <div class="form-group"><label>邮件收件人（逗号分隔）</label>
+        <input id="email-to" placeholder="a@example.com,b@example.com">
+        <span class="help">保存到 .env EMAIL_TO（也补全 email 渠道发送）</span>
+      </div>
+    </div>
+    <div class="form-group"><label>测试渠道 webhook URL（仅在需覆盖时填，留空用 .env）</label>
+      <input id="test-url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx">
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-primary" onclick="saveMail()"><i class="fas fa-save"></i> 保存收件人</button>
+      <button class="btn btn-ghost" onclick="sendTest()"><i class="fas fa-paper-plane"></i> 测试发送</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+let RULES=[];
+const SCHEDULE_MODES=[
+  {mode:'intraday',label:'盘中每 N 分钟'},
+  {mode:'post_close',label:'盘后定时(批次聚合)'},
+  {mode:'daily',label:'每日一次'},
+];
+const ADVICE_OPTIONS=['hold','buy_more','partial_sell','sell_all','adjust_stop'];
+
+function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2800);}
+function esc(s){return (s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+async function loadRules(){
+  const r=await fetch('/api/notify/rules');const d=await r.json();
+  if(d.status==='success'){RULES=d.rules||[];renderRules();loadConfig();}
+  else showToast(d.error);
+}
+function renderRules(){
+  const el=document.getElementById('rules-list');el.innerHTML='';
+  RULES.forEach((rule,idx)=>{
+    const sched=rule.schedule||{};
+    const modeLabel=(SCHEDULE_MODES.find(m=>m.mode===sched.mode)||{sched:{}}).label||sched.mode;
+    const condLabels=(rule.conditions||[]).map(c=>condText(c)).join(' 且 ');
+    const on=rule.enabled!==false;
+    const box=document.createElement('div');box.className='rule-box';
+    box.innerHTML=`
+      <div class="rule-head">
+        <h4><span class="tag ${on?'on':'off'}">${on?'启用':'停用'}</span>
+          <span class="tag ${rule.priority==='instant'?'instant':'batch'}">${rule.priority==='instant'?'即时':'批次'}</span>
+          ${esc(rule.name)}</h4>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="toggleRule(${idx})">${on?'停用':'启用'}</button>
+          <button class="btn btn-ghost btn-sm" onclick="editRule(${idx})">编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="delRule(${idx})">删除</button>
+        </div>
+      </div>
+      <div class="help" style="margin-bottom:8px;">条件: ${condLabels||'任意'}｜时间: ${modeLabel}（${sched.time||sched.interval_minutes+'分钟'}）｜渠道: ${esc(rule.channel)}</div>`;
+    el.appendChild(box);
+  });
+}
+
+let editingIdx=-1;
+function addRule(){editingIdx=-1;openEditor(defaultRule());}
+function editRule(idx){editingIdx=idx;openEditor({...(RULES[idx]),conditions:(RULES[idx].conditions||[]).map(c=>({...c}))});}
+function delRule(idx){if(!confirm('删除触发器 '+RULES[idx].name+'？'))return;RULES.splice(idx,1);renderRules();}
+function toggleRule(idx){RULES[idx].enabled=!(RULES[idx].enabled!==false);renderRules();}
+function defaultRule(){return {id:'rule_'+Date.now(),name:'新触发器',enabled:true,logic:'AND',priority:'batch',channel:'feishu',schedule:{mode:'intraday',interval_minutes:10},conditions:[{type:'action',params:{advice_types:['partial_sell','sell_all']}}]};}
+
+function openEditor(rule){
+  editingIdx=editingIdx;
+  const condOpts=ADVICE_OPTIONS.map(a=>`<option value="${a}" ${(rule.conditions[0]?.params?.advice_types||[]).includes(a)?'selected':''}>${a}</option>`).join('');
+  const body=`
+    <div class="form-group"><label>规则名</label><input id="e-name" value="${esc(rule.name)}"></div>
+    <div class="grid2">
+      <div class="form-group"><label>时间模式</label><select id="e-mode">
+        ${SCHEDULE_MODES.map(m=>`<option value="${m.mode}" ${rule.schedule.mode===m.mode?'selected':''}>${m.label}</option>`).join('')}
+      </select></div>
+      <div class="form-group"><label>渠道</label><select id="e-channel">
+        <option value="feishu" ${rule.channel==='feishu'?'selected':''}>飞书</option>
+        <option value="wecom" ${rule.channel==='wecom'?'selected':''}>企微</option>
+        <option value="email" ${rule.channel==='email'?'selected':''}>邮件</option>
+      </select></div>
+      <div class="form-group" id="e-time-wrap"><label>时间点 HH:MM</label><input id="e-time" type="time" value="${rule.schedule.time||'15:35'}"></div>
+      <div class="form-group" id="e-interval-wrap" style="display:none;"><label>间隔(分钟)</label><input id="e-interval" type="number" value="${rule.schedule.interval_minutes||10}"></div>
+    </div>
+    <div class="grid2">
+      <div class="form-group"><label>优先级</label><select id="e-priority">
+        <option value="instant" ${rule.priority==='instant'?'selected':''}>即时（盘中单独发）</option>
+        <option value="batch" ${rule.priority==='batch'?'selected':''}>批次（盘后聚合为一条）</option>
+      </select></div>
+      <div class="form-group"><label>触发类型</label><select id="e-condtype">
+        <option value="action" ${rule.conditions[0]?.type==='action'?'selected':''}>操作建议</option>
+        <option value="price_change" ${rule.conditions[0]?.type==='price_change'?'selected':''}>价格涨跌幅</option>
+      </select></div>
+    </div>
+    <div class="form-group" id="e-advice-wrap"><label>操作建议类型</label><select id="e-advice" multiple size="4" style="min-height:90px;">${condOpts}</select></div>
+    <div class="form-group" id="e-price-wrap" style="display:none;"><label>涨跌幅阈值%</label><input id="e-pct" type="number" value="3">
+      <select id="e-dir"><option value="up">上涨</option><option value="down">下跌</option></select></div>
+    <div class="form-group"><label>邮件专用收件人（可选，留空用全局 EMAIL_TO）</label><input id="e-mto" value="${esc(rule.use_email_to||'')}"></div>
+    <div style="text-align:right;margin-top:8px;">
+      <button class="btn btn-primary" onclick="commitEditor()">确认</button>
+      <button class="btn btn-ghost" onclick="closeEditorModal()">取消</button>
+    </div>`;
+  showModal('编辑触发器',body);
+  syncModeFields();
+  document.getElementById('e-mode').onchange=syncModeFields;
+  document.getElementById('e-condtype').onchange=syncCondFields;
+  syncCondFields();
+}
+function syncModeFields(){
+  const mode=document.getElementById('e-mode').value;
+  document.getElementById('e-time-wrap').style.display=(mode==='intraday')?'none':'block';
+  document.getElementById('e-interval-wrap').style.display=(mode==='intraday')?'block':'none';
+}
+function syncCondFields(){
+  const t=document.getElementById('e-condtype').value;
+  document.getElementById('e-advice-wrap').style.display=(t==='action')?'block':'none';
+  document.getElementById('e-price-wrap').style.display=(t==='price_change')?'block':'none';
+}
+function commitEditor(){
+  const mode=document.getElementById('e-mode').value;
+  const condtype=document.getElementById('e-condtype').value;
+  let condition;
+  if(condtype==='action'){
+    const atypes=[...document.getElementById('e-advice').selectedOptions].map(o=>o.value);
+    condition={type:'action',params:{advice_types:atypes.length?atypes:['partial_sell','sell_all']}};
+  }else{
+    const dir=document.getElementById('e-dir').value;
+    const pct=parseFloat(document.getElementById('e-pct').value||3);
+    condition={type:'price_change',params:{direction:dir,pct:pct}};
+  }
+  const sched={mode};
+  if(mode==='intraday')sched.interval_minutes=parseInt(document.getElementById('e-interval').value||10);
+  else sched.time=document.getElementById('e-time').value||'15:35';
+  const rule={
+    id:(editingIdx>=0?RULES[editingIdx].id:'rule_'+Date.now()),
+    name:document.getElementById('e-name').value||'新触发器',
+    enabled:true, logic:'AND', conditions:[condition], schedule:sched,
+    channel:document.getElementById('e-channel').value,
+    priority:document.getElementById('e-priority').value,
+    use_email_to:document.getElementById('e-mto').value,
+  };
+  if(editingIdx>=0)RULES[editingIdx]=rule;else RULES.push(rule);
+  closeEditorModal();renderRules();
+}
+function showModal(title,html){
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-body').innerHTML=html;
+  document.getElementById('modal-bg').style.display='flex';
+}
+function closeEditorModal(){document.getElementById('modal-bg').style.display='none';}
+
+async function saveRules(){
+  const r=await fetch('/api/notify/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:RULES})});
+  const d=await r.json();
+  if(d.status==='success'){showToast('触发器已保存，即时生效');document.getElementById('save-hint').textContent='已保存 '+d.count+' 条，无需重启';}
+  else showToast('保存失败: '+d.error);
+}
+
+async function loadConfig(){
+  const r=await fetch('/api/notify/config');const d=await r.json();
+  if(d.status!=='success')return;
+  const w=d.webhook||{};const m=d.mail||{};
+  document.getElementById('channel').value=w.channel||'feishu';
+  document.getElementById('channel-status').innerHTML=
+    `飞书 <span class="status-tag ${w.feishu_configured?'ok':'no'}">${w.feishu_configured?'✓':'未配'}</span> | `+
+    `企微 <span class="status-tag ${w.wecom_configured?'ok':'no'}">${w.wecom_configured?'✓':'未配'}</span> | `+
+    `邮件 <span class="status-tag ${m.email_configured?'ok':'no'}">${m.email_configured?'✓':'未配'}</span>`;
+  document.getElementById('email-to').value=(m.email_to_addresses||[]).join(',');
+}
+async function saveMail(){
+  const to=document.getElementById('email-to').value;
+  const r=await fetch('/api/notify/mail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to})});
+  const d=await r.json();
+  d.status==='success'?showToast('收件人已保存'):showToast('保存失败: '+d.error);
+}
+async function sendTest(){
+  const channel=document.getElementById('channel').value;
+  const url=document.getElementById('test-url').value;
+  const to=document.getElementById('email-to').value;
+  const r=await fetch('/api/notify/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel,url,to})});
+  const d=await r.json();
+  d.status==='success'?showToast('测试消息已发送（渠道 '+channel+'）'):showToast('发送失败: '+d.error);
+}
+
+loadRules();
+</script>
+
+<!-- 编辑弹窗 -->
+<div class="modal-bg" id="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;">
+  <div class="modal" style="background:var(--surface);border-radius:10px;padding:22px;max-width:620px;width:90%;">
+    <h3 id="modal-title" style="margin-bottom:14px;"></h3>
+    <div id="modal-body"></div>
+  </div>
+</div>
+</body>
+</html>

@@ -148,6 +148,7 @@ def save_webhook(channel: str, feishu_url: str = "", wecom_url: str = "") -> dic
 
 def _atomic_write(path: Path, content: str):
     """校验通过后写临时文件再原子替换。"""
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")
