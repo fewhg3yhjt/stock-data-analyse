@@ -94,6 +94,14 @@ window.StockDetail = (function(){
       if (n >= 1e4) return (n/1e4).toFixed(1) + '万手';
       return n + '手';
     }
+    // 成交量副图用：输入为「股」(warehouse daily volume)，转 手→万手/亿手
+    function volHandFmt(v){
+      if (v === null || v === undefined || isNaN(Number(v))) return '';
+      const hands = Number(v) / 100;   // 股 → 手
+      if (Math.abs(hands) >= 1e8) return (hands/1e8).toFixed(2) + '亿手';
+      if (Math.abs(hands) >= 1e4) return (hands/1e4).toFixed(1) + '万手';
+      return Math.round(hands) + '手';
+    }
 
     // 实时报价面板（现价/涨跌/开高低/量额/换手/量比/PE/PB/市值/振幅）
     const chg = Number(b.change_pct);
@@ -203,8 +211,12 @@ window.StockDetail = (function(){
             let out = '<div style="font-weight:600;margin-bottom:2px;">' + params[0].axisValue + '</div>';
             params.forEach(function(p){
               if (p.seriesType === 'candlestick'){
+                // ECharts candlestick 的 value 带 dataIndex 前缀: [dataIndex, open, close, lowest, highest]
                 const v = p.value || [];
-                out += '<span>开 <b>' + v[0] + '</b>　高 <b>' + v[3] + '</b>　低 <b>' + v[2] + '</b>　收 <b>' + v[1] + '</b></span><br/>';
+                let o, c, l, h;
+                if (v.length >= 5){ o = v[1]; c = v[2]; l = v[3]; h = v[4]; }
+                else { o = v[0]; c = v[1]; l = v[2]; h = v[3]; }
+                out += '<span>开 <b>' + o + '</b>　高 <b>' + h + '</b>　低 <b>' + l + '</b>　收 <b>' + c + '</b></span><br/>';
               } else if (p.seriesName && p.value !== null && p.value !== undefined){
                 out += (p.marker || '') + ' ' + p.seriesName + '：' + p.value + '<br/>';
               }
@@ -250,11 +262,12 @@ window.StockDetail = (function(){
         tooltip:{ trigger:'axis', formatter: function(p){
           if (!p || !p.length) return '';
           const v = p[0].value;
-          return p[0].axisValue + '<br/>成交量：' + (v === null || v === undefined ? '—' : v);
+          return p[0].axisValue + '<br/>成交量：' + (v === null || v === undefined ? '—' : volHandFmt(v));
         }},
         grid:{left:55, right:30, top:8, bottom:24},
         xAxis:{type:'category', data:kDates, boundaryGap:false, axisLabel:{show:false}},
-        yAxis:{type:'value', scale:true},
+        yAxis:{type:'value', scale:true,
+          axisLabel:{ formatter: function(v){ return volHandFmt(v); } }},
         series:[{ name:'成交量', type:'bar', data:volData, barWidth:'60%' }]
       }, true);
       return true;
