@@ -45,6 +45,7 @@ from StockInvestmentTool.strategy.take_profit import (
 from StockInvestmentTool.strategy.market_state import determine_market_state_from_df
 from StockInvestmentTool.strategy.stock_classifier import classify_stock
 from StockInvestmentTool.datasource.indicators import TechnicalIndicators
+from StockInvestmentTool.indicators.context import IndicatorContext
 
 logger = logging.getLogger(__name__)
 
@@ -122,11 +123,14 @@ class PostPurchaseAdvisor:
         ctx.ma_20 = float(last.get("ma_20", 0)) if "ma_20" in kline.columns else 0
         ctx.ma_60 = float(last.get("ma_60", 0)) if "ma_60" in kline.columns else 0
 
-        # 用指标体系计算完整指标（可配置/可组合），补充到 context
+        # 用统一 IndicatorContext 计算完整指标（可配置/可组合），补充到 context
+        # （FR-1.3：全库唯一指标求值入口，替代散落 hardcode 计算）
+        self._ind_ctx = None
         try:
             from StockInvestmentTool.indicators.engine import IndicatorRegistry
+            self._ind_ctx = IndicatorContext(kline)
             reg = IndicatorRegistry()
-            ind_values = reg.latest(kline)
+            ind_values = self._ind_ctx.latest(list(reg.all_names()))
             ctx.indicators = {k: v for k, v in ind_values.items() if v is not None}
         except Exception as e:
             logger.debug("指标体系计算失败: %s", e)
@@ -149,12 +153,13 @@ class PostPurchaseAdvisor:
         except Exception:
             pass
 
-        # 支撑位（复用 MultiBuyStrategy 逻辑）
+        # 支撑位（FR-1.2 统一骨架，替代 MultiBuyStrategy 内部实现）
         try:
+            scheme = (load_snapshot_scheme(scheme_snapshot) if scheme_snapshot else None)
             strategy = MultiBuyStrategy(
-                dividend_anchor=dividend_anchor,
-                scheme=(load_snapshot_scheme(scheme_snapshot) if scheme_snapshot else None),
+                dividend_anchor=dividend_anchor, scheme=scheme,
             )
+            from StockInvestmentTool.strategy.support import RowContext
             weak, strong, extreme = strategy._get_support_levels(last)
             ctx.weak_support, ctx.strong_support, ctx.extreme_anchor = weak, strong, extreme
         except Exception as e:

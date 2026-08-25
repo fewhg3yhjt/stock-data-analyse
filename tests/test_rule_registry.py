@@ -1,0 +1,70 @@
+"""FR-1.1 统一规则派发 测试。"""
+
+from __future__ import annotations
+
+import pytest
+
+from StockInvestmentTool.strategy.context import RuleContext, RuleResult
+from StockInvestmentTool.strategy.rule_registry import make_rule_registry
+
+
+@pytest.fixture
+def reg():
+    return make_rule_registry()
+
+
+def test_all_required_types_registered(reg):
+    for kind, types in [
+        ("buy", ["support_level", "trend_following", "market_state_arbiter"]),
+        ("sell", ["hard_stop", "technical_stop", "left_side_fixed",
+                  "right_side_trailing", "logic_stop", "price_stop", "time_stop"]),
+    ]:
+        for t in types:
+            assert reg.has(kind, t), f"{kind}/{t} 未注册"
+
+
+def test_types_enumerable(reg):
+    assert "support_level" in reg.types("buy")
+    assert "hard_stop" in reg.types("sell")
+
+
+def test_schema_present_for_all(reg):
+    for kind in ("buy", "sell"):
+        for t in reg.types(kind):
+            schema = reg.schema(kind, t)
+            assert schema, f"{kind}/{t} 缺 schema"
+            assert all("key" in f and "label" in f and "type" in f for f in schema)
+
+
+def test_dispatch_support_level(kline):
+    from StockInvestmentTool.indicators.context import IndicatorContext
+    ctx = RuleContext(
+        df=kline,
+        row=kline.iloc[-1],
+        indicators=IndicatorContext(kline),
+        current_price=float(kline["close"].iloc[-1]),
+    )
+    reg = make_rule_registry()
+    res = reg.dispatch("buy", "support_level", ctx,
+                       {"support_sources": ["MA60", "MIN(MA20,MA240)"],
+                        "buy_stages": [{"label": "弱支撑", "position_index": 1, "ratio": 0.3}]})
+    assert isinstance(res, RuleResult)
+    assert "plan" in res.detail
+
+
+def test_dispatch_unregistered_raises(reg):
+    with pytest.raises(KeyError):
+        reg.get("buy", "not_a_real_type")
+
+
+def test_dispatch_market_state_arbiter(kline):
+    from StockInvestmentTool.indicators.context import IndicatorContext
+    ctx = RuleContext(
+        df=kline, row=kline.iloc[-1], indicators=IndicatorContext(kline),
+        current_price=float(kline["close"].iloc[-1]),
+        market_state="震荡市",
+    )
+    reg = make_rule_registry()
+    res = reg.dispatch("buy", "market_state_arbiter", ctx, {})
+    assert isinstance(res, RuleResult)
+    assert res.action in ("buy_more", "hold")

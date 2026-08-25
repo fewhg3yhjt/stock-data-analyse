@@ -45,6 +45,12 @@ import pandas as pd
 from StockInvestmentTool.config import Config
 from StockInvestmentTool.core.scheme import SchemeConfig
 from StockInvestmentTool.strategy.risk_control import RiskController
+from StockInvestmentTool.strategy.support import (
+    MaSource,
+    RollingLowSource,
+    RowContext,
+    get_support_levels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -449,40 +455,20 @@ class TakeProfitOptimizer:
     # ── 交叉验证支撑位（对齐 Prompt Part4）─────────────────
 
     def _get_support_levels(self, row: pd.Series) -> tuple[float, float, float]:
-        """计算当前行的综合强支撑 / 弱支撑 / 极端低估锚
+        """计算当前行的综合强支撑 / 弱支撑 / 极端低估锚（FR-1.2 统一骨架）
 
         强/弱支撑只用价格类（MA60/近3月低点/年内低点），股息锚仅作为
-        极端低估锚。避免低息/高息股的股息锚成为"强支撑"最低值，把第2批
-        买入价钉在永远到不了的深价值位（600150 股息锚9.12 却把第2批
-        钉在9.12，导致只买第1批收益从48%跌到16.5%）。
+        极端低估锚。委托 `strategy/support.get_support_levels`，与
+        multi_buy / engine_v6 同口径。
 
         Returns
         -------
         (weak_support, strong_support, extreme_anchor)
         """
-        candidates = []
-
-        ma60 = row.get("ma_60")
-        if ma60 is not None and not pd.isna(ma60) and ma60 > 0:
-            candidates.append(("MA60", ma60))
-
-        low_3m = row.get("low_3m")
-        if low_3m is not None and not pd.isna(low_3m) and low_3m > 0:
-            candidates.append(("近3月低点", low_3m))
-
-        year_low = row.get("year_low")
-        if year_low is not None and not pd.isna(year_low) and year_low > 0:
-            candidates.append(("年内低点", year_low))
-
-        sorted_vals = sorted(candidates, key=lambda x: x[1])
-        if not sorted_vals:
-            return (0, 0, 0)
-
-        strong = sorted_vals[0][1]
-        weak = sorted_vals[1][1] if len(sorted_vals) > 1 else strong
-        extreme = self.dividend_anchor if self.dividend_anchor else strong
-
-        return (weak, strong, extreme)
+        sources = [MaSource(60), RollingLowSource(63), RollingLowSource(None)]
+        return get_support_levels(
+            sources, RowContext(row), row, dividend_anchor=self.dividend_anchor,
+        )
 
     # ── 网格搜索 ──────────────────────────────────────────
 

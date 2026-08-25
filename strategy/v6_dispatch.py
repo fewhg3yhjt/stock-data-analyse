@@ -1,16 +1,13 @@
-"""V6.0 规则 type → 执行类 注册中心
+"""V6.0 规则 type → 执行类 注册中心（FR-1.1 统一派发）
 
-把 v6_si_wei.yaml 里声明的新规则 type 映射到具体执行函数，
-供上层引擎（analysis / backtest / 单股对比）按 type 派发。
+本模块已并入统一 `RuleRegistry`（见 `strategy/rule_registry.py`），
+保留旧函数作为**向后兼容适配层**，供存量调用方（analysis/backtest/单股对比、
+prompt、screener 等）继续使用 `get_buy_executor`/`get_sell_executor`。
 
-与 v4.5 的取数方式（MultiBuyStrategy / TakeProfitOptimizer 各自
-find_buy_rule/find_sell_rule）互补：这里统一登记 V6.0 新增 type，
-存量 v4.5 代码不动，只做新增派发（对齐实验方案 §3.2 决策 2）。
-
-用法:
-    from StockInvestmentTool.strategy.v6_dispatch import (
-        get_buy_executor, get_sell_executor, is_v6_buy_type, is_v6_sell_type)
-    fn = get_buy_executor("market_state_arbiter")   # → judge_buy_tree
+新增可执行规则 type：
+    从 StockInvestmentTool.strategy.rule_registry import get_rule_registry
+    reg = get_rule_registry()          # 全部 v4.5 + V6.0 type
+    reg.dispatch("buy", "market_state_arbiter", ctx, params)
 """
 
 from __future__ import annotations
@@ -18,56 +15,49 @@ from __future__ import annotations
 import logging
 from typing import Callable, Optional
 
-from StockInvestmentTool.strategy.buy_tree import judge_buy_tree
-from StockInvestmentTool.strategy.sell_tree_v6 import (
-    judge_left_side, judge_logic_stop, judge_price_stop,
-    judge_right_side, judge_time_stop,
-)
+from StockInvestmentTool.strategy.rule_registry import get_rule_registry
 
 logger = logging.getLogger(__name__)
 
-# 买入规则 type → 执行函数
-BUY_EXECUTORS: dict[str, Callable] = {
-    "market_state_arbiter": judge_buy_tree,
-}
-
-# 卖出规则 type → 执行函数
-SELL_EXECUTORS: dict[str, Callable] = {
-    "logic_stop": judge_logic_stop,
-    "price_stop": judge_price_stop,
-    "time_stop": judge_time_stop,
-    "left_side_fixed": judge_left_side,
-    "right_side_trailing": judge_right_side,
-}
-
 
 def is_v6_buy_type(rule_type: str) -> bool:
-    return rule_type in BUY_EXECUTORS
+    """V6.0 专属买入 type 判断（V6.0 新增，v4.5 无）。"""
+    return rule_type == "market_state_arbiter"
 
 
 def is_v6_sell_type(rule_type: str) -> bool:
-    return rule_type in SELL_EXECUTORS
+    """V6.0 专属卖出 type 判断（V6.0 新增，v4.5 无）。"""
+    return rule_type in ("logic_stop", "price_stop", "time_stop")
 
 
 def get_buy_executor(rule_type: str) -> Optional[Callable]:
-    """按 type 取买入执行函数；未注册返回 None。"""
-    fn = BUY_EXECUTORS.get(rule_type)
-    if fn is None:
-        logger.debug("V6 未注册买入规则 type: %s", rule_type)
-    return fn
+    """按 type 取买入执行函数（经统一注册表适配）。
+
+    返回的是注册表中的 executor（fn(ctx, params) -> RuleResult）包装：
+      - 若同时注册了旧版可调用对象，此处返回该对象，保持旧签名兼容；
+      - 返回 None 表示未注册。
+    """
+    reg = get_rule_registry()
+    try:
+        return reg.get("buy", rule_type)
+    except KeyError:
+        logger.debug("未注册买入规则 type: %s", rule_type)
+        return None
 
 
 def get_sell_executor(rule_type: str) -> Optional[Callable]:
-    """按 type 取卖出执行函数；未注册返回 None。"""
-    fn = SELL_EXECUTORS.get(rule_type)
-    if fn is None:
-        logger.debug("V6 未注册卖出规则 type: %s", rule_type)
-    return fn
+    """按 type 取卖出执行函数（经统一注册表适配）。"""
+    reg = get_rule_registry()
+    try:
+        return reg.get("sell", rule_type)
+    except KeyError:
+        logger.debug("未注册卖出规则 type: %s", rule_type)
+        return None
 
 
 def registered_buy_types() -> list[str]:
-    return sorted(BUY_EXECUTORS)
+    return get_rule_registry().types("buy")
 
 
 def registered_sell_types() -> list[str]:
-    return sorted(SELL_EXECUTORS)
+    return get_rule_registry().types("sell")

@@ -18,6 +18,14 @@ from typing import Optional
 import pandas as pd
 
 from StockInvestmentTool.core.scheme import SchemeConfig, BuyRuleConfig
+from StockInvestmentTool.strategy.support import (
+    IndicatorExprSource,
+    MaSource,
+    RollingLowSource,
+    RowContext,
+    build_sources,
+    get_support_levels,
+)
 
 # 默认买点规则（无 scheme 时的兜底，等价于重构前的硬编码行为）
 _DEFAULT_STAGES = [
@@ -107,27 +115,20 @@ class MultiBuyStrategy:
         return _SUPPORT_LABELS.get(source, source)
 
     def _get_support_levels(self, row: pd.Series) -> tuple[float, float, float]:
-        """计算综合强支撑/弱支撑/极端低估锚
+        """计算综合强支撑/弱支撑/极端低估锚（FR-1.2 统一骨架委托）。
 
-        按配置的 support_sources 收集候选，升序排序：
-          - 强支撑 = 最低值
-          - 弱支撑 = 次低值
-          - 极端低估锚 = 股息率锚（若配置）
+        按配置的 support_sources 装配来源策略，统一走
+        `strategy/support.get_support_levels` 骨架，消除三处重复算法。
 
         Returns
         -------
         (weak_support, strong_support, extreme_anchor)
         """
-        candidates = self._collect_support_candidates(row)
-
-        if not candidates:
-            return 0, 0, 0
-
-        sorted_vals = sorted(candidates, key=lambda x: x[1])
-        strong = sorted_vals[0][1]
-        weak = sorted_vals[1][1] if len(sorted_vals) > 1 else strong
-        extreme = self.dividend_anchor if self.dividend_anchor else strong
-        return weak, strong, extreme
+        # 兼容层：老字段名 → 来源策略；新写法（指标名/表达式）→ IndicatorExprSource
+        sources, _ = build_sources(list(self.support_sources))
+        return get_support_levels(
+            sources, RowContext(row), row, dividend_anchor=self.dividend_anchor,
+        )
 
     def _build_computation(self, stage: dict, base: float,
                            threshold: float, candidates: list[tuple[str, float]]) -> dict:

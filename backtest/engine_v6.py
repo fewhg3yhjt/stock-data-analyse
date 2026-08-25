@@ -40,6 +40,12 @@ from StockInvestmentTool.strategy.sell_tree_v6 import (
     judge_sell_tree_v6, take_profit_hard_cap,
     LEFT_SIDE_RATIO_BY_TYPE, RIGHT_DD_BY_TYPE,
 )
+from StockInvestmentTool.strategy.support import (
+    MaSource,
+    RollingLowSource,
+    RowContext,
+    get_support_levels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,22 +139,14 @@ class BacktestEngineV6:
     # ── 支撑位（与 v4.5 _get_support_levels 完全同口径）────────────
 
     def _get_support_levels(self, row: pd.Series) -> tuple[float, float, float]:
-        """(weak_support, strong_support, extreme_anchor)
+        """(weak_support, strong_support, extreme_anchor) —— FR-1.2 统一骨架。
 
         强/弱支撑只用价格类（MA60/近3月低点/年内低点），股息锚仅作为极端低估锚。
         """
-        candidates = []
-        for key in ("ma_60", "low_3m", "year_low"):
-            v = row.get(key)
-            if v is not None and not pd.isna(v) and v > 0:
-                candidates.append(float(v))
-        if not candidates:
-            return (0.0, 0.0, 0.0)
-        sorted_vals = sorted(candidates)
-        strong = sorted_vals[0]
-        weak = sorted_vals[1] if len(sorted_vals) > 1 else strong
-        extreme = self.dividend_anchor if self.dividend_anchor else strong
-        return (weak, strong, extreme)
+        sources = [MaSource(60), RollingLowSource(63), RollingLowSource(None)]
+        return get_support_levels(
+            sources, RowContext(row), row, dividend_anchor=self.dividend_anchor,
+        )
 
     @staticmethod
     def _num(row: pd.Series, key: str) -> Optional[float]:
