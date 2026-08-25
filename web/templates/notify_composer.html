@@ -5,52 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>StockInvestmentTool - 通知编排器</title>
 <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<link rel="stylesheet" href="/static/base.css?v=1">
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-:root{
-  --bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;
-  --text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;
-  --red:#dc3545;--green:#28a745;--orange:#e67e22;--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.07);
-}
-body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;font-size:15px;}
-.app{max-width:1200px;margin:0 auto;padding:28px 22px 60px;}
-.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--border);}
-.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
-.header h1 i{color:var(--accent);}
-.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
-.card h2{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
-.card h2 i{color:var(--accent);}
-.form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
-.form-group label{font-size:13px;color:var(--text2);font-weight:500;}
-.form-group input,.form-group select,.form-group textarea{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:14px;outline:none;}
-.btn{padding:8px 18px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;}
-.btn-sm{padding:5px 12px;font-size:13px;}
-.btn-primary{background:var(--accent);color:#fff;}
-.btn-primary:hover{background:var(--accent2);}
-.btn-ghost{background:var(--surface2);color:var(--accent);border:1px solid var(--border);}
-.btn-ghost:hover{background:var(--border);}
-.btn-danger{background:#fbe9e7;color:var(--red);}
-.btn-danger:hover{background:var(--red);color:#fff;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+@media(max-width:700px){.grid2{grid-template-columns:1fr;}}
 .rule-box{border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:12px;background:var(--surface2);}
 .rule-box .rule-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;}
 .rule-box h4{font-size:14px;display:flex;align-items:center;gap:8px;}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-@media(max-width:700px){.grid2{grid-template-columns:1fr;}}
-.help{font-size:12px;color:var(--text2);}
-.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);margin-right:6px;border:1px solid var(--border);}
-.tag.instant{background:#fbe9e7;color:var(--red);}
-.tag.batch{background:#e8f5e9;color:var(--green);}
-.tag.on{background:#e8f5e9;color:var(--green);border-color:var(--green);}
-.tag.off{background:#fbe9e7;color:var(--red);border-color:var(--red);}
 table.kv{width:100%;border-collapse:collapse;font-size:13px;}
 table.kv th,table.kv td{border:1px solid var(--border);padding:6px 10px;text-align:left;}
 table.kv th{background:var(--surface2);font-weight:600;}
-.toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
-.status-tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;}
-.status-tag.ok{background:#e8f5e9;color:var(--green);}
-.status-tag.no{background:#eceff1;color:var(--text2);}
+.tag.instant{background:#fbe9e7;color:var(--red);}
+.tag.batch{background:#e8f5e9;color:var(--green);}
 .divider{height:1px;background:var(--border);margin:18px 0;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;}
+.modal{background:var(--surface);border-radius:10px;padding:22px;max-width:620px;width:90%;}
 </style>
 </head>
 <body>
