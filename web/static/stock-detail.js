@@ -318,9 +318,9 @@ window.StockDetail = (function(){
         ],
         dataZoom:[
           { type:'inside', xAxisIndex:[0,1] },
-          // 默认聚焦最近一段交易日，避免首次打开时停在历史左侧；滑块仍可回看全量历史。
+          // 默认展示全量历史（含首尾空类目），首尾K线都不贴边；滑块可聚焦任一段。
           { type:'slider', xAxisIndex:[0,1], bottom:6, height:18,
-            startValue:Math.max(0, kDates.length - 60), endValue:chartDates.length - 1,
+            start:0, end:100,
             handleSize:'130%', showDetail:false }
         ],
         series: series
@@ -333,10 +333,9 @@ window.StockDetail = (function(){
         };
       }
       chart.setOption(opt, true);
-      // 显式同步到最新数据，避免 ECharts 或复用的 dataZoom 状态覆盖初始范围。
+      // 显式同步到默认视图，避免 ECharts 或复用的 dataZoom 状态覆盖初始范围。
       try{
-        chart.dispatchAction({type:'dataZoom', dataZoomIndex:1,
-          startValue:Math.max(0, kDates.length - 60), endValue:chartDates.length - 1});
+        chart.dispatchAction({type:'dataZoom', dataZoomIndex:1, start:0, end:100});
       }catch(e){}
       const kr = container.querySelector('#krange');
       if (kr) kr.textContent = '日K区间：' + (kDates[0]||'—') + ' ~ ' + (kDates[kDates.length-1]||'—') + '（共 ' + kDates.length + ' 个交易日）';
