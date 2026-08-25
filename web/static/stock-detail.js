@@ -301,7 +301,9 @@ window.StockDetail = (function(){
         ],
         dataZoom:[
           { type:'inside', xAxisIndex:[0,1] },
-          { type:'slider', xAxisIndex:[0,1], bottom:6, height:18, start:0, end:100,
+          // 默认聚焦最近一段交易日，避免首次打开时停在历史左侧；滑块仍可回看全量历史。
+          { type:'slider', xAxisIndex:[0,1], bottom:6, height:18,
+            startValue:Math.max(0, kDates.length - 60), endValue:Math.max(0, kDates.length - 1),
             handleSize:'130%', showDetail:false }
         ],
         series: series
