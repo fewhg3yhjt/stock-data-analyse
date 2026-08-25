@@ -11,7 +11,7 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -287,10 +287,11 @@ class DashboardService:
             logger.warning("资金流候选异常: %s", e)
         return out
 
-    def stock_dual_view(self, code: str, days: int = 120) -> dict:
+    def stock_dual_view(self, code: str, days: int = 750) -> dict:
         """单只股票的「天周期历史 + 盘中快照」双视图数据（后端打通）。
 
-        框1 天周期历史: warehouse daily 分区（OHLCV/amount/turn/PE/PB）
+        框1 天周期历史: OHLCV 取自 warehouse daily 分区；均线 MA5/10/20/60 直接
+            复用 warehouse indicators 分区（离线批处理已算好，不在此现算）。
         框2 盘中快照:   warehouse online 当日最新快照（实时价/换手/量比）
 
         Returns:
@@ -322,33 +323,66 @@ class DashboardService:
         # 框1：天周期历史（从 warehouse 读，避免重复拉网络）
         try:
             w = Warehouse()
-            history = []
-            for ym in w.available_months("daily"):
-                df = w.read_daily(ym)
-                if df is None or df.empty or "code" not in df.columns:
-                    continue
-                sub = df[df["code"] == code_nodot].tail(days)
-                if len(sub):
-                    history.append(sub)
-            if history:
-                import pandas as pd
-                hdf = pd.concat(history, ignore_index=True).sort_values("date").tail(days)
-                closes_s = pd.to_numeric(hdf["close"], errors="coerce")
+            import pandas as _pd
+
+            def _collect(month_kind: str, months: list[str]):
+                """按月份分区拼接某只股票的记录，返回按 date 排序的 DataFrame（空则 None）。"""
+                parts = []
+                if month_kind == "daily":
+                    read_fn = w.read_daily
+                else:  # indicator
+                    read_fn = w.read_indicator
+                for ym in months:
+                    df = read_fn(ym)
+                    if df is None or df.empty or "code" not in df.columns:
+                        continue
+                    sub = df[df["code"] == code_nodot]
+                    if len(sub):
+                        parts.append(sub)
+                if not parts:
+                    return None
+                return _pd.concat(parts, ignore_index=True).sort_values("date").reset_index(drop=True)
+
+            months = w.available_months("daily")
+            hdf = _collect("daily", months)
+            if hdf is not None:
+                hdf = hdf.tail(days).reset_index(drop=True)
+                closes_s = _pd.to_numeric(hdf["close"], errors="coerce")
+
+                # 复用 indicators 分区里已预计算的均线（与 daily 同源、按日期对齐），
+                # 指标是离线批处理算好落盘的，不在此重复现算；缺失时回退本地现算。
                 mas = {}
-                for n in (5, 10, 20, 60):
-                    ma = closes_s.rolling(n).mean()
-                    mas[f"MA{n}"] = [round(float(x), 2) if x == x else None for x in ma]
+                ind = _collect("indicator", w.available_months("indicator"))
+                ma_avail = {"MA5": "MA5", "MA10": "MA10", "MA20": "MA20", "MA60": "MA60"}
+                if ind is not None and not ind.empty:
+                    ind = ind.tail(days).reset_index(drop=True)
+                    # 只保留需要的均线列 + date，按 date 左连到 hdf（join 后顺序恢复 date 排序）。
+                    keep = [c for c in ma_avail.values() if c in ind.columns]
+                    if keep:
+                        merged = _pd.merge(
+                            hdf[["date"]], ind[["date"] + keep], on="date", how="left"
+                        ).sort_values("date").reset_index(drop=True)
+                        for n, col in ma_avail.items():
+                            if col in keep:
+                                s = _pd.to_numeric(merged[col], errors="coerce")
+                                mas[n] = [round(float(x), 2) if x == x else None for x in s]
+                # 指标分区缺失该标的时，回退为本地按收盘价现算（保证 MA 可用）。
+                if not mas:
+                    for n in (5, 10, 20, 60):
+                        ma = closes_s.rolling(n).mean()
+                        mas[f"MA{n}"] = [round(float(x), 2) if x == x else None for x in ma]
+
                 result["daily_history"] = {
                     "dates": [str(d)[:10] for d in hdf["date"]],
                     "closes": [round(float(x), 2) if x == x else None for x in hdf["close"]],
-                    "opens": [round(float(x), 2) if x == x else None for x in hdf.get("open", pd.Series([None]*len(hdf)))],
-                    "highs": [round(float(x), 2) if x == x else None for x in hdf.get("high", pd.Series([None]*len(hdf)))],
-                    "lows": [round(float(x), 2) if x == x else None for x in hdf.get("low", pd.Series([None]*len(hdf)))],
+                    "opens": [round(float(x), 2) if x == x else None for x in hdf.get("open", _pd.Series([None]*len(hdf)))],
+                    "highs": [round(float(x), 2) if x == x else None for x in hdf.get("high", _pd.Series([None]*len(hdf)))],
+                    "lows": [round(float(x), 2) if x == x else None for x in hdf.get("low", _pd.Series([None]*len(hdf)))],
                     "volumes": [round(float(x), 0) if x == x else None for x in hdf["volume"]],
-                    "amounts": [round(float(x), 2) if x == x else None for x in hdf.get("amount", pd.Series([None]*len(hdf)))],
-                    "turns": [round(float(x), 2) if x == x else None for x in hdf.get("turn", pd.Series([None]*len(hdf)))],
-                    "pe": [round(float(x), 2) if x == x else None for x in hdf.get("peTTM", pd.Series([None]*len(hdf)))],
-                    "pb": [round(float(x), 2) if x == x else None for x in hdf.get("pbMRQ", pd.Series([None]*len(hdf)))],
+                    "amounts": [round(float(x), 2) if x == x else None for x in hdf.get("amount", _pd.Series([None]*len(hdf)))],
+                    "turns": [round(float(x), 2) if x == x else None for x in hdf.get("turn", _pd.Series([None]*len(hdf)))],
+                    "pe": [round(float(x), 2) if x == x else None for x in hdf.get("peTTM", _pd.Series([None]*len(hdf)))],
+                    "pb": [round(float(x), 2) if x == x else None for x in hdf.get("pbMRQ", _pd.Series([None]*len(hdf)))],
                     "mas": mas,
                 }
         except Exception as e:
@@ -381,7 +415,7 @@ class DashboardService:
             snap_day = today
             if not snaps:
                 for off in range(1, 15):
-                    d = (datetime.date.today() - datetime.timedelta(days=off)).strftime("%Y-%m-%d")
+                    d = (datetime.now() - timedelta(days=off)).strftime("%Y-%m-%d")
                     s2 = w.online_snapshots(d)
                     if s2:
                         snaps = s2
