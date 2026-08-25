@@ -142,10 +142,18 @@ window.StockDetail = (function(){
     container.innerHTML = `
       ${simRow}
       ${quotePanel}
-      ${hasTrend ? `<div class="chart intraday-trend-chart" style="width:100%;height:180px;"></div>` : ''}
-      <div id="krange" style="font-size:12px;color:var(--text2);padding:2px 0 0;"></div>
-      <div class="chart kline-chart" style="width:100%;height:470px;"></div>
-      ${showReturn ? `<div class="returns-chart" style="width:100%;height:220px;margin-top:10px;"></div>` : ''}
+      <div style="display:flex;gap:6px;margin:6px 0 2px;">
+        <button class="tab-btn" data-tab="kline" style="padding:4px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;font-size:13px;cursor:pointer;">日K</button>
+        <button class="tab-btn" data-tab="trend" style="padding:4px 14px;border:1px solid var(--border);background:var(--surface);color:var(--text2);border-radius:6px;font-size:13px;cursor:pointer;">分时</button>
+      </div>
+      <div class="kline-wrap">
+        <div id="krange" style="font-size:12px;color:var(--text2);padding:2px 0 0;"></div>
+        <div class="chart kline-chart" style="width:100%;height:470px;"></div>
+        ${showReturn ? `<div class="returns-chart" style="width:100%;height:220px;margin-top:10px;"></div>` : ''}
+      </div>
+      <div class="intraday-wrap" style="display:none;">
+        ${hasTrend ? `<div class="chart intraday-trend-chart" style="width:100%;height:240px;"></div>` : '<div style="font-size:12px;color:var(--text2);padding:10px 0;">暂无盘中快照数据</div>'}
+      </div>
       ${retBlock}
     `;
 
@@ -154,6 +162,31 @@ window.StockDetail = (function(){
     const volEl = container.querySelector('.volume-chart');
     const trendEl = container.querySelector('.intraday-trend-chart');
     const retEl = container.querySelector('.returns-chart');
+
+    let activeTab = 'kline';
+    function switchTab(tab){
+      activeTab = tab;
+      container.querySelectorAll('.tab-btn').forEach(function(b){
+        const on = b.dataset.tab === tab;
+        b.style.background = on ? 'var(--accent)' : 'var(--surface)';
+        b.style.color = on ? '#fff' : 'var(--text2)';
+        b.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+      });
+      const kw = container.querySelector('.kline-wrap');
+      const iw = container.querySelector('.intraday-wrap');
+      if (kw) kw.style.display = (tab === 'kline') ? '' : 'none';
+      if (iw) iw.style.display = (tab === 'trend') ? '' : 'none';
+      const tryRender = function(){
+        let ok;
+        if (tab === 'kline'){ ok = renderKlineVolume() && renderRet(); }
+        else { ok = renderTrend(); }
+        if (!ok) setTimeout(tryRender, 80);
+      };
+      tryRender();
+    }
+    container.querySelectorAll('.tab-btn').forEach(function(b){
+      b.addEventListener('click', function(){ switchTab(b.dataset.tab); });
+    });
     const kDates = h.dates || [];
     const kCloses = h.closes || [];
     const kOpens = h.opens || [];
@@ -183,6 +216,7 @@ window.StockDetail = (function(){
       if (!window.echarts) return false;
       if (!(kDates && kDates.length)) return false;
       if (!sized(klineEl)) return false;   // 容器未就绪 → 由 draw 重试
+      const prev = echarts.getInstanceByDom(klineEl); if (prev){ try{ prev.dispose(); }catch(e){} }
       const chart = echarts.init(klineEl);
       charts.push(chart);
       // yAxis 范围：收盘 + 高/低 + 点位，避免点位或影线超出可视区
@@ -282,11 +316,13 @@ window.StockDetail = (function(){
       chart.setOption(opt, true);
       const kr = container.querySelector('#krange');
       if (kr) kr.textContent = '日K区间：' + (kDates[0]||'—') + ' ~ ' + (kDates[kDates.length-1]||'—') + '（共 ' + kDates.length + ' 个交易日）';
+      try{ requestAnimationFrame(function(){ chart.resize(); }); }catch(e){}
       return true;
     }
     function renderTrend(){
       if (!window.echarts || !hasTrend) return false;
       if (!sized(trendEl)) return false;
+      const prev = echarts.getInstanceByDom(trendEl); if (prev){ try{ prev.dispose(); }catch(e){} }
       const chart = echarts.init(trendEl);
       charts.push(chart);
       chart.setOption({
@@ -299,8 +335,10 @@ window.StockDetail = (function(){
           lineStyle:{width:1.5, color:'#1a73e8'}, itemStyle:{color:'#1a73e8'},
           areaStyle:{ color:'rgba(26,115,232,0.08)' } }]
       }, true);
+      try{ requestAnimationFrame(function(){ chart.resize(); }); }catch(e){}
       return true;
     }
+
     function renderRet(){
       if (!window.echarts || !retData) return false;
       if (!retEl || !sized(retEl)) return false;
@@ -319,11 +357,15 @@ window.StockDetail = (function(){
     }
     function draw(){
       if (!window.echarts) return false;
-      if (!sized(klineEl)) return false;   // 等容器布局完成再画
       let any = false;
-      if (renderKlineVolume()) any = true;
-      if (renderTrend()) any = true;
-      if (showReturn && renderRet()) any = true;
+      if (activeTab === 'kline'){
+        if (!sized(klineEl)) return false;   // 等容器布局完成再画
+        if (renderKlineVolume()) any = true;
+        if (showReturn && renderRet()) any = true;
+      } else {
+        if (!sized(trendEl)) return false;
+        if (renderTrend()) any = true;
+      }
       drew = any;
       return true;
     }
@@ -343,6 +385,8 @@ window.StockDetail = (function(){
       ro.observe(container);
       container._ro = ro;
     }
+    // 首帧再次 resize，规避初始化时容器宽度测量偏差（图被父级/视口裁切导致右侧数据不可见）
+    try{ requestAnimationFrame(function(){ charts.forEach(function(c){ try{ c.resize(); }catch(e){} }); }); }catch(e){}
     if (opts.onChart) opts.onChart(drew, klineEl);
 
     // 模拟入场点事件
