@@ -89,7 +89,9 @@ window.StockDetail = (function(){
 
     // K线（收盘 + 点位）
     const klineEl = container.querySelector('.kline-chart');
-    const kData = { dates: h.dates || [], series:[{name:'收盘', key:'close', data: h.closes || []}], lines: d.lines || [] };
+    const kDates = h.dates || [];
+    const kCloses = h.closes || [];
+    const kLines = d.lines || [];
 
     // 收益折线
     const retEl = container.querySelector('.returns-chart');
@@ -102,9 +104,7 @@ window.StockDetail = (function(){
       retEl.style.display = 'none';
     }
 
-    // 绘制 K 线（收盘 + 点位线）与收益折线 —— 与 warroom 的 loadStockChart 一致：
-    // 等待容器布局完成(有真实尺寸)后，直接用 echarts.init + setOption，不做额外 resize 干扰。
-    // (此前加了 ensureSized/resize 兜底反而导致曲线不显示)
+    // 绘制 K 线（收盘 + 点位线）与收益折线 —— 直接用 echarts，同 warroom 可行方案
     let drew = false;
     const charts = [];
     function sized(el){
@@ -112,24 +112,25 @@ window.StockDetail = (function(){
     }
     function renderKline(){
       if (!window.echarts) return false;
-      if (!(kData.dates && kData.dates.length)) return false;
+      if (!(kDates && kDates.length)) return false;
       if (!sized(klineEl)) return false;   // 容器未就绪 → 由 draw 重试
       const chart = echarts.init(klineEl);
       charts.push(chart);
-      // 实验:与 renderRet 完全一致的朴素结构(去掉 markLine/slider dataZoom)，定位 K线不显示根因
       const opt = {
         tooltip:{trigger:'axis'}, legend:{top:0},
         grid:{left:55, right:30, top:34, bottom:50},
-        xAxis:{type:'category', data:kData.dates, boundaryGap:false},
+        xAxis:{type:'category', data:kDates, boundaryGap:false},
         yAxis:{type:'value', scale:true},
-        dataZoom:[{type:'inside'}],
-        series:[{name:'收盘', type:'line', data:kData.closes, showSymbol:false,
+        dataZoom:[{type:'inside'},{type:'slider', height:16}],
+        series:[{name:'收盘', type:'line', data:kCloses, showSymbol:false,
                  lineStyle:{width:1.5,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'}}]
       };
+      if (kLines && kLines.length){
+        opt.series.push({name:'点位', type:'line', data:[], silent:true,
+          markLine:{symbol:'none', label:{formatter:p=>p.name, position:'insideEndTop', fontSize:10},
+            data:kLines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))}});
+      }
       chart.setOption(opt, true);
-      try{
-        console.log('[Kline] getWidth='+chart.getWidth()+' getHeight='+chart.getHeight()+' drew=true');
-      }catch(e){}
       return true;
     }
     function renderRet(){
@@ -174,10 +175,6 @@ window.StockDetail = (function(){
       container._ro = ro;
     }
     if (opts.onChart) opts.onChart(drew, klineEl);
-    console.log('[StockDetail]', d.code, 'drew='+drew,
-      'echarts='+!!window.echarts,
-      'kline size='+klineEl.clientWidth+'x'+klineEl.clientHeight,
-      'kData.dates='+(kData.dates||[]).length);
 
     // 模拟入场点事件
     if (kind === 'watch' && opts.onSimEntry){
