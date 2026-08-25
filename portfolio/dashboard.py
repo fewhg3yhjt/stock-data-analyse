@@ -354,14 +354,16 @@ class DashboardService:
         except Exception as e:
             logger.warning("天周期历史读取失败 %s: %s", code, e)
 
-        # 框2：盘中快照（当日最新）+ 当日走势（10分钟粒度序列）
+        # 框2：盘中快照（当日最新）+ 当日走势（快照序列）
+        # 数据源：warehouse.online_snapshots（当前为每日快照；
+        #   后续接入分钟级采集后，仅需切换此处数据源，前端无需改动）
         try:
+            import pandas as pd
             today = datetime.now().strftime("%Y-%m-%d")
             w = Warehouse()
-            snaps = w.online_snapshots(today)
-            if snaps:
-                import pandas as pd
-                latest = pd.read_csv(snaps[-1], encoding="utf-8-sig")
+            snaps_today = w.online_snapshots(today)
+            if snaps_today:
+                latest = pd.read_csv(snaps_today[-1], encoding="utf-8-sig")
                 row = latest[latest["code"] == code_nodot]
                 if len(row):
                     r = row.iloc[0]
@@ -374,7 +376,18 @@ class DashboardService:
                         "pb": round(float(r["pb"]), 2) if r.get("pb") == r.get("pb") else None,
                         "snapshot_time": str(r.get("snapshot_time", ""))[:19],
                     }
-                # 当日盘中走势：把当日所有快照里该 code 的价格按时间连成序列（10分钟粒度近似）
+            # 走势序列：当日优先；无当日快照则回退到最近一个有快照的交易日
+            snaps = snaps_today
+            snap_day = today
+            if not snaps:
+                for off in range(1, 15):
+                    d = (datetime.date.today() - datetime.timedelta(days=off)).strftime("%Y-%m-%d")
+                    s2 = w.online_snapshots(d)
+                    if s2:
+                        snaps = s2
+                        snap_day = d
+                        break
+            if snaps:
                 times, prices = [], []
                 for sp in snaps:
                     try:
@@ -393,7 +406,7 @@ class DashboardService:
                         times.append(t)
                         prices.append(round(float(p), 2))
                 if times:
-                    result["intraday_trend"] = {"times": times, "prices": prices}
+                    result["intraday_trend"] = {"day": snap_day, "times": times, "prices": prices}
         except Exception as e:
             logger.warning("盘中快照读取失败 %s: %s", code, e)
 

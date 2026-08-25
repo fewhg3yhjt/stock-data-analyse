@@ -143,6 +143,7 @@ window.StockDetail = (function(){
       ${simRow}
       ${quotePanel}
       ${hasTrend ? `<div class="chart intraday-trend-chart" style="width:100%;height:180px;"></div>` : ''}
+      <div id="krange" style="font-size:12px;color:var(--text2);padding:2px 0 0;"></div>
       <div class="chart kline-chart" style="width:100%;height:470px;"></div>
       ${showReturn ? `<div class="returns-chart" style="width:100%;height:220px;margin-top:10px;"></div>` : ''}
       ${retBlock}
@@ -279,6 +280,8 @@ window.StockDetail = (function(){
         };
       }
       chart.setOption(opt, true);
+      const kr = container.querySelector('#krange');
+      if (kr) kr.textContent = '日K区间：' + (kDates[0]||'—') + ' ~ ' + (kDates[kDates.length-1]||'—') + '（共 ' + kDates.length + ' 个交易日）';
       return true;
     }
     function renderTrend(){
@@ -287,7 +290,7 @@ window.StockDetail = (function(){
       const chart = echarts.init(trendEl);
       charts.push(chart);
       chart.setOption({
-        title:{ text:'盘中走势（10分钟快照）', left:0, top:0, textStyle:{fontSize:12, color:'#6b7280', fontWeight:'normal'} },
+        title:{ text:'盘中走势（' + (it.day || '当日') + ' 快照源）', left:0, top:0, textStyle:{fontSize:12, color:'#6b7280', fontWeight:'normal'} },
         tooltip:{trigger:'axis'},
         grid:{left:55, right:30, top:30, bottom:24},
         xAxis:{type:'category', data:it.times, boundaryGap:false},
