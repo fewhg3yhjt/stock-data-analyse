@@ -26,6 +26,20 @@ DEFAULT_RUN_TIME = "15:35"
 TZ = "Asia/Shanghai"
 
 
+def _market_session_minute_trigger():
+    """Return a 5-minute trigger limited to A-share trading sessions."""
+    from apscheduler.triggers.cron import CronTrigger
+
+    # 09:30-11:30 and 13:00-15:00; the job itself tolerates holidays.
+    return [
+        CronTrigger(day_of_week="mon-fri", hour=9, minute="30,35,40,45,50,55", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=10, minute="*/5", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=11, minute="0,5,10,15,20,25,30", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=13, minute="0,5,10,15,20,25,30,35,40,45,50,55", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=14, minute="*/5", timezone=TZ),
+    ]
+
+
 def _parse_time(spec: str) -> tuple[int, int]:
     """'15:35' → (15, 35)"""
     spec = (spec or DEFAULT_RUN_TIME).strip()
@@ -187,6 +201,14 @@ def init_scheduler(app) -> None:
             id="online_snapshot", misfire_grace_time=600, coalesce=True,
         )
         logger.info("盘中观察池快照已启动: 每 10 分钟")
+    # 真正分钟数据：独立于 online 快照，默认关闭，避免未经确认增加外部请求。
+    if os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1":
+        for index, trigger in enumerate(_market_session_minute_trigger()):
+            scheduler.add_job(
+                run_minute_snapshot_job, trigger,
+                id=f"minute_snapshot_{index}", misfire_grace_time=600, coalesce=True,
+            )
+        logger.info("盘中分钟数据已启动: 每 5 分钟，观察池范围")
 
     # 通知触发器（FR-3.4 免重启：按触发器配置挂载，保存后重挂即可）
     _schedule_from_triggers(scheduler)
@@ -581,6 +603,21 @@ def run_online_snapshot_job():
             logger.warning("盘中快照失败: %s", result.get("error"))
     except Exception as e:
         logger.error("盘中快照任务异常: %s", e)
+
+
+def run_minute_snapshot_job():
+    """盘中分钟数据任务主体（默认关闭，观察池范围）。"""
+    from StockInvestmentTool.warehouse.online import _default_observe_codes
+    from StockInvestmentTool.warehouse.minute import collect_minute_snapshot
+    try:
+        result = collect_minute_snapshot(_default_observe_codes())
+        if result.get("ok"):
+            logger.info("分钟数据已采集: %s (%d codes/%d rows)",
+                        result.get("path"), result.get("codes", 0), result.get("rows", 0))
+        else:
+            logger.warning("分钟数据采集失败: %s", result.get("errors"))
+    except Exception as e:
+        logger.error("分钟数据任务异常: %s", e)
 
 
 def scheduler_status(app) -> dict:

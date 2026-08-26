@@ -93,3 +93,22 @@ def test_online_normalizes_columns():
     df = src.fetch_kline("sh.600000")
     assert "extra_col" not in df.columns
     assert set(df.columns) == set(KLINE_COLUMNS)
+
+
+def test_warehouse_fetch_minute_series(tmp_path):
+    from StockInvestmentTool.warehouse.minute import parse_tencent_minute
+
+    warehouse = Warehouse(base_dir=Path(tmp_path))
+    payload = {
+        "data": {"sh600900": {"data": {
+            "date": "20260826",
+            "data": ["0930 28.20 100 1000", "0931 28.21 120 1210"],
+        }}}
+    }
+    warehouse.minute_store().write(parse_tencent_minute(payload, "sh600900"))
+    frame = WarehouseSource(warehouse=warehouse).fetch_minute_series(
+        "sh.600900", "2026-08-26"
+    )
+
+    assert len(frame) == 2
+    assert frame["close"].tolist() == [28.2, 28.21]

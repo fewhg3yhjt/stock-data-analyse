@@ -58,9 +58,10 @@ class Warehouse:
         self.indicator_dir = self.base_dir / "indicators"
         self.fundamental_dir = self.base_dir / "fundamentals"
         self.online_dir = self.base_dir / "online"
+        self.minute_dir = self.base_dir / "minute"
         self.meta_db_path = self.base_dir / "meta.db"
         for d in (self.daily_dir, self.factor_dir, self.indicator_dir,
-                  self.fundamental_dir, self.online_dir):
+                  self.fundamental_dir, self.online_dir, self.minute_dir):
             d.mkdir(parents=True, exist_ok=True)
         self._init_meta()
 
@@ -365,6 +366,12 @@ class Warehouse:
     def online_snapshots(self, day: str) -> list[Path]:
         day_dir = self.online_dir / day
         return sorted(day_dir.glob("snapshot_*.csv")) if day_dir.exists() else []
+
+    # 分钟数据由 warehouse.minute.MinuteStore 管理，单独分区，避免和 daily
+    # 的全量天级数据生命周期混在一起。
+    def minute_store(self):
+        from StockInvestmentTool.warehouse.minute import MinuteStore
+        return MinuteStore(self.base_dir)
 
 
 def _has(module: str) -> bool:

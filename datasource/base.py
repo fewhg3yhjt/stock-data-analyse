@@ -44,6 +44,10 @@ class DataSource(Protocol):
         """取实时快照（现价/涨跌/量/换手/量比/PE/PB）。"""
         ...
 
+    def fetch_minute_series(self, code: str, day: Optional[str] = None) -> pd.DataFrame:
+        """取指定交易日分钟序列。"""
+        ...
+
 
 class WarehouseSource:
     """离线仓库源：DuckDB 跨分区单查询。
@@ -130,6 +134,12 @@ class WarehouseSource:
         """从在线源退化为空快照；仓库源不持实时快照。"""
         return {}
 
+    def fetch_minute_series(self, code: str, day: Optional[str] = None) -> pd.DataFrame:
+        from datetime import datetime
+
+        target = day or datetime.now().strftime("%Y-%m-%d")
+        return self._warehouse.minute_store().read(target, code)
+
     @staticmethod
     def _finalize(df: pd.DataFrame) -> pd.DataFrame:
         import pandas as pd
@@ -173,6 +183,14 @@ class OnlineSource:
     def fetch_snapshot(self, code: str) -> dict:
         # 实时快照不全在 baostock：交给调用方用 _realtime_enhance（腾讯/AkShare）
         return {}
+
+    def fetch_minute_series(self, code: str, day: Optional[str] = None) -> pd.DataFrame:
+        from StockInvestmentTool.warehouse.minute import fetch_tencent_minute
+
+        frame = fetch_tencent_minute(code)
+        if day and not frame.empty:
+            frame = frame[frame["trade_date"] == str(day)[:10]]
+        return frame
 
     @staticmethod
     def _select_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -227,6 +245,17 @@ class FallbackDataSource:
             if snap:
                 return snap
         return {}
+
+    def fetch_minute_series(self, code: str, day: Optional[str] = None) -> pd.DataFrame:
+        for src in self.sources:
+            try:
+                frame = src.fetch_minute_series(code, day)
+            except Exception as e:
+                logger.warning("数据源 %s 分钟序列失败(%s)，尝试下一源", type(src).__name__, e)
+                continue
+            if frame is not None and not frame.empty:
+                return frame
+        return pd.DataFrame()
 
     @staticmethod
     def _normalize(df: pd.DataFrame) -> pd.DataFrame:

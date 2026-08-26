@@ -381,13 +381,30 @@ class DashboardService:
         except Exception as e:
             logger.warning("天周期历史读取失败 %s: %s", code, e)
 
-        # 框2：盘中快照（当日最新）+ 当日走势（快照序列）
+        # 框2：优先读取独立 minute 分区；没有分钟数据才回退 online 快照。
         # 数据源：warehouse.online_snapshots（当前为每日快照；
         #   后续接入分钟级采集后，仅需切换此处数据源，前端无需改动）
         try:
             import pandas as pd
             today = datetime.now().strftime("%Y-%m-%d")
             w = Warehouse()
+            from StockInvestmentTool.datasource.base import WarehouseSource
+
+            minute = WarehouseSource(warehouse=w).fetch_minute_series(code_nodot, today)
+            if not minute.empty:
+                last = minute.iloc[-1]
+                result["intraday"] = {
+                    "price": round(float(last["close"]), 2),
+                    "snapshot_time": str(last["time"])[:19],
+                    "source": "tencent_minute",
+                }
+                result["intraday_trend"] = {
+                    "day": today,
+                    "times": [str(v)[:16] for v in minute["time"]],
+                    "prices": [round(float(v), 2) for v in minute["close"]],
+                    "source": "tencent_minute",
+                }
+                return result
             snaps_today = w.online_snapshots(today)
             if snaps_today:
                 latest = pd.read_csv(snaps_today[-1], encoding="utf-8-sig")
