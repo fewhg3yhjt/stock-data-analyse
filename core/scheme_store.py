@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import shutil
+import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -79,8 +80,10 @@ def _read_state() -> dict:
 
 def _write_state(state: dict):
     try:
-        _state_path().write_text(json.dumps(state, ensure_ascii=False, indent=2),
-                                 encoding="utf-8")
+        path = _state_path()
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
     except Exception as e:
         logger.error("方案状态写入失败: %s", e)
 
@@ -148,6 +151,8 @@ def save_scheme(name: str, content: str, *, validate: bool = True) -> dict:
 
     data = yaml.safe_load(content)
     name = _safe_name(data.get("name") or name)
+    state = _read_state()
+    previous = state.get(name, {})
     path = custom_dir() / f"{name}.yaml"
 
     # 原子写入
@@ -157,8 +162,58 @@ def save_scheme(name: str, content: str, *, validate: bool = True) -> dict:
 
     # 记录版本
     record_version(name, content)
+    # Editing a published scheme requires a fresh validation of the new content.
+    state[name] = {**previous, "state": "draft" if previous.get("state") == "published" else previous.get("state", "draft")}
+    _write_state(state)
     logger.info("方案已保存: %s (%s)", name, path)
-    return {"name": name, "version": str(data.get("version", "1.0")), "path": str(path)}
+    return {"name": name, "version": str(data.get("version", "1.0")), "path": str(path),
+            "state": state[name].get("state", "draft")}
+
+
+def metadata(name: str) -> dict:
+    name = _safe_name(name)
+    path = custom_dir() / f"{name}.yaml"
+    if not path.exists():
+        raise ValueError(f"用户方案不存在: {name}")
+    state = _read_state().get(name, {})
+    # Legacy user schemes were already executable; preserve that behavior.
+    return {"name": name, "state": state.get("state", "published"),
+            "enabled": bool(state.get("enabled", True)),
+            "default": bool(state.get("default", False)),
+            "validated_at": state.get("validated_at"),
+            "validated_by": state.get("validated_by"),
+            "validation_sample_code": state.get("validation_sample_code"),
+            "validation_result": state.get("validation_result"),
+            "published_at": state.get("published_at")}
+
+
+def set_validation(name: str, *, sample_code: str, result: dict, validated_by: str = "admin") -> dict:
+    name = _safe_name(name)
+    state = _read_state()
+    entry = state.setdefault(name, {})
+    entry.update({"state": "validated", "validated_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+                  "validated_by": validated_by, "validation_sample_code": sample_code,
+                  "validation_result": {"hash": content_hash(name), "result": result}})
+    _write_state(state)
+    return metadata(name)
+
+
+def content_hash(name: str) -> str:
+    name = _safe_name(name)
+    return hashlib.sha256((custom_dir() / f"{name}.yaml").read_bytes()).hexdigest()
+
+
+def publish(name: str) -> dict:
+    item = metadata(name)
+    if item["state"] != "validated":
+        raise ValueError("方案必须先通过样本验证才能发布")
+    validation = item.get("validation_result") or {}
+    if validation.get("hash") != content_hash(name):
+        raise ValueError("方案内容已变化，需要重新验证")
+    state = _read_state()
+    state[name].update({"state": "published", "published_at": __import__("datetime").datetime.now().isoformat(timespec="seconds")})
+    _write_state(state)
+    return metadata(name)
 
 
 def delete_scheme(name: str) -> bool:
@@ -202,6 +257,9 @@ def list_scheme_stores() -> list[dict]:
             "default": bool(s.get("default", False)),
             "is_builtin": False,
             "source": str(p),
+            "state": s.get("state", "published"),
+            "validated_at": s.get("validated_at"),
+            "published_at": s.get("published_at"),
         })
     return out
 

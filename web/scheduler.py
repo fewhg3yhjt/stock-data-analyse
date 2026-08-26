@@ -873,6 +873,17 @@ def run_minute_snapshot_job():
         JobRunStore().finish(run_id, "failed", error=str(e))
 
 
+def run_system_alert_job() -> dict:
+    """Evaluate health and enqueue deduplicated system alerts."""
+    from StockInvestmentTool.ops.freshness import data_status
+    from StockInvestmentTool.notifier.system_alerts import enqueue_alerts
+    status = data_status()
+    from StockInvestmentTool.notifier.outbox import NotificationOutbox
+    status["notification_health"] = NotificationOutbox().counts()
+    ids = enqueue_alerts(status)
+    return {"alerts": len(ids), "outbox_ids": ids, "overall_status": status.get("overall_status")}
+
+
 def scheduler_status(app) -> dict:
     """定时任务状态（管理页展示）。"""
     sched = app.extensions.get("scheduler")

@@ -67,6 +67,7 @@ table.kv th{background:var(--surface2);font-weight:600;}
   </div>
   <div class="card">
     <h2><i class="fas fa-list-check"></i> 投递台账</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><select id="outbox-status" onchange="loadOutbox()"><option value="">全部状态</option><option>pending</option><option>sent</option><option>dead</option></select><button class="btn btn-ghost" onclick="retryDead()">重试全部死信</button><button class="btn btn-outline" onclick="createSystemAlerts()">检查并生成系统告警</button></div>
     <div id="outbox-summary" class="help">加载中…</div>
     <div class="table-wrap"><table class="kv"><thead><tr><th>ID</th><th>渠道</th><th>状态</th><th>尝试次数</th><th>创建时间</th><th>最近错误</th></tr></thead><tbody id="outbox-rows"></tbody></table></div>
   </div>
@@ -238,12 +239,16 @@ async function sendTest(){
   d.status==='success'?showToast('测试消息已发送（渠道 '+channel+'）'):showToast('发送失败: '+d.error);
 }
 async function loadOutbox(){
-  const response=await fetch('/api/notify/outbox'); const data=await response.json();
+  const status=document.getElementById('outbox-status').value;
+  const response=await fetch('/api/notify/outbox'+(status?'?status='+encodeURIComponent(status):'')); const data=await response.json();
   if(data.status!=='success'){document.getElementById('outbox-summary').textContent=data.error||'加载失败';return;}
   const counts=data.counts||{};
   document.getElementById('outbox-summary').textContent=`待发送 ${counts.pending||0} · 已发送 ${counts.sent||0} · 死信 ${counts.dead||0}`;
-  document.getElementById('outbox-rows').innerHTML=(data.items||[]).map(item=>`<tr><td>${item.id}</td><td>${item.channel}</td><td>${item.status}</td><td>${item.attempts}</td><td>${item.created_at||''}</td><td>${item.last_error||''}</td></tr>`).join('') || '<tr><td colspan="6">暂无投递记录</td></tr>';
+  document.getElementById('outbox-rows').innerHTML=(data.items||[]).map(item=>`<tr><td>${item.id}</td><td>${item.channel}</td><td>${item.status}</td><td>${item.attempts}</td><td>${item.created_at||''}</td><td>${item.last_error||''} ${item.status==='dead'?`<button class="btn btn-outline btn-sm" onclick="retryOne(${item.id})">重试</button>`:''}</td></tr>`).join('') || '<tr><td colspan="6">暂无投递记录</td></tr>';
 }
+async function retryOne(id){await fetch('/api/notify/outbox/'+id+'/retry',{method:'POST'});loadOutbox();}
+async function retryDead(){await fetch('/api/notify/outbox/retry-dead',{method:'POST'});loadOutbox();}
+async function createSystemAlerts(){const r=await fetch('/api/system/alerts',{method:'POST'});const d=await r.json();showToast('已生成 '+(d.outbox_ids||[]).length+' 条系统告警');loadOutbox();}
 
 loadRules();
 loadOutbox();

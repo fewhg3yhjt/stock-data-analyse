@@ -20,5 +20,15 @@ jobs:
         run: python -m pip install -r requirements.txt pytest
       - name: Run tests
         run: python -m pytest tests/ -q
+      - name: Compile Python sources
+        run: python -m compileall -q .
+      - name: Check diff formatting
+        run: git diff --check
+      - name: Scan tracked files for credential markers
+        run: '! git grep -n -E "(AKIA[0-9A-Z]{16}|BEGIN (RSA|OPENSSH) PRIVATE KEY|DEEPSEEK_API_KEY=sk-)" -- . ":!*.pyc"'
+      - name: Dependency audit
+        run: python -m pip check
+      - name: Template and backup smoke
+        run: python -m pytest tests/test_navigation.py tests/test_backup_data.py -q
       - name: Build Docker image
         run: docker build --tag stock-invest-ci .

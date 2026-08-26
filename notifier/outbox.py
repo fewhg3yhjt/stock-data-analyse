@@ -89,7 +89,34 @@ class NotificationOutbox:
     def recent(self, limit: int = 20) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id,channel,status,attempts,last_error,created_at,sent_at "
+                "SELECT id,channel,payload,status,attempts,last_error,created_at,sent_at "
                 "FROM notification_outbox ORDER BY id DESC LIMIT ?", (int(limit),)
             ).fetchall()
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["payload"] = json.loads(item["payload"])
+            except Exception:
+                item["payload"] = {}
+            result.append(item)
+        return result
+
+    def get(self, item_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM notification_outbox WHERE id=?", (int(item_id),)).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item["payload"] = json.loads(item["payload"])
+        return item
+
+    def retry(self, item_id: int) -> bool:
+        """Make one failed/dead item eligible again without deleting its audit row."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE notification_outbox SET status='pending', next_attempt_at=?, last_error='' "
+                "WHERE id=? AND status IN ('failed','dead','pending')",
+                (datetime.now().isoformat(timespec="seconds"), int(item_id)),
+            )
+        return cur.rowcount > 0

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import time
+import statistics
 from pathlib import Path
 
 from StockInvestmentTool.datasource.base import WarehouseSource
@@ -23,6 +24,9 @@ def benchmark(code: str, days: int = 750, repeat: int = 3) -> dict:
         "code": code, "days": days, "rows": rows,
         "repeat": len(elapsed), "min_ms": round(min(elapsed) * 1000, 2),
         "avg_ms": round(sum(elapsed) / len(elapsed) * 1000, 2),
+        "p50_ms": round(statistics.median(elapsed) * 1000, 2),
+        "p95_ms": round(sorted(elapsed)[max(0, int(len(elapsed) * 0.95) - 1)] * 1000, 2),
+        "environment": {"python": __import__("platform").python_version()},
     }
 
 

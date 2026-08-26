@@ -252,7 +252,10 @@ def api_data_status():
     """Return explainable freshness status for each warehouse dataset."""
     try:
         from StockInvestmentTool.ops.freshness import data_status
-        return flask.jsonify(data_status())
+        result = data_status()
+        from StockInvestmentTool.notifier.outbox import NotificationOutbox
+        result["notification_health"] = NotificationOutbox().counts()
+        return flask.jsonify(result)
     except Exception as e:
         logger.exception("数据状态读取失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
@@ -595,6 +598,9 @@ def api_schemes_validate():
     try:
         model = __import__("StockInvestmentTool.core.composer", fromlist=["yaml_to_model"]).yaml_to_model(content)
         name = model["name"]
+        from StockInvestmentTool.core import scheme_store
+        if name in scheme_store.BUILTIN_SCHEMES:
+            return flask.jsonify({"status": "error", "error": "内置方案不可进入用户发布流程"}), 400
         # Validate the current editor content without persisting it first.
         code = (payload.get("code") or "").strip()
         if not code:
@@ -2044,8 +2050,13 @@ def api_notify_outbox():
 
     try:
         outbox = NotificationOutbox()
-        return flask.jsonify({"status": "success", "counts": outbox.counts(),
-                              "items": outbox.recent(50)})
+        items = outbox.recent(200)
+        for key in ("topic", "channel", "status"):
+            value = flask.request.args.get(key)
+            if value:
+                items = [item for item in items if item.get("channel") == value or
+                         (item.get("payload") or {}).get("topic") == value or item.get("status") == value]
+        return flask.jsonify({"status": "success", "counts": outbox.counts(), "items": items[:50]})
     except Exception as e:
         logger.exception("通知投递台账读取失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
@@ -2086,6 +2097,31 @@ def api_notify_test():
         return flask.jsonify({"status": "success", "result": result})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/notify/outbox/<int:item_id>/retry", methods=["POST"])
+def api_notify_outbox_retry(item_id):
+    from StockInvestmentTool.notifier.outbox import NotificationOutbox
+    if not NotificationOutbox().retry(item_id):
+        return flask.jsonify({"status": "error", "error": "通知不存在或当前状态不可重试"}), 404
+    return flask.jsonify({"status": "success", "id": item_id, "state": "pending"})
+
+
+@web_app.route("/api/notify/outbox/retry-dead", methods=["POST"])
+def api_notify_outbox_retry_dead():
+    from StockInvestmentTool.notifier.outbox import NotificationOutbox
+    outbox = NotificationOutbox()
+    ids = [item["id"] for item in outbox.recent(200) if item.get("status") == "dead"]
+    retried = [item_id for item_id in ids if outbox.retry(item_id)]
+    return flask.jsonify({"status": "success", "retried": retried})
+
+
+@web_app.route("/api/system/alerts", methods=["POST"])
+def api_system_alerts():
+    from StockInvestmentTool.ops.freshness import data_status
+    from StockInvestmentTool.notifier.system_alerts import enqueue_alerts
+    ids = enqueue_alerts(data_status())
+    return flask.jsonify({"status": "success", "outbox_ids": ids})
 
 
 @web_app.route("/notify-center", methods=["GET"])
