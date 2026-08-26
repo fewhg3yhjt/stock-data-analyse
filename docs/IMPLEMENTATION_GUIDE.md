@@ -122,8 +122,8 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 维度 | 当前判断 |
 |------|----------|
 | 产品功能完整度 | 约 72%，核心个人投资流程基本形成 |
-| SRD FR-1 至 FR-5 | 约 78%，主要产品链路和关键可信性问题已处理，仍有完整迁移债务 |
-| 架构成熟度 | 约 67%，Registry/Context/事务/通知边界已部分进入生产主链路 |
+| SRD FR-1 至 FR-5 | 约 84%，主要产品链路、UI 和关键可信性问题已处理，仍有完整迁移和运维债务 |
+| 架构成熟度 | 约 72%，Registry/Context/事务/通知边界已进入主要生产主链路 |
 | 开发可用度 | 7.5/10 |
 | 受控自用/Beta | 5/10 |
 | 严格生产就绪度 | 5/10，仍受凭据轮换、离机备份演练、完整 Registry 迁移和部署治理限制 |
@@ -138,9 +138,9 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | FR-1.3 IndicatorContext | 部分完成 | 买入计划/Advisor 支撑表达式已接入；旧 TechnicalIndicators 仍负责部分技术面和 V6 路径 |
 | FR-1.4 DataSource | 部分完成 | 日线/分钟读取已有接口和边界；engine/dashboard 仍有部分具体数据源直连 |
 | 指标中心 | 第一版完成 | `/indicator-center` 已支持指标浏览、表达式预览、自定义 base/composite 指标 CRUD；代码指标和内置指标保持只读 |
-| FR-2 策略编排器 | 部分完成 | list/map-list、实时预览、schema 校验和样本回测预检已完成；发布/复杂版本 UI 仍待补齐 |
+| FR-2 策略编排器 | 部分完成 | 结构化参数、实时预览、schema 校验、样本回测预检、默认/版本/回滚 UI 已完成；发布策略与全量引擎迁移仍进行中 |
 | FR-3 通知编排器 | 部分完成 | action/price/indicator 条件和 AND/OR 已执行；HTTP 状态、去重时机、任务防重叠、持久化 outbox 和重试已加固；跨源统一批次仍待补齐 |
-| FR-4 UI 统一 | 部分完成 | 编排器/通知/指标中心已继承 `base.html`；旧业务页面仍未全部迁移 |
+| FR-4 UI 统一 | 已完成主要页面 | 19 个业务模板已继承 `base.html`；公共导航和设计系统已统一 |
 | FR-5 DuckDB 图表 | 基本完成 | 主图表路径已改善；分钟分区也已独立接入，但没有性能基线和 P95 证据 |
 
 ### 4.3 最近已落地的连续批次
@@ -153,7 +153,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 规则/状态主链路 | `7761397` `ddf4172` `9f15ede` | 买入计划 registry、Advisor 硬止损 registry、持仓状态机生产接入 |
 | 可信性修复 | `e304657` `afaed04` `a855316` `7b908aa` | 财务事务原子性、通知去重时机、trail 参数生效、配置路径/session 加固 |
 
-当前完整回归：**101 个测试通过**。
+当前完整回归：**103 个测试通过**。
 
 ### 4.4 本轮新增治理能力
 
@@ -165,6 +165,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 - `notifier/channels.py` / `web/scheduler.py`：Webhook 非 2xx 失败、调度任务 `max_instances=1`、通知状态原子写入。
 - `docs/BACKUP_RUNBOOK.md`：备份范围、隔离恢复演练和生产数据安全边界。
 - `web/app.py:/api/health/details`：返回调度、仓库分区和关键开关状态，供生产巡检。
+- 19 个业务模板已全部继承 `web/templates/base.html`；模板迁移不改变路由和业务脚本。
 
 完成定义必须是：
 
