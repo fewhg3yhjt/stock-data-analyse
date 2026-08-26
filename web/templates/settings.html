@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 管理</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 管理{% endblock %}
+{% block head %}
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -46,8 +42,8 @@ textarea.code.mini{min-height:200px;}
 .toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
 @media(max-width:700px){.form-row{grid-template-columns:1fr;}}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
 
   <div class="header">
@@ -214,5 +210,4 @@ async function loadScheme(name){
   document.getElementById('scheme-content').value = d.content || '';
 }
 </script>
-</body>
-</html>
+{% endblock %}

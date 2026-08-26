@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 策略实验室</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 策略实验室{% endblock %}
+{% block head %}
 <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -56,8 +52,8 @@ label{font-size:13px;color:var(--text2);display:block;margin-bottom:4px;}
 .checkbox-group input{margin:0;width:auto;accent-color:var(--accent);}
 .metric-color{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:2px;}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
   <div class="header">
     <h1><i class="fas fa-vial-virus"></i> 策略实验室</h1>
@@ -302,5 +298,4 @@ function showToast(msg, isErr){
   t._timer = setTimeout(() => t.style.display = 'none', 3000);
 }
 </script>
-</body>
-</html>
+{% endblock %}
