@@ -449,6 +449,8 @@ def api_schemes_list():
             for s in SchemeRegistry().list()
         ]
         user = scheme_store.list_scheme_stores()
+        for item in user:
+            item["default"] = scheme_store.is_default(item["name"])
         return flask.jsonify({"status": "success", "schemes": builtin + user})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 500

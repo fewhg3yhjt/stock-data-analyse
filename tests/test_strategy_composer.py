@@ -114,6 +114,11 @@ def test_builtin_scheme_delete_protected(client):
     assert r.status_code == 400
 
 
+def test_builtin_scheme_toggle_and_default_protected(client):
+    assert client.post("/api/schemes/toggle", json={"name": "default_value", "enabled": False}).status_code == 400
+    assert client.post("/api/schemes/default", json={"name": "default_value"}).status_code == 400
+
+
 def test_validate_run_rejects_short_sample(client):
     model = _sample_model()
     yaml_out = client.post("/api/schemes/compose", json=model).get_json()["yaml"]

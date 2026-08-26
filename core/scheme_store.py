@@ -213,6 +213,8 @@ def is_enabled(name: str) -> bool:
 
 def set_enabled(name: str, enabled: bool) -> None:
     name = _safe_name(name)
+    if name in BUILTIN_SCHEMES:
+        raise ValueError(f"内置方案 '{name}' 受保护，不可启停")
     state = _read_state()
     entry = state.setdefault(name, {})
     entry["enabled"] = bool(enabled)
@@ -222,6 +224,8 @@ def set_enabled(name: str, enabled: bool) -> None:
 def set_default(name: str) -> None:
     """设为默认：清空其余默认后置当前。"""
     name = _safe_name(name)
+    if name in BUILTIN_SCHEMES:
+        raise ValueError(f"内置方案 '{name}' 受保护，不可设为用户默认")
     state = _read_state()
     for n, e in state.items():
         e["default"] = (n == name)

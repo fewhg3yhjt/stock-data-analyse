@@ -392,12 +392,14 @@ async function loadSchemeList(){
   const body=document.getElementById('modal-body');
   let html='<table class="kv"><tr><th>名称</th><th>版本</th><th>状态</th><th>操作</th></tr>';
   for(const s of d.schemes){
-    html+=`<tr><td>${s.name}${s.is_builtin?'<span class="help">(内置)</span>':''}</td>
-      <td>${s.version}</td><td>${s.enabled?'#'+'x':'#x'}</td>
-      <td>
-        <button class="btn btn-ghost btn-sm" onclick="editScheme('${s.name}')">编辑</button>
-        <button class="btn btn-ghost btn-sm" onclick="toggleScheme('${s.name}',${!s.enabled})">${s.enabled?'停用':'启用'}</button>
-        ${s.is_builtin?'':'<button class="btn btn-danger btn-sm" onclick="delScheme(\''+s.name+'\')">删除</button>'}
+     html+=`<tr><td>${s.name}${s.is_builtin?'<span class="help">(内置)</span>':''}${s.default?'<span class="tag tag-buy">默认</span>':''}</td>
+       <td>${s.version}</td><td>${s.enabled?'<span class="tag tag-buy">启用</span>':'<span class="tag tag-sell">停用</span>'}</td>
+       <td>
+         <button class="btn btn-ghost btn-sm" onclick="editScheme('${s.name}')">编辑</button>
+         ${s.is_builtin?'':'<button class="btn btn-ghost btn-sm" onclick="toggleScheme(\''+s.name+'\','+(!s.enabled)+')">'+(s.enabled?'停用':'启用')+'</button>'}
+         ${s.is_builtin?'':'<button class="btn btn-ghost btn-sm" onclick="setDefaultScheme(\''+s.name+'\')">设默认</button>'}
+         <button class="btn btn-ghost btn-sm" onclick="showVersions('${s.name}')">版本</button>
+         ${s.is_builtin?'':'<button class="btn btn-danger btn-sm" onclick="delScheme(\''+s.name+'\')">删除</button>'}
       </td></tr>`;
   }
   html+='</table>';
@@ -442,6 +444,23 @@ function renderRuleFromType(kind,type,params){
 async function toggleScheme(name,enabled){
   const s=await fetch('/api/schemes/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,enabled})});
   const d=await s.json();showToast(d.status==='success'?(enabled?'已启用':'已停用'):d.error);loadSchemeList();
+}
+async function setDefaultScheme(name){
+  const r=await fetch('/api/schemes/default',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  const d=await r.json(); showToast(d.status==='success'?'已设为默认方案':d.error); if(d.status==='success')loadSchemeList();
+}
+async function showVersions(name){
+  const r=await fetch('/api/schemes/versions?name='+encodeURIComponent(name)); const d=await r.json();
+  if(d.status!=='success'){showToast(d.error||'版本读取失败');return;}
+  const versions=d.versions||[]; let html='<div class="help" style="margin-bottom:10px">最近版本（回滚会生成一个新版本）</div>';
+  if(!versions.length)html+='<div class="empty">暂无历史版本</div>';
+  versions.slice().reverse().forEach(v=>{html+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);"><span>${v.time||v.ts}</span><button class="btn btn-ghost btn-sm" onclick="rollbackScheme('${name}',${v.ts})">回滚</button></div>`;});
+  document.getElementById('modal-body').innerHTML=html; openModal(name+' 版本历史');
+}
+async function rollbackScheme(name,ts){
+  if(!confirm('回滚后会覆盖当前用户方案并生成新版本，继续吗？'))return;
+  const r=await fetch('/api/schemes/rollback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,ts})}); const d=await r.json();
+  showToast(d.status==='success'?'已回滚方案':'回滚失败: '+d.error); if(d.status==='success'){closeModal();loadSchemeList();editScheme(name);}
 }
 async function delScheme(name){
   if(!confirm('删除方案 '+name+'？'))return;
