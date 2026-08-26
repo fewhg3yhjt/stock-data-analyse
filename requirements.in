@@ -1,0 +1,16 @@
+flask
+baostock
+akshare
+pandas
+numpy
+matplotlib
+mplfinance==0.12.10b0
+requests
+httpx
+PyYAML
+python-dotenv
+openpyxl
+APScheduler
+waitress
+pyarrow
+duckdb
