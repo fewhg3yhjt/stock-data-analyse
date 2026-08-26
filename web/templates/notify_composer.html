@@ -1,11 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 通知编排器</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
-<link rel="stylesheet" href="/static/base.css?v=1">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 通知编排器{% endblock %}
+{% block head %}
 <style>
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 @media(max-width:700px){.grid2{grid-template-columns:1fr;}}
@@ -21,8 +16,8 @@ table.kv th{background:var(--surface2);font-weight:600;}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;}
 .modal{background:var(--surface);border-radius:10px;padding:22px;max-width:620px;width:90%;}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
   <div class="header">
     <div>
@@ -248,5 +243,4 @@ loadRules();
     <div id="modal-body"></div>
   </div>
 </div>
-</body>
-</html>
+{% endblock %}
