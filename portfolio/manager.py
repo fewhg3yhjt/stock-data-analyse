@@ -788,7 +788,7 @@ class PortfolioManager:
         """计算硬止损价 = 均价 × (1 - 扣减率)"""
         rate = 0.10 if stock_type == "E" else 0.15
         if scheme is not None:
-            rule = scheme.find_sell_rule("hard_stop")
+            rule = scheme.rule("sell", "hard_stop")
             if rule is not None:
                 by_type = (rule.params or {}).get("stop_loss_by_type")
                 if isinstance(by_type, dict) and by_type:

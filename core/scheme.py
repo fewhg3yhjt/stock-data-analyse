@@ -128,6 +128,11 @@ class SchemeConfig:
                 return r
         return None
 
+    def rule(self, kind: str, rule_type: str):
+        """Unified rule lookup used by production callers."""
+        rules = self.buy_rules if kind == "buy" else self.sell_rules
+        return next((rule for rule in rules if rule.type == rule_type), None)
+
 
 # ═══════════════════════════════════════════════════════════════
 # YAML 加载与校验

@@ -74,7 +74,7 @@ class MultiBuyStrategy:
         if rule_params is not None:
             self._apply_support_level_params(rule_params, buy_ratios)
         elif scheme is not None:
-            rule = scheme.find_buy_rule("support_level")
+            rule = scheme.rule("buy", "support_level")
             if rule is not None:
                 self._apply_support_level_rule(rule, buy_ratios)
 

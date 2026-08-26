@@ -180,7 +180,7 @@ class PostPurchaseAdvisor:
         """① 硬止损: 最近最低价 ≤ 均价 × (1 - 扣减率)"""
         if position.avg_cost <= 0:
             return None
-        rule = scheme.find_sell_rule("hard_stop")
+        rule = scheme.rule("sell", "hard_stop")
         params = rule.params if rule is not None else {
             "stop_loss_by_type": {position.stock_type: self._stop_loss_rate(scheme, position.stock_type)}
         }
@@ -246,7 +246,7 @@ class PostPurchaseAdvisor:
         if position.position_phase not in (PHASE_ACCUMULATING, PHASE_HOLDING):
             return None
 
-        rule = scheme.find_sell_rule("left_side_fixed")
+        rule = scheme.rule("sell", "left_side_fixed")
         zones = None
         sell_ratio = None
         half_profit = None
@@ -323,7 +323,7 @@ class PostPurchaseAdvisor:
         if position.position_phase not in (PHASE_LEFT_SIDE, PHASE_RIGHT_SIDE):
             return None
 
-        rule = scheme.find_sell_rule("right_side_trailing")
+        rule = scheme.rule("sell", "right_side_trailing")
         drawdown_by_type = None
         if rule is not None:
             dd = (rule.params or {}).get("drawdown_by_type")
@@ -376,7 +376,7 @@ class PostPurchaseAdvisor:
         if position.buy_stage >= 3 or position.position_phase == PHASE_RIGHT_SIDE:
             return None
 
-        rule = scheme.find_buy_rule("support_level")
+        rule = scheme.rule("buy", "support_level")
         stages = []
         if rule is not None:
             stages = (rule.params or {}).get("buy_stages", [])
@@ -416,7 +416,7 @@ class PostPurchaseAdvisor:
     def _check_rule_c(self, position: Position, ctx: AdvisorContext,
                       scheme, check_results: dict) -> Optional[ActionAdvice]:
         """⑥ 规则C: 趋势跟随加仓"""
-        rule = scheme.find_buy_rule("trend_following")
+        rule = scheme.rule("buy", "trend_following")
         if rule is None:
             return None
         from StockInvestmentTool.strategy.context import RuleContext
@@ -452,7 +452,7 @@ class PostPurchaseAdvisor:
     @staticmethod
     def _stop_loss_rate(scheme, stock_type: str) -> float:
         """从方案获取止损扣减率"""
-        rule = scheme.find_sell_rule("hard_stop")
+        rule = scheme.rule("sell", "hard_stop")
         if rule is not None:
             by_type = (rule.params or {}).get("stop_loss_by_type")
             if isinstance(by_type, dict) and by_type:

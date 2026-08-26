@@ -57,6 +57,12 @@ def test_dispatch_unregistered_raises(reg):
         reg.get("buy", "not_a_real_type")
 
 
+def test_scheme_unified_rule_lookup():
+    from StockInvestmentTool.core.scheme import load_scheme_from_dict
+    scheme = load_scheme_from_dict({"name": "x", "buy_rules": [{"type": "support_level", "params": {}}]})
+    assert scheme.rule("buy", "support_level").type == "support_level"
+
+
 def test_dispatch_market_state_arbiter(kline):
     from StockInvestmentTool.indicators.context import IndicatorContext
     ctx = RuleContext(

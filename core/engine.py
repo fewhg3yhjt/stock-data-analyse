@@ -220,7 +220,7 @@ class AnalysisEngine:
         from StockInvestmentTool.strategy.context import RuleContext
         from StockInvestmentTool.strategy.rule_registry import dispatch_rule
 
-        rule = self.scheme.find_buy_rule("support_level")
+        rule = self.scheme.rule("buy", "support_level")
         if rule is not None:
             ctx = RuleContext(
                 row=kline.iloc[-1], df=kline,
