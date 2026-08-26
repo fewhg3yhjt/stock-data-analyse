@@ -3,7 +3,7 @@
 > 本文档为项目现状盘点：架构分层、模块实现、数据流、以及**已确认的问题清单**（架构层面 + 产品/用户视角）。
 > 用途：作为后续「怎么做」改造讨论的工作底稿。定稿后可与 DESIGN.md 合并。
 
-更新日期：2026-08-26（已落地 SRD FR-1 ~ FR-5 能力层与编排器改造，见 §九）
+更新日期：2026-08-26（持续落地 SRD FR-1 ~ FR-5；真实完成度以 `docs/IMPLEMENTATION_GUIDE.md` 为准）
 
 ---
 
@@ -141,19 +141,20 @@
 
 ---
 
-## 九、SRD FR-1~FR-5 落地情况（2026-08-26）
+## 九、SRD FR-1~FR-5 落地情况（2026-08-26，持续更新）
 
 > 依据 `docs/SRD.md` / `docs/HLD.md` 完成能力层收敛 + 两个编排器 + 前端基座 + 性能优化。
 > 全部改动见 git log：`feat(FR-1)/feat(FR-2)/feat(FR-3)/feat(FR-4/5)`。回归：50 个单测通过。
 
 | 需求 | 落地 | 关键模块 | 备注 |
 |------|------|----------|------|
-| FR-1.1 统一规则派发 | ✅ | `strategy/rule_registry.py` `rule_builtin.py` `context.py` | 10 个 rule type 统一注册 + schema（schema 驱动前端表单）|
-| FR-1.2 支撑位/状态机去重 | ✅ | `strategy/support.py` `position_state.py` | 三处支撑位收敛到 `get_support_levels` 骨架+来源工厂；三引擎输出逐位一致 |
+| FR-1.1 统一规则派发 | 部分 | `strategy/rule_registry.py` `rule_builtin.py` `context.py` | 买入计划、Advisor 硬止损已接 registry；V4.5/V6 其余规则仍迁移中 |
+| FR-1.2 支撑位/状态机去重 | 部分 | `strategy/support.py` `position_state.py` | 支撑骨架已复用；PortfolioManager/Advisor 已接状态机，回测仍迁移中 |
 | FR-1.3 指标×策略打通 | ✅ | `indicators/context.py` | `IndicatorContext` 统一求值入口（按名/表达式/原子）；advisor 改用 |
 | FR-1.4 数据源抽象 + DuckDB | ✅ | `datasource/base.py` | `DataSource` 协议 + WarehouseSource(DuckDB单查询)/OnlineSource/FallbackDataSource；monitor/dashboard 收敛 |
-| FR-2 策略编排器 | ✅ | `core/composer.py` `scheme_store.py` `strategy_composer.html` | 指标库+规则schema动态表单+YAML实时预览+保存/版本/启停/复制/删除 |
-| FR-3 通知编排器 | ✅ | `notifier/core.py` `triggers.py` `notify_composer.html` | Fragment/Channel/Renderer/Aggregator 工厂 + 条件触发器 + 批次聚合 + 免重启 + email 收件人 |
+| 指标中心 | ✅（第一版） | `indicators/store.py` `indicator_center.html` | 指标浏览/预览；自定义 base/composite CRUD；内置和代码指标保护 |
+| FR-2 策略编排器 | 部分 | `core/composer.py` `scheme_store.py` `strategy_composer.html` | 结构化 list/map-list、实时预览、schema 校验、样本回测预检已完成；发布 UI 仍补齐中 |
+| FR-3 通知编排器 | 部分 | `notifier/core.py` `triggers.py` `notify_composer.html` | action/price/indicator + AND/OR 已执行；统一 outbox/批次和重试仍补齐中 |
 | FR-4 UI 统一 | ✅ | `web/static/base.css` `base.html` `_nav.html` | 设计令牌+组件类+移动端；导航收敛单组件；新页面去内联 |
 | FR-5 性能 | 部分 | `datasource/base.py` | 个股图表 DuckDB 单查询（P1）已完成；echarts 1MB 仅图表页加载 |
-| 回归 | ✅ | `tests/`（50 例）| FR-1.1/1.2/1.3/1.4 + 编排器 API 单测；三引擎支持位逐位一致 |
+| 回归 | ✅ | `tests/`（86 例）| 新增指标、策略、通知、事务、安全和回测参数回归；完整测试 86 例通过 |
