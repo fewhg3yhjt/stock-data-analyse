@@ -294,20 +294,33 @@ def run_trigger_rule(rule: dict) -> dict:
         logger.error("触发器数据获取失败: %s", e)
         return {"ok": False, "error": str(e)}
 
-    # 组装片段（topic 分节）
+    # 组装片段（topic 分节）。每条条件先独立求值，再按 AND/OR 合并；
+    # 不再只看 condition type，从而确保页面配置的参数真正影响通知。
     agg = MessageAggregator()
-    cond_types = {c.get("type") for c in rule.get("conditions", []) if isinstance(c, dict)}
+    conditions = [c for c in rule.get("conditions", []) if isinstance(c, dict)]
+    condition_results = [_evaluate_trigger_condition(c, data) for c in conditions]
+    logic = str(rule.get("logic", "AND")).upper()
+    triggered = (all(condition_results) if logic == "AND" else any(condition_results)) if condition_results else True
+    if not triggered:
+        logger.info("触发器 %s 条件未满足: %s", rule.get("name"), condition_results)
+        return {"ok": True, "skipped": True, "conditions": condition_results}
 
     # 操作建议类条件
-    if "action" in cond_types or not cond_types:
-        orders_lines = _orders_lines(data)
+    action_types = set()
+    for condition in conditions:
+        if condition.get("type") == "action":
+            action_types.update((condition.get("params") or {}).get("advice_types") or [])
+    if any(c.get("type") == "action" for c in conditions) or not conditions:
+        orders_lines = _orders_lines(data, action_types or None)
         if orders_lines:
             agg.add(NotificationFragment(TOPIC_ORDERS, "⚔️ 今日持仓指令",
                                          orders_lines, PRIORITY_BATCH))
 
     # 价格阈值类（自选）
-    if "price_change" in cond_types:
-        price_lines = _watch_price_lines()
+    if any(c.get("type") == "price_change" for c in conditions):
+        price_lines = _watch_price_lines(
+            next((c.get("params") or {} for c in conditions if c.get("type") == "price_change"), {})
+        )
         if price_lines:
             agg.add(NotificationFragment(TOPIC_PRICE, "💰 自选价格提醒",
                                          price_lines, PRIORITY_BATCH))
@@ -326,37 +339,105 @@ def run_trigger_rule(rule: dict) -> dict:
     return live_send_digest(digest, channel, **kwargs)
 
 
-def _orders_lines(data: dict) -> list[str]:
+def _evaluate_trigger_condition(condition: dict, data: dict) -> bool:
+    """Evaluate one trigger condition against the current portfolio snapshot."""
+    ctype = condition.get("type")
+    params = condition.get("params") or {}
+    if ctype == "action":
+        wanted = set(params.get("advice_types") or [])
+        if not wanted:
+            return bool(data.get("positions"))
+        return any((p.get("advice") or {}).get("advice_type") in wanted for p in data.get("positions") or [])
+    if ctype == "price_change":
+        return bool(_watch_price_lines(params))
+    if ctype == "indicator":
+        return _indicator_condition_matches(params, data)
+    return False
+
+
+def _indicator_condition_matches(params: dict, data: dict) -> bool:
+    """Evaluate an indicator threshold/crossing for any open position."""
+    from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+    from StockInvestmentTool.datasource.base import FallbackDataSource
+    from StockInvestmentTool.indicators.context import IndicatorContext
+
+    name = str(params.get("name") or "").strip()
+    operator = str(params.get("operator") or "above").strip().lower()
+    if not name:
+        return False
+    try:
+        threshold = float(params.get("value"))
+    except (TypeError, ValueError):
+        return False
+    source = FallbackDataSource()
+    for position in data.get("positions") or []:
+        code = position.get("stock_code") or position.get("code")
+        if not code:
+            continue
+        frame = source.fetch_kline(code)
+        if frame is None or len(frame) < 2:
+            continue
+        try:
+            current = IndicatorContext(frame, row_index=len(frame) - 1).eval(name)
+            previous = IndicatorContext(frame, row_index=len(frame) - 2).eval(name)
+        except (ValueError, KeyError):
+            continue
+        if operator == "above" and current > threshold:
+            return True
+        if operator == "below" and current < threshold:
+            return True
+        if operator == "cross_above" and previous <= threshold < current:
+            return True
+        if operator == "cross_below" and previous >= threshold > current:
+            return True
+    return False
+
+
+def _orders_lines(data: dict, advice_types: Optional[set[str]] = None) -> list[str]:
     """持仓指令 → 文本行（含操作建议/盈亏）。"""
     positions = data.get("positions") or []
     if not positions:
         return []
-    lines = [f"持仓 {data.get('summary', {}).get('position_count', 0)} 只 | "
-             f"总盈亏 {data.get('summary', {}).get('total_pnl_pct', '—')}%"]
+    detail_lines = []
     for p in positions:
         adv = p.get("advice") or {}
+        if advice_types and adv.get("advice_type") not in advice_types:
+            continue
         label = p.get("advice_label") or "—"
         reason = (adv.get("reason") or "")[:60]
         line = (f"{p.get('stock_name')}({p.get('stock_code')}): {label}"
                 f" 现价{p.get('current_price')} 盈亏{p.get('unrealized_pnl_pct')}%")
         if reason:
             line += f"｜{reason}"
-        lines.append(line)
-    return lines
+        detail_lines.append(line)
+    if not detail_lines:
+        return []
+    return [f"持仓 {len(detail_lines)} 只 | 总盈亏 {data.get('summary', {}).get('total_pnl_pct', '—')}%", *detail_lines]
 
 
-def _watch_price_lines() -> list[str]:
+def _watch_price_lines(params: Optional[dict] = None) -> list[str]:
     """自选价格阈值触发 → 文本行。"""
     try:
         from StockInvestmentTool.notifier.notify import NotifyRules, build_price_messages
         from StockInvestmentTool.screener.sources import tencent_quotes
 
+        params = params or {}
         rules = NotifyRules.from_yaml()
         codes = [w["code"] for w in rules.watchlist if w.get("code")]
         if not codes:
             return []
         quotes = tencent_quotes(codes).to_dict("records")
-        return build_price_messages(rules, quotes)
+        if not params:
+            return build_price_messages(rules, quotes)
+        direction = str(params.get("direction", "up")).lower()
+        threshold = float(params.get("pct", 0))
+        lines = []
+        for quote in quotes:
+            change = float(quote.get("change_pct") or 0)
+            matched = change >= threshold if direction == "up" else change <= -threshold
+            if matched:
+                lines.append(f"{quote.get('name') or quote.get('code')}: 涨跌幅 {change:+.2f}%（阈值 {direction} {threshold:.2f}%）")
+        return lines
     except Exception as e:
         logger.warning("价格阈值检查失败: %s", e)
         return []
