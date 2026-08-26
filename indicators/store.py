@@ -71,13 +71,16 @@ def _read_state() -> dict:
 
 
 def _write_atomic(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     os.close(fd)
     tmp = Path(tmp_name)
     try:
         tmp.write_text(content, encoding="utf-8")
         os.replace(tmp, path)
+        # The Web container may run as root; keep runtime indicator config
+        # readable for host-side backup and inspection.
+        os.chmod(path, 0o644)
     finally:
         tmp.unlink(missing_ok=True)
 
