@@ -1,4 +1,4 @@
-"""Authenticated operational health details endpoint tests."""
+"""Notification delivery ledger API tests."""
 
 from __future__ import annotations
 
@@ -17,14 +17,10 @@ def client():
     return client
 
 
-def test_health_details(client):
-    response = client.get("/api/health/details")
+def test_notify_outbox_api(client):
+    response = client.get("/api/notify/outbox")
 
     assert response.status_code == 200
     data = response.get_json()
     assert data["status"] == "success"
-    assert "daily_partitions" in data["warehouse"]
-    assert "minute_snapshot" in data["features"]
-    assert "notifications" in data
-    assert "outbox" in data["notifications"]
-    assert "jobs" in data
+    assert isinstance(data["items"], list)

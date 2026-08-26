@@ -65,6 +65,11 @@ table.kv th{background:var(--surface2);font-weight:600;}
       <button class="btn btn-ghost" onclick="sendTest()"><i class="fas fa-paper-plane"></i> 测试发送</button>
     </div>
   </div>
+  <div class="card">
+    <h2><i class="fas fa-list-check"></i> 投递台账</h2>
+    <div id="outbox-summary" class="help">加载中…</div>
+    <div class="table-wrap"><table class="kv"><thead><tr><th>ID</th><th>渠道</th><th>状态</th><th>尝试次数</th><th>创建时间</th><th>最近错误</th></tr></thead><tbody id="outbox-rows"></tbody></table></div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -232,8 +237,16 @@ async function sendTest(){
   const d=await r.json();
   d.status==='success'?showToast('测试消息已发送（渠道 '+channel+'）'):showToast('发送失败: '+d.error);
 }
+async function loadOutbox(){
+  const response=await fetch('/api/notify/outbox'); const data=await response.json();
+  if(data.status!=='success'){document.getElementById('outbox-summary').textContent=data.error||'加载失败';return;}
+  const counts=data.counts||{};
+  document.getElementById('outbox-summary').textContent=`待发送 ${counts.pending||0} · 已发送 ${counts.sent||0} · 死信 ${counts.dead||0}`;
+  document.getElementById('outbox-rows').innerHTML=(data.items||[]).map(item=>`<tr><td>${item.id}</td><td>${item.channel}</td><td>${item.status}</td><td>${item.attempts}</td><td>${item.created_at||''}</td><td>${item.last_error||''}</td></tr>`).join('') || '<tr><td colspan="6">暂无投递记录</td></tr>';
+}
 
 loadRules();
+loadOutbox();
 </script>
 
 <!-- 编辑弹窗 -->

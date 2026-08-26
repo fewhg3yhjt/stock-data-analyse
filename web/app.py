@@ -1821,6 +1821,20 @@ def api_notify_config():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/notify/outbox", methods=["GET"])
+def api_notify_outbox():
+    """Notification delivery ledger for the notification center."""
+    from StockInvestmentTool.notifier.outbox import NotificationOutbox
+
+    try:
+        outbox = NotificationOutbox()
+        return flask.jsonify({"status": "success", "counts": outbox.counts(),
+                              "items": outbox.recent(50)})
+    except Exception as e:
+        logger.exception("通知投递台账读取失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/api/notify/mail", methods=["POST"])
 def api_notify_mail():
     """保存邮件收件人 + SMTP 配置（I5，补全 email.to）。"""
