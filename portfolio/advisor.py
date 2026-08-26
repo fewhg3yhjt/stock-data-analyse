@@ -264,13 +264,16 @@ class PostPurchaseAdvisor:
             if "half_profit_threshold" in params:
                 half_profit = float(params["half_profit_threshold"])
 
-        tier, ratio = left_side_sell_action(
-            current_price=ctx.current_price,
-            avg_cost=position.avg_cost,
-            year_high=ctx.year_high,
-            left_tier_sold=position.left_tier_sold,
-            zones=zones, sell_ratio=sell_ratio, half_profit=half_profit,
-        )
+        from StockInvestmentTool.strategy.context import RuleContext
+        from StockInvestmentTool.strategy.rule_registry import dispatch_rule
+
+        params = rule.params if rule is not None else {}
+        result = dispatch_rule("sell", "left_side_fixed", RuleContext(
+            row=ctx.row, current_price=ctx.current_price, avg_cost=position.avg_cost,
+            year_high=ctx.year_high, left_tier_sold=position.left_tier_sold,
+        ), params)
+        detail = result.detail or {}
+        tier, ratio = detail.get("tier", 0), detail.get("sell_ratio", 0.0)
 
         check_results["left_side"] = {
             "year_high": round(ctx.year_high, 2),
@@ -327,12 +330,16 @@ class PostPurchaseAdvisor:
             if isinstance(dd, dict) and dd:
                 drawdown_by_type = {k: float(v) for k, v in dd.items()}
 
-        should_sell = right_side_sell_action(
+        from StockInvestmentTool.strategy.context import RuleContext
+        from StockInvestmentTool.strategy.rule_registry import dispatch_rule
+
+        params = rule.params if rule is not None else {}
+        result = dispatch_rule("sell", "right_side_trailing", RuleContext(
+            row=ctx.row, current_price=ctx.current_price,
             peak_price=position.peak_price,
-            current_price=ctx.current_price,
-            stock_type=position.stock_type,
-            drawdown_by_type=drawdown_by_type,
-        )
+            extra={"stock_type": position.stock_type},
+        ), params)
+        should_sell = bool(result.triggered)
         dd_pct = (position.peak_price - ctx.current_price) / position.peak_price * 100 \
             if position.peak_price > 0 else 0
 
@@ -412,13 +419,17 @@ class PostPurchaseAdvisor:
         rule = scheme.find_buy_rule("trend_following")
         if rule is None:
             return None
-        from StockInvestmentTool.strategy.multi_buy import MultiBuyStrategy
-        triggered, failed = MultiBuyStrategy.rule_c_triggered(
-            trend=ctx.trend,
-            market_state=ctx.market_state,
-            rebound_from_month_low=ctx.rebound_from_month_low,
-            stock_type=position.stock_type,
-        )
+        from StockInvestmentTool.strategy.context import RuleContext
+        from StockInvestmentTool.strategy.rule_registry import dispatch_rule
+
+        result = dispatch_rule("buy", "trend_following", RuleContext(
+            current_price=ctx.current_price,
+            extra={"trend": ctx.trend, "market_state": ctx.market_state,
+                   "rebound_from_month_low": ctx.rebound_from_month_low,
+                   "stock_type": position.stock_type},
+        ), rule.params or {})
+        triggered = bool(result.triggered)
+        failed = (result.detail or {}).get("failed", [])
         check_results["rule_c"] = {"triggered": triggered, "failed": failed}
         if triggered and position.buy_stage < 3:
             ratio = 0.20
