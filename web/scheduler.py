@@ -230,6 +230,21 @@ def init_scheduler(app) -> None:
         logger.warning("APScheduler 未安装，定时任务不可用")
         return
 
+    lock_file = None
+    try:
+        import fcntl
+        from StockInvestmentTool.config import Config
+
+        lock_path = Config.DATA_DIR / "scheduler.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = open(lock_path, "a+", encoding="utf-8")
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError):
+        logger.warning("已有其他进程持有 scheduler 锁，本进程不启动定时任务")
+        if lock_file:
+            lock_file.close()
+        return
+
     hour, minute = _parse_time(os.getenv("DAILY_RUN_TIME", DEFAULT_RUN_TIME))
     scheduler = BackgroundScheduler(timezone=TZ)
     scheduler.add_job(
@@ -264,6 +279,10 @@ def init_scheduler(app) -> None:
 
     scheduler.start()
     app.extensions["scheduler"] = scheduler
+    app.extensions["scheduler_lock"] = lock_file
+    if lock_file is not None:
+        import atexit
+        atexit.register(lock_file.close)
     logger.info("每日定时任务已启动: %02d:%02d (%s)", hour, minute, TZ)
 
 
