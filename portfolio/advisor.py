@@ -164,7 +164,9 @@ class PostPurchaseAdvisor:
                 dividend_anchor=dividend_anchor, scheme=scheme,
             )
             from StockInvestmentTool.strategy.support import RowContext
-            weak, strong, extreme = strategy._get_support_levels(last)
+            weak, strong, extreme = strategy._get_support_levels(
+                last, IndicatorContext(kline)
+            )
             ctx.weak_support, ctx.strong_support, ctx.extreme_anchor = weak, strong, extreme
         except Exception as e:
             logger.warning("支撑位计算失败: %s", e)
@@ -205,7 +207,7 @@ class PostPurchaseAdvisor:
                 stock_name=position.stock_name,
                 advice_type=ADVICE_SELL_ALL, urgency="urgent",
                 reason=f"⚠️ 硬止损触发：最近最低价{ctx.recent_low:.2f} ≤ 止损线{stop:.2f}"
-                       f"（成本{position.avg_cost:.2f} × {1-rate:.0%}）",
+                        f"（成本{position.avg_cost:.2f} × {1-stop/position.avg_cost:.0%}）",
                 suggested_price=ctx.current_price,
                 suggested_shares=position.total_shares,
                 suggested_amount=position.market_value,

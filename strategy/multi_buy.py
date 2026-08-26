@@ -120,7 +120,7 @@ class MultiBuyStrategy:
     def _support_label(source: str) -> str:
         return _SUPPORT_LABELS.get(source, source)
 
-    def _get_support_levels(self, row: pd.Series) -> tuple[float, float, float]:
+    def _get_support_levels(self, row: pd.Series, indicator_context=None) -> tuple[float, float, float]:
         """计算综合强支撑/弱支撑/极端低估锚（FR-1.2 统一骨架委托）。
 
         按配置的 support_sources 装配来源策略，统一走
@@ -132,8 +132,11 @@ class MultiBuyStrategy:
         """
         # 兼容层：老字段名 → 来源策略；新写法（指标名/表达式）→ IndicatorExprSource
         sources, _ = build_sources(list(self.support_sources))
+        context = indicator_context
+        if context is None:
+            context = RowContext(row)
         return get_support_levels(
-            sources, RowContext(row), row, dividend_anchor=self.dividend_anchor,
+            sources, context, row, dividend_anchor=self.dividend_anchor,
         )
 
     def _build_computation(self, stage: dict, base: float,
@@ -188,7 +191,10 @@ class MultiBuyStrategy:
     def generate_plan(self, df: pd.DataFrame, current_price: float) -> list[dict]:
         """根据最新数据生成买入计划"""
         last = df.iloc[-1]
-        weak, strong, extreme = self._get_support_levels(last)
+        from StockInvestmentTool.indicators.context import IndicatorContext
+        weak, strong, extreme = self._get_support_levels(
+            last, IndicatorContext(df)
+        )
         candidates = self._collect_support_candidates(last)
 
         plan = []
