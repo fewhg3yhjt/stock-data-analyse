@@ -216,6 +216,32 @@ def api_indicators():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/health/details", methods=["GET"])
+def api_health_details():
+    """Operational readiness details for authenticated administrators."""
+    from StockInvestmentTool.config import Config
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    try:
+        warehouse = Warehouse()
+        daily_months = warehouse.available_months("daily")
+        minute_days = warehouse.minute_store().days()
+        scheduler = flask.current_app.extensions.get("scheduler")
+        jobs = scheduler.get_jobs() if scheduler else []
+        return flask.jsonify({
+            "status": "success",
+            "scheduler": {"enabled": bool(scheduler), "jobs": len(jobs)},
+            "warehouse": {"daily_partitions": len(daily_months), "minute_days": len(minute_days)},
+            "features": {
+                "minute_snapshot": os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1",
+                "auth": bool(os.getenv("ADMIN_PASSWORD")),
+            },
+            "paths": {"data_dir": str(Config.DATA_DIR)},
+        })
+    except Exception as e:
+        logger.exception("健康详情读取失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/api/indicators/save", methods=["POST"])
 def api_indicator_save():
     from StockInvestmentTool.indicators.store import save_indicator
