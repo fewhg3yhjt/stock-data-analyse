@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 数据中心{% endblock %}
+{% block head %}
+<style>
+.health-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.dataset-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.dataset-card{border:1px solid var(--border);border-radius:8px;padding:16px;background:var(--surface2)}
+.dataset-card h3{font-size:16px;margin-bottom:8px;display:flex;justify-content:space-between;gap:8px}
+.dataset-card dl{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;font-size:13px;margin:0}
+.dataset-card dt{color:var(--text2)}.dataset-card dd{margin:0;word-break:break-word}
+.status-healthy{background:#e8f5e9;color:var(--green)}.status-stale{background:#fff3e0;color:var(--orange)}
+.status-critical,.status-failed{background:#fbe9e7;color:var(--red)}.status-disabled,.status-empty{background:#eceff1;color:var(--text2)}
+.status-running{background:#e3f2fd;color:var(--accent)}
+</style>
+{% endblock %}
+{% block body %}
+<main class="app">
+  <header class="header"><div><h1><i class="fas fa-heart-pulse"></i> 数据中心</h1><div class="sub">按实际文件和任务台账解释数据是否新鲜，不修改任何数据分区</div></div>{% set active = 'data' %}{% include '_nav.html' %}</header>
+  <section class="card health-summary">
+    <div><h2 id="overall-title">数据状态检查</h2><div class="note" id="checked-at">加载中...</div></div>
+    <span id="overall-status" class="tag gray">检查中</span>
+  </section>
+  <section class="card"><div class="card-title"><span><i class="fas fa-database"></i> 数据集</span><button class="btn btn-outline btn-sm" onclick="loadStatus()">重新检查</button></div><div id="dataset-grid" class="dataset-grid"><div class="empty">正在读取仓库...</div></div></section>
+  <section class="card"><div class="card-title"><span><i class="fas fa-clock-rotate-left"></i> 最近任务</span></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>任务</th><th>状态</th><th>开始</th><th>结束</th><th>错误</th></tr></thead><tbody id="job-rows"><tr><td colspan="6" class="empty">加载中...</td></tr></tbody></table></div></section>
+</main>
+<script>
+const labels={daily:'日线 daily',indicators:'指标 indicators',factors:'因子 factors',online:'在线 online',minute:'分钟 minute'};
+const statusText={healthy:'正常',stale:'轻微滞后',critical:'严重滞后',failed:'最近失败',running:'采集中',disabled:'未开启',empty:'没有数据',unknown:'无法判断'};
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function renderStatus(data){
+  const overall=document.getElementById('overall-status'); overall.textContent=statusText[data.overall_status]||data.overall_status; overall.className='tag status-'+data.overall_status;
+  document.getElementById('overall-title').textContent=`数据状态检查（预期交易日 ${data.expected_trade_day}）`;
+  document.getElementById('checked-at').textContent=`检查时间：${data.checked_at}`;
+  document.getElementById('dataset-grid').innerHTML=data.datasets.map(d=>`<article class="dataset-card"><h3>${labels[d.dataset]||esc(d.dataset)} <span class="tag status-${esc(d.status)}">${statusText[d.status]||esc(d.status)}</span></h3><dl><dt>最新值</dt><dd>${esc(d.latest_value||'暂无')}</dd><dt>行数 / 标的</dt><dd>${d.rows??'—'} / ${d.symbols??'—'}</dd><dt>来源</dt><dd>${esc(d.source||'—')}</dd><dt>最近成功</dt><dd>${esc(d.last_success_at||'暂无台账')}</dd><dt>原因</dt><dd>${esc(d.last_error||'—')}</dd></dl></article>`).join('');
+}
+async function loadStatus(){const r=await fetch('/api/data/status');const d=await r.json();if(d.status==='success')renderStatus(d);else document.getElementById('dataset-grid').innerHTML=`<div class="error">${esc(d.error)}</div>`;}
+async function loadJobs(){const r=await fetch('/api/data/jobs?limit=30');const d=await r.json();const rows=d.jobs||[];document.getElementById('job-rows').innerHTML=rows.length?rows.map(j=>`<tr><td>${j.id}</td><td>${esc(j.job_name)}</td><td><span class="tag status-${esc(j.status)}">${esc(j.status)}</span></td><td>${esc(j.started_at)}</td><td>${esc(j.finished_at||'运行中')}</td><td>${esc(j.error||'—')}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">暂无任务记录</td></tr>';}
+loadStatus();loadJobs();
+</script>
+{% endblock %}

@@ -247,6 +247,43 @@ def api_health_details():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/data/status", methods=["GET"])
+def api_data_status():
+    """Return explainable freshness status for each warehouse dataset."""
+    try:
+        from StockInvestmentTool.ops.freshness import data_status
+        return flask.jsonify(data_status())
+    except Exception as e:
+        logger.exception("数据状态读取失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/data/jobs", methods=["GET"])
+def api_data_jobs():
+    """Read the durable job ledger used by the data center."""
+    try:
+        from StockInvestmentTool.ops.job_runs import JobRunStore
+        limit = max(1, min(int(flask.request.args.get("limit", 50)), 200))
+        items = JobRunStore().recent(limit)
+        name = flask.request.args.get("job_name")
+        status = flask.request.args.get("status")
+        if name:
+            items = [item for item in items if item.get("job_name") == name]
+        if status:
+            items = [item for item in items if item.get("status") == status]
+        return flask.jsonify({"status": "success", "jobs": items})
+    except (TypeError, ValueError):
+        return flask.jsonify({"status": "error", "error": "limit 必须为整数"}), 400
+    except Exception as e:
+        logger.exception("任务台账读取失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/data-center", methods=["GET"])
+def data_center_page():
+    return flask.render_template("data_center.html")
+
+
 @web_app.route("/api/indicators/save", methods=["POST"])
 def api_indicator_save():
     from StockInvestmentTool.indicators.store import save_indicator
