@@ -227,10 +227,13 @@ def api_health_details():
         minute_days = warehouse.minute_store().days()
         scheduler = flask.current_app.extensions.get("scheduler")
         jobs = scheduler.get_jobs() if scheduler else []
+        from StockInvestmentTool.notifier.outbox import NotificationOutbox
+        outbox = NotificationOutbox()
         return flask.jsonify({
             "status": "success",
             "scheduler": {"enabled": bool(scheduler), "jobs": len(jobs)},
             "warehouse": {"daily_partitions": len(daily_months), "minute_days": len(minute_days)},
+            "notifications": {"outbox": outbox.counts(), "recent": outbox.recent(5)},
             "features": {
                 "minute_snapshot": os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1",
                 "auth": bool(os.getenv("ADMIN_PASSWORD")),

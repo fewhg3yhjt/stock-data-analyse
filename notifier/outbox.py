@@ -63,16 +63,33 @@ class NotificationOutbox:
             )
 
     def mark_failed(self, item_id: int, attempts: int, error: str) -> None:
+        next_attempt = int(attempts) + 1
+        status = "dead" if next_attempt >= 5 else "pending"
         delay = min(60 * (2 ** min(int(attempts), 6)), 3600)
         next_at = datetime.now() + timedelta(seconds=delay)
         with self._connect() as conn:
             conn.execute(
                 """UPDATE notification_outbox
-                   SET attempts=?, last_error=?, next_attempt_at=?
+                   SET status=?, attempts=?, last_error=?, next_attempt_at=?
                    WHERE id=?""",
-                (int(attempts) + 1, str(error)[:1000], next_at.isoformat(timespec="seconds"), item_id),
+                (status, next_attempt, str(error)[:1000], next_at.isoformat(timespec="seconds"), item_id),
             )
 
     def pending_count(self) -> int:
         with self._connect() as conn:
             return int(conn.execute("SELECT COUNT(*) FROM notification_outbox WHERE status='pending'").fetchone()[0])
+
+    def counts(self) -> dict[str, int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT status, COUNT(*) AS count FROM notification_outbox GROUP BY status"
+            ).fetchall()
+        return {row["status"]: int(row["count"]) for row in rows}
+
+    def recent(self, limit: int = 20) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id,channel,status,attempts,last_error,created_at,sent_at "
+                "FROM notification_outbox ORDER BY id DESC LIMIT ?", (int(limit),)
+            ).fetchall()
+        return [dict(row) for row in rows]

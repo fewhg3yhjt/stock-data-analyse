@@ -26,3 +26,14 @@ def test_outbox_failed_delivery_is_retryable(tmp_path):
 
     reopened = NotificationOutbox(tmp_path / "outbox.db")
     assert reopened.pending_count() == 1
+
+
+def test_outbox_moves_repeated_failures_to_dead_letter(tmp_path):
+    outbox = NotificationOutbox(tmp_path / "outbox.db")
+    item_id = outbox.enqueue("feishu", {"sections": [], "meta": {}})
+
+    for attempts in range(5):
+        outbox.mark_failed(item_id, attempts, "provider unavailable")
+
+    assert outbox.counts()["dead"] == 1
+    assert outbox.pending_count() == 0

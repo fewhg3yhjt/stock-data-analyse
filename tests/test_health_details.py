@@ -25,3 +25,5 @@ def test_health_details(client):
     assert data["status"] == "success"
     assert "daily_partitions" in data["warehouse"]
     assert "minute_snapshot" in data["features"]
+    assert "notifications" in data
+    assert "outbox" in data["notifications"]

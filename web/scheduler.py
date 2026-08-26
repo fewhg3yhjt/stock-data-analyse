@@ -99,18 +99,58 @@ def run_daily_tasks() -> dict:
 
     # ⑤ 消息推送
     try:
-        from StockInvestmentTool.notifier.cli import main as notifier_main
-        import io as _io
-        import contextlib
-        buf = _io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            notifier_main(["--all"])
-        results["notify"] = "sent"
+        results["notify"] = run_daily_digest(mgr)
     except Exception as e:
         logger.error("通知推送失败: %s", e)
 
     logger.info("=== 每日自动任务完成: %s ===", results)
     return results
+
+
+def run_daily_digest(mgr=None) -> dict:
+    """Build one post-close digest from price/fundflow/daily/order topics."""
+    from StockInvestmentTool.notifier.core import (
+        MessageAggregator, NotificationFragment, TOPIC_PRICE, TOPIC_FUNDFLOW,
+        TOPIC_SUMMARY, TOPIC_ORDERS, PRIORITY_BATCH,
+    )
+    from StockInvestmentTool.notifier.notify import (
+        NotifyRules, build_price_messages, build_fundflow_messages,
+        build_daily_messages, build_orders_messages,
+    )
+    from StockInvestmentTool.screener.sources import tencent_quotes
+    from StockInvestmentTool.fundflow import analysis, sources
+    from StockInvestmentTool.portfolio.dashboard import DashboardService
+
+    rules = NotifyRules.from_yaml()
+    agg = MessageAggregator()
+    codes = [w["code"] for w in rules.watchlist if w.get("code")]
+    if codes:
+        lines = build_price_messages(rules, tencent_quotes(codes).to_dict("records"))
+        agg.add(NotificationFragment(TOPIC_PRICE, "💰 自选价格提醒", lines, PRIORITY_BATCH))
+
+    stk_now = sources.fetch_stock("now")
+    overview = analysis.market_overview(stk_now)
+    stk_3d = sources.fetch_stock("3d")
+    stock_res = analysis.stock_analysis(stk_now, stk_3d, top=15)
+    ind_now = sources.fetch_sector("industry", "now")
+    ind_3d = sources.fetch_sector("industry", "3d")
+    industries = analysis.merge_trend(ind_now, ind_3d, on="name")
+    sustained = stock_res["持续流入榜"]
+    divergent = stock_res["价涨钱走(背离)榜"]
+    turn = industries[industries["trend"] == "转为流入"].sort_values("net", ascending=False)
+    agg.add(NotificationFragment(TOPIC_FUNDFLOW, "🌊 资金流信号",
+                                 build_fundflow_messages(rules, overview, sustained, divergent, turn), PRIORITY_BATCH))
+    agg.add(NotificationFragment(TOPIC_SUMMARY, "📊 盘后市场汇总",
+                                 build_daily_messages(rules, overview, ind_now, ind_3d), PRIORITY_BATCH))
+    data = DashboardService(mgr or __import__("StockInvestmentTool.portfolio.manager", fromlist=["PortfolioManager"]).PortfolioManager()).war_room()
+    agg.add(NotificationFragment(TOPIC_ORDERS, "⚔️ 今日持仓指令",
+                                 build_orders_messages(data), PRIORITY_BATCH))
+    digest = agg.digest(meta={"subject": f"股票盘后汇总 {datetime.now():%Y-%m-%d}"})
+    if digest is None:
+        return {"ok": True, "skipped": True}
+    channel = rules.channel
+    kwargs = {"subject": digest.meta["subject"]} if channel in ("email", "mail", "smtp") else {}
+    return send_digest_with_outbox(digest, channel, **kwargs)
 
 
 def run_warehouse_daily() -> dict:
@@ -391,7 +431,9 @@ def process_notification_outbox() -> dict:
             sent += 1
         else:
             failed += 1
-    return {"sent": sent, "failed": failed, "pending": outbox.pending_count()}
+    counts = outbox.counts()
+    return {"sent": sent, "failed": failed, "pending": counts.get("pending", 0),
+            "dead": counts.get("dead", 0)}
 
 
 def _evaluate_trigger_condition(condition: dict, data: dict) -> bool:
