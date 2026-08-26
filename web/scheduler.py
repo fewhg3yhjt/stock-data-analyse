@@ -54,6 +54,8 @@ def _parse_time(spec: str) -> tuple[int, int]:
 def run_daily_tasks() -> dict:
     """每日自动任务主体。"""
     logger.info("=== 每日自动任务开始 ===")
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    run_id = JobRunStore().start("daily_tasks")
     from StockInvestmentTool.portfolio.manager import PortfolioManager
 
     mgr = PortfolioManager()
@@ -103,6 +105,7 @@ def run_daily_tasks() -> dict:
     except Exception as e:
         logger.error("通知推送失败: %s", e)
 
+    JobRunStore().finish(run_id, "success", results)
     logger.info("=== 每日自动任务完成: %s ===", results)
     return results
 
@@ -422,6 +425,8 @@ def process_notification_outbox() -> dict:
     """Retry pending notifications after process/container restarts."""
     from StockInvestmentTool.notifier.outbox import NotificationOutbox
 
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    run_id = JobRunStore().start("notification_outbox")
     outbox = NotificationOutbox()
     sent = failed = 0
     for item in outbox.due():
@@ -432,8 +437,10 @@ def process_notification_outbox() -> dict:
         else:
             failed += 1
     counts = outbox.counts()
-    return {"sent": sent, "failed": failed, "pending": counts.get("pending", 0),
-            "dead": counts.get("dead", 0)}
+    result = {"sent": sent, "failed": failed, "pending": counts.get("pending", 0),
+              "dead": counts.get("dead", 0)}
+    JobRunStore().finish(run_id, "success", result)
+    return result
 
 
 def _evaluate_trigger_condition(condition: dict, data: dict) -> bool:
@@ -791,20 +798,26 @@ def _build_snapshot_images(data: dict) -> Optional[list[list[str]]]:
 def run_online_snapshot_job():
     """盘中观察池快照定时任务主体（10 分钟一次）。"""
     from StockInvestmentTool.warehouse.online import run_online_snapshot
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    run_id = JobRunStore().start("online_snapshot")
     try:
         result = run_online_snapshot()
         if result.get("ok"):
             logger.info("盘中快照已采集: %s", result.get("path"))
         else:
             logger.warning("盘中快照失败: %s", result.get("error"))
+        JobRunStore().finish(run_id, "success" if result.get("ok") else "failed", result)
     except Exception as e:
         logger.error("盘中快照任务异常: %s", e)
+        JobRunStore().finish(run_id, "failed", error=str(e))
 
 
 def run_minute_snapshot_job():
     """盘中分钟数据任务主体（默认关闭，观察池范围）。"""
     from StockInvestmentTool.warehouse.online import _default_observe_codes
     from StockInvestmentTool.warehouse.minute import collect_minute_snapshot
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    run_id = JobRunStore().start("minute_snapshot")
     try:
         result = collect_minute_snapshot(_default_observe_codes())
         if result.get("ok"):
@@ -812,8 +825,10 @@ def run_minute_snapshot_job():
                         result.get("path"), result.get("codes", 0), result.get("rows", 0))
         else:
             logger.warning("分钟数据采集失败: %s", result.get("errors"))
+        JobRunStore().finish(run_id, "success" if result.get("ok") else "failed", result)
     except Exception as e:
         logger.error("分钟数据任务异常: %s", e)
+        JobRunStore().finish(run_id, "failed", error=str(e))
 
 
 def scheduler_status(app) -> dict:
