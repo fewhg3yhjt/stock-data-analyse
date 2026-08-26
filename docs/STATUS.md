@@ -157,4 +157,4 @@
 | FR-3 通知编排器 | 部分 | `notifier/core.py` `triggers.py` `notify_composer.html` | action/price/indicator + AND/OR 已执行；统一 outbox/批次和重试仍补齐中 |
 | FR-4 UI 统一 | 部分 | `web/static/base.css` `base.html` `_nav.html` | 编排器/通知/指标中心已接入；旧业务页面仍未全部迁移 |
 | FR-5 性能 | 部分 | `datasource/base.py` | 个股图表 DuckDB 单查询（P1）已完成；echarts 1MB 仅图表页加载 |
-| 回归 | ✅ | `tests/`（95 例）| 新增指标、策略、通知、事务、安全、数据边界、备份和回测参数回归；完整测试 95 例通过 |
+| 回归 | ✅ | `tests/`（97 例）| 新增指标、策略、通知、事务、安全、数据边界、备份、健康接口和回测参数回归；完整测试 97 例通过 |

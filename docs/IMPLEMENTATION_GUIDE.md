@@ -122,20 +122,20 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 维度 | 当前判断 |
 |------|----------|
 | 产品功能完整度 | 约 72%，核心个人投资流程基本形成 |
-| SRD FR-1 至 FR-5 | 约 68%，P0 可信性和主要产品链路明显收敛，仍有架构迁移债务 |
-| 架构成熟度 | 约 60%，核心边界已有生产调用但新旧路径仍并存 |
+| SRD FR-1 至 FR-5 | 约 78%，主要产品链路和关键可信性问题已处理，仍有完整迁移债务 |
+| 架构成熟度 | 约 67%，Registry/Context/事务/通知边界已部分进入生产主链路 |
 | 开发可用度 | 7.5/10 |
 | 受控自用/Beta | 5/10 |
-| 严格生产就绪度 | 4/10，仍受备份、CI、鉴权/CSRF和部署治理限制 |
+| 严格生产就绪度 | 5/10，仍受凭据轮换、离机备份演练、完整 Registry 迁移和部署治理限制 |
 
 ### 4.2 FR 实际状态
 
 | 需求 | 实际状态 | 后续模型必须知道的事实 |
 |------|----------|--------------------------|
-| FR-1.1 RuleRegistry | 部分完成 | 分析买入计划和 Advisor 硬止损已走 registry；V4.5 卖出/V6 全量仍待迁移 |
+| FR-1.1 RuleRegistry | 部分完成 | 分析买入计划和 Advisor 全部主要规则已走 registry；V4.5 回测/V6 全量仍待迁移 |
 | FR-1.2 支撑位 | 大部分完成 | 三条路径已复用共同骨架 |
 | FR-1.2 状态机 | 部分完成 | PortfolioManager/Advisor 已接入；V4.5/V6 回测仍待完全复用 |
-| FR-1.3 IndicatorContext | 部分完成 | 新上下文存在，但旧指标系统仍是主要执行路径之一 |
+| FR-1.3 IndicatorContext | 部分完成 | 买入计划/Advisor 支撑表达式已接入；旧 TechnicalIndicators 仍负责部分技术面和 V6 路径 |
 | FR-1.4 DataSource | 部分完成 | monitor 和部分图表已接入，engine/dashboard 仍有具体数据源直连 |
 | 指标中心 | 第一版完成 | `/indicator-center` 已支持指标浏览、表达式预览、自定义 base/composite 指标 CRUD；代码指标和内置指标保持只读 |
 | FR-2 策略编排器 | 部分完成 | list/map-list、实时预览、schema 校验和样本回测预检已完成；发布/复杂版本 UI 仍待补齐 |
@@ -153,7 +153,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 规则/状态主链路 | `7761397` `ddf4172` `9f15ede` | 买入计划 registry、Advisor 硬止损 registry、持仓状态机生产接入 |
 | 可信性修复 | `e304657` `afaed04` `a855316` `7b908aa` | 财务事务原子性、通知去重时机、trail 参数生效、配置路径/session 加固 |
 
-当前完整回归：**95 个测试通过**。
+当前完整回归：**97 个测试通过**。
 
 ### 4.4 本轮新增治理能力
 
@@ -163,6 +163,8 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 - `datasource/base.py`：股票代码、日期区间和查询数量边界校验。
 - `web/app.py`：跨站写请求来源校验，防止没有 CSRF token 时的跨站 mutation。
 - `notifier/channels.py` / `web/scheduler.py`：Webhook 非 2xx 失败、调度任务 `max_instances=1`、通知状态原子写入。
+- `docs/BACKUP_RUNBOOK.md`：备份范围、隔离恢复演练和生产数据安全边界。
+- `web/app.py:/api/health/details`：返回调度、仓库分区和关键开关状态，供生产巡检。
 
 完成定义必须是：
 
