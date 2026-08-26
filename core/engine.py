@@ -19,6 +19,7 @@ from StockInvestmentTool.config import Config
 from StockInvestmentTool.core.registry import SchemeRegistry
 from StockInvestmentTool.core.scheme import SchemeConfig
 from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+from StockInvestmentTool.datasource.base import DataSource, FallbackDataSource
 from StockInvestmentTool.datasource.indicators import TechnicalIndicators, ValuationHelper
 from StockInvestmentTool.strategy.multi_buy import MultiBuyStrategy
 from StockInvestmentTool.backtest.engine import BacktestEngine
@@ -141,9 +142,11 @@ class AnalysisEngine:
     """
 
     def __init__(self, scheme_name: str = "default_value",
-                 registry: Optional[SchemeRegistry] = None):
+                 registry: Optional[SchemeRegistry] = None,
+                 data_source: Optional[DataSource] = None):
         self.registry = registry or SchemeRegistry()
         self.scheme: SchemeConfig = self.registry.get(scheme_name)
+        self.data_source = data_source or FallbackDataSource()
 
     # ── 数据获取 ─────────────────────────────────────────
 
@@ -158,10 +161,9 @@ class AnalysisEngine:
 
         kline = None
         try:
-            from StockInvestmentTool.portfolio.monitor import PriceMonitor
-            kline = PriceMonitor().fetch_kline(code, start_date, end_date)
+            kline = self.data_source.fetch_kline(code, start_date, end_date)
         except Exception as e:
-            logger.warning("warehouse K线读取失败(%s)，回退 baostock: %s", code, e)
+            logger.warning("统一数据源 K线读取失败(%s)，回退 baostock: %s", code, e)
         if kline is None or kline.empty:
             kline = fetcher.get_kline(code=code, start_date=start_date, end_date=end_date)
         basic = fetcher.get_stock_basic(code)
