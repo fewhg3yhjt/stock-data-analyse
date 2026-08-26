@@ -46,6 +46,11 @@ from StockInvestmentTool.strategy.support import (
     RowContext,
     get_support_levels,
 )
+from StockInvestmentTool.strategy.position_state import (
+    PositionStateMachine, STATE_ACCUMULATING, STATE_HOLDING,
+    STATE_LEFT_SIDE, STATE_RIGHT_SIDE, STATE_CLOSED,
+    EVENT_BOUGHT, EVENT_LEFT_TP, EVENT_BREAKOUT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +75,7 @@ class _Position:
     csi_entry: Optional[float] = None             # 入场日沪深300收盘
     avg_cost: float = 0.0
     year_high_at_entry: Optional[float] = None    # 入场日的前高（右侧突破判定锚）
+    state: str = STATE_CLOSED
 
 
 class BacktestEngineV6:
@@ -102,6 +108,7 @@ class BacktestEngineV6:
         self.dividend_anchor = dividend_anchor
         self.scheme = scheme
         self.warmup = int(warmup)
+        self.state_machine = PositionStateMachine()
 
         # 滚动年度最高价（与 v4.5 同一口径，供左侧/右侧止盈与前高突破）
         if "year_high_rolling" not in self.df.columns:
@@ -317,6 +324,10 @@ class BacktestEngineV6:
                           f"成交{b['label']}（{b['ratio']:.0%}目标仓位）",
             })
             pos.pending.pop(idx)
+            if pos.state == STATE_CLOSED:
+                pos.state = STATE_ACCUMULATING
+            elif pos.state == STATE_ACCUMULATING and not pos.pending:
+                pos.state = self.state_machine.transition(pos.state, EVENT_BOUGHT)
 
         return cash, pos, trades, bought
 
