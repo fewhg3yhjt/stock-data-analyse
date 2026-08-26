@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>快记 - StockInvestmentTool</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}快记 - StockInvestmentTool{% endblock %}
+{% block head %}
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{--bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;--text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;--red:#dc3545;--green:#28a745;--orange:#e67e22;--radius:10px;}
@@ -42,8 +38,8 @@ section{display:none;}
 section.active{display:block;}
 .form-title{font-size:14px;font-weight:600;color:var(--text2);margin-bottom:10px;}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
   <div class="header">
     <div>
@@ -179,5 +175,4 @@ function resetFields(){
   document.querySelectorAll('#logForm input[name=price],#logForm input[name=shares],#logForm input[name=amount],#logForm input[name=note],#logForm textarea[name=note],#logForm input[name=date],#logForm input[name=name]').forEach(i=>i.value='');
 }
 </script>
-</body>
-</html>
+{% endblock %}

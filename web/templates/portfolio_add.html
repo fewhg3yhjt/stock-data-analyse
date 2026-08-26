@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 新建持仓</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 新建持仓{% endblock %}
+{% block head %}
 <style>
 *, *::before, *::after{box-sizing:border-box;margin:0;padding:0;}
 :root{--bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;--text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;--radius:8px;}
@@ -27,8 +23,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
 .toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
 @media(max-width:600px){.form-row{grid-template-columns:1fr;}}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
   <div class="header">
     <h1><i class="fas fa-plus-circle"></i> 新建持仓</h1>
@@ -136,5 +132,4 @@ function showToast(msg) {
   setTimeout(() => t.style.display = 'none', 3000);
 }
 </script>
-</body>
-</html>
+{% endblock %}

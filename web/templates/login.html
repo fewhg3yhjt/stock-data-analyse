@@ -1,9 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 登录</title>
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 登录{% endblock %}
+{% block head %}
 <style>
 *, *::before, *::after{box-sizing:border-box;margin:0;padding:0;}
 :root{--bg:#f5f6f8;--surface:#fff;--border:#e0e4ea;--text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;--red:#dc3545;--radius:8px;}
@@ -20,8 +17,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
 .btn:hover{background:var(--accent2);}
 .error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;color:var(--red);font-size:13px;margin-bottom:14px;}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="card">
   <h1><i class="fas fa-shield-halved"></i> StockInvestmentTool</h1>
   <div class="sub">登录后进入监控平台</div>
@@ -33,5 +30,4 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
   </form>
 </div>
 <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
-</body>
-</html>
+{% endblock %}

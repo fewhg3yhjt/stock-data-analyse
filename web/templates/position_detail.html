@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 持仓详情</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 持仓详情{% endblock %}
+{% block head %}
 <style>
 *, *::before, *::after{box-sizing:border-box;margin:0;padding:0;}
 :root{--bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;--text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--red:#dc3545;--green:#28a745;--orange:#e67e22;--radius:8px;}
@@ -66,8 +62,8 @@ table.mini td.v{color:var(--text);font-weight:500;}
 .log-item.open .chevron{transform:rotate(90deg);}
 @media(max-width:700px){.ctx-grid{grid-template-columns:1fr 1fr;}.stat-grid{grid-template-columns:1fr 1fr;}}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
   <div class="header">
     <h1><i class="fas fa-chart-line"></i> {{ detail.position.stock_name }} <span class="code">{{ detail.position.stock_code }}</span></h1>
@@ -346,5 +342,4 @@ async function execOp(){
   } catch(e){ showToast('操作失败: ' + e.message, true); }
 }
 </script>
-</body>
-</html>
+{% endblock %}

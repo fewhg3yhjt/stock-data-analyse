@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 每日晨报</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 每日晨报{% endblock %}
+{% block head %}
 <script src="https://cdn.bootcdn.net/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <script src="https://unpkg.com/marked/marked.min.js"></script>
 <style>
@@ -32,8 +28,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
 .empty{padding:40px;text-align:center;color:var(--text2);}
 .empty i{font-size:40px;color:#cbd5e1;display:block;margin-bottom:12px;}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
   <div class="header">
     <div>
@@ -79,5 +75,4 @@ async function genReport() {
   }
 }
 </script>
-</body>
-</html>
+{% endblock %}

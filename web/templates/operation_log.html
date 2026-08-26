@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 操作日志</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 操作日志{% endblock %}
+{% block head %}
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -78,8 +74,8 @@ table.mini td.v{color:var(--text);font-weight:500;}
 .muted{font-size:12px;color:var(--text2);font-style:italic;}
 @media(max-width:700px){.ctx-grid{grid-template-columns:1fr 1fr;}}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
 
   <div class="header">
@@ -249,5 +245,4 @@ table.mini td.v{color:var(--text);font-weight:500;}
 <script>
 function toggle(el) { el.classList.toggle('open'); }
 </script>
-</body>
-</html>
+{% endblock %}
