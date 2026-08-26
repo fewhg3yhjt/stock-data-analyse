@@ -1937,8 +1937,12 @@ def login():
         user = flask.request.form.get("username", "")
         pw = flask.request.form.get("password", "")
         if user == os.getenv("ADMIN_USER", "admin") and pw == os.getenv("ADMIN_PASSWORD"):
+            flask.session.clear()
             flask.session["admin"] = True
-            return flask.redirect(flask.request.args.get("next") or "/")
+            next_path = flask.request.args.get("next") or "/"
+            if not next_path.startswith("/") or next_path.startswith("//"):
+                next_path = "/"
+            return flask.redirect(next_path)
         return flask.render_template("login.html", error="用户名或密码错误")
     return flask.render_template("login.html", error=None)
 
@@ -1999,6 +2003,11 @@ def create_app():
         template_folder=str(Path(__file__).parent / "templates"),
     )
     app.secret_key = os.getenv("SECRET_KEY", "stock-invest-tool-dev-secret")
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+    )
     app.register_blueprint(web_app, url_prefix="/")
 
     # 操作日志: 规则检查值可读格式化

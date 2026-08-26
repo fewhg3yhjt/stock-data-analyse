@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -33,6 +34,14 @@ _VERSIONS_DIR = ".versions"
 
 # 内置方案名单（保护这些不可删除/启停）
 BUILTIN_SCHEMES = ("default_value", "aggressive_growth", "v6_si_wei")
+_SAFE_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,63}$")
+
+
+def _safe_name(name: str) -> str:
+    name = str(name or "").strip()
+    if not _SAFE_NAME_RE.fullmatch(name):
+        raise ValueError("方案名必须以字母开头，只能包含字母、数字、下划线和连字符")
+    return name
 
 
 def _schemes_root() -> Path:
@@ -79,7 +88,7 @@ def _write_state(state: dict):
 # ── 版本历史 ────────────────────────────────────────────────
 
 def _version_file(name: str) -> Path:
-    return versions_dir() / f"{name}.json"
+    return versions_dir() / f"{_safe_name(name)}.json"
 
 
 def record_version(name: str, content: str):
@@ -138,7 +147,7 @@ def save_scheme(name: str, content: str, *, validate: bool = True) -> dict:
             raise ValueError(res["error"])
 
     data = yaml.safe_load(content)
-    name = data.get("name") or name
+    name = _safe_name(data.get("name") or name)
     path = custom_dir() / f"{name}.yaml"
 
     # 原子写入
@@ -154,6 +163,7 @@ def save_scheme(name: str, content: str, *, validate: bool = True) -> dict:
 
 def delete_scheme(name: str) -> bool:
     """删除用户方案（内置方案保护）。"""
+    name = _safe_name(name)
     if name in BUILTIN_SCHEMES:
         raise ValueError(f"内置方案 '{name}' 受保护，不可删除")
     path = custom_dir() / f"{name}.yaml"
@@ -202,6 +212,7 @@ def is_enabled(name: str) -> bool:
 
 
 def set_enabled(name: str, enabled: bool) -> None:
+    name = _safe_name(name)
     state = _read_state()
     entry = state.setdefault(name, {})
     entry["enabled"] = bool(enabled)
@@ -210,6 +221,7 @@ def set_enabled(name: str, enabled: bool) -> None:
 
 def set_default(name: str) -> None:
     """设为默认：清空其余默认后置当前。"""
+    name = _safe_name(name)
     state = _read_state()
     for n, e in state.items():
         e["default"] = (n == name)
@@ -218,6 +230,7 @@ def set_default(name: str) -> None:
 
 
 def is_default(name: str) -> bool:
+    name = _safe_name(name)
     state = _read_state()
     return bool(state.get(name, {}).get("default", False))
 
