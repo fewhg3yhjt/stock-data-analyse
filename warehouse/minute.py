@@ -123,7 +123,7 @@ class MinuteStore:
         out["time"] = out["time"].astype(str)
         target_day = day or str(out["trade_date"].iloc[0])
         path = self._path(target_day)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
 
         old = self.read(target_day)
         combined = pd.concat([old, out], ignore_index=True)
@@ -135,6 +135,8 @@ class MinuteStore:
         try:
             combined.to_csv(temp_path, index=False, encoding="utf-8-sig")
             os.replace(temp_path, path)
+            # 容器可能以 root 运行，保证宿主机备份/巡检用户可读取分钟数据。
+            os.chmod(path, 0o644)
         finally:
             temp_path.unlink(missing_ok=True)
         return path
