@@ -138,7 +138,89 @@ class PortfolioStorage:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA foreign_keys=ON")
         return conn
+
+    def atomic_position_transaction(self, position: Position, txn: Transaction,
+                                    cash_delta: float) -> tuple[Position, Transaction, float]:
+        """Atomically create/update one position, transaction and cash balance."""
+        now = _now()
+        with self._connect() as conn:
+            cur = conn.execute(
+                """INSERT INTO positions
+                   (portfolio_id, stock_code, stock_name, stock_type, scheme_name, scheme_snapshot,
+                    total_shares, avg_cost, total_cost, current_price, peak_price,
+                    position_phase, buy_stage, left_tier_sold, stop_loss_price,
+                    buy_date, last_operated_date, status, notes, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (position.portfolio_id, position.stock_code, position.stock_name,
+                 position.stock_type, position.scheme_name, json_dumps(position.scheme_snapshot),
+                 position.total_shares, position.avg_cost, position.total_cost,
+                 position.current_price, position.peak_price, position.position_phase,
+                 position.buy_stage, position.left_tier_sold, position.stop_loss_price,
+                 position.buy_date, position.last_operated_date, position.status,
+                 position.notes, now, now),
+            )
+            position.id = cur.lastrowid
+            position.created_at = now
+            position.updated_at = now
+            txn.position_id = position.id
+            txn.created_at = txn.created_at or now
+            cur = conn.execute(
+                """INSERT INTO transactions
+                   (position_id, trans_type, date, price, shares, amount, fee, pnl, reason, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (txn.position_id, txn.trans_type, txn.date, txn.price, txn.shares,
+                 txn.amount, txn.fee, txn.pnl, txn.reason, txn.created_at),
+            )
+            txn.id = cur.lastrowid
+            row = conn.execute(
+                "SELECT cash_available FROM portfolios WHERE id=?",
+                (position.portfolio_id,),
+            ).fetchone()
+            cash = (float(row["cash_available"]) if row else 0.0) + float(cash_delta)
+            if cash < 0:
+                raise ValueError("可用资金不足，交易未提交")
+            conn.execute(
+                "UPDATE portfolios SET cash_available=? WHERE id=?",
+                (cash, position.portfolio_id),
+            )
+            return position, txn, cash
+
+    def atomic_update_transaction(self, position: Position, txn: Transaction,
+                                  cash_delta: float) -> float:
+        """Atomically update a position, append its transaction and cash."""
+        with self._connect() as conn:
+            position.updated_at = _now()
+            conn.execute(
+                """UPDATE positions SET scheme_name=?, scheme_snapshot=?, total_shares=?, avg_cost=?,
+                   total_cost=?, current_price=?, peak_price=?, position_phase=?, buy_stage=?,
+                   left_tier_sold=?, stop_loss_price=?, last_operated_date=?, status=?, notes=?, updated_at=?
+                   WHERE id=?""",
+                (position.scheme_name, json_dumps(position.scheme_snapshot), position.total_shares,
+                 position.avg_cost, position.total_cost, position.current_price, position.peak_price,
+                 position.position_phase, position.buy_stage, position.left_tier_sold,
+                 position.stop_loss_price, position.last_operated_date, position.status,
+                 position.notes, position.updated_at, position.id),
+            )
+            txn.created_at = txn.created_at or _now()
+            cur = conn.execute(
+                """INSERT INTO transactions
+                   (position_id, trans_type, date, price, shares, amount, fee, pnl, reason, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (txn.position_id, txn.trans_type, txn.date, txn.price, txn.shares,
+                 txn.amount, txn.fee, txn.pnl, txn.reason, txn.created_at),
+            )
+            txn.id = cur.lastrowid
+            row = conn.execute("SELECT cash_available FROM portfolios WHERE id=?",
+                               (position.portfolio_id,)).fetchone()
+            cash = (float(row["cash_available"]) if row else 0.0) + float(cash_delta)
+            if cash < 0:
+                raise ValueError("可用资金不足，交易未提交")
+            conn.execute("UPDATE portfolios SET cash_available=? WHERE id=?",
+                         (cash, position.portfolio_id))
+            return cash
 
     def _init_db(self):
         """建表 + 确保默认组合存在 + 轻量迁移"""

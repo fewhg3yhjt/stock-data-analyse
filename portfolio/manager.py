@@ -110,17 +110,12 @@ class PortfolioManager:
             status=STATUS_OPEN,
             notes=notes,
         )
-        position = self.storage.create_position(position)
-
-        # 初始交易记录
-        self.storage.add_transaction(Transaction(
+        # 持仓、初始交易和现金扣减必须同一事务提交。
+        self.storage.atomic_position_transaction(position, Transaction(
             position_id=position.id, trans_type=TXN_BUY,
             date=buy_date, price=cost, shares=shares,
             amount=shares * cost, reason="建仓",
-        ))
-
-        # 扣除现金
-        self.storage.adjust_cash(-shares * cost, portfolio_id)
+        ), -shares * cost)
 
         # 初始建议
         self._save_advice(position, kline, dividend_anchor)
@@ -250,14 +245,16 @@ class PortfolioManager:
             raise ValueError(f"不支持的交易类型: {trans_type}")
 
         position.last_operated_date = date
-        self.storage.update_position(position)
-
         txn = Transaction(
             position_id=position.id, trans_type=trans_type, date=date,
             price=price, shares=shares, amount=amount, fee=fee,
             pnl=txn_pnl, reason=reason,
         )
-        self.storage.add_transaction(txn)
+        self.storage.atomic_update_transaction(
+            position, txn,
+            -(price * shares + fee) if trans_type == TXN_BUY
+            else (price * shares - fee if trans_type in (TXN_SELL, TXN_SELL_ALL, TXN_DIVIDEND) else 0.0),
+        )
         logger.info("记录交易: 持仓#%d %s %s股 @%.2f", position_id, trans_type, shares, price)
         # 交易后自动重新分析，更新现价/均价/点位/建议（失败不阻塞交易）
         try:
@@ -283,7 +280,6 @@ class PortfolioManager:
         # 重算止损线
         scheme = self._load_snapshot(p)
         p.stop_loss_price = self._compute_stop_loss(scheme, p.stock_type, p.avg_cost)
-        self.storage.adjust_cash(-(price * shares + fee), p.portfolio_id)
         return p
 
     def _apply_sell(self, p: Position, trans_type: str, price: float,
@@ -303,9 +299,6 @@ class PortfolioManager:
         if p.total_shares < 1e-9:
             p.total_shares = 0.0
 
-        # 现金
-        self.storage.adjust_cash(price * shares - fee, p.portfolio_id)
-
         if p.total_shares <= 0:
             # 全部清仓
             p.status = STATUS_CLOSED
@@ -321,8 +314,6 @@ class PortfolioManager:
 
     def _apply_dividend(self, p: Position, price: float, shares: float, fee: float) -> Position:
         """分红: 现金增加, 份额/成本不变"""
-        amount = price * shares
-        self.storage.adjust_cash(amount - fee, p.portfolio_id)
         return p
 
     def _apply_correction(self, p: Position, price: float, shares: float, reason: str) -> Position:
