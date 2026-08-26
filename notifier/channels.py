@@ -186,6 +186,8 @@ def _post_webhook(url: str, payload: dict, timeout: float) -> dict:
         resp = requests.post(url, json=payload, timeout=timeout)
     except requests.RequestException as e:
         raise ChannelError(f"webhook 请求失败: {e}") from e
+    if not 200 <= resp.status_code < 300:
+        raise ChannelError(f"webhook HTTP 错误(status={resp.status_code}): {resp.text[:200]}")
     try:
         data = resp.json()
     except ValueError:

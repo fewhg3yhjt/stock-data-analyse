@@ -26,3 +26,13 @@ def test_dedup_commits_after_success(tmp_path, monkeypatch):
     scheduler._commit_notify_dedup(dedup)
 
     assert scheduler._load_notify_state()["1:sell_all"] == "2026-08-26T15:00:00"
+
+
+def test_notify_state_write_is_atomic(tmp_path, monkeypatch):
+    state_path = tmp_path / "nested" / "notify_state.json"
+    monkeypatch.setattr(scheduler, "_NOTIFY_STATE", str(state_path))
+
+    scheduler._save_notify_state({"ok": "yes"})
+
+    assert scheduler._load_notify_state() == {"ok": "yes"}
+    assert not list(state_path.parent.glob("*.tmp"))

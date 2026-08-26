@@ -191,14 +191,14 @@ def init_scheduler(app) -> None:
     scheduler = BackgroundScheduler(timezone=TZ)
     scheduler.add_job(
         run_daily_tasks, CronTrigger(hour=hour, minute=minute, timezone=TZ),
-        id="daily_tasks", misfire_grace_time=3600, coalesce=True,
+        id="daily_tasks", misfire_grace_time=3600, coalesce=True, max_instances=1,
     )
     # 盘中观察池实时快照：每 10 分钟一次（仅交易时段内实际取值）
     # 用 WAREHOUSE_ONLINE_SNAPSHOT=1 开启（默认关闭，避免过度采集）
     if os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1":
         scheduler.add_job(
-            run_online_snapshot_job, CronTrigger(minute="*/10", timezone=TZ),
-            id="online_snapshot", misfire_grace_time=600, coalesce=True,
+                run_online_snapshot_job, CronTrigger(minute="*/10", timezone=TZ),
+                id="online_snapshot", misfire_grace_time=600, coalesce=True, max_instances=1,
         )
         logger.info("盘中观察池快照已启动: 每 10 分钟")
     # 真正分钟数据：独立于 online 快照，默认关闭，避免未经确认增加外部请求。
@@ -207,6 +207,7 @@ def init_scheduler(app) -> None:
             scheduler.add_job(
                 run_minute_snapshot_job, trigger,
                 id=f"minute_snapshot_{index}", misfire_grace_time=600, coalesce=True,
+                max_instances=1,
             )
         logger.info("盘中分钟数据已启动: 每 5 分钟，观察池范围")
 
@@ -256,6 +257,7 @@ def _schedule_from_triggers(scheduler) -> None:
                     lambda r=rule: run_trigger_rule(r),
                     CronTrigger(minute=f"*/{minutes}", timezone=TZ),
                     id=f"trigger_{rid}", misfire_grace_time=600, coalesce=True,
+                    max_instances=1,
                     replace_existing=True,
                 )
                 logger.info("通知触发器已挂载: %s（盘中每 %d 分钟，%s）", rid, minutes, channel)
@@ -269,6 +271,7 @@ def _schedule_from_triggers(scheduler) -> None:
                     lambda r=rule: run_trigger_rule(r),
                     CronTrigger(hour=hh, minute=mm, timezone=TZ),
                     id=f"trigger_{rid}", misfire_grace_time=3600, coalesce=True,
+                    max_instances=1,
                     replace_existing=True,
                 )
                 logger.info("通知触发器已挂载: %s（%s %02d:%02d，%s）", rid, mode, hh, mm, channel)
@@ -487,7 +490,10 @@ def _save_notify_state(state: dict):
         from pathlib import Path
         path = Path(_notify_state_path())
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, path)
     except Exception as e:
         logger.warning("通知状态保存失败: %s", e)
 
