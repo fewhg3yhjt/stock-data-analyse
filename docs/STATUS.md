@@ -144,7 +144,7 @@
 ## 九、SRD FR-1~FR-5 落地情况（2026-08-26，持续更新）
 
 > 依据 `docs/SRD.md` / `docs/HLD.md` 完成能力层收敛 + 两个编排器 + 前端基座 + 性能优化。
-> 全部改动见 git log；当前完整回归为 105 个测试通过，真实完成度以 `docs/IMPLEMENTATION_GUIDE.md` 为准。
+> 全部改动见 git log；当前完整回归为 116 个测试通过，真实完成度以 `docs/IMPLEMENTATION_GUIDE.md` 为准。
 
 | 需求 | 落地 | 关键模块 | 备注 |
 |------|------|----------|------|
@@ -154,7 +154,7 @@
 | FR-1.4 数据源抽象 + DuckDB | 部分 | `datasource/base.py` | 日线/分钟接口已抽象，部分 dashboard/engine 仍有具体源直连 |
 | 指标中心 | ✅（第一版） | `indicators/store.py` `indicator_center.html` | 指标浏览/预览；自定义 base/composite CRUD；内置和代码指标保护 |
 | FR-2 策略编排器 | 部分 | `core/composer.py` `scheme_store.py` `strategy_composer.html` | 结构化参数、实时预览、schema 校验、样本回测预检、默认/版本/回滚 UI 已完成；发布策略与全量引擎迁移仍进行中 |
-| FR-3 通知编排器 | 部分 | `notifier/core.py` `triggers.py` `notifier/outbox.py` | action/price/indicator + AND/OR、发送后去重、持久化 outbox 和重试已完成；跨源统一批次仍补齐中 |
+| FR-3 通知编排器 | 部分 | `notifier/core.py` `triggers.py` `notifier/outbox.py` | action/price/indicator + AND/OR、发送后去重、持久化 outbox、重试、死信、投递台账和每日 Digest 已完成；历史兼容管线仍待清理 |
 | FR-4 UI 统一 | ✅ | `web/static/base.css` `base.html` `_nav.html` | 19 个业务模板全部继承 base.html；导航、组件和移动端基座统一 |
 | FR-5 性能 | 部分 | `datasource/base.py` | 个股图表 DuckDB 单查询和分钟分区已完成；未建立 P95 基准，ECharts 尚未拆包 |
-| 回归 | ✅ | `tests/`（105 例）| 新增指标、策略、通知、事务、安全、数据边界、备份、健康接口、outbox、状态机、回测参数、指标查询和上传边界回归；完整测试 105 例通过 |
+| 回归 | ✅ | `tests/`（116 例）| 新增指标、策略、通知、事务、安全、数据边界、备份、健康接口、outbox、状态机、回测参数、指标查询、调度锁、性能基线和上传边界回归；完整测试 116 例通过 |
