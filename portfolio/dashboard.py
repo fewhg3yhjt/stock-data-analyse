@@ -335,16 +335,9 @@ class DashboardService:
                 mas = {}
                 try:
                     _tmp = Warehouse()
-                    ind_orig = None
-                    for ym in _tmp.available_months("indicator"):
-                        d = _tmp.read_indicator(ym)
-                        if d is None or d.empty or "code" not in d.columns:
-                            continue
-                        sub = d[d["code"] == code_nodot]
-                        if len(sub):
-                            ind_orig = sub if ind_orig is None else _pd.concat([ind_orig, sub])
+                    ind_orig = _tmp.read_indicator_code(code_nodot, days=days)
                     if ind_orig is not None:
-                        ind_orig = ind_orig.sort_values("date").tail(days).reset_index(drop=True)
+                        ind_orig = ind_orig.sort_values("date").reset_index(drop=True)
                         keep = [c for c in ("MA5", "MA10", "MA20", "MA60") if c in ind_orig.columns]
                         if keep:
                             merged = _pd.merge(

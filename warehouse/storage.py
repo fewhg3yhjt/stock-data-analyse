@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -231,6 +232,30 @@ class Warehouse:
     def read_indicator(self, month: str):
         """读取某月指标分区"""
         return self._read_partition(self.indicator_dir, month)
+
+    def read_indicator_code(self, code: str, days: int = 750) -> Optional[pd.DataFrame]:
+        """通过 DuckDB 只读取一个标的的指标分区数据。"""
+        import duckdb
+
+        files = [str(self.indicator_dir / f"{m}.parquet")
+                 for m in self.available_months("indicator")]
+        files = [p for p in files if Path(p).exists()]
+        if not files:
+            return None
+        normalized = str(code).lower().replace(".", "")
+        if not re.fullmatch(r"(?:sh|sz|bj)\d{6}", normalized):
+            raise ValueError("股票代码格式无效")
+        days = max(1, min(int(days), 5000))
+        escaped = "[" + ",".join("'" + p.replace("'", "''") + "'" for p in files) + "]"
+        conn = duckdb.connect()
+        try:
+            frame = conn.execute(
+                f"SELECT * FROM read_parquet({escaped}) WHERE code=? ORDER BY date DESC LIMIT ?",
+                [normalized, days],
+            ).df()
+            return frame.sort_values("date").reset_index(drop=True)
+        finally:
+            conn.close()
 
     # ── 基本面层（fundamentals）───────────────────────
 
