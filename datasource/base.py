@@ -14,12 +14,15 @@
 from __future__ import annotations
 
 import logging
+import re
+from datetime import date
 from pathlib import Path
 from typing import Optional, Protocol
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+_CODE_RE = re.compile(r"^(?:sh|sz|bj)\d{6}$")
 
 # 数据源固定输出列（原始行情）
 KLINE_COLUMNS = [
@@ -77,18 +80,35 @@ class WarehouseSource:
         finally:
             con.close()
 
+    @staticmethod
+    def _validated_code(code: str) -> str:
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+
+        normalized = StockDataFetcher.normalize_code(code).replace(".", "").lower()
+        if not _CODE_RE.fullmatch(normalized):
+            raise ValueError("股票代码格式无效")
+        return normalized
+
+    @staticmethod
+    def _validated_day(value: Optional[str], default: str) -> str:
+        candidate = (value or default)[:10]
+        try:
+            date.fromisoformat(candidate)
+        except ValueError as exc:
+            raise ValueError(f"日期格式无效: {candidate}") from exc
+        return candidate
+
     # ── 契约实现 ────────────────────────────────────────
 
     def fetch_kline(self, code: str, start: Optional[str] = None,
                     end: Optional[str] = None) -> pd.DataFrame:
-        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
         from datetime import datetime, timedelta
 
-        code_nodot = StockDataFetcher.normalize_code(code).replace(".", "")
-        if end is None:
-            end = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        if start is None:
-            start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        code_nodot = self._validated_code(code)
+        end = self._validated_day(end, (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"))
+        start = self._validated_day(start, (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d"))
+        if start > end:
+            raise ValueError("开始日期不能晚于结束日期")
 
         files = self._daily_files(start)
         if not files:
@@ -109,9 +129,10 @@ class WarehouseSource:
 
     def fetch_daily_series(self, code: str, days: int = 750) -> pd.DataFrame:
         """个股图表单查询：取最近 N 个交易日的原始日线（tail(days)）。"""
-        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
-
-        code_nodot = StockDataFetcher.normalize_code(code).replace(".", "")
+        code_nodot = self._validated_code(code)
+        days = int(days)
+        if days < 1 or days > 5000:
+            raise ValueError("days 必须在 1 到 5000 之间")
         files = self._daily_files(None)
         if not files:
             return pd.DataFrame()
@@ -122,7 +143,7 @@ class WarehouseSource:
                     FROM read_parquet({file_list})
                     WHERE code = '{code_nodot}'
                     ORDER BY date DESC
-                    LIMIT {int(days)}"""
+                    LIMIT {days}"""
             )
             df = df.sort_values("date")
             return self._finalize(df)

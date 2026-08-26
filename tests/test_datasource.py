@@ -112,3 +112,16 @@ def test_warehouse_fetch_minute_series(tmp_path):
 
     assert len(frame) == 2
     assert frame["close"].tolist() == [28.2, 28.21]
+
+
+@pytest.mark.parametrize("code", ["../../etc/passwd", "sh60090x", "unknown"])
+def test_warehouse_rejects_invalid_code(temp_warehouse, code):
+    with pytest.raises(ValueError, match="股票代码格式无效"):
+        WarehouseSource(warehouse=temp_warehouse).fetch_daily_series(code)
+
+
+def test_warehouse_rejects_invalid_range(temp_warehouse):
+    with pytest.raises(ValueError, match="开始日期不能晚于结束日期"):
+        WarehouseSource(warehouse=temp_warehouse).fetch_kline(
+            "sh600900", "2025-01-01", "2024-01-01"
+        )
