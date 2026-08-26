@@ -18,8 +18,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import sqlite3
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
@@ -27,6 +29,20 @@ from typing import Iterable, Optional
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def _atomic_parquet_write(df, path: Path) -> None:
+    """Write beside the target and replace it only after serialization succeeds."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    os.close(fd)
+    temp = Path(temp_name)
+    try:
+        df.to_parquet(temp, index=False, engine="pyarrow",
+                      compression="zstd" if _has("pyarrow") else "snappy")
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
 
 # 日线标准列（baostock query_history_k_data_plus 常用字段）
 DAILY_COLUMNS = [
@@ -196,8 +212,7 @@ class Warehouse:
         """把某月因子分区整体覆写。返回写入行数。"""
         path = self.factor_dir / f"{month}.parquet"
         try:
-            df.to_parquet(path, index=False, engine="pyarrow",
-                           compression="zstd" if _has("pyarrow") else "snappy")
+            _atomic_parquet_write(df, path)
         except Exception as e:
             logger.error("写因子分区 %s 失败: %s", path, e)
             raise
@@ -220,8 +235,7 @@ class Warehouse:
         """把某月指标分区整体覆写。返回写入行数。"""
         path = self.indicator_dir / f"{month}.parquet"
         try:
-            df.to_parquet(path, index=False, engine="pyarrow",
-                           compression="zstd" if _has("pyarrow") else "snappy")
+            _atomic_parquet_write(df, path)
         except Exception as e:
             logger.error("写指标分区 %s 失败: %s", path, e)
             raise
@@ -267,8 +281,7 @@ class Warehouse:
         """写入单只标的基本面历史（按 code 覆盖写）。返回行数。"""
         path = self.fundamental_path(code)
         try:
-            df.to_parquet(path, index=False, engine="pyarrow",
-                          compression="zstd" if _has("pyarrow") else "snappy")
+            _atomic_parquet_write(df, path)
         except Exception as e:
             logger.error("写基本面 %s 失败: %s", code, e)
             raise
@@ -308,8 +321,7 @@ class Warehouse:
         """把某月日线分区整体覆写。df 需含 code/date 等列。返回写入行数。"""
         path = self.daily_partition(month)
         try:
-            df.to_parquet(path, index=False, engine="pyarrow",
-                           compression="zstd" if _has("pyarrow") else "snappy")
+            _atomic_parquet_write(df, path)
         except Exception as e:
             logger.error("写日线分区 %s 失败: %s", path, e)
             raise
