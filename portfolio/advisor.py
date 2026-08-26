@@ -54,6 +54,7 @@ class AdvisorContext:
     """一次分析计算出的参考价格集合（每次刷新时重算）"""
 
     def __init__(self):
+        self.row = None
         self.current_price = 0.0
         self.recent_low = 0.0            # 最近交易日最低价
         self.year_high = 0.0             # 滚动252日最高价
@@ -115,6 +116,7 @@ class PostPurchaseAdvisor:
             return ctx
 
         last = kline.iloc[-1]
+        ctx.row = last
         ctx.current_price = float(last.get("close", 0))
         ctx.recent_low = float(last.get("low", 0))
         ctx.last_volume = float(last.get("volume", 0))
@@ -174,14 +176,28 @@ class PostPurchaseAdvisor:
         """① 硬止损: 最近最低价 ≤ 均价 × (1 - 扣减率)"""
         if position.avg_cost <= 0:
             return None
-        rate = self._stop_loss_rate(scheme, position.stock_type)
-        stop = position.avg_cost * (1 - rate)
+        rule = scheme.find_sell_rule("hard_stop")
+        params = rule.params if rule is not None else {
+            "stop_loss_by_type": {position.stock_type: self._stop_loss_rate(scheme, position.stock_type)}
+        }
+        from StockInvestmentTool.strategy.context import RuleContext
+        from StockInvestmentTool.strategy.rule_registry import dispatch_rule
+
+        result = dispatch_rule("sell", "hard_stop", RuleContext(
+            row=ctx.row,
+            avg_cost=position.avg_cost,
+            current_price=ctx.current_price,
+            extra={"stock_type": position.stock_type},
+        ), params)
+        detail = result.detail or {}
+        stop = float(detail.get("stop_price", position.avg_cost * 0.85))
+        triggered = bool(result.triggered)
         check_results["hard_stop"] = {
             "stop_price": round(stop, 2),
             "recent_low": round(ctx.recent_low, 2),
-            "triggered": ctx.recent_low <= stop,
+            "triggered": triggered,
         }
-        if ctx.recent_low <= stop:
+        if triggered:
             return ActionAdvice(
                 position_id=position.id, stock_code=position.stock_code,
                 stock_name=position.stock_name,
