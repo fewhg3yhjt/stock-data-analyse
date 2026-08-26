@@ -153,7 +153,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 规则/状态主链路 | `7761397` `ddf4172` `9f15ede` | 买入计划 registry、Advisor 硬止损 registry、持仓状态机生产接入 |
 | 可信性修复 | `e304657` `afaed04` `a855316` `7b908aa` | 财务事务原子性、通知去重时机、trail 参数生效、配置路径/session 加固 |
 
-当前完整回归：**104 个测试通过**。
+当前完整回归：**105 个测试通过**。
 
 ### 4.4 本轮新增治理能力
 
@@ -167,6 +167,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 - `web/app.py:/api/health/details`：返回调度、仓库分区和关键开关状态，供生产巡检。
 - 19 个业务模板已全部继承 `web/templates/base.html`；模板迁移不改变路由和业务脚本。
 - `warehouse/storage.py` / `portfolio/dashboard.py`：指标分区按标的使用 DuckDB 投影查询，避免逐分区全量 pandas 扫描。
+- `web/app.py`：Excel 导入限制扩展名和 10MB 大小，避免无限制上传进入生产数据目录。
 
 完成定义必须是：
 
