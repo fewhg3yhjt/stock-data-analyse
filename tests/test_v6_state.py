@@ -24,3 +24,16 @@ def test_v6_state_machine_has_expected_sell_path():
     assert sm.transition(STATE_HOLDING, "left_tp") == STATE_LEFT_SIDE
     assert sm.transition(STATE_LEFT_SIDE, "breakout") == STATE_RIGHT_SIDE
     assert sm.transition(STATE_RIGHT_SIDE, "closed") == STATE_CLOSED
+
+
+def test_v6_reads_registered_rule_parameters(kline):
+    from StockInvestmentTool.core.scheme import SchemeConfig, SellRuleConfig
+
+    scheme = SchemeConfig(name="v6-test", sell_rules=[
+        SellRuleConfig("left_side_fixed", {"ratio_by_type": {"B": 0.25}}),
+        SellRuleConfig("right_side_trailing", {"drawdown_by_type": {"B": 0.08}}),
+    ])
+    engine = BacktestEngineV6(kline, scheme=scheme)
+
+    assert engine.left_ratio_by_type["B"] == 0.25
+    assert engine.right_dd_by_type["B"] == 0.08

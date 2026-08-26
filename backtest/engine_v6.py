@@ -121,12 +121,19 @@ class BacktestEngineV6:
         self.left_ratio_by_type = dict(LEFT_SIDE_RATIO_BY_TYPE)
         self.right_dd_by_type = dict(RIGHT_DD_BY_TYPE)
         if scheme is not None:
-            lr = scheme.find_sell_rule("left_side_fixed")
-            if lr is not None and isinstance(lr.params.get("ratio_by_type"), dict):
-                self.left_ratio_by_type = {k: float(v) for k, v in lr.params["ratio_by_type"].items()}
-            rr = scheme.find_sell_rule("right_side_trailing")
-            if rr is not None and isinstance(rr.params.get("drawdown_by_type"), dict):
-                self.right_dd_by_type = {k: float(v) for k, v in rr.params["drawdown_by_type"].items()}
+            from StockInvestmentTool.strategy.rule_registry import get_rule_registry
+
+            registry = get_rule_registry()
+            for rule_type, attr in (("left_side_fixed", "left_ratio_by_type"),
+                                    ("right_side_trailing", "right_dd_by_type")):
+                if not registry.has("sell", rule_type):
+                    continue
+                params = next((r.params or {} for r in scheme.sell_rules
+                               if r.type == rule_type), {})
+                key = "ratio_by_type" if rule_type == "left_side_fixed" else "drawdown_by_type"
+                values = params.get(key)
+                if isinstance(values, dict) and values:
+                    setattr(self, attr, {k: float(v) for k, v in values.items()})
 
         # 沪深300（贝塔保护 / 年线熔断）：按日期对齐，取 ≤ 当前 bar 的最后一行
         self._csi_index = None
