@@ -46,6 +46,7 @@ def model_to_yaml(model: dict) -> str:
         raise ValueError("方案缺少必填字段: name")
 
     doc = _build_doc(model)
+    _validate_rule_params(doc)
     try:
         return yaml.safe_dump(doc, allow_unicode=True, sort_keys=False,
                               default_flow_style=False)
@@ -61,7 +62,58 @@ def model_to_config(model: dict):
     from StockInvestmentTool.core.scheme import load_scheme_from_dict
 
     doc = _build_doc(model)
+    _validate_rule_params(doc)
     return load_scheme_from_dict(doc)
+
+
+def _validate_rule_params(doc: dict) -> None:
+    """Validate rule types and typed parameters against the registry schema."""
+    from StockInvestmentTool.strategy.rule_registry import get_rule_registry
+
+    registry = get_rule_registry()
+    for kind in ("buy", "sell"):
+        for index, rule in enumerate(doc.get(f"{kind}_rules", [])):
+            rtype = rule["type"]
+            if not registry.has(kind, rtype):
+                raise ValueError(f"{kind}_rules[{index}] 未注册规则: {rtype}")
+            params = rule.get("params") or {}
+            fields = registry.get(kind, rtype).schema
+            for field in fields:
+                if field.required and field.key not in params:
+                    raise ValueError(f"规则 {rtype} 缺少必填参数: {field.key}")
+                if field.key not in params or params[field.key] in (None, ""):
+                    continue
+                value = params[field.key]
+                if field.type == "list" and not isinstance(value, list):
+                    raise ValueError(f"规则 {rtype} 参数 {field.key} 必须是列表")
+                if field.type == "map_list" and not isinstance(value, list):
+                    raise ValueError(f"规则 {rtype} 参数 {field.key} 必须是对象列表")
+                if field.type == "map" and not isinstance(value, dict):
+                    raise ValueError(f"规则 {rtype} 参数 {field.key} 必须是映射")
+                if field.type == "number":
+                    try:
+                        number = float(value)
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(f"规则 {rtype} 参数 {field.key} 必须是数字") from exc
+                    if field.min is not None and number < field.min:
+                        raise ValueError(f"规则 {rtype} 参数 {field.key} 不能小于 {field.min}")
+                    if field.max is not None and number > field.max:
+                        raise ValueError(f"规则 {rtype} 参数 {field.key} 不能大于 {field.max}")
+
+    support_rules = [r for r in doc.get("buy_rules", []) if r["type"] == "support_level"]
+    for rule in support_rules:
+        stages = rule.get("params", {}).get("buy_stages") or []
+        if stages:
+            ratios = []
+            for stage in stages:
+                if not isinstance(stage, dict):
+                    raise ValueError("support_level.buy_stages 必须是对象列表")
+                ratio = float(stage.get("ratio", 0))
+                if ratio < 0 or ratio > 1:
+                    raise ValueError("support_level.buy_stages 的 ratio 必须在 0 到 1 之间")
+                ratios.append(ratio)
+            if abs(sum(ratios) - 1.0) > 1e-6:
+                raise ValueError("support_level.buy_stages 的 ratio 总和必须为 1")
 
 
 def _build_doc(model: dict) -> dict:

@@ -143,8 +143,11 @@ function closeModal(){document.getElementById('modal-bg').style.display='none';}
 async function init(){
   await loadIndicators();
   await loadRuleSchemas();
+  document.addEventListener('input', schedulePreview);
+  document.addEventListener('change', schedulePreview);
   document.querySelectorAll('#f-types .tag').forEach(t=>t.addEventListener('click',()=>{
     t.classList.toggle('active');
+    schedulePreview();
   }));
 }
 
@@ -229,15 +232,15 @@ function renderRule(kind, rule){
 }
 
 function renderField(f, rule){
-  const key=f.key,label=f.label,type=f.type,def=f.default;
+  const key=f.key,label=f.label,type=f.type,def=(rule.params&&rule.params[key]!==undefined)?rule.params[key]:f.default;
   if(type==='map_list'||type==='list'){
-    // 简易可增删表格
+    const rows=(Array.isArray(def)?def:[]).map(item=>listRowHtml(type,item)).join('');
     return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
-      <div data-f="${key}" class="custom-list" style="font-size:13px;"></div>
-      <button class="btn btn-ghost btn-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 加一行</button></div>`;
+      <div data-f="${key}" data-list-type="${type}" class="custom-list">${rows}</div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 加一行</button></div>`;
   }
   if(type==='select'){
-    const opts=(f.options||[]).map(o=>`<option value="${JSON.stringify(o)}">${o}</option>`).join('');
+    const opts=(f.options||[]).map(o=>`<option value="${JSON.stringify(o)}" ${JSON.stringify(o)===JSON.stringify(def)?'selected':''}>${o}</option>`).join('');
     return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
       <select data-f="${key}">${opts}<option value="" selected>默认</option></select></div>`;
   }
@@ -251,16 +254,33 @@ function renderField(f, rule){
 
 function addListRow(btn,key){
   const host=btn.previousElementSibling;
-  const row=document.createElement('div');
-  row.className='kv-row';
-  row.style.cssText='display:flex;gap:6px;margin-bottom:5px;align-items:center;';
-  row.innerHTML=`<input data-k style="flex:1" placeholder="键(如 label/task/name/position_index/ratio)"><input data-v style="flex:1" placeholder="值">
-    <button class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button>`;
+  const type=host.dataset.listType;
+  const row=document.createElement('div'); row.innerHTML=listRowHtml(type, type==='list'?'':{});
+  row.firstElementChild.querySelector('button').onclick=()=>row.firstElementChild.remove();
   host.appendChild(row);
+  schedulePreview();
 }
 
+function listRowHtml(type, item){
+  if(type==='list'){
+    return `<div class="list-row"><input data-list-value value="${escapeAttr(item||'')}" placeholder="指标名或表达式"><button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+  }
+  const obj=(item&&typeof item==='object')?item:{};
+  const keys=Object.keys(obj).length?Object.keys(obj):['label','position_index','ratio'];
+  return `<div class="list-row map-list-row">${keys.map(k=>`<input data-list-key="${escapeAttr(k)}" data-key-name="${escapeAttr(k)}" value="${escapeAttr(Array.isArray(obj[k])?JSON.stringify(obj[k]):obj[k])}" placeholder="${escapeAttr(k)}">`).join('')}<button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+}
+function escapeAttr(value){return String(value==null?'':value).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function collectList(target){
-  // 简易键值对列表，宿主 data-f 处收集
+  if(target.dataset.listType==='list') return Array.from(target.querySelectorAll('[data-list-value]')).map(x=>x.value.trim()).filter(Boolean);
+  return Array.from(target.querySelectorAll('.map-list-row')).map(row=>{
+    const out={}; row.querySelectorAll('[data-key-name]').forEach(input=>{
+      let value=input.value.trim(); if(!value)return;
+      if(['position_index'].includes(input.dataset.keyName)) value=parseInt(value,10);
+      else if(['ratio','sell_ratio'].includes(input.dataset.keyName)) value=parseFloat(value);
+      else if(input.dataset.keyName==='range'){try{value=JSON.parse(value);}catch(e){}}
+      out[input.dataset.keyName]=value;
+    }); return out;
+  }).filter(x=>Object.keys(x).length);
 }
 
 function collectRuleParams(ruleBox){
@@ -275,10 +295,9 @@ function collectRuleParams(ruleBox){
     else if(inp.type==='number'){ if(val!=='')params[key]=parseFloat(val); }
     else if(val!==''){ try{params[key]=JSON.parse(val);}catch(e){params[key]=val;} }
   });
-  // 处理自定义 kv 列表
+  // 处理结构化 list/map_list
   ruleBox.querySelectorAll('.custom-list').forEach(listHost=>{
-    if(listHost.classList.contains('collected'))return;
-    listHost.classList.add('collected');
+    params[listHost.dataset.f]=collectList(listHost);
   });
   return params;
 }
@@ -325,6 +344,10 @@ async function renderPreview(){
     document.getElementById('yaml-preview').value='# 生成失败: '+d.error;
     document.getElementById('validate-hint').textContent=d.error;
   }
+}
+
+function schedulePreview(){
+  clearTimeout(window.previewTimer); window.previewTimer=setTimeout(renderPreview,350);
 }
 
 async function validateYaml(content){
@@ -403,16 +426,7 @@ function renderRuleFromType(kind,type,params){
   if(!meta)return;
   renderRule(kind,{type,kind,label:type,description:meta.description,schema:meta.schema,params:params||{}});
   const box=document.querySelector(`#${kind}-rules .rule-box:last-child`);
-  // 回填已保存参数
-  for(const [k,v] of Object.entries(params||{})){
-    box.querySelectorAll('[data-f]').forEach(inp=>{
-      if(inp.dataset.f!==k)return;
-      if(inp.tagName==='TEXTAREA')inp.value=typeof v==='string'?v:JSON.stringify(v);
-      else if(inp.tagName==='SELECT'){inp.value='';(inp.options);}
-      else if(inp.type==='number')inp.value=v;
-      else inp.value=typeof v==='string'?v:JSON.stringify(v);
-    });
-  }
+   schedulePreview();
 }
 async function toggleScheme(name,enabled){
   const s=await fetch('/api/schemes/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,enabled})});

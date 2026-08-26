@@ -95,6 +95,8 @@ tr:last-child td{border-bottom:none;}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;}
 .indicator-modal{background:var(--surface);border-radius:10px;padding:22px;max-width:620px;width:90%;}
 .indicator-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+.list-row{display:flex;gap:6px;margin-bottom:6px;align-items:center;flex-wrap:wrap;}
+.list-row input{flex:1;min-width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 9px;color:var(--text);font-size:13px;}
 
 .metric-grid .m{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:6px 10px;text-align:center;}
 .metric-grid .m .l{font-size:11px;color:var(--text2);}
