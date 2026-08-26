@@ -1,10 +1,6 @@
-﻿<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 分析</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+﻿{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 分析{% endblock %}
+{% block head %}
 <script src="https://cdn.bootcdn.net/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -140,8 +136,8 @@ pre { background: var(--surface2); border-radius: 6px; padding: 18px; overflow-x
   .stat-grid { grid-template-columns: 1fr 1fr; }
 }
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
 
   <!-- 头部 -->
@@ -471,6 +467,5 @@ function renderResults(data) {
   · <a href="/log" style="color:var(--accent);text-decoration:none;">操作日志</a>
   · <a href="/morning-report" style="color:var(--accent);text-decoration:none;">每日晨报</a>
 </footer>
-</body>
-</html>
+{% endblock %}
 
