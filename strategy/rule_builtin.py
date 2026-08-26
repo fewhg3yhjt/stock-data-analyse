@@ -36,6 +36,7 @@ def _execute_support_level(ctx: RuleContext, params: dict) -> RuleResult:
     strategy = MultiBuyStrategy(
         dividend_anchor=ctx.dividend_anchor,
         scheme=scheme,
+        rule_params=params,
     )
     plan = strategy.generate_plan(ctx.df, ctx.current_price)
     return RuleResult(

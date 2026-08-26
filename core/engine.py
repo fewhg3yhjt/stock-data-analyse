@@ -214,6 +214,23 @@ class AnalysisEngine:
     def _buy_plan(self, kline: pd.DataFrame, current_price: float,
                   dividend_anchor: Optional[float]) -> list[dict]:
         """用方案配置生成买入计划"""
+        from StockInvestmentTool.indicators.context import IndicatorContext
+        from StockInvestmentTool.strategy.context import RuleContext
+        from StockInvestmentTool.strategy.rule_registry import dispatch_rule
+
+        rule = self.scheme.find_buy_rule("support_level")
+        if rule is not None:
+            ctx = RuleContext(
+                row=kline.iloc[-1], df=kline,
+                indicators=IndicatorContext(kline),
+                current_price=current_price,
+                dividend_anchor=dividend_anchor,
+                extra={"scheme": self.scheme},
+            )
+            result = dispatch_rule("buy", rule.type, ctx, rule.params)
+            plan = result.detail.get("plan") if result and result.detail else None
+            if plan is not None:
+                return plan
         strategy = MultiBuyStrategy(
             dividend_anchor=dividend_anchor,
             scheme=self.scheme,

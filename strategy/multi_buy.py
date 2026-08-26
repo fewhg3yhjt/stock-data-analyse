@@ -60,6 +60,7 @@ class MultiBuyStrategy:
         offset: float = 0.0,
         dividend_anchor: Optional[float] = None,
         scheme: Optional[SchemeConfig] = None,
+        rule_params: Optional[dict] = None,
     ):
         self.scheme = scheme
         self.offset = offset
@@ -70,14 +71,19 @@ class MultiBuyStrategy:
         self.support_sources = list(_DEFAULT_SUPPORT_SOURCES)
         self.buy_stages = list(_DEFAULT_STAGES)
 
-        if scheme is not None:
+        if rule_params is not None:
+            self._apply_support_level_params(rule_params, buy_ratios)
+        elif scheme is not None:
             rule = scheme.find_buy_rule("support_level")
             if rule is not None:
                 self._apply_support_level_rule(rule, buy_ratios)
 
     def _apply_support_level_rule(self, rule: BuyRuleConfig, buy_ratios: Optional[list]):
         """从 support_level 规则提取参数"""
-        params = rule.params or {}
+        self._apply_support_level_params(rule.params or {}, buy_ratios)
+
+    def _apply_support_level_params(self, params: dict, buy_ratios: Optional[list]):
+        """Apply registry-dispatched support parameters without scheme lookup."""
         sources = params.get("support_sources")
         if isinstance(sources, list) and sources:
             self.support_sources = list(sources)
