@@ -121,7 +121,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 
 | 维度 | 当前判断 |
 |------|----------|
-| 产品功能完整度 | 约 72%，核心个人投资流程基本形成 |
+| 产品功能完整度 | 约 86%，核心个人投资流程和主要配置能力已形成 |
 | SRD FR-1 至 FR-5 | 约 84%，主要产品链路、UI 和关键可信性问题已处理，仍有完整迁移和运维债务 |
 | 架构成熟度 | 约 72%，Registry/Context/事务/通知边界已进入主要生产主链路 |
 | 开发可用度 | 7.5/10 |
@@ -153,7 +153,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 规则/状态主链路 | `7761397` `ddf4172` `9f15ede` | 买入计划 registry、Advisor 硬止损 registry、持仓状态机生产接入 |
 | 可信性修复 | `e304657` `afaed04` `a855316` `7b908aa` | 财务事务原子性、通知去重时机、trail 参数生效、配置路径/session 加固 |
 
-当前完整回归：**103 个测试通过**。
+当前完整回归：**104 个测试通过**。
 
 ### 4.4 本轮新增治理能力
 
@@ -166,6 +166,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 - `docs/BACKUP_RUNBOOK.md`：备份范围、隔离恢复演练和生产数据安全边界。
 - `web/app.py:/api/health/details`：返回调度、仓库分区和关键开关状态，供生产巡检。
 - 19 个业务模板已全部继承 `web/templates/base.html`；模板迁移不改变路由和业务脚本。
+- `warehouse/storage.py` / `portfolio/dashboard.py`：指标分区按标的使用 DuckDB 投影查询，避免逐分区全量 pandas 扫描。
 
 完成定义必须是：
 

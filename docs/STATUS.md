@@ -144,7 +144,7 @@
 ## 九、SRD FR-1~FR-5 落地情况（2026-08-26，持续更新）
 
 > 依据 `docs/SRD.md` / `docs/HLD.md` 完成能力层收敛 + 两个编排器 + 前端基座 + 性能优化。
-> 全部改动见 git log；当前完整回归为 103 个测试通过，真实完成度以 `docs/IMPLEMENTATION_GUIDE.md` 为准。
+> 全部改动见 git log；当前完整回归为 104 个测试通过，真实完成度以 `docs/IMPLEMENTATION_GUIDE.md` 为准。
 
 | 需求 | 落地 | 关键模块 | 备注 |
 |------|------|----------|------|
@@ -157,4 +157,4 @@
 | FR-3 通知编排器 | 部分 | `notifier/core.py` `triggers.py` `notifier/outbox.py` | action/price/indicator + AND/OR、发送后去重、持久化 outbox 和重试已完成；跨源统一批次仍补齐中 |
 | FR-4 UI 统一 | ✅ | `web/static/base.css` `base.html` `_nav.html` | 19 个业务模板全部继承 base.html；导航、组件和移动端基座统一 |
 | FR-5 性能 | 部分 | `datasource/base.py` | 个股图表 DuckDB 单查询和分钟分区已完成；未建立 P95 基准，ECharts 尚未拆包 |
-| 回归 | ✅ | `tests/`（103 例）| 新增指标、策略、通知、事务、安全、数据边界、备份、健康接口、outbox、状态机和回测参数回归；完整测试 103 例通过 |
+| 回归 | ✅ | `tests/`（104 例）| 新增指标、策略、通知、事务、安全、数据边界、备份、健康接口、outbox、状态机、回测参数和指标查询回归；完整测试 104 例通过 |
