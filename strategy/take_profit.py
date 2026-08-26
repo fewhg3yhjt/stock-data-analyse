@@ -331,6 +331,19 @@ class TakeProfitOptimizer:
 
     def _apply_scheme(self, scheme: SchemeConfig):
         """从方案配置提取回测/卖点参数"""
+        from StockInvestmentTool.strategy.rule_registry import get_rule_registry
+
+        registry = get_rule_registry()
+
+        def rule_params(kind: str, rule_type: str) -> dict:
+            """Read only a registered rule's params, preserving old fallback."""
+            if not registry.has(kind, rule_type):
+                return {}
+            for configured in (scheme.buy_rules if kind == "buy" else scheme.sell_rules):
+                if configured.type == rule_type:
+                    return configured.params or {}
+            return {}
+
         # 回测参数
         bt = scheme.backtest
         self.initial_cash = bt.initial_cash
@@ -340,9 +353,8 @@ class TakeProfitOptimizer:
             self._buy_offsets = list(bt.grid_search.buy_offsets)
 
         # 买入比例（从 support_level 规则的 buy_stages 读取，使方案差异体现在回测中）
-        buy_rule = scheme.find_buy_rule("support_level")
-        if buy_rule is not None:
-            params = buy_rule.params or {}
+        params = rule_params("buy", "support_level")
+        if params:
             stages = params.get("buy_stages")
             if isinstance(stages, list) and stages:
                 ratios = [float(s.get("ratio", 0)) for s in stages]
@@ -350,17 +362,15 @@ class TakeProfitOptimizer:
                     self.buy_ratios = ratios
 
         # 硬止损（扣减率）
-        rule = scheme.find_sell_rule("hard_stop")
-        if rule is not None:
-            params = rule.params or {}
+        params = rule_params("sell", "hard_stop")
+        if params:
             by_type = params.get("stop_loss_by_type")
             if isinstance(by_type, dict) and by_type:
                 self.stop_loss_rate = float(by_type.get(self.stock_type, self.stop_loss_rate))
 
         # 左侧止盈参数
-        rule = scheme.find_sell_rule("left_side_fixed")
-        if rule is not None:
-            params = rule.params or {}
+        params = rule_params("sell", "left_side_fixed")
+        if params:
             zones = params.get("zones")
             if isinstance(zones, list) and zones:
                 self._left_zones = {}
@@ -375,15 +385,14 @@ class TakeProfitOptimizer:
                 self._left_half_profit = float(params["half_profit_threshold"])
 
         # 右侧移动止盈
-        rule = scheme.find_sell_rule("right_side_trailing")
-        if rule is not None:
-            params = rule.params or {}
+        params = rule_params("sell", "right_side_trailing")
+        if params:
             by_type = params.get("drawdown_by_type")
             if isinstance(by_type, dict) and by_type:
                 self._right_drawdown = {k: float(v) for k, v in by_type.items()}
 
         # 技术止损
-        rule = scheme.find_sell_rule("technical_stop")
+        rule = next((r for r in scheme.sell_rules if r.type == "technical_stop"), None)
         self.technical_stop_enabled = bool(scheme.risk.technical_stop_enabled)
         if rule is not None:
             params = rule.params or {}

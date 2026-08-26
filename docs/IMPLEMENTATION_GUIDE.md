@@ -139,7 +139,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | FR-1.4 DataSource | 部分完成 | monitor 和部分图表已接入，engine/dashboard 仍有具体数据源直连 |
 | 指标中心 | 第一版完成 | `/indicator-center` 已支持指标浏览、表达式预览、自定义 base/composite 指标 CRUD；代码指标和内置指标保持只读 |
 | FR-2 策略编排器 | 部分完成 | list/map-list、实时预览、schema 校验和样本回测预检已完成；发布/复杂版本 UI 仍待补齐 |
-| FR-3 通知编排器 | 部分完成 | action/price/indicator 条件和 AND/OR 已执行；HTTP 状态、去重时机和任务防重叠已加固；统一批次 outbox/重试仍待补齐 |
+| FR-3 通知编排器 | 部分完成 | action/price/indicator 条件和 AND/OR 已执行；HTTP 状态、去重时机、任务防重叠、持久化 outbox 和重试已加固；跨源统一批次仍待补齐 |
 | FR-4 UI 统一 | 部分完成 | 编排器/通知/指标中心已继承 `base.html`；旧业务页面仍未全部迁移 |
 | FR-5 DuckDB 图表 | 基本完成 | 主图表路径已改善；分钟分区也已独立接入，但没有性能基线和 P95 证据 |
 
@@ -153,7 +153,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 规则/状态主链路 | `7761397` `ddf4172` `9f15ede` | 买入计划 registry、Advisor 硬止损 registry、持仓状态机生产接入 |
 | 可信性修复 | `e304657` `afaed04` `a855316` `7b908aa` | 财务事务原子性、通知去重时机、trail 参数生效、配置路径/session 加固 |
 
-当前完整回归：**97 个测试通过**。
+当前完整回归：**101 个测试通过**。
 
 ### 4.4 本轮新增治理能力
 

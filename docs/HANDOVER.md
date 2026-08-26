@@ -13,7 +13,7 @@ A股分析工具，生产环境直接迭代（Docker 容器 `stock-invest`，代
 - **仓库**：`/opt/stock_data_analyse`
 - **容器**：`stock-invest`（镜像 stock-invest:latest），端口 9000，域名 `https://stock.easyconnect.ltd`
 - **代码挂载**：改代码 → `sudo docker compose restart stock-web` 生效（无需 rebuild）
-- **登录**：`ADMIN_PASSWORD=1qazXSW@`（.env）
+- **登录**：使用宿主机 `.env` 中的 `ADMIN_USER` / `ADMIN_PASSWORD`；真实凭据不得写入文档。
 - **数据层**：`output/data/warehouse/`
 - **依赖注意**：改 `requirements.txt` 才需 rebuild；字体已内置 `fonts/`（容器 matplotlib 中文）
 
@@ -110,5 +110,5 @@ python -m StockInvestmentTool.notifier --actionable --dry-run  # 测试操作提
 ## 九、验证方式
 
 - 登录后访问 `http://127.0.0.1:9000/` 各页面
-- API 用登录态 curl：先 `curl -c cookie -d "username=admin&password=1qazXSW@" /login`
+- API 用登录态 curl：从本机环境安全读取凭据后建立 cookie，命令中不要硬编码密码。
 - classify 应从数据层秒回（<0.2s），若 >10s 说明走了网络（数据缺失）
