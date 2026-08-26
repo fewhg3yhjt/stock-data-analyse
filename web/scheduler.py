@@ -193,6 +193,11 @@ def init_scheduler(app) -> None:
         run_daily_tasks, CronTrigger(hour=hour, minute=minute, timezone=TZ),
         id="daily_tasks", misfire_grace_time=3600, coalesce=True, max_instances=1,
     )
+    scheduler.add_job(
+        process_notification_outbox, CronTrigger(minute="*/5", timezone=TZ),
+        id="notification_outbox", misfire_grace_time=600, coalesce=True,
+        max_instances=1,
+    )
     # 盘中观察池实时快照：每 10 分钟一次（仅交易时段内实际取值）
     # 用 WAREHOUSE_ONLINE_SNAPSHOT=1 开启（默认关闭，避免过度采集）
     if os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1":
@@ -339,7 +344,54 @@ def run_trigger_rule(rule: dict) -> dict:
         kwargs["subject"] = digest.meta.get("subject", "股票通知")
         if rule.get("use_email_to"):
             kwargs["to"] = rule.get("use_email_to")
-    return live_send_digest(digest, channel, **kwargs)
+    return send_digest_with_outbox(digest, channel, **kwargs)
+
+
+def send_digest_with_outbox(digest, channel: str, **kwargs) -> dict:
+    """Persist a Digest before delivery; mark sent only after success."""
+    from StockInvestmentTool.notifier.outbox import NotificationOutbox
+
+    payload = {"sections": digest.sections, "meta": digest.meta, "kwargs": kwargs}
+    outbox = NotificationOutbox()
+    item_id = outbox.enqueue(channel, payload)
+    result = _deliver_outbox_item({"id": item_id, "channel": channel, "payload": payload, "attempts": 0})
+    if result.get("ok"):
+        outbox.mark_sent(item_id)
+    return result
+
+
+def _deliver_outbox_item(item: dict) -> dict:
+    from StockInvestmentTool.notifier.core import Digest, live_send_digest
+    from StockInvestmentTool.notifier.outbox import NotificationOutbox
+
+    payload = item["payload"]
+    try:
+        result = live_send_digest(
+            Digest(sections=payload.get("sections", []), meta=payload.get("meta", {})),
+            item["channel"], **(payload.get("kwargs") or {}),
+        )
+        if not result or result.get("ok", True) is False:
+            raise RuntimeError(str(result))
+        return result
+    except Exception as exc:
+        NotificationOutbox().mark_failed(item["id"], item.get("attempts", 0), str(exc))
+        return {"ok": False, "error": str(exc), "outbox_id": item["id"]}
+
+
+def process_notification_outbox() -> dict:
+    """Retry pending notifications after process/container restarts."""
+    from StockInvestmentTool.notifier.outbox import NotificationOutbox
+
+    outbox = NotificationOutbox()
+    sent = failed = 0
+    for item in outbox.due():
+        result = _deliver_outbox_item(item)
+        if result.get("ok"):
+            outbox.mark_sent(item["id"])
+            sent += 1
+        else:
+            failed += 1
+    return {"sent": sent, "failed": failed, "pending": outbox.pending_count()}
 
 
 def _evaluate_trigger_condition(condition: dict, data: dict) -> bool:
