@@ -29,7 +29,7 @@ table.kv th{background:var(--surface2);font-weight:600;}
       <h1><i class="fas fa-bell"></i> 通知编排器</h1>
       <div class="sub">何时通知 · 什么条件 · 什么渠道 —— 配置即时生效（免重启）</div>
     </div>
-    {% set active = 'settings' %}{% include '_nav.html' %}
+  {% set active = 'notify' %}{% include '_nav.html' %}
   </div>
 
   {% if error %}<div class="error" style="color:var(--red);background:#fbe9e7;border-radius:6px;padding:12px;margin-bottom:14px;">{{ error }}</div>{% endif %}

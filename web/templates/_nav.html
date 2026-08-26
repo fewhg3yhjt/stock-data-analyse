@@ -1,7 +1,6 @@
-{# 统一导航（FR-4.2）— 各模板用 {% set active='xxx' %}{% include '_nav.html' %}
-   样式统一到 base.css（.header .nav 等），不再各自内联 #}
-{% if active %}
+{# 统一导航（FR-4.2）— active 只控制高亮，不应控制导航是否渲染。 #}
 <div class="nav">
+  <a href="/" {% if active=='analyze' %}class="active"{% endif %}><i class="fas fa-magnifying-glass-chart"></i> 分析</a>
   <a href="/market" {% if active=='market' %}class="active"{% endif %}><i class="fas fa-chart-line"></i> 大盘</a>
   <a href="/dashboard/observe" {% if active=='observe' %}class="active"{% endif %}><i class="fas fa-satellite-dish"></i> 观察</a>
   <a href="/watchlist" {% if active=='watchlist' %}class="active"{% endif %}><i class="fas fa-star"></i> 自选</a>
@@ -13,4 +12,3 @@
   <a href="/dashboard/review" {% if active=='review' %}class="active"{% endif %}><i class="fas fa-book-open"></i> 复盘</a>
   <a href="/settings" {% if active=='settings' %}class="active"{% endif %}><i class="fas fa-gear"></i> 管理</a>
 </div>
-{% endif %}
