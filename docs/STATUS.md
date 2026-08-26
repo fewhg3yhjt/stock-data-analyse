@@ -148,13 +148,13 @@
 
 | 需求 | 落地 | 关键模块 | 备注 |
 |------|------|----------|------|
-| FR-1.1 统一规则派发 | 部分 | `strategy/rule_registry.py` `rule_builtin.py` `context.py` | 买入计划、Advisor 硬止损已接 registry；V4.5/V6 其余规则仍迁移中 |
-| FR-1.2 支撑位/状态机去重 | 部分 | `strategy/support.py` `position_state.py` | 支撑骨架已复用；PortfolioManager/Advisor 已接状态机，回测仍迁移中 |
-| FR-1.3 指标×策略打通 | ✅ | `indicators/context.py` | `IndicatorContext` 统一求值入口（按名/表达式/原子）；advisor 改用 |
-| FR-1.4 数据源抽象 + DuckDB | ✅ | `datasource/base.py` | `DataSource` 协议 + WarehouseSource(DuckDB单查询)/OnlineSource/FallbackDataSource；monitor/dashboard 收敛 |
+| FR-1.1 统一规则派发 | 部分 | `strategy/rule_registry.py` `rule_builtin.py` `context.py` | 分析买入计划、Advisor 主要规则、V4.5 参数读取已接 registry；V6 仍保留决策树实现 |
+| FR-1.2 支撑位/状态机去重 | 部分 | `strategy/support.py` `position_state.py` | 支撑骨架已复用；PortfolioManager/Advisor/V6 已记录共享状态，V4.5 状态仍有兼容字段 |
+| FR-1.3 指标×策略打通 | 部分 | `indicators/context.py` | 买入计划/Advisor 支撑表达式已接入；旧 TechnicalIndicators 仍负责部分技术面 |
+| FR-1.4 数据源抽象 + DuckDB | 部分 | `datasource/base.py` | 日线/分钟接口已抽象，部分 dashboard/engine 仍有具体源直连 |
 | 指标中心 | ✅（第一版） | `indicators/store.py` `indicator_center.html` | 指标浏览/预览；自定义 base/composite CRUD；内置和代码指标保护 |
 | FR-2 策略编排器 | 部分 | `core/composer.py` `scheme_store.py` `strategy_composer.html` | 结构化 list/map-list、实时预览、schema 校验、样本回测预检已完成；发布 UI 仍补齐中 |
 | FR-3 通知编排器 | 部分 | `notifier/core.py` `triggers.py` `notifier/outbox.py` | action/price/indicator + AND/OR、发送后去重、持久化 outbox 和重试已完成；跨源统一批次仍补齐中 |
 | FR-4 UI 统一 | 部分 | `web/static/base.css` `base.html` `_nav.html` | 编排器/通知/指标中心已接入；旧业务页面仍未全部迁移 |
-| FR-5 性能 | 部分 | `datasource/base.py` | 个股图表 DuckDB 单查询（P1）已完成；echarts 1MB 仅图表页加载 |
+| FR-5 性能 | 部分 | `datasource/base.py` | 个股图表 DuckDB 单查询和分钟分区已完成；未建立 P95 基准，ECharts 尚未拆包 |
 | 回归 | ✅ | `tests/`（101 例）| 新增指标、策略、通知、事务、安全、数据边界、备份、健康接口、outbox、状态机和回测参数回归；完整测试 101 例通过 |

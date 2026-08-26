@@ -134,9 +134,9 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 |------|----------|--------------------------|
 | FR-1.1 RuleRegistry | 部分完成 | 分析买入计划和 Advisor 全部主要规则已走 registry；V4.5 回测/V6 全量仍待迁移 |
 | FR-1.2 支撑位 | 大部分完成 | 三条路径已复用共同骨架 |
-| FR-1.2 状态机 | 部分完成 | PortfolioManager/Advisor 已接入；V4.5/V6 回测仍待完全复用 |
+| FR-1.2 状态机 | 部分完成 | PortfolioManager/Advisor/V6 已接入共享状态字段；V4.5 仍保留独立兼容状态字段 |
 | FR-1.3 IndicatorContext | 部分完成 | 买入计划/Advisor 支撑表达式已接入；旧 TechnicalIndicators 仍负责部分技术面和 V6 路径 |
-| FR-1.4 DataSource | 部分完成 | monitor 和部分图表已接入，engine/dashboard 仍有具体数据源直连 |
+| FR-1.4 DataSource | 部分完成 | 日线/分钟读取已有接口和边界；engine/dashboard 仍有部分具体数据源直连 |
 | 指标中心 | 第一版完成 | `/indicator-center` 已支持指标浏览、表达式预览、自定义 base/composite 指标 CRUD；代码指标和内置指标保持只读 |
 | FR-2 策略编排器 | 部分完成 | list/map-list、实时预览、schema 校验和样本回测预检已完成；发布/复杂版本 UI 仍待补齐 |
 | FR-3 通知编排器 | 部分完成 | action/price/indicator 条件和 AND/OR 已执行；HTTP 状态、去重时机、任务防重叠、持久化 outbox 和重试已加固；跨源统一批次仍待补齐 |
