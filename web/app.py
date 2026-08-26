@@ -183,6 +183,9 @@ def api_indicators():
     from StockInvestmentTool.indicators.engine import IndicatorRegistry
     try:
         reg = IndicatorRegistry()
+        custom = {x["name"]: x for x in __import__(
+            "StockInvestmentTool.indicators.store", fromlist=["list_indicators"]
+        ).list_indicators()}
         groups = {"base": [], "composite": [], "code": []}
         for name in reg.all_names():
             d = reg.get(name)
@@ -195,11 +198,63 @@ def api_indicators():
                 "expr": d.expr,
                 "description": d.description,
                 "applies_to": d.applies_to,
+                "source": custom.get(name, {}).get("source", "builtin"),
+                "editable": bool(custom.get(name, {}).get("editable", False)),
+                "enabled": custom.get(name, {}).get("enabled", True),
             })
+        # Keep disabled custom indicators visible in the management catalogue.
+        existing = {item["name"] for group in groups.values() for item in group}
+        for item in custom.values():
+            if item["name"] in existing:
+                continue
+            groups.setdefault(item.get("kind", "composite"), []).append(item)
+        count = sum(len(items) for items in groups.values())
         return flask.jsonify({"status": "success", "groups": groups,
-                              "count": len(reg.all_names())})
+                              "count": count})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/indicators/save", methods=["POST"])
+def api_indicator_save():
+    from StockInvestmentTool.indicators.store import save_indicator
+
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    try:
+        result = save_indicator(
+            str(payload.get("name", "")), str(payload.get("kind", "composite")),
+            str(payload.get("expr", "")), str(payload.get("description", "")),
+        )
+        return flask.jsonify({"status": "success", "indicator": result})
+    except ValueError as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+    except Exception as e:
+        logger.exception("保存用户指标失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/indicators/toggle", methods=["POST"])
+def api_indicator_toggle():
+    from StockInvestmentTool.indicators.store import set_enabled
+
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    try:
+        result = set_enabled(str(payload.get("name", "")), bool(payload.get("enabled", True)))
+        return flask.jsonify({"status": "success", **result})
+    except ValueError as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/indicators/delete", methods=["POST"])
+def api_indicator_delete():
+    from StockInvestmentTool.indicators.store import delete_indicator
+
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    try:
+        name = str(payload.get("name", ""))
+        return flask.jsonify({"status": "success", "name": name, "deleted": delete_indicator(name)})
+    except ValueError as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
 
 
 @web_app.route("/api/indicators/preview", methods=["POST"])

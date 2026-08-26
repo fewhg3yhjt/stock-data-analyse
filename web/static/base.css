@@ -92,6 +92,9 @@ tr:last-child td{border-bottom:none;}
 .preview-result{margin-left:10px;font-size:13px;color:var(--text2);}
 .preview-result.ok{color:var(--green);}.preview-result.error-text{color:var(--red);}
 .preview-chart{height:390px;min-height:160px;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;}
+.indicator-modal{background:var(--surface);border-radius:10px;padding:22px;max-width:620px;width:90%;}
+.indicator-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
 
 .metric-grid .m{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:6px 10px;text-align:center;}
 .metric-grid .m .l{font-size:11px;color:var(--text2);}

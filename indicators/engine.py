@@ -141,6 +141,21 @@ class IndicatorRegistry:
                 except Exception as e:
                     logger.warning("代码指标加载失败 %s: %s", name, e)
 
+        # 用户指标单独存储，且停用项不进入运行时注册表。
+        try:
+            from StockInvestmentTool.indicators.store import list_indicators
+            for item in list_indicators():
+                if not item.get("enabled", True) or not item.get("name"):
+                    continue
+                target = self._bases if item.get("kind") == "base" else self._composites
+                target[item["name"]] = IndicatorDef(
+                    item["name"], item.get("kind", "composite"), item.get("expr", ""),
+                    description=item.get("description", ""),
+                    applies_to=item.get("applies_to", ["stock", "etf"]),
+                )
+        except Exception as e:
+            logger.warning("用户指标加载失败: %s", e)
+
     # ── 注册 ─────────────────────────────────────────
 
     def register_code(self, name: str, fn: Callable, description: str = ""):

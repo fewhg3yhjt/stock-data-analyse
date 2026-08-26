@@ -137,6 +137,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | FR-1.2 状态机 | 未接入 | `PositionStateMachine` 主要只有实现和单测，没有生产调用 |
 | FR-1.3 IndicatorContext | 部分完成 | 新上下文存在，但旧指标系统仍是主要执行路径之一 |
 | FR-1.4 DataSource | 部分完成 | monitor 和部分图表已接入，engine/dashboard 仍有具体数据源直连 |
+| 指标中心 | 第一版完成 | `/indicator-center` 已支持指标浏览、表达式预览、自定义 base/composite 指标 CRUD；代码指标和内置指标保持只读 |
 | FR-2 策略编排器 | 部分完成 | API 和页面存在，核心 list/map-list 参数及语义校验不完整 |
 | FR-3 通知编排器 | 部分完成 | 配置和调度存在，但条件参数、AND/OR、indicator 条件没有完整执行 |
 | FR-4 UI 统一 | 少量完成 | `base.html/base.css` 存在，绝大部分页面仍未继承公共模板 |

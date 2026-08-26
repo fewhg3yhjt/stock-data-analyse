@@ -11,11 +11,11 @@
   </header>
 
   <div class="notice">
-    当前为只读指标中心。指标定义仍由 <code>schemes/indicators.yaml</code> 管理；表达式通过预览后，可在策略编排器中引用。
+      内置指标只读；自定义基础/组合指标保存到独立的 <code>schemes/custom/indicators.yaml</code>，不会覆盖内置定义或天级行情数据。
   </div>
   <div class="indicator-layout">
     <section class="card">
-      <div class="card-title"><span><i class="fas fa-book"></i> 可用指标</span><span class="tag blue" id="indicator-count">加载中</span></div>
+      <div class="card-title"><span><i class="fas fa-book"></i> 可用指标</span><span><button class="btn btn-primary btn-sm" onclick="newIndicator()"><i class="fas fa-plus"></i> 新建指标</button> <span class="tag blue" id="indicator-count">加载中</span></span></div>
       <div class="form-group"><label for="indicator-search">搜索名称、表达式或说明</label><input id="indicator-search" placeholder="例如 MA20、双均线低点" oninput="renderIndicators()"></div>
       <div id="indicator-list" class="indicator-list"></div>
     </section>
@@ -35,6 +35,17 @@
     </section>
   </div>
 </main>
+<div class="modal-bg" id="indicator-modal">
+  <div class="modal indicator-modal">
+    <div class="card-title"><span id="indicator-modal-title">新建自定义指标</span><button class="btn btn-ghost btn-sm" onclick="closeIndicatorModal()">关闭</button></div>
+    <div class="form-group"><label for="edit-name">指标名</label><input id="edit-name" placeholder="例如 MA17_custom"></div>
+    <div class="form-group"><label for="edit-kind">类型</label><select id="edit-kind"><option value="base">基础指标</option><option value="composite">组合指标</option></select></div>
+    <div class="form-group"><label for="edit-expr">表达式</label><input id="edit-expr" placeholder="例如 MA(close,17) 或 0.95*MA20"></div>
+    <div class="form-group"><label for="edit-description">说明</label><input id="edit-description" placeholder="给策略使用者看的说明"></div>
+    <div class="formula-help">仅允许安全表达式和已存在指标；代码指标需由开发者注册，不能从网页注入 Python。</div>
+    <div style="margin-top:14px;display:flex;gap:8px;align-items:center;"><button class="btn btn-primary" onclick="saveIndicator()"><i class="fas fa-save"></i> 保存</button><span id="edit-status" class="preview-result"></span></div>
+  </div>
+</div>
 <script src="/static/echarts.min.js"></script>
 <script>
 let indicators = {base:[], composite:[], code:[]};
@@ -53,11 +64,51 @@ function renderIndicators(){
     const heading=document.createElement('div'); heading.className='indicator-group-title'; heading.innerHTML=`<span class="tag ${color}">${label}</span><span>${items.length} 项</span>`; target.appendChild(heading);
     items.forEach(item=>{
       const row=document.createElement('button'); row.className='indicator-row'; row.type='button';
-      row.innerHTML=`<strong>${escapeHtml(item.name)}</strong><code>${escapeHtml(item.expr || 'Python 代码指标')}</code><span>${escapeHtml(item.description || '暂无说明')}</span>`;
-      row.onclick=()=>{document.getElementById('preview-expr').value=item.name; previewExpression();}; target.appendChild(row);
+      row.innerHTML=`<strong>${escapeHtml(item.name)} ${item.source==='custom' ? '<span class="tag gray">自定义</span>' : '<span class="tag gray">内置</span>'} ${item.enabled===false ? '<span class="tag off">已停用</span>' : ''}</strong><code>${escapeHtml(item.expr || 'Python 代码指标')}</code><span>${escapeHtml(item.description || '暂无说明')}</span>`;
+      row.onclick=()=>{document.getElementById('preview-expr').value=item.name; previewExpression();};
+      if(item.editable){
+        const actions=document.createElement('div'); actions.className='indicator-actions';
+        actions.innerHTML=`<button class="btn btn-ghost btn-sm" type="button">编辑</button><button class="btn btn-ghost btn-sm" type="button">${item.enabled===false?'启用':'停用'}</button><button class="btn btn-danger btn-sm" type="button">删除</button>`;
+        actions.children[0].onclick=(event)=>{event.stopPropagation(); editIndicator(item);};
+        actions.children[1].onclick=(event)=>{event.stopPropagation(); toggleIndicator(item);};
+        actions.children[2].onclick=(event)=>{event.stopPropagation(); deleteIndicator(item);};
+        row.appendChild(actions);
+      }
+      target.appendChild(row);
     });
   });
   if(!target.innerHTML) target.innerHTML='<div class="empty">没有匹配的指标</div>';
+}
+function newIndicator(){
+  document.getElementById('indicator-modal-title').textContent='新建自定义指标';
+  ['edit-name','edit-expr','edit-description'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('edit-kind').value='composite'; document.getElementById('edit-name').disabled=false;
+  document.getElementById('edit-status').textContent=''; document.getElementById('indicator-modal').style.display='flex';
+}
+function editIndicator(item){
+  document.getElementById('indicator-modal-title').textContent='编辑自定义指标';
+  document.getElementById('edit-name').value=item.name; document.getElementById('edit-name').disabled=false;
+  document.getElementById('edit-kind').value=item.kind; document.getElementById('edit-expr').value=item.expr || '';
+  document.getElementById('edit-description').value=item.description || ''; document.getElementById('edit-status').textContent='';
+  document.getElementById('indicator-modal').style.display='flex';
+}
+function closeIndicatorModal(){document.getElementById('indicator-modal').style.display='none';}
+async function saveIndicator(){
+  const status=document.getElementById('edit-status'); status.textContent='保存中…';
+  try{
+    const response=await fetch('/api/indicators/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.getElementById('edit-name').value,kind:document.getElementById('edit-kind').value,expr:document.getElementById('edit-expr').value,description:document.getElementById('edit-description').value})});
+    const data=await response.json(); if(data.status!=='success') throw new Error(data.error || '保存失败');
+    status.textContent='已保存'; status.className='preview-result ok'; closeIndicatorModal(); await loadIndicators();
+  }catch(error){status.textContent=error.message; status.className='preview-result error-text';}
+}
+async function toggleIndicator(item){
+  const response=await fetch('/api/indicators/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:item.name,enabled:item.enabled===false})});
+  const data=await response.json(); if(data.status!=='success'){alert(data.error || '操作失败');return;} await loadIndicators();
+}
+async function deleteIndicator(item){
+  if(!confirm(`确定删除自定义指标“${item.name}”吗？`)) return;
+  const response=await fetch('/api/indicators/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:item.name})});
+  const data=await response.json(); if(data.status!=='success'){alert(data.error || '删除失败');return;} await loadIndicators();
 }
 async function previewExpression(){
   const status=document.getElementById('preview-status'); status.textContent='计算中…'; status.className='preview-result';

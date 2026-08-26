@@ -30,6 +30,7 @@ output/
 
 # 用户自定义方案/启停状态/版本历史（运行时产物，不推送）
 schemes/custom/.state.json
+schemes/custom/.indicator_state.json
 schemes/custom/.versions/
 schemes/custom/*.yaml
 
