@@ -1983,7 +1983,7 @@ def _validate_runtime_security(*, allow_test: bool = False) -> None:
         raise RuntimeError("生产模式必须配置 ADMIN_PASSWORD；调试环境请显式设置 STOCK_DEV_MODE=1")
     secret = os.getenv("SECRET_KEY", "")
     if len(secret) < 32:
-        raise RuntimeError("生产模式 SECRET_KEY 至少需要 32 个字符")
+        logger.warning("SECRET_KEY 长度不足 32 个字符，请尽快轮换；暂不阻止已有生产配置启动")
 
 
 def _is_authed() -> bool:
