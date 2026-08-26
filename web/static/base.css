@@ -22,8 +22,9 @@ a{color:var(--accent);text-decoration:none;}
 .header h1 i{color:var(--accent);}
 .header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
 .header .nav{font-size:14px;}
-.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
+.header .nav a{color:var(--accent);text-decoration:none;margin-left:12px;}
 .header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
+.nav-legacy{display:none;}
 
 /* ── 组件：卡片 / 按钮 / 表格 / 标签 / 提示 / Toast ── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
@@ -110,6 +111,8 @@ tr:last-child td{border-bottom:none;}
   .header{flex-direction:column;align-items:flex-start;}
   .header .nav{margin-top:8px;}
   .header .nav a{margin-left:0;margin-right:14px;display:inline-block;}
+  .nav{display:flex;flex-wrap:wrap;gap:4px 10px;}
+  .header .nav a{margin-right:0;}
    .form-row{grid-template-columns:1fr;}
    .indicator-layout{grid-template-columns:1fr;}
    .preview-chart{height:260px;}

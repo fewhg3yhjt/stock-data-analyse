@@ -65,15 +65,17 @@ def _parse_time(spec: str) -> tuple[int, int]:
         return 15, 35
 
 
-def run_daily_tasks() -> dict:
+def run_daily_tasks(run_id: int | None = None) -> dict:
     """每日自动任务主体。"""
     logger.info("=== 每日自动任务开始 ===")
     from StockInvestmentTool.ops.job_runs import JobRunStore
-    run_id = JobRunStore().start("daily_tasks")
+    owns_run = run_id is None
+    run_id = run_id or JobRunStore().start("daily_tasks")
     from StockInvestmentTool.portfolio.manager import PortfolioManager
 
     mgr = PortfolioManager()
     results: dict = {}
+    failures = []
 
     # ① 持仓刷新（现价/点位/建议）
     try:
@@ -82,12 +84,14 @@ def run_daily_tasks() -> dict:
     except Exception as e:
         logger.error("持仓刷新失败: %s", e)
         results["holdings"] = f"error: {e}"
+        failures.append("holdings")
 
     # ② 持仓 → 自选同步
     try:
         results["watchlist_sync"] = mgr.sync_holdings_to_watchlist()
     except Exception as e:
         logger.error("自选同步失败: %s", e)
+        failures.append("watchlist_sync")
 
     # ③ 观察池重算（候选指标更新，写缓存）
     try:
@@ -96,6 +100,7 @@ def run_daily_tasks() -> dict:
         results["observe"] = len(rows)
     except Exception as e:
         logger.error("观察池重算失败: %s", e)
+        failures.append("observe")
 
     # ④ 生成晨报
     try:
@@ -103,6 +108,7 @@ def run_daily_tasks() -> dict:
         results["report"] = MorningReporter(mgr).generate(refresh=True)
     except Exception as e:
         logger.error("晨报生成失败: %s", e)
+        failures.append("report")
 
     # ④' 数据仓库离线采集（可选，默认关闭）
     # 用 WAREHOUSE_DAILY_SYNC=1 开启。开盘期间请勿开启（会在盘中拉全量）。
@@ -112,14 +118,18 @@ def run_daily_tasks() -> dict:
         except Exception as e:
             logger.error("数据仓库采集失败: %s", e)
             results["warehouse"] = f"error: {e}"
+            failures.append("warehouse")
 
     # ⑤ 消息推送
     try:
         results["notify"] = run_daily_digest(mgr)
     except Exception as e:
         logger.error("通知推送失败: %s", e)
+        failures.append("notify")
 
-    JobRunStore().finish(run_id, "success", results)
+    results["failures"] = failures
+    if owns_run or run_id:
+        JobRunStore().finish(run_id, "failed" if failures else "success", results)
     logger.info("=== 每日自动任务完成: %s ===", results)
     return results
 

@@ -32,6 +32,8 @@ def client():
         ("/dashboard/warroom", "warroom"),
         ("/dashboard/review", "review"),
         ("/settings", "settings"),
+        ("/data-center", "data"),
+        ("/watch-pool", "watchpool"),
     ],
 )
 def test_core_page_renders_shared_navigation(client, path, active):
@@ -59,4 +61,6 @@ def _href_for_active(active: str) -> str:
         "warroom": "/dashboard/warroom",
         "review": "/dashboard/review",
         "settings": "/settings",
+        "data": "/data-center",
+        "watchpool": "/watch-pool",
     }[active]

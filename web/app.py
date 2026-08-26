@@ -279,9 +279,110 @@ def api_data_jobs():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/data/jobs/<int:run_id>", methods=["GET"])
+def api_data_job(run_id):
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    item = JobRunStore().get(run_id)
+    if item is None:
+        return flask.jsonify({"status": "error", "error": "任务运行记录不存在"}), 404
+    return flask.jsonify({"status": "success", "job": item})
+
+
+def _start_data_job(job_name, worker):
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    store = JobRunStore()
+    active = store.running(job_name)
+    if active:
+        return flask.jsonify({"status": "error", "error": "同一任务正在运行",
+                              "run_id": active["id"]}), 409
+    run_id = store.start(job_name)
+
+    def execute():
+        try:
+            result = worker(run_id)
+            # Workers that own a ledger entry finish it themselves; otherwise
+            # the dispatcher records the common success/failure transition.
+            if store.get(run_id) and store.get(run_id)["status"] == "running":
+                store.finish(run_id, "success", result if isinstance(result, dict) else {"result": result})
+        except Exception as exc:
+            logger.exception("手动任务失败: %s", job_name)
+            store.finish(run_id, "failed", error=str(exc))
+
+    threading.Thread(target=execute, daemon=True, name=f"job-{job_name}-{run_id}").start()
+    return flask.jsonify({"status": "success", "run_id": run_id, "job_name": job_name}), 202
+
+
+@web_app.route("/api/data/jobs/daily-sync", methods=["POST"])
+def api_data_daily_sync():
+    from StockInvestmentTool.web.scheduler import run_daily_tasks
+    return _start_data_job("daily_tasks", lambda run_id: run_daily_tasks(run_id=run_id))
+
+
+@web_app.route("/api/data/jobs/minute-snapshot", methods=["POST"])
+def api_data_minute_snapshot():
+    from StockInvestmentTool.warehouse.online import _default_observe_codes
+    from StockInvestmentTool.warehouse.minute import collect_minute_snapshot
+    return _start_data_job("minute_snapshot", lambda _run_id: collect_minute_snapshot(_default_observe_codes()))
+
+
+@web_app.route("/api/data/jobs/rebuild-indicators", methods=["POST"])
+def api_data_rebuild_indicators():
+    from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
+    return _start_data_job("rebuild_indicators", lambda _run_id: IndicatorsBuilder().build_all())
+
+
+@web_app.route("/api/data/jobs/rebuild-factors", methods=["POST"])
+def api_data_rebuild_factors():
+    from StockInvestmentTool.warehouse.factors import FactorEngine
+    return _start_data_job("rebuild_factors", lambda _run_id: FactorEngine().build_factors())
+
+
 @web_app.route("/data-center", methods=["GET"])
 def data_center_page():
     return flask.render_template("data_center.html")
+
+
+@web_app.route("/api/watch-pool", methods=["GET"])
+def api_watch_pool():
+    try:
+        from StockInvestmentTool.portfolio.dashboard import DashboardService
+        refresh = flask.request.args.get("refresh") == "1"
+        return flask.jsonify({"status": "success", "items": DashboardService(_get_manager()).watch_pool(refresh=refresh)})
+    except Exception as e:
+        logger.exception("观察池读取失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/watch-pool", methods=["GET"])
+def watch_pool_page():
+    return flask.render_template("watch_pool.html")
+
+
+@web_app.route("/api/workbench/summary", methods=["GET"])
+def api_workbench_summary():
+    try:
+        from StockInvestmentTool.ops.freshness import data_status
+        from StockInvestmentTool.portfolio.dashboard import DashboardService
+        manager = _get_manager()
+        warroom = DashboardService(manager).war_room()
+        pool = DashboardService(manager).watch_pool()
+        health = data_status()
+        return flask.jsonify({"status": "success", "market_summary": {},
+                              "actionable_positions": [p for p in warroom.get("positions", []) if p.get("advice")],
+                              "watchlist_changes": pool[:10], "dataset_health": health,
+                              "notification_health": {},
+                              "quick_actions": [{"label": "分析股票", "href": "/"},
+                                                {"label": "查看观察池", "href": "/watch-pool"},
+                                                {"label": "查看持仓", "href": "/dashboard/warroom"},
+                                                {"label": "数据中心", "href": "/data-center"}]})
+    except Exception as e:
+        logger.exception("工作台摘要读取失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/workbench", methods=["GET"])
+def workbench_page():
+    return flask.render_template("workbench.html")
 
 
 @web_app.route("/api/indicators/save", methods=["POST"])
@@ -472,6 +573,84 @@ def api_schemes_validate_run():
     except Exception as e:
         logger.exception("方案样本验证失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/schemes/validate", methods=["POST"])
+def api_schemes_validate():
+    """Validate and persist a user scheme's current content and sample result."""
+    from StockInvestmentTool.core import scheme_store
+    from StockInvestmentTool.core.composer import validate_yaml
+    from StockInvestmentTool.web.app import api_schemes_validate_run
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    content = payload.get("content") or ""
+    name = (payload.get("name") or "").strip()
+    if not content and name:
+        try:
+            content = __import__("StockInvestmentTool.portfolio.settings", fromlist=["read_scheme"]).read_scheme(name)
+        except Exception as exc:
+            return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    check = validate_yaml(content)
+    if not check["ok"]:
+        return flask.jsonify({"status": "error", "error": check["error"]}), 400
+    try:
+        model = __import__("StockInvestmentTool.core.composer", fromlist=["yaml_to_model"]).yaml_to_model(content)
+        name = model["name"]
+        # Validate the current editor content without persisting it first.
+        code = (payload.get("code") or "").strip()
+        if not code:
+            return flask.jsonify({"status": "error", "error": "静态校验通过，但还需要样本股票代码"}), 400
+        with flask.current_app.test_request_context(json={**payload, "content": content}):
+            result = api_schemes_validate_run()
+        if isinstance(result, tuple):
+            response, status = result
+            if status >= 400:
+                return response, status
+        else:
+            response = result
+        summary = response.get_json()
+        res = scheme_store.save_scheme(name, content)
+        meta = scheme_store.set_validation(name, sample_code=code, result=summary, validated_by=os.getenv("ADMIN_USER", "admin"))
+        return flask.jsonify({"status": "success", "scheme": res, "metadata": meta})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/publish", methods=["POST"])
+def api_schemes_publish():
+    from StockInvestmentTool.core import scheme_store
+    from StockInvestmentTool.core.registry import SchemeRegistry
+    try:
+        name = (flask.request.get_json(force=True, silent=True) or {}).get("name", "").strip()
+        if name in scheme_store.BUILTIN_SCHEMES:
+            raise ValueError("内置方案不可通过用户发布流程修改")
+        result = scheme_store.publish(name)
+        SchemeRegistry().reload()
+        return flask.jsonify({"status": "success", "metadata": result,
+                              "impact": _scheme_impact(name)})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+def _scheme_impact(name: str) -> dict:
+    manager = _get_manager()
+    positions = manager.storage.get_positions()
+    simulations = manager.storage.get_simulations()
+    meta = __import__("StockInvestmentTool.core.scheme_store", fromlist=["metadata"]).metadata(name)
+    return {"name": name, "open_positions": sum(p.scheme_name == name and p.status == "open" for p in positions),
+            "closed_positions": sum(p.scheme_name == name and p.status == "closed" for p in positions),
+            "simulations": sum(s.scheme_name == name for s in simulations), "default": meta["default"],
+            "enabled": meta["enabled"], "state": meta["state"],
+            "historical_positions_use_snapshot": True, "new_positions_only": True,
+            "default_will_change": False}
+
+
+@web_app.route("/api/schemes/impact", methods=["GET"])
+def api_schemes_impact():
+    try:
+        name = flask.request.args.get("name", "").strip()
+        return flask.jsonify({"status": "success", **_scheme_impact(name)})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 404
 
 
 @web_app.route("/api/schemes/list", methods=["GET"])

@@ -62,3 +62,23 @@ class JobRunStore:
                 item["result"] = {}
             out.append(item)
         return out
+
+    def get(self, run_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM job_runs WHERE id=?", (int(run_id),)).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        try:
+            item["result"] = json.loads(item["result"])
+        except Exception:
+            item["result"] = {}
+        return item
+
+    def running(self, job_name: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM job_runs WHERE job_name=? AND status='running' ORDER BY id DESC LIMIT 1",
+                (job_name,),
+            ).fetchone()
+        return dict(row) if row else None

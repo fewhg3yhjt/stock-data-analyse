@@ -137,6 +137,59 @@ class DashboardService:
             logger.warning("观察池缓存写入失败: %s", e)
         return self._refresh_prices(rows)
 
+    def watch_pool(self, *, refresh: bool = False) -> list[dict]:
+        """Merge watchlist, strategy observations, simulations, and holdings."""
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+
+        def key(code: str) -> str:
+            return StockDataFetcher.normalize_code(code).replace(".", "").lower()
+
+        watchlist = self.manager.get_watchlist()
+        simulations = self.manager.get_simulations()
+        holdings = self.manager.storage.get_open_positions()
+        observations = self.observe_pool(use_cache=not refresh)
+        merged: dict[str, dict] = {}
+
+        def entry(code: str, name: str = "") -> dict:
+            normalized = key(code)
+            item = merged.setdefault(normalized, {
+                "code": normalized, "name": name or normalized, "sources": [],
+                "watch": None, "simulation": None, "holding": None,
+                "observation": None, "next_action": "none",
+            })
+            if name:
+                item["name"] = name
+            return item
+
+        for watch in watchlist:
+            item = entry(watch.stock_code, watch.stock_name)
+            item["watch"] = watch.to_dict()
+            if watch.source not in item["sources"]:
+                item["sources"].append(watch.source)
+        for observation in observations:
+            item = entry(observation.get("code", ""), observation.get("name", ""))
+            item["observation"] = observation
+            if observation.get("code") and "strategy" not in item["sources"] and not item["watch"]:
+                item["sources"].append("strategy")
+        for simulation in simulations:
+            item = entry(simulation.stock_code, simulation.stock_name)
+            item["simulation"] = simulation.to_dict()
+        for holding in holdings:
+            item = entry(holding.stock_code, holding.stock_name)
+            item["holding"] = holding.to_dict()
+            if "holding" not in item["sources"]:
+                item["sources"].append("holding")
+        for item in merged.values():
+            if item["holding"]:
+                item["next_action"] = "review"
+            elif item["simulation"]:
+                item["next_action"] = "buy"
+            elif item["watch"]:
+                item["next_action"] = "simulate"
+            else:
+                item["next_action"] = "none"
+        return sorted(merged.values(), key=lambda item: (item["name"], item["code"]))
+
     def _refresh_prices(self, rows: list[dict]) -> list[dict]:
         """每次打开页面用腾讯实时报价刷新现价/涨跌幅，并合并增强字段。
 

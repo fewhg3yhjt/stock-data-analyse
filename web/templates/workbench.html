@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 工作台{% endblock %}
+{% block body %}
+<main class="app">
+  <header class="header"><div><h1><i class="fas fa-table-columns"></i> 工作台</h1><div class="sub">系统状态、数据新鲜度、今日操作和下一步行动</div></div>{% set active = 'workbench' %}{% include '_nav.html' %}</header>
+  <section class="card"><div class="card-title"><span><i class="fas fa-signal"></i> 总览</span><span id="health" class="tag gray">加载中</span></div><div class="note" id="checked">正在读取系统摘要...</div></section>
+  <div class="dataset-grid" id="cards"><div class="card empty">加载中...</div></div>
+  <section class="card"><div class="card-title">快捷操作</div><div id="actions" style="display:flex;gap:8px;flex-wrap:wrap"></div></section>
+</main>
+<script>
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function load(){const r=await fetch('/api/workbench/summary');const d=await r.json();if(d.status!=='success'){document.getElementById('checked').textContent=d.error;return;}const h=d.dataset_health;const tag=document.getElementById('health');tag.textContent=h.overall_status;tag.className='tag status-'+h.overall_status;document.getElementById('checked').textContent='预期交易日 '+h.expected_trade_day+' · 检查时间 '+h.checked_at;document.getElementById('cards').innerHTML=h.datasets.map(x=>`<article class="card"><div class="card-title"><span>${esc(x.dataset)}</span><span class="tag status-${esc(x.status)}">${esc(x.status)}</span></div><div class="note">最新：${esc(x.latest_value||'暂无')}<br>原因：${esc(x.last_error||'—')}</div></article>`).join('');document.getElementById('actions').innerHTML=d.quick_actions.map(a=>`<a class="btn btn-primary" href="${esc(a.href)}">${esc(a.label)}</a>`).join('');}
+load();
+</script>
+{% endblock %}

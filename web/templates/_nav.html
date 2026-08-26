@@ -1,15 +1,20 @@
 {# 统一导航（FR-4.2）— active 只控制高亮，不应控制导航是否渲染。 #}
 <div class="nav">
-  <a href="/" {% if active=='analyze' %}class="active"{% endif %}><i class="fas fa-magnifying-glass-chart"></i> 分析</a>
-  <a href="/market" {% if active=='market' %}class="active"{% endif %}><i class="fas fa-chart-line"></i> 大盘</a>
-  <a href="/dashboard/observe" {% if active=='observe' %}class="active"{% endif %}><i class="fas fa-satellite-dish"></i> 观察</a>
-  <a href="/watchlist" {% if active=='watchlist' %}class="active"{% endif %}><i class="fas fa-star"></i> 自选</a>
-  <a href="/simulation" {% if active=='simulation' %}class="active"{% endif %}><i class="fas fa-flask"></i> 模拟</a>
-  <a href="/strategy" {% if active=='strategy' %}class="active"{% endif %}><i class="fas fa-vial-virus"></i> 策略</a>
-  <a href="/indicator-center" {% if active=='indicators' %}class="active"{% endif %}><i class="fas fa-chart-area"></i> 指标</a>
-  <a href="/strategy-composer" {% if active=='composer' %}class="active"{% endif %}><i class="fas fa-cogs"></i> 编排器</a>
-  <a href="/notify-center" {% if active=='notify' %}class="active"{% endif %}><i class="fas fa-bell"></i> 通知</a>
-  <a href="/dashboard/warroom" {% if active=='warroom' %}class="active"{% endif %}><i class="fas fa-shield-halved"></i> 持仓</a>
-  <a href="/dashboard/review" {% if active=='review' %}class="active"{% endif %}><i class="fas fa-book-open"></i> 复盘</a>
-  <a href="/settings" {% if active=='settings' %}class="active"{% endif %}><i class="fas fa-gear"></i> 管理</a>
+  <a href="/workbench" {% if active=='workbench' %}class="active"{% endif %}>工作台</a>
+  <a href="/market" {% if active=='market' %}class="active"{% endif %}>市场</a>
+  <a href="/watch-pool" {% if active in ('watchpool','observe','watchlist','simulation') %}class="active"{% endif %}>观察池</a>
+  <a href="/dashboard/warroom" {% if active=='warroom' %}class="active"{% endif %}>持仓</a>
+  <a href="/strategy" {% if active in ('strategy','indicators','composer') %}class="active"{% endif %}>研究</a>
+  <a href="/dashboard/review" {% if active=='review' %}class="active"{% endif %}>复盘</a>
+  <a href="/data-center" {% if active in ('data','notify','settings') %}class="active"{% endif %}>系统</a>
+  <span class="nav-legacy">
+    <a href="/" {% if active=='analyze' %}class="active"{% endif %}>分析</a>
+    <a href="/dashboard/observe" {% if active=='observe' %}class="active"{% endif %}>观察</a>
+    <a href="/watchlist" {% if active=='watchlist' %}class="active"{% endif %}>自选</a>
+    <a href="/simulation" {% if active=='simulation' %}class="active"{% endif %}>模拟</a>
+    <a href="/indicator-center" {% if active=='indicators' %}class="active"{% endif %}>指标</a>
+    <a href="/strategy-composer" {% if active=='composer' %}class="active"{% endif %}>编排器</a>
+    <a href="/notify-center" {% if active=='notify' %}class="active"{% endif %}>通知</a>
+    <a href="/settings" {% if active=='settings' %}class="active"{% endif %}>管理</a>
+  </span>
 </div>
