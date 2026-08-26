@@ -40,6 +40,20 @@ def _market_session_minute_trigger():
     ]
 
 
+def _market_session_intraday_trigger(interval: int):
+    """Return an intraday trigger limited to A-share trading sessions."""
+    from apscheduler.triggers.cron import CronTrigger
+
+    minute = f"*/{interval}"
+    return [
+        CronTrigger(day_of_week="mon-fri", hour=9, minute="30,40,50", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=10, minute=minute, timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=11, minute="0,10,20,30", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=13, minute=minute, timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=14, minute=minute, timezone=TZ),
+    ]
+
+
 def _parse_time(spec: str) -> tuple[int, int]:
     """'15:35' → (15, 35)"""
     spec = (spec or DEFAULT_RUN_TIME).strip()
@@ -320,13 +334,12 @@ def _schedule_from_triggers(scheduler) -> None:
         try:
             if mode == "intraday":
                 minutes = min(max(int(sched.get("interval_minutes", 10)), 5), 120)
-                scheduler.add_job(
-                    lambda r=rule: run_trigger_rule(r),
-                    CronTrigger(minute=f"*/{minutes}", timezone=TZ),
-                    id=f"trigger_{rid}", misfire_grace_time=600, coalesce=True,
-                    max_instances=1,
-                    replace_existing=True,
-                )
+                for index, trigger in enumerate(_market_session_intraday_trigger(minutes)):
+                    scheduler.add_job(
+                        lambda r=rule: run_trigger_rule(r), trigger,
+                        id=f"trigger_{rid}_{index}", misfire_grace_time=600,
+                        coalesce=True, max_instances=1, replace_existing=True,
+                    )
                 logger.info("通知触发器已挂载: %s（盘中每 %d 分钟，%s）", rid, minutes, channel)
             elif mode in ("post_close", "daily"):
                 t = str(sched.get("time", "15:35"))

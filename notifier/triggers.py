@@ -91,6 +91,7 @@ SCHEDULE_MODES = [
 
 def default_config() -> dict:
     """默认触发器配置（保护内置默认行为）。"""
+    default_channel = os.getenv("NOTIFY_CHANNEL", "feishu")
     return {
         "rules": [
             {
@@ -101,7 +102,7 @@ def default_config() -> dict:
                                 "params": {"advice_types": ["partial_sell", "sell_all", "buy_more", "adjust_stop"]}}],
                 "logic": "AND",
                 "schedule": {"mode": "intraday", "interval_minutes": 10},
-                "channel": "feishu",
+                "channel": default_channel,
                 "priority": "instant",
             },
             {
@@ -112,7 +113,7 @@ def default_config() -> dict:
                                 "params": {"advice_types": ["hold", "partial_sell", "sell_all", "buy_more"]}}],
                 "logic": "OR",
                 "schedule": {"mode": "post_close", "time": "15:35"},
-                "channel": "feishu",
+                "channel": default_channel,
                 "priority": "batch",
             },
             {
@@ -122,7 +123,7 @@ def default_config() -> dict:
                 "conditions": [{"type": "action", "params": {"advice_types": ["hold"]}}],
                 "logic": "AND",
                 "schedule": {"mode": "post_close", "time": "15:35"},
-                "channel": "feishu",
+                "channel": default_channel,
                 "priority": "batch",
             },
         ]

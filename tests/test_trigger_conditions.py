@@ -26,3 +26,10 @@ def test_action_condition_filters_advice_types():
 def test_or_and_condition_result_is_individual():
     assert _evaluate_trigger_condition({"type": "action", "params": {"advice_types": ["partial_sell"]}}, _data())
     assert not _evaluate_trigger_condition({"type": "action", "params": {"advice_types": ["hold"]}}, _data())
+
+
+def test_default_trigger_channel_follows_environment(monkeypatch):
+    from StockInvestmentTool.notifier import triggers
+
+    monkeypatch.setenv("NOTIFY_CHANNEL", "email")
+    assert triggers.default_config()["rules"][0]["channel"] == "email"
