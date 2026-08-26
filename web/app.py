@@ -1044,6 +1044,10 @@ def portfolio_import():
     file = flask.request.files.get("file")
     if not file or not file.filename:
         return flask.jsonify({"status": "error", "error": "请选择 Excel 文件"}), 400
+    if flask.request.content_length and flask.request.content_length > 10 * 1024 * 1024:
+        return flask.jsonify({"status": "error", "error": "Excel 文件不能超过 10MB"}), 413
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        return flask.jsonify({"status": "error", "error": "仅支持 Excel 文件"}), 400
     tmp = Path(Config.DATA_DIR) / f"import_{datetime.now():%Y%m%d%H%M%S}.xlsx"
     file.save(str(tmp))
     try:
