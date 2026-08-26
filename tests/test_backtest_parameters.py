@@ -23,3 +23,12 @@ def test_trail_threshold_is_used_by_right_side_logic(kline):
     )
 
     assert low_threshold[-1] != high_threshold[-1] or low_threshold[1] != high_threshold[1]
+
+
+def test_scheme_can_disable_technical_stop(kline):
+    from StockInvestmentTool.core.scheme import SchemeConfig, RiskConfig
+    from StockInvestmentTool.strategy.take_profit import TakeProfitOptimizer
+
+    scheme = SchemeConfig(name="test", risk=RiskConfig(technical_stop_enabled=False))
+    optimizer = TakeProfitOptimizer(kline, scheme=scheme)
+    assert optimizer.technical_stop_enabled is False

@@ -310,6 +310,7 @@ class TakeProfitOptimizer:
         self.stop_loss_rate = stop_loss_rate
         self.drawdown_stop = drawdown_stop
         self.min_profit_for_dd = min_profit_for_dd
+        self.technical_stop_enabled = True
         self.dividend_anchor = dividend_anchor
         self.scheme = scheme
 
@@ -383,10 +384,14 @@ class TakeProfitOptimizer:
 
         # 技术止损
         rule = scheme.find_sell_rule("technical_stop")
+        self.technical_stop_enabled = bool(scheme.risk.technical_stop_enabled)
         if rule is not None:
             params = rule.params or {}
             if "volume_surge_ratio" in params:
                 self._volume_surge = float(params["volume_surge_ratio"])
+            self.technical_stop_enabled = bool(
+                params.get("technical_stop_enabled", scheme.risk.technical_stop_enabled)
+            )
 
         # 风控
         if scheme.risk.drawdown_stop:
@@ -617,7 +622,7 @@ class TakeProfitOptimizer:
             row.get("volume", 0) > row.get("volume_ma_5", 0) * self._volume_surge
             if not pd.isna(row.get("volume_ma_5")) else False
         )
-        if strong > 0 and low < strong and vol_surge:
+        if self.technical_stop_enabled and strong > 0 and low < strong and vol_surge:
             fill = close
             cash += shares * fill
             trades.append({
