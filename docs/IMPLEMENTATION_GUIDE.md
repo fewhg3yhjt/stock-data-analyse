@@ -139,8 +139,8 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | FR-1.4 DataSource | 部分完成 | monitor 和部分图表已接入，engine/dashboard 仍有具体数据源直连 |
 | 指标中心 | 第一版完成 | `/indicator-center` 已支持指标浏览、表达式预览、自定义 base/composite 指标 CRUD；代码指标和内置指标保持只读 |
 | FR-2 策略编排器 | 部分完成 | list/map-list、实时预览、schema 校验和样本回测预检已完成；发布/复杂版本 UI 仍待补齐 |
-| FR-3 通知编排器 | 部分完成 | action/price/indicator 条件和 AND/OR 已执行；统一批次管线、重试 outbox 仍待补齐 |
-| FR-4 UI 统一 | 少量完成 | `base.html/base.css` 存在，绝大部分页面仍未继承公共模板 |
+| FR-3 通知编排器 | 部分完成 | action/price/indicator 条件和 AND/OR 已执行；HTTP 状态、去重时机和任务防重叠已加固；统一批次 outbox/重试仍待补齐 |
+| FR-4 UI 统一 | 部分完成 | 编排器/通知/指标中心已继承 `base.html`；旧业务页面仍未全部迁移 |
 | FR-5 DuckDB 图表 | 基本完成 | 主图表路径已改善；分钟分区也已独立接入，但没有性能基线和 P95 证据 |
 
 ### 4.3 最近已落地的连续批次
@@ -153,7 +153,16 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 规则/状态主链路 | `7761397` `ddf4172` `9f15ede` | 买入计划 registry、Advisor 硬止损 registry、持仓状态机生产接入 |
 | 可信性修复 | `e304657` `afaed04` `a855316` `7b908aa` | 财务事务原子性、通知去重时机、trail 参数生效、配置路径/session 加固 |
 
-当前完整回归：**86 个测试通过**。
+当前完整回归：**95 个测试通过**。
+
+### 4.4 本轮新增治理能力
+
+- `scripts/backup_data.py`：使用 SQLite backup API 复制投资账本，复制仓库和运行时配置到操作员指定的空目录；源数据只读，不执行删除。
+- `requirements-dev.txt`：声明测试依赖，CI 与本地测试环境可复现。
+- `.github/workflows/test.yml`：Python 3.11 测试门禁。
+- `datasource/base.py`：股票代码、日期区间和查询数量边界校验。
+- `web/app.py`：跨站写请求来源校验，防止没有 CSRF token 时的跨站 mutation。
+- `notifier/channels.py` / `web/scheduler.py`：Webhook 非 2xx 失败、调度任务 `max_instances=1`、通知状态原子写入。
 
 完成定义必须是：
 
