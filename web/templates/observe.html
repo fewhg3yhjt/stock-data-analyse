@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 观察</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 观察{% endblock %}
+{% block head %}
 <script src="/static/echarts.min.js?v=3"></script>
 <script>if(!window.echarts){document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script>')}</script>
 <script src="/static/stock-chart.js?v=3"></script>
@@ -55,8 +51,8 @@ tr:last-child td{border-bottom:none;}
 /* 详情行位于超宽观察表内，图表必须锁定到桌面视口宽度，不能继承整张表的宽度。 */
 .detail-row .stock-detail-box{width:min(1352px,calc(100vw - 90px));max-width:100%;}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
 
   <div class="header">
@@ -189,5 +185,4 @@ document.addEventListener('click', function(e){
   });
 });
 </script>
-</body>
-</html>
+{% endblock %}

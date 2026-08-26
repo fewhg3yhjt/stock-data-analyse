@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 持仓</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 持仓{% endblock %}
+{% block head %}
 <script src="/static/echarts.min.js?v=3"></script>
 <script>if(!window.echarts){document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script>')}</script>
 <script src="/static/stock-chart.js?v=3"></script>
@@ -74,8 +70,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .metric-grid .m .l{font-size:11px;color:var(--text2);}
 .metric-grid .m .v{font-size:14px;font-weight:600;}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
 
   <div class="header">
@@ -377,5 +373,4 @@ async function deletePos(id, name){
   } catch(e){ showToast('删除失败: ' + e.message); }
 }
 </script>
-</body>
-</html>
+{% endblock %}
