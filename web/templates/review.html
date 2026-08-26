@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockInvestmentTool - 复盘</title>
-<link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 复盘{% endblock %}
+{% block head %}
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -52,8 +48,8 @@ tr:last-child td{border-bottom:none;}
 .confidence.crisis{background:#fbe9e7;color:#7f1d1d;}
 .empty{padding:30px;text-align:center;color:var(--text2);}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div class="app">
 
   <div class="header">
@@ -168,5 +164,4 @@ async function addTxn(){
   else showToast(d.error || '添加失败');
 }
 </script>
-</body>
-</html>
+{% endblock %}
