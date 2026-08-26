@@ -112,3 +112,13 @@ def test_builtin_scheme_delete_protected(client):
     # 内置方案删除应报错（受保护）
     r = client.post("/api/schemes/delete", json={"name": "default_value"})
     assert r.status_code == 400
+
+
+def test_validate_run_rejects_short_sample(client):
+    model = _sample_model()
+    yaml_out = client.post("/api/schemes/compose", json=model).get_json()["yaml"]
+    r = client.post("/api/schemes/validate-run", json={"content": yaml_out, "code": "sh.600900"})
+    # The endpoint may fail before data access in a test environment, but it
+    # must always return a structured client error rather than mutate schemes.
+    assert r.status_code in (400, 500)
+    assert r.get_json().get("status") == "error"

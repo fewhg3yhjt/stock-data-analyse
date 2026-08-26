@@ -356,6 +356,55 @@ def api_schemes_save():
         return flask.jsonify({"status": "error", "error": str(e)}), 400
 
 
+@web_app.route("/api/schemes/validate-run", methods=["POST"])
+def api_schemes_validate_run():
+    """Run a non-persistent sample backtest for a composed scheme."""
+    from StockInvestmentTool.core.composer import yaml_to_model, model_to_config
+    from StockInvestmentTool.datasource.base import WarehouseSource
+    from StockInvestmentTool.backtest.engine import BacktestEngine
+
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    content = payload.get("content") or ""
+    code = (payload.get("code") or "").strip()
+    if not content or not code:
+        return flask.jsonify({"status": "error", "error": "需要方案 YAML 和股票代码"}), 400
+    try:
+        model = yaml_to_model(content)
+        scheme = model_to_config(model)
+        kline = WarehouseSource().fetch_daily_series(code, days=750)
+        if kline is None or len(kline) < 80:
+            return flask.jsonify({"status": "error", "error": "样本行情不足 80 个交易日"}), 400
+        result = BacktestEngine(
+            kline, initial_cash=scheme.backtest.initial_cash,
+            stock_type=(payload.get("stock_type") or "B").strip(), scheme=scheme,
+        ).run_custom(
+            trail_threshold=float(payload.get("trail_threshold", 0.05)),
+            offset=float(payload.get("offset", 0.0)),
+        )
+        detail = result.get("backtest", {})
+        equity = detail.get("equity_curve") or []
+        peak = float(equity[0]) if equity else 0.0
+        max_drawdown = 0.0
+        for value in equity:
+            value = float(value)
+            peak = max(peak, value)
+            if peak > 0:
+                max_drawdown = min(max_drawdown, value / peak - 1)
+        return flask.jsonify({
+            "status": "success", "scheme": scheme.name, "code": code,
+            "trades": len(detail.get("trades", [])),
+            "total_return": detail.get("total_return"),
+            "max_drawdown": round(max_drawdown * 100, 2),
+            "final_cash": detail.get("final_cash"),
+            "equity_points": len(equity),
+        })
+    except (ValueError, KeyError, TypeError) as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+    except Exception as e:
+        logger.exception("方案样本验证失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/api/schemes/list", methods=["GET"])
 def api_schemes_list():
     """列出全部方案（内置 + 用户，含启停/默认），供方案管理页（FR-2.5）。"""
