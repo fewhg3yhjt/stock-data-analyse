@@ -46,6 +46,7 @@ from StockInvestmentTool.strategy.market_state import determine_market_state_fro
 from StockInvestmentTool.strategy.stock_classifier import classify_stock
 from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 from StockInvestmentTool.indicators.context import IndicatorContext
+from StockInvestmentTool.strategy.position_state import PositionStateMachine, EVENT_BREAKOUT
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ class PostPurchaseAdvisor:
         from StockInvestmentTool.portfolio.storage import PortfolioStorage
         self.storage = storage or PortfolioStorage()
         self.registry = registry or SchemeRegistry()
+        self.state_machine = PositionStateMachine()
 
     # ── 参考价格计算 ─────────────────────────────────
 
@@ -304,7 +306,10 @@ class PostPurchaseAdvisor:
             check_results["left_side"]["transition"] = True
             # 突破前高 → 建议转右侧，记录状态但不强制操作
             if position.left_tier_sold >= 1:
-                position.position_phase = PHASE_RIGHT_SIDE
+                if self.state_machine.can(position.position_phase, EVENT_BREAKOUT):
+                    position.position_phase = self.state_machine.transition(
+                        position.position_phase, EVENT_BREAKOUT
+                    )
         return None
 
     def _check_right_side(self, position: Position, ctx: AdvisorContext,

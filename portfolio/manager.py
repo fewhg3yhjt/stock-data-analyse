@@ -40,6 +40,9 @@ from StockInvestmentTool.portfolio.models import (
 from StockInvestmentTool.portfolio.advisor import PostPurchaseAdvisor
 from StockInvestmentTool.portfolio.monitor import PriceMonitor
 from StockInvestmentTool.portfolio.storage import PortfolioStorage
+from StockInvestmentTool.strategy.position_state import (
+    PositionStateMachine, EVENT_BOUGHT, EVENT_LEFT_TP, EVENT_STOP, EVENT_BREAKOUT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,14 @@ class PortfolioManager:
         self.registry = registry or SchemeRegistry()
         self.advisor = PostPurchaseAdvisor(self.storage, self.registry)
         self.monitor = PriceMonitor()
+        self.state_machine = PositionStateMachine()
+
+    def _phase_after(self, current: str, event: str) -> str:
+        if self.state_machine.can(current, event):
+            return self.state_machine.transition(current, event)
+        if event == "closed" and self.state_machine.can(current, EVENT_STOP):
+            return self.state_machine.transition(current, EVENT_STOP)
+        return current
 
     # ══════════════════════════════════════════════════
     # 建仓
@@ -274,7 +285,7 @@ class PortfolioManager:
         p.total_cost += price * shares
         p.buy_stage = min(p.buy_stage + 1, 3)
         if p.buy_stage >= 3:
-            p.position_phase = PHASE_HOLDING
+            p.position_phase = self._phase_after(p.position_phase, EVENT_BOUGHT)
         else:
             p.position_phase = PHASE_ACCUMULATING
         # 重算止损线
@@ -302,11 +313,11 @@ class PortfolioManager:
         if p.total_shares <= 0:
             # 全部清仓
             p.status = STATUS_CLOSED
-            p.position_phase = PHASE_CLOSED
+            p.position_phase = self._phase_after(p.position_phase, EVENT_STOP)
         else:
             # 部分卖出 → 视作左侧止盈（进入 left_side 阶段）
             if p.position_phase in (PHASE_ACCUMULATING, PHASE_HOLDING):
-                p.position_phase = PHASE_LEFT_SIDE
+                p.position_phase = self._phase_after(p.position_phase, EVENT_LEFT_TP)
                 p.left_tier_sold = min(p.left_tier_sold + 1, 2)
             # 已处于 left_side/right_side 则保持
 
@@ -328,7 +339,7 @@ class PortfolioManager:
             p.stop_loss_price = self._compute_stop_loss(scheme, p.stock_type, p.avg_cost)
         if shares <= 0:
             p.status = STATUS_CLOSED
-            p.position_phase = PHASE_CLOSED
+            p.position_phase = self._phase_after(p.position_phase, EVENT_STOP)
         return p
 
     # ══════════════════════════════════════════════════
