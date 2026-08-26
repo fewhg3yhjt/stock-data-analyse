@@ -521,12 +521,25 @@ def _filter_unnotified(data: dict) -> dict:
                 pass
         if not dedup:
             kept_positions.append(p)
-            state[key] = now.isoformat(timespec="seconds")
-    _save_notify_state(state)
+            # Do not persist yet. The caller commits only after a successful
+            # channel delivery, otherwise a failed alert would be suppressed.
     data = dict(data)
     data["positions"] = kept_positions
     msgs = build_actionable_messages(data)
-    return {"data": data, "messages": msgs}
+    return {"data": data, "messages": msgs,
+            "pending_keys": [
+                f"{p.get('id')}:{(p.get('advice') or {}).get('advice_type')}"
+                for p in kept_positions
+            ], "state": state, "now": now.isoformat(timespec="seconds")}
+
+
+def _commit_notify_dedup(dedup: dict) -> None:
+    """Persist pending notification keys after the channel confirms success."""
+    state = dict(dedup.get("state") or {})
+    stamp = dedup.get("now")
+    for key in dedup.get("pending_keys") or []:
+        state[key] = stamp
+    _save_notify_state(state)
 
 
 def run_post_close_summary():
@@ -611,11 +624,13 @@ def run_actionable_monitor():
             sender = EmailSender()
             sender.send(html_body + img_tags, subject="🔔 持仓操作提醒",
                         images=None, is_html=True)
+            _commit_notify_dedup(dedup)
             logger.info("持仓操作提醒已推送邮件（%d 只有操作建议）",
                         len(dedup["messages"]))
         else:
             images = _build_snapshot_images(dedup["data"])
             sent = send_all(rules.channel, webhook, dedup["messages"], images=images)
+            _commit_notify_dedup(dedup)
             logger.info("持仓操作提醒已推送 %d 条（%d 只有操作建议）",
                         sent, len(dedup["messages"]))
     except Exception as e:
