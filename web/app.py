@@ -1975,6 +1975,17 @@ def _auth_enabled() -> bool:
     return bool(os.getenv("ADMIN_PASSWORD"))
 
 
+def _validate_runtime_security(*, allow_test: bool = False) -> None:
+    """Fail closed unless an explicit development mode is requested."""
+    if os.getenv("STOCK_DEV_MODE") == "1" or (allow_test and os.getenv("PYTEST_CURRENT_TEST")):
+        return
+    if not os.getenv("ADMIN_PASSWORD"):
+        raise RuntimeError("生产模式必须配置 ADMIN_PASSWORD；调试环境请显式设置 STOCK_DEV_MODE=1")
+    secret = os.getenv("SECRET_KEY", "")
+    if len(secret) < 32:
+        raise RuntimeError("生产模式 SECRET_KEY 至少需要 32 个字符")
+
+
 def _is_authed() -> bool:
     return bool(flask.session.get("admin"))
 
@@ -2069,7 +2080,8 @@ def create_app():
         __name__,
         template_folder=str(Path(__file__).parent / "templates"),
     )
-    app.secret_key = os.getenv("SECRET_KEY", "stock-invest-tool-dev-secret")
+    _validate_runtime_security(allow_test=True)
+    app.secret_key = os.getenv("SECRET_KEY") or "stock-invest-tool-dev-secret"
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=True,
