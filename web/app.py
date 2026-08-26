@@ -6,6 +6,7 @@
 import json
 import logging
 import os
+from urllib.parse import urlparse
 import sys
 import threading
 from datetime import datetime, timedelta
@@ -1956,14 +1957,29 @@ def logout():
 @web_app.before_request
 def require_login():
     """未登录拦截：页面跳登录，API 返回 401；静态资源放行。"""
-    if not _auth_enabled() or _is_authed():
-        return
     endpoint = flask.request.endpoint or ""
     if endpoint in ("stock_web.login", "stock_web.serve_report", "stock_web.serve_chart"):
+        return
+    if flask.request.method in ("POST", "PUT", "PATCH", "DELETE") and not _same_origin_request():
+        return flask.jsonify({"status": "error", "error": "跨站请求被拒绝"}), 403
+    if not _auth_enabled() or _is_authed():
         return
     if flask.request.path.startswith("/api/"):
         return flask.jsonify({"status": "error", "error": "未登录"}), 401
     return flask.redirect(flask.url_for("stock_web.login", next=flask.request.path))
+
+
+def _same_origin_request() -> bool:
+    """Reject explicitly cross-origin browser mutations without breaking CLI calls."""
+    origin = flask.request.headers.get("Origin")
+    referer = flask.request.headers.get("Referer")
+    candidate = origin or referer
+    if not candidate:
+        return True
+    parsed = urlparse(candidate)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return False
+    return parsed.netloc.lower() == flask.request.host.lower()
 
 
 @web_app.route("/api/daily/run", methods=["POST"])
