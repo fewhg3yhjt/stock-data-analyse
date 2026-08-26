@@ -79,6 +79,20 @@ tr:last-child td{border-bottom:none;}
 
 .toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
 
+.notice{margin:-8px 0 16px;padding:10px 14px;border-left:4px solid var(--accent);background:#e3f2fd;border-radius:0 6px 6px 0;font-size:13px;color:#174ea6;}
+.indicator-layout{display:grid;grid-template-columns:minmax(320px,.85fr) minmax(400px,1.15fr);gap:16px;align-items:start;}
+.indicator-list{max-height:650px;overflow:auto;padding-right:3px;}
+.indicator-group-title{display:flex;align-items:center;gap:8px;margin:12px 0 7px;font-size:12px;color:var(--text2);}
+.indicator-group-title:first-child{margin-top:0;}
+.indicator-row{width:100%;text-align:left;border:1px solid var(--border);border-radius:6px;background:var(--surface2);padding:10px;margin-bottom:7px;cursor:pointer;font:inherit;color:var(--text);}
+.indicator-row:hover{border-color:var(--accent);background:#f1f7ff;}
+.indicator-row strong,.indicator-row code,.indicator-row span{display:block;}
+.indicator-row code{font-size:12px;color:#7c3aed;margin:2px 0;word-break:break-word;}
+.indicator-row span,.formula-help{font-size:12px;color:var(--text2);}
+.preview-result{margin-left:10px;font-size:13px;color:var(--text2);}
+.preview-result.ok{color:var(--green);}.preview-result.error-text{color:var(--red);}
+.preview-chart{height:390px;min-height:160px;}
+
 .metric-grid .m{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:6px 10px;text-align:center;}
 .metric-grid .m .l{font-size:11px;color:var(--text2);}
 .metric-grid .m .v{font-size:14px;font-weight:600;}
@@ -91,5 +105,7 @@ tr:last-child td{border-bottom:none;}
   .header{flex-direction:column;align-items:flex-start;}
   .header .nav{margin-top:8px;}
   .header .nav a{margin-left:0;margin-right:14px;display:inline-block;}
-  .form-row{grid-template-columns:1fr;}
+   .form-row{grid-template-columns:1fr;}
+   .indicator-layout{grid-template-columns:1fr;}
+   .preview-chart{height:260px;}
 }

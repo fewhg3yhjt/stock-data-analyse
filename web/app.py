@@ -202,6 +202,46 @@ def api_indicators():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/indicators/preview", methods=["POST"])
+def api_indicator_preview():
+    """Validate and preview a configured/ad-hoc indicator expression."""
+    from StockInvestmentTool.datasource.base import WarehouseSource
+    from StockInvestmentTool.indicators.engine import IndicatorRegistry
+
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    code = (payload.get("code") or "").strip()
+    expr = (payload.get("expr") or "").strip()
+    if not code:
+        return flask.jsonify({"status": "error", "error": "缺少股票代码"}), 400
+    if not expr:
+        return flask.jsonify({"status": "error", "error": "缺少指标表达式"}), 400
+    if len(expr) > 200:
+        return flask.jsonify({"status": "error", "error": "指标表达式不能超过 200 个字符"}), 400
+    try:
+        kline = WarehouseSource().fetch_daily_series(code, days=320)
+        if kline is None or kline.empty:
+            return flask.jsonify({"status": "error", "error": "没有可用于预览的天级行情数据"}), 404
+        series = IndicatorRegistry().evaluate_expression(kline, expr)
+        rows = []
+        for date, value in zip(kline["date"].tail(180), series.tail(180)):
+            rows.append({
+                "date": str(date)[:10],
+                "value": round(float(value), 4) if value == value else None,
+            })
+        valid = [r["value"] for r in rows if r["value"] is not None]
+        if not valid:
+            return flask.jsonify({"status": "error", "error": "指标没有产生有效值，请检查周期或表达式"}), 400
+        return flask.jsonify({
+            "status": "success", "code": code, "expr": expr,
+            "latest": valid[-1], "series": rows,
+        })
+    except ValueError as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+    except Exception as e:
+        logger.exception("指标预览失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/api/rules/schema", methods=["GET"])
 def api_rules_schema():
     """返回规则 type 与参数 schema，供前端动态渲染表单（I1b）。"""
@@ -382,6 +422,12 @@ def api_schemes_rollback():
 def strategy_composer_page():
     """策略编排器页面（表单 → YAML 预览 → 保存）。"""
     return flask.render_template("strategy_composer.html", error=None)
+
+
+@web_app.route("/indicator-center", methods=["GET"])
+def indicator_center_page():
+    """Read-only indicator catalogue with expression validation and preview."""
+    return flask.render_template("indicator_center.html")
 
 
 @web_app.route("/analyze", methods=["POST"])

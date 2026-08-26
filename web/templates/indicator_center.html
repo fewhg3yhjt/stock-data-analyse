@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}StockInvestmentTool - 指标中心{% endblock %}
+{% block body %}
+<main class="app indicator-center">
+  <header class="header">
+    <div>
+      <h1><i class="fas fa-chart-area"></i> 指标中心</h1>
+      <div class="sub">浏览可用指标，验证表达式，并用天级行情预览结果</div>
+    </div>
+    {% set active = 'indicators' %}{% include '_nav.html' %}
+  </header>
+
+  <div class="notice">
+    当前为只读指标中心。指标定义仍由 <code>schemes/indicators.yaml</code> 管理；表达式通过预览后，可在策略编排器中引用。
+  </div>
+  <div class="indicator-layout">
+    <section class="card">
+      <div class="card-title"><span><i class="fas fa-book"></i> 可用指标</span><span class="tag blue" id="indicator-count">加载中</span></div>
+      <div class="form-group"><label for="indicator-search">搜索名称、表达式或说明</label><input id="indicator-search" placeholder="例如 MA20、双均线低点" oninput="renderIndicators()"></div>
+      <div id="indicator-list" class="indicator-list"></div>
+    </section>
+    <section>
+      <div class="card">
+        <div class="card-title"><span><i class="fas fa-flask"></i> 表达式预览</span></div>
+        <div class="form-group"><label for="preview-code">股票代码</label><input id="preview-code" value="sh.600900" placeholder="sh.600900 / 600900"></div>
+        <div class="form-group"><label for="preview-expr">指标或表达式</label><input id="preview-expr" value="MA20" placeholder="例如 0.95*MIN(MA20,MA240)"></div>
+        <div class="formula-help">支持：<code>+ - * /</code>、<code>MA(close,20)</code>、<code>MIN</code>、<code>MAX</code>、<code>ABS</code> 和指标名称。</div>
+        <button class="btn btn-primary" onclick="previewExpression()"><i class="fas fa-play"></i> 验证并预览</button>
+        <span class="preview-result" id="preview-status"></span>
+      </div>
+      <div class="card">
+        <div class="card-title"><span><i class="fas fa-chart-line"></i> 最近 180 个交易日</span><span id="latest-value" class="tag gray">未预览</span></div>
+        <div id="preview-chart" class="preview-chart"><div class="empty">输入表达式后点击“验证并预览”</div></div>
+      </div>
+    </section>
+  </div>
+</main>
+<script src="/static/echarts.min.js"></script>
+<script>
+let indicators = {base:[], composite:[], code:[]};
+const groupMeta = {base:['基础指标','green'], composite:['组合指标','orange'], code:['代码指标','blue']};
+function escapeHtml(value){const div=document.createElement('div');div.textContent=value || '';return div.innerHTML;}
+async function loadIndicators(){
+  const response=await fetch('/api/indicators'); const data=await response.json();
+  if(data.status!=='success') throw new Error(data.error || '指标库加载失败');
+  indicators=data.groups; document.getElementById('indicator-count').textContent=data.count + ' 项'; renderIndicators();
+}
+function renderIndicators(){
+  const query=(document.getElementById('indicator-search').value || '').toLowerCase(); const target=document.getElementById('indicator-list'); target.innerHTML='';
+  Object.entries(groupMeta).forEach(([kind,[label,color]])=>{
+    const items=(indicators[kind] || []).filter(item=>[item.name,item.expr,item.description].join(' ').toLowerCase().includes(query));
+    if(!items.length) return;
+    const heading=document.createElement('div'); heading.className='indicator-group-title'; heading.innerHTML=`<span class="tag ${color}">${label}</span><span>${items.length} 项</span>`; target.appendChild(heading);
+    items.forEach(item=>{
+      const row=document.createElement('button'); row.className='indicator-row'; row.type='button';
+      row.innerHTML=`<strong>${escapeHtml(item.name)}</strong><code>${escapeHtml(item.expr || 'Python 代码指标')}</code><span>${escapeHtml(item.description || '暂无说明')}</span>`;
+      row.onclick=()=>{document.getElementById('preview-expr').value=item.name; previewExpression();}; target.appendChild(row);
+    });
+  });
+  if(!target.innerHTML) target.innerHTML='<div class="empty">没有匹配的指标</div>';
+}
+async function previewExpression(){
+  const status=document.getElementById('preview-status'); status.textContent='计算中…'; status.className='preview-result';
+  try{
+    const response=await fetch('/api/indicators/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:document.getElementById('preview-code').value,expr:document.getElementById('preview-expr').value})});
+    const data=await response.json(); if(data.status!=='success') throw new Error(data.error || '预览失败');
+    status.textContent='表达式有效'; status.className='preview-result ok'; document.getElementById('latest-value').textContent='最新 ' + data.latest;
+    const series=data.series || []; const chartEl=document.getElementById('preview-chart'); const old=echarts.getInstanceByDom(chartEl); if(old) old.dispose();
+    const chart=echarts.init(chartEl); chart.setOption({tooltip:{trigger:'axis'},grid:{left:55,right:18,top:18,bottom:48},xAxis:{type:'category',data:series.map(x=>x.date),boundaryGap:false},yAxis:{type:'value',scale:true},dataZoom:[{type:'inside'},{type:'slider',height:16}],series:[{name:data.expr,type:'line',data:series.map(x=>x.value),showSymbol:false,lineStyle:{color:'#1a73e8',width:1.8}}]});
+  }catch(error){status.textContent=error.message; status.className='preview-result error-text';}
+}
+loadIndicators().catch(error=>{document.getElementById('indicator-list').innerHTML='<div class="error">'+escapeHtml(error.message)+'</div>';});
+</script>
+{% endblock %}

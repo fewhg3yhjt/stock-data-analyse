@@ -252,3 +252,27 @@ class IndicatorRegistry:
             vals = s.dropna()
             out[name] = round(float(vals.iloc[-1]), 4) if len(vals) else None
         return out
+
+    def evaluate_expression(self, df: pd.DataFrame, expr: str) -> pd.Series:
+        """Evaluate an ad-hoc expression against configured indicators.
+
+        This is deliberately read-only: callers can validate and preview an
+        expression before deciding whether it belongs in indicators.yaml.
+        """
+        expr = (expr or "").strip()
+        if not expr:
+            raise ValueError("指标表达式不能为空")
+        if df is None or df.empty:
+            raise ValueError("缺少行情数据，无法计算指标表达式")
+        env: dict[str, pd.Series] = {
+            "close": df["close"], "open": df["open"],
+            "high": df["high"], "low": df["low"],
+            "volume": df["volume"],
+            "pct_chg": df["close"].pct_change() * 100,
+        }
+        computed = self.compute(df)
+        env.update(computed)
+        value = self._parse_expr(expr, env)
+        if not isinstance(value, pd.Series):
+            value = pd.Series(value, index=df.index)
+        return pd.to_numeric(value, errors="coerce")
