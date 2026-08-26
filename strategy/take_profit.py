@@ -735,11 +735,16 @@ class TakeProfitOptimizer:
                 position_phase = "right_side"
 
             if position_phase == "right_side":
+                # ``trail_threshold`` is the optimizer's per-run parameter.
+                # Apply it to the current stock type instead of only printing
+                # it in the reason text; scheme defaults remain the fallback.
+                drawdown_by_type = dict(self._right_drawdown or {})
+                drawdown_by_type[self.stock_type] = float(trail_threshold)
                 should_sell = right_side_sell_action(
                     peak_price=peak_price,
                     current_price=close,
                     stock_type=self.stock_type,
-                    drawdown_by_type=self._right_drawdown,
+                    drawdown_by_type=drawdown_by_type,
                 )
                 if should_sell:
                     dd_pct = (peak_price - close) / peak_price * 100
