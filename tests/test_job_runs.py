@@ -14,3 +14,10 @@ def test_job_run_lifecycle(tmp_path):
     assert item["job_name"] == "test_job"
     assert item["status"] == "success"
     assert item["result"]["rows"] == 3
+
+
+def test_daily_plan_is_chinese_and_has_dependencies(tmp_path):
+    store = JobRunStore(tmp_path / "runs.db")
+    plans = store.ensure_daily_plan("2026-08-27", daily_time="23:00")
+    assert [item["display_name"] for item in plans[:3]] == ["日线增量同步", "指标重建", "因子重建"]
+    assert plans[1]["blocked_by"] == "daily_sync"

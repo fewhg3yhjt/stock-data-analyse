@@ -282,7 +282,9 @@ def api_data_jobs():
     try:
         from StockInvestmentTool.ops.job_runs import JobRunStore
         limit = max(1, min(int(flask.request.args.get("limit", 50)), 200))
-        items = JobRunStore().recent(limit)
+        store = JobRunStore()
+        store.ensure_daily_plan(daily_time=os.getenv("DAILY_RUN_TIME", "15:35"))
+        items = store.recent(limit)
         name = flask.request.args.get("job_name")
         status = flask.request.args.get("status")
         if name:
@@ -295,6 +297,14 @@ def api_data_jobs():
     except Exception as e:
         logger.exception("任务台账读取失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/data/plan", methods=["GET"])
+def api_data_plan():
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    store = JobRunStore()
+    return flask.jsonify({"status": "success", "run_date": flask.request.args.get("date") or datetime.now().strftime("%Y-%m-%d"),
+                          "tasks": store.ensure_daily_plan(run_date=flask.request.args.get("date"), daily_time=os.getenv("DAILY_RUN_TIME", "15:35"))})
 
 
 @web_app.route("/api/data/jobs/<int:run_id>", methods=["GET"])

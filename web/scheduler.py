@@ -242,6 +242,26 @@ def run_warehouse_daily() -> dict:
     return result
 
 
+def run_daily_data_pipeline() -> dict:
+    """Run the warehouse chain independently from portfolio reporting."""
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+
+    store = JobRunStore()
+    run_date = datetime.now().strftime("%Y-%m-%d")
+    run_id = store.start("daily_sync", display_name="日线增量同步",
+                         scheduled_at=os.getenv("DAILY_RUN_TIME", DEFAULT_RUN_TIME),
+                         input_dataset="数据源", output_dataset="daily")
+    store.link_plan_run(run_date, "daily_sync", run_id)
+    try:
+        result = run_warehouse_daily()
+        store.update_progress(run_id, phase="完成", progress=100)
+        store.finish(run_id, "success", result)
+        return result
+    except Exception as exc:
+        store.finish(run_id, "failed", error=str(exc))
+        raise
+
+
 def init_scheduler(app) -> None:
     """创建并启动 APScheduler（单容器方案：web 进程内定时任务）。"""
     if os.getenv("DISABLE_SCHEDULER") == "1" or os.getenv("PYTEST_CURRENT_TEST"):
@@ -274,6 +294,10 @@ def init_scheduler(app) -> None:
     scheduler.add_job(
         run_daily_tasks, CronTrigger(hour=hour, minute=minute, timezone=TZ),
         id="daily_tasks", misfire_grace_time=3600, coalesce=True, max_instances=1,
+    )
+    scheduler.add_job(
+        run_daily_data_pipeline, CronTrigger(hour=hour, minute=minute, timezone=TZ),
+        id="daily_sync", misfire_grace_time=21600, coalesce=True, max_instances=1,
     )
     scheduler.add_job(
         process_notification_outbox, CronTrigger(minute="*/5", timezone=TZ),
@@ -309,6 +333,13 @@ def init_scheduler(app) -> None:
         import atexit
         atexit.register(lock_file.close)
     logger.info("每日定时任务已启动: %02d:%02d (%s)", hour, minute, TZ)
+    if os.getenv("WAREHOUSE_DAILY_SYNC") == "1":
+        now = datetime.now()
+        if now.weekday() < 5 and (now.hour, now.minute) > (hour, minute):
+            from StockInvestmentTool.ops.job_runs import JobRunStore
+            if not JobRunStore().running("daily_sync"):
+                threading.Thread(target=run_daily_data_pipeline, daemon=True,
+                                 name="daily-sync-catchup").start()
 
 
 def _load_notify_settings() -> dict:

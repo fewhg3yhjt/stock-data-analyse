@@ -95,6 +95,24 @@ def _apply_job_state(item: DatasetStatus, latest_job: Optional[dict], success_jo
         item.last_error = latest_job.get("error") or "最近一次任务失败"
 
 
+def _classify_daily_task(item: DatasetStatus, latest_job: Optional[dict], current: datetime) -> None:
+    if latest_job:
+        _apply_job_state(item, latest_job, latest_job if latest_job.get("status") == "success" else None)
+        return
+    spec = os.getenv("DAILY_RUN_TIME", "15:35")
+    try:
+        hour, minute = (int(part) for part in spec.split(":", 1))
+    except (TypeError, ValueError):
+        hour, minute = 15, 35
+    scheduled = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if current < scheduled:
+        item.status = "waiting_close"
+        item.last_error = f"等待今日收盘及 {spec} 日线任务计划时间"
+    else:
+        item.status = "failed"
+        item.last_error = f"今日日线任务未执行（计划时间 {spec}）"
+
+
 def classify_freshness(dataset_latest: Optional[str], expected_trade_day: date) -> str:
     """Classify a daily-like date against an expected trade day."""
     latest = _date_value(dataset_latest)
@@ -189,17 +207,28 @@ def dataset_statuses(*, warehouse=None, job_runs=None, now: Optional[datetime] =
     result: list[DatasetStatus] = []
 
     specs = [
-        ("daily", "daily", "daily_tasks", "全市场日线 Parquet", "WAREHOUSE_DAILY_SYNC"),
-        ("indicators", "indicator", "daily_tasks", "指标 Parquet", None),
-        ("factors", "factor", "daily_tasks", "因子 Parquet", None),
+        ("daily", "daily", "daily_sync", "全市场日线 Parquet", "WAREHOUSE_DAILY_SYNC"),
+        ("indicators", "indicator", "rebuild_indicators", "指标 Parquet", None),
+        ("factors", "factor", "rebuild_factors", "因子 Parquet", None),
     ]
     values: dict[str, DatasetStatus] = {}
     for name, kind, job_name, source, switch in specs:
         latest, rows, symbols = _latest_parquet(warehouse, kind)
         item = DatasetStatus(name, latest, latest, classify_freshness(latest, expected),
                              rows=rows, symbols=symbols, job_name=job_name, source=source)
-        latest_job, success_job = _job_context({job_name}, runs)
-        _apply_job_state(item, latest_job, success_job)
+        job_names = {job_name}
+        if name == "daily":
+            # Keep historical daily_tasks records meaningful while new runs
+            # use the dedicated daily_sync entry.
+            job_names.add("daily_tasks")
+        latest_job, success_job = _job_context(job_names, runs)
+        if name == "daily":
+            _classify_daily_task(item, latest_job, current)
+        else:
+            _apply_job_state(item, latest_job, success_job)
+            if not latest_job:
+                item.status = "waiting_upstream"
+                item.last_error = "等待上游任务完成"
         if switch and os.getenv(switch) != "1" and not latest_job:
             item.status = "disabled"
             item.last_error = f"{switch} 未开启"
