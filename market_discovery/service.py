@@ -176,10 +176,11 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                         "amount": _round(row.get("amount")), "signal_tags": tags,
                         "explanations": explanations})
     results.sort(key=lambda item: (-(item["return_pct"] or -999), -(item["volume_ratio_5"] or 0), item["code"]))
+    total_count = len(results)
     results = results[:top_n]
     _attach_names(results, warehouse)
     return {"conditions": c, "as_of": as_of or (results[0]["date"] if results else None),
-            "count": len(results), "items": results}
+            "count": len(results), "total_count": total_count, "items": results}
 
 
 def stock_series(code: str, *, days: int = 120, as_of: str = "",

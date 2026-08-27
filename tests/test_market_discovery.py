@@ -29,6 +29,7 @@ def test_discover_stocks_returns_explainable_volume_signal(tmp_path):
                               "signal": "price_up_volume_down"},
                              warehouse=warehouse, top_n=10)
     assert result["count"] == 1
+    assert result["total_count"] == 1
     assert result["items"][0]["code"] == "sh600900"
     assert "上涨缩量" in result["items"][0]["signal_tags"]
     assert result["items"][0]["name"] == "sh600900"

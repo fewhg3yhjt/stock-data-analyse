@@ -77,6 +77,8 @@ def test_market_discovery_page_links_workflow(client):
     assert "执行本地筛选" in html
     assert "/api/market-discovery/stocks" in html
     assert "板块资金流作为后续待办" in html
+    assert "符合条件总数" in html
+    assert "展开K线" in html
 
 
 def test_workbench_exposes_market_discovery(client):
