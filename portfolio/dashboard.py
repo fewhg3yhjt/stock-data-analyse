@@ -69,7 +69,8 @@ class DashboardService:
 
     # ── 页面一 · 观察池 ─────────────────────────────────
 
-    def observe_pool(self, max_candidates: int = 15, use_cache: bool = True) -> list[dict]:
+    def observe_pool(self, max_candidates: int = 15, use_cache: bool = True,
+                     live_refresh: bool = False) -> list[dict]:
         """战前侦察：watchlist 全量 + 资金流持续流入候选 → 每只附 市场状态/支撑/开仓指令。
 
         按日缓存到 output/data/observe_pool_YYYYMMDD.json：
@@ -89,7 +90,7 @@ class DashboardService:
             try:
                 rows = json.loads(cache_path.read_text(encoding="utf-8"))
                 logger.info("观察池缓存命中: %s (%d 行)", cache_path.name, len(rows))
-                return self._refresh_prices(rows)   # 现价实时刷新，技术指标用缓存
+                return self._refresh_prices(rows) if live_refresh else self._apply_local_snapshots(rows)
             except Exception as e:
                 logger.warning("观察池缓存读取失败: %s", e)
 
@@ -135,7 +136,7 @@ class DashboardService:
             logger.info("观察池缓存已写入: %s", cache_path.name)
         except Exception as e:
             logger.warning("观察池缓存写入失败: %s", e)
-        return self._refresh_prices(rows)
+        return self._refresh_prices(rows) if live_refresh else self._apply_local_snapshots(rows)
 
     def watch_pool(self, *, refresh: bool = False) -> list[dict]:
         """Merge watchlist, strategy observations, simulations, and holdings."""
@@ -189,6 +190,74 @@ class DashboardService:
             else:
                 item["next_action"] = "none"
         return sorted(merged.values(), key=lambda item: (item["name"], item["code"]))
+
+    def _apply_local_snapshots(self, rows: list[dict]) -> list[dict]:
+        """Overlay scheduled local data without performing network I/O."""
+        if not rows:
+            return rows
+        local = self._local_enhance([r.get("code", "") for r in rows])
+        for row in rows:
+            quote = local.get(self._normalize_quote_code(row.get("code", "")))
+            if not quote:
+                row.setdefault("data_source", "technical_cache")
+                continue
+            for field, value in quote.items():
+                if value is not None:
+                    row[field] = value
+            row["data_source"] = quote.get("data_source", "scheduled_snapshot")
+        return rows
+
+    @staticmethod
+    def _normalize_quote_code(code: str) -> str:
+        return str(code or "").lower().replace(".", "")
+
+    def _local_enhance(self, codes: list[str]) -> dict[str, dict]:
+        """Read minute snapshots first, then local online snapshots as fallback."""
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        import pandas as pd
+
+        wanted = {self._normalize_quote_code(code) for code in codes if code}
+        out: dict[str, dict] = {}
+        warehouse = Warehouse()
+        minute_store = warehouse.minute_store()
+        minute_days = minute_store.days()
+        if minute_days:
+            frame = minute_store.read(minute_days[-1])
+            if not frame.empty and "time" in frame.columns:
+                frame["_parsed_time"] = pd.to_datetime(frame["time"], errors="coerce")
+                frame = frame.dropna(subset=["_parsed_time"]).sort_values("_parsed_time")
+                for code, group in frame.groupby("code"):
+                    key = self._normalize_quote_code(code)
+                    if key not in wanted:
+                        continue
+                    latest = group.iloc[-1]
+                    out[key] = {"price": float(latest["close"]),
+                                "snapshot_time": str(latest["time"])[:19],
+                                "data_source": "minute_snapshot"}
+        if len(out) < len(wanted):
+            latest_path = None
+            for day in sorted(warehouse.online_dir.iterdir(), reverse=True):
+                if day.is_dir():
+                    paths = sorted(day.glob("snapshot_*.csv"))
+                    if paths:
+                        latest_path = paths[-1]
+                        break
+            if latest_path:
+                try:
+                    frame = pd.read_csv(latest_path, encoding="utf-8-sig")
+                    for _, quote in frame.iterrows():
+                        key = self._normalize_quote_code(quote.get("code", ""))
+                        if key not in wanted:
+                            continue
+                        target = out.setdefault(key, {})
+                        for field in ("price", "change_pct", "volume", "amount_wan", "turnover",
+                                      "vol_ratio", "pe_ttm", "pb", "snapshot_time"):
+                            if field in quote and pd.notna(quote[field]) and field not in target:
+                                target[field] = quote[field]
+                        target.setdefault("data_source", "online_snapshot")
+                except Exception as exc:
+                    logger.warning("本地在线快照读取失败: %s", exc)
+        return out
 
     def _refresh_prices(self, rows: list[dict]) -> list[dict]:
         """每次打开页面用腾讯实时报价刷新现价/涨跌幅，并合并增强字段。

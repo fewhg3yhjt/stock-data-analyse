@@ -27,16 +27,16 @@ TZ = "Asia/Shanghai"
 
 
 def _market_session_minute_trigger():
-    """Return a 5-minute trigger limited to A-share trading sessions."""
+    """Return one-minute triggers limited to A-share trading sessions."""
     from apscheduler.triggers.cron import CronTrigger
 
     # 09:30-11:30 and 13:00-15:00; the job itself tolerates holidays.
     return [
-        CronTrigger(day_of_week="mon-fri", hour=9, minute="30,35,40,45,50,55", timezone=TZ),
-        CronTrigger(day_of_week="mon-fri", hour=10, minute="*/5", timezone=TZ),
-        CronTrigger(day_of_week="mon-fri", hour=11, minute="0,5,10,15,20,25,30", timezone=TZ),
-        CronTrigger(day_of_week="mon-fri", hour=13, minute="0,5,10,15,20,25,30,35,40,45,50,55", timezone=TZ),
-        CronTrigger(day_of_week="mon-fri", hour=14, minute="*/5", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=9, minute="30-59", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=10, minute="*", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=11, minute="0-30", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=13, minute="*", timezone=TZ),
+        CronTrigger(day_of_week="mon-fri", hour=14, minute="*", timezone=TZ),
     ]
 
 
@@ -280,23 +280,24 @@ def init_scheduler(app) -> None:
         id="notification_outbox", misfire_grace_time=600, coalesce=True,
         max_instances=1,
     )
-    # 盘中观察池实时快照：每 10 分钟一次（仅交易时段内实际取值）
-    # 用 WAREHOUSE_ONLINE_SNAPSHOT=1 开启（默认关闭，避免过度采集）
-    if os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1":
+    # 分钟采集优先；只有分钟采集未启用时才启用低频在线快照兜底。
+    minute_enabled = os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1"
+    if os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1" and not minute_enabled:
         scheduler.add_job(
                 run_online_snapshot_job, CronTrigger(minute="*/10", timezone=TZ),
                 id="online_snapshot", misfire_grace_time=600, coalesce=True, max_instances=1,
         )
         logger.info("盘中观察池快照已启动: 每 10 分钟")
-    # 真正分钟数据：独立于 online 快照，默认关闭，避免未经确认增加外部请求。
-    if os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1":
+    if minute_enabled:
         for index, trigger in enumerate(_market_session_minute_trigger()):
             scheduler.add_job(
                 run_minute_snapshot_job, trigger,
                 id=f"minute_snapshot_{index}", misfire_grace_time=600, coalesce=True,
                 max_instances=1,
             )
-        logger.info("盘中分钟数据已启动: 每 5 分钟，观察池范围")
+        logger.info("盘中分钟数据已启动: 每 1 分钟，观察池范围")
+    elif os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1":
+        logger.info("在线快照已忽略：分钟采集优先")
 
     # 通知触发器（FR-3.4 免重启：按触发器配置挂载，保存后重挂即可）
     _schedule_from_triggers(scheduler)
