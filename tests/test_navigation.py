@@ -34,6 +34,8 @@ def client():
         ("/settings", "settings"),
         ("/data-center", "data"),
         ("/watch-pool", "watchpool"),
+        ("/research", "research"),
+        ("/system", "system"),
     ],
 )
 def test_core_page_renders_shared_navigation(client, path, active):
@@ -54,6 +56,19 @@ def test_watch_pool_contains_expandable_kline_detail(client):
     assert "/static/stock-detail.js" in html
     assert "展开K线" in html
     assert "StockDetail.load" in html
+    assert "选择策略模拟" in html
+    assert "运行策略模拟" in html
+
+
+def test_research_and_system_restore_core_links(client):
+    research = client.get("/research").get_data(as_text=True)
+    assert 'href="/indicator-center"' in research
+    assert 'href="/strategy-composer"' in research
+    assert 'href="/strategy"' in research
+    system = client.get("/system").get_data(as_text=True)
+    assert 'href="/data-center"' in system
+    assert 'href="/notify-center"' in system
+    assert 'href="/settings"' in system
 
 
 def _href_for_active(active: str) -> str:
@@ -63,13 +78,15 @@ def _href_for_active(active: str) -> str:
         "observe": "/dashboard/observe",
         "watchlist": "/watchlist",
         "simulation": "/simulation",
-        "strategy": "/strategy",
-        "indicators": "/indicator-center",
-        "composer": "/strategy-composer",
-        "notify": "/notify-center",
+        "strategy": "/research",
+        "indicators": "/research",
+        "composer": "/research",
+        "notify": "/system",
         "warroom": "/dashboard/warroom",
         "review": "/dashboard/review",
-        "settings": "/settings",
-        "data": "/data-center",
+        "settings": "/system",
+        "data": "/system",
         "watchpool": "/watch-pool",
+        "research": "/research",
+        "system": "/system",
     }[active]

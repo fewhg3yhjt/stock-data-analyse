@@ -242,3 +242,23 @@ def data_status(*, warehouse=None, job_runs=None, now: Optional[datetime] = None
             "expected_trade_day": expected.isoformat(),
             "checked_at": current.isoformat(timespec="seconds"),
             "datasets": [item.to_dict() for item in datasets]}
+
+
+def quick_daily_status(*, warehouse=None, now: Optional[datetime] = None) -> dict:
+    """Read only the newest daily partition for workflow gating."""
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    warehouse = warehouse or Warehouse()
+    current = now or datetime.now()
+    months = warehouse.available_months("daily")
+    latest = None
+    if months:
+        frame = warehouse.read_daily(months[-1])
+        if frame is not None and not frame.empty and "date" in frame.columns:
+            values = pd.to_datetime(frame["date"], errors="coerce").dropna()
+            if not values.empty:
+                latest = values.max().date().isoformat()
+    expected = latest_expected_trade_day(current)
+    return {"dataset": "daily", "latest_value": latest,
+            "expected_trade_day": expected.isoformat(),
+            "status": classify_freshness(latest, expected)}

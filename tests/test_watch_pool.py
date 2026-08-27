@@ -23,3 +23,12 @@ def test_watch_pool_merges_sources_and_action(monkeypatch):
     assert items[0]["sources"] == ["manual", "holding"]
     assert items[0]["simulation"] is not None
     assert items[0]["next_action"] == "review"
+
+
+def test_strategy_candidate_must_enter_observation_first(monkeypatch):
+    manager = SimpleNamespace(get_watchlist=lambda: [], get_simulations=lambda: [],
+                              storage=SimpleNamespace(get_open_positions=lambda: []))
+    service = DashboardService(manager)
+    monkeypatch.setattr(service, "observe_pool", lambda use_cache=True: [{"code": "sh600900", "name": "候选"}])
+    items = service.watch_pool()
+    assert items[0]["next_action"] == "observe"

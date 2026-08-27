@@ -349,8 +349,11 @@ def data_center_page():
 def api_watch_pool():
     try:
         from StockInvestmentTool.portfolio.dashboard import DashboardService
+        from StockInvestmentTool.ops.freshness import quick_daily_status
         refresh = flask.request.args.get("refresh") == "1"
-        return flask.jsonify({"status": "success", "items": DashboardService(_get_manager()).watch_pool(refresh=refresh)})
+        return flask.jsonify({"status": "success",
+                              "data_health": quick_daily_status(),
+                              "items": DashboardService(_get_manager()).watch_pool(refresh=refresh)})
     except Exception as e:
         logger.exception("观察池读取失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
@@ -386,6 +389,37 @@ def api_workbench_summary():
 @web_app.route("/workbench", methods=["GET"])
 def workbench_page():
     return flask.render_template("workbench.html")
+
+
+@web_app.route("/api/workbench/positions", methods=["GET"])
+def api_workbench_positions():
+    try:
+        positions = [position.to_dict() for position in _get_manager().storage.get_open_positions()]
+        return flask.jsonify({"status": "success", "positions": positions,
+                              "count": len(positions)})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/workbench/notifications", methods=["GET"])
+def api_workbench_notifications():
+    try:
+        from StockInvestmentTool.notifier.outbox import NotificationOutbox
+        outbox = NotificationOutbox()
+        return flask.jsonify({"status": "success", "counts": outbox.counts(),
+                              "items": outbox.recent(5)})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/research", methods=["GET"])
+def research_page():
+    return flask.render_template("research.html")
+
+
+@web_app.route("/system", methods=["GET"])
+def system_page():
+    return flask.render_template("system.html")
 
 
 @web_app.route("/api/indicators/save", methods=["POST"])

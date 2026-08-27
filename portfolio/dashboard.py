@@ -187,6 +187,8 @@ class DashboardService:
                 item["next_action"] = "buy"
             elif item["watch"]:
                 item["next_action"] = "simulate"
+            elif item["observation"]:
+                item["next_action"] = "observe"
             else:
                 item["next_action"] = "none"
         return sorted(merged.values(), key=lambda item: (item["name"], item["code"]))
