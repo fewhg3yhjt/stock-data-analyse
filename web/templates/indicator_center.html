@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 指标中心{% endblock %}
+{% block head %}<style>.indicator-info{display:inline-flex;width:17px;height:17px;align-items:center;justify-content:center;border:1px solid var(--accent);border-radius:50%;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer}.indicator-help{position:fixed;z-index:2000;display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.16);padding:14px 16px;width:min(420px,calc(100vw - 32px));font-size:13px;line-height:1.65}.indicator-help b{display:block;margin-bottom:5px}</style>{% endblock %}
 {% block body %}
 <main class="app indicator-center">
   <header class="header">
@@ -46,6 +47,7 @@
     <div style="margin-top:14px;display:flex;gap:8px;align-items:center;"><button class="btn btn-primary" onclick="saveIndicator()"><i class="fas fa-save"></i> 保存</button><span id="edit-status" class="preview-result"></span></div>
   </div>
 </div>
+<div class="indicator-help" id="indicator-help"></div>
 <script src="/static/echarts.min.js"></script>
 <script>
 let indicators = {base:[], composite:[], code:[]};
@@ -64,7 +66,8 @@ function renderIndicators(){
     const heading=document.createElement('div'); heading.className='indicator-group-title'; heading.innerHTML=`<span class="tag ${color}">${label}</span><span>${items.length} 项</span>`; target.appendChild(heading);
     items.forEach(item=>{
       const row=document.createElement('button'); row.className='indicator-row'; row.type='button';
-      row.innerHTML=`<strong>${escapeHtml(item.name)} ${item.source==='custom' ? '<span class="tag gray">自定义</span>' : '<span class="tag gray">内置</span>'} ${item.enabled===false ? '<span class="tag off">已停用</span>' : ''}</strong><code>${escapeHtml(item.expr || 'Python 代码指标')}</code><span>${escapeHtml(item.description || '暂无说明')}</span>`;
+       row.innerHTML=`<strong>${escapeHtml(item.name)} <span class="indicator-info" title="查看指标说明">!</span> ${item.source==='custom' ? '<span class="tag gray">自定义</span>' : '<span class="tag gray">内置</span>'} ${item.enabled===false ? '<span class="tag off">已停用</span>' : ''}</strong><code>${escapeHtml(item.expr || 'Python 代码指标')}</code><span>${escapeHtml(item.description || item.meaning || '暂无说明')}</span>`;
+       row.querySelector('.indicator-info').onclick=(event)=>{event.stopPropagation();showIndicatorHelp(event.currentTarget,item);};
       row.onclick=()=>{document.getElementById('preview-expr').value=item.name; previewExpression();};
       if(item.editable){
         const actions=document.createElement('div'); actions.className='indicator-actions';
@@ -79,6 +82,8 @@ function renderIndicators(){
   });
   if(!target.innerHTML) target.innerHTML='<div class="empty">没有匹配的指标</div>';
 }
+function showIndicatorHelp(anchor,item){const box=document.getElementById('indicator-help');box.innerHTML=`<b>${escapeHtml(item.name)} · 指标定义</b><div><strong>含义：</strong>${escapeHtml(item.meaning||item.description||'暂无说明')}</div><div><strong>计算：</strong>${escapeHtml(item.calculation||item.expr||'暂无说明')}</div><div><strong>数据要求：</strong>${escapeHtml(item.data_requirements||'按指标定义')}</div>${item.notes?`<div><strong>注意：</strong>${escapeHtml(item.notes)}</div>`:''}`;const rect=anchor.getBoundingClientRect();box.style.left=Math.max(16,Math.min(rect.left,window.innerWidth-436))+'px';box.style.top=(rect.bottom+8)+'px';box.style.display='block';}
+document.addEventListener('click',()=>{document.getElementById('indicator-help').style.display='none';});
 function newIndicator(){
   document.getElementById('indicator-modal-title').textContent='新建自定义指标';
   ['edit-name','edit-expr','edit-description'].forEach(id=>document.getElementById(id).value='');

@@ -74,6 +74,14 @@ def test_indicator_center_page(client):
     assert 'href="/indicator-center" class="active"' in html
 
 
+def test_indicator_api_includes_definition_metadata(client):
+    data = client.get("/api/indicators").get_json()
+    ma20 = next(item for item in data["groups"]["base"] if item["name"] == "MA20")
+    assert ma20["meaning"]
+    assert ma20["calculation"]
+    assert ma20["data_requirements"]
+
+
 def test_custom_indicator_store_crud_isolated(tmp_path, monkeypatch):
     from StockInvestmentTool.indicators import store
 

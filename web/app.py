@@ -203,12 +203,14 @@ def api_indicators():
                 "source": custom.get(name, {}).get("source", "builtin"),
                 "editable": bool(custom.get(name, {}).get("editable", False)),
                 "enabled": custom.get(name, {}).get("enabled", True),
+                **__import__("StockInvestmentTool.indicators.documentation", fromlist=["documentation_for"]).documentation_for(d.name, fallback=d.description),
             })
         # Keep disabled custom indicators visible in the management catalogue.
         existing = {item["name"] for group in groups.values() for item in group}
         for item in custom.values():
             if item["name"] in existing:
                 continue
+            item = {**item, **__import__("StockInvestmentTool.indicators.documentation", fromlist=["documentation_for"]).documentation_for(item["name"], fallback=item.get("description", ""))}
             groups.setdefault(item.get("kind", "composite"), []).append(item)
         count = sum(len(items) for items in groups.values())
         return flask.jsonify({"status": "success", "groups": groups,
