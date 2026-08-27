@@ -238,6 +238,10 @@ def api_health_details():
             "jobs": {"recent": JobRunStore().recent(10)},
             "features": {
                 "minute_snapshot": os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1",
+                "daily_sync": os.getenv("WAREHOUSE_DAILY_SYNC") == "1",
+                "online_snapshot": os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1",
+                "intraday_notify_limit": int(os.getenv("INTRADAY_NOTIFY_DAILY_LIMIT", "3")),
+                "auth_disabled": os.getenv("STOCK_DISABLE_AUTH") == "1",
                 "auth": bool(os.getenv("ADMIN_PASSWORD")),
             },
             "paths": {"data_dir": str(Config.DATA_DIR)},
@@ -420,6 +424,11 @@ def research_page():
 @web_app.route("/system", methods=["GET"])
 def system_page():
     return flask.render_template("system.html")
+
+
+@web_app.route("/diagnostics", methods=["GET"])
+def diagnostics_page():
+    return flask.render_template("diagnostics.html")
 
 
 @web_app.route("/api/indicators/save", methods=["POST"])

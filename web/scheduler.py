@@ -424,13 +424,26 @@ def run_trigger_rule(rule: dict) -> dict:
         logger.info("触发器 %s 无触发内容，跳过", rule.get("name"))
         return {"ok": True, "skipped": True}
 
+    # Intraday checks may run every few minutes, but ordinary alerts must not
+    # turn that polling interval into the delivery frequency.
+    cap_state = None
+    if (rule.get("schedule") or {}).get("mode") == "intraday":
+        cap_state = _intraday_trigger_quota(rule)
+        if not cap_state["allowed"]:
+            logger.info("触发器 %s 已达到每日通知上限 %d 次", rule.get("name"), cap_state["limit"])
+            return {"ok": True, "skipped": True, "reason": "daily_limit",
+                    "daily_count": cap_state["count"], "daily_limit": cap_state["limit"]}
+
     channel = rule.get("channel", "feishu")
     kwargs = {}
     if channel in ("email", "mail", "smtp"):
         kwargs["subject"] = digest.meta.get("subject", "股票通知")
         if rule.get("use_email_to"):
             kwargs["to"] = rule.get("use_email_to")
-    return send_digest_with_outbox(digest, channel, **kwargs)
+    result = send_digest_with_outbox(digest, channel, **kwargs)
+    if result.get("ok") and cap_state:
+        _commit_intraday_trigger_quota(cap_state)
+    return result
 
 
 def send_digest_with_outbox(digest, channel: str, **kwargs) -> dict:
@@ -606,6 +619,26 @@ _NOTIFY_STATE = os.path.join(os.environ.get("STOCK_OUTPUT_DIR", ""), "data", "no
     if os.environ.get("STOCK_OUTPUT_DIR") else None
 # 去重窗口（小时）：同一持仓同一建议类型在此窗口内不重复推送
 _DEDUP_HOURS = 24
+_INTRADAY_DAILY_LIMIT = 3
+
+
+def _intraday_trigger_quota(rule: dict) -> dict:
+    """Return a persistent daily quota for ordinary intraday trigger delivery."""
+    from datetime import datetime as _dt
+
+    state = _load_notify_state()
+    now = _dt.now()
+    limit = max(1, int(os.getenv("INTRADAY_NOTIFY_DAILY_LIMIT", str(_INTRADAY_DAILY_LIMIT))))
+    key = f"trigger_count:{rule.get('id') or rule.get('name') or 'intraday'}:{now:%Y-%m-%d}"
+    count = int(state.get(key, 0) or 0)
+    return {"allowed": count < limit, "state": state, "key": key,
+            "count": count, "limit": limit}
+
+
+def _commit_intraday_trigger_quota(quota: dict) -> None:
+    state = dict(quota["state"])
+    state[quota["key"]] = int(quota["count"]) + 1
+    _save_notify_state(state)
 
 
 def _notify_state_path() -> str:
@@ -652,6 +685,8 @@ def _filter_unnotified(data: dict) -> dict:
 
     state = _load_notify_state()
     now = _dt.now()
+    day_key = f"intraday_count:{now:%Y-%m-%d}"
+    used = int(state.get(day_key, 0) or 0)
     positions = data.get("positions") or []
     kept_positions = []
     for p in positions:
@@ -669,8 +704,13 @@ def _filter_unnotified(data: dict) -> dict:
                     dedup = True
             except Exception:
                 pass
-        if not dedup:
+        # sell_all is an urgent risk exit and must not be hidden by the normal
+        # intraday daily cap. Other recommendations share one daily quota.
+        urgent = adv.get("advice_type") == "sell_all"
+        if not dedup and (urgent or used < _INTRADAY_DAILY_LIMIT):
             kept_positions.append(p)
+            if not urgent:
+                used += 1
             # Do not persist yet. The caller commits only after a successful
             # channel delivery, otherwise a failed alert would be suppressed.
     data = dict(data)
@@ -680,7 +720,8 @@ def _filter_unnotified(data: dict) -> dict:
             "pending_keys": [
                 f"{p.get('id')}:{(p.get('advice') or {}).get('advice_type')}"
                 for p in kept_positions
-            ], "state": state, "now": now.isoformat(timespec="seconds")}
+            ], "state": state, "now": now.isoformat(timespec="seconds"),
+            "day_key": day_key, "daily_count": used}
 
 
 def _commit_notify_dedup(dedup: dict) -> None:
@@ -689,6 +730,8 @@ def _commit_notify_dedup(dedup: dict) -> None:
     stamp = dedup.get("now")
     for key in dedup.get("pending_keys") or []:
         state[key] = stamp
+    if dedup.get("day_key"):
+        state[dedup["day_key"]] = int(dedup.get("daily_count", 0))
     _save_notify_state(state)
 
 
