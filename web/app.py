@@ -323,7 +323,13 @@ def _start_data_job(job_name, worker):
     if active:
         return flask.jsonify({"status": "error", "error": "同一任务正在运行",
                               "run_id": active["id"]}), 409
-    run_id = store.start(job_name)
+    run_id = store.start(job_name, display_name={
+        "daily_sync": "日线增量同步", "minute_snapshot": "观察池分钟采集",
+        "rebuild_indicators": "指标重建", "rebuild_factors": "因子重建",
+    }.get(job_name, job_name))
+    if job_name in {"daily_sync", "rebuild_indicators", "rebuild_factors"}:
+        store.ensure_daily_plan()
+        store.link_plan_run(datetime.now().strftime("%Y-%m-%d"), job_name, run_id)
 
     def execute():
         try:

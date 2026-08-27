@@ -337,7 +337,12 @@ def init_scheduler(app) -> None:
         now = datetime.now()
         if now.weekday() < 5 and (now.hour, now.minute) > (hour, minute):
             from StockInvestmentTool.ops.job_runs import JobRunStore
-            if not JobRunStore().running("daily_sync"):
+            store = JobRunStore()
+            today = now.strftime("%Y-%m-%d")
+            todays = [item for item in store.recent(200)
+                      if item.get("job_name") == "daily_sync"
+                      and str(item.get("started_at", ""))[:10] == today]
+            if not todays and not store.running("daily_sync"):
                 threading.Thread(target=run_daily_data_pipeline, daemon=True,
                                  name="daily-sync-catchup").start()
 
