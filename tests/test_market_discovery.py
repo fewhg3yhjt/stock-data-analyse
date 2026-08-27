@@ -35,6 +35,15 @@ def test_discover_stocks_returns_explainable_volume_signal(tmp_path):
     assert result["items"][0]["name"] == "sh600900"
 
 
+def test_empty_down_days_does_not_filter_valid_up_days(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.write_daily_partition("2026-04", _daily_frame())
+    result = discover_stocks({"lookback_days": 3, "min_up_days": 2},
+                             warehouse=warehouse, top_n=10)
+    assert result["total_count"] == 1
+    assert result["items"][0]["code"] == "sh600900"
+
+
 def test_stock_series_uses_local_daily_data(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.write_daily_partition("2026-04", _daily_frame())

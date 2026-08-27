@@ -22,7 +22,8 @@ DEFAULT_CONDITIONS = {
     "industry": "ALL",
     "lookback_days": 3,
     "min_up_days": 0,
-    "max_down_days": 3,
+    # Empty range fields must not impose an implicit restriction.
+    "max_down_days": None,
     "return_min_pct": None,
     "return_max_pct": None,
     "volume_ratio_min": None,
@@ -75,7 +76,8 @@ def _conditions(raw: Optional[dict]) -> dict:
     lookback = int(_number(current.get("lookback_days"), "lookback_days", minimum=2, maximum=60) or 3)
     current["lookback_days"] = lookback
     current["min_up_days"] = int(_number(current.get("min_up_days"), "min_up_days", minimum=0, maximum=lookback) or 0)
-    current["max_down_days"] = int(_number(current.get("max_down_days"), "max_down_days", minimum=0, maximum=lookback) if current.get("max_down_days") not in (None, "") else lookback)
+    current["max_down_days"] = (int(_number(current.get("max_down_days"), "max_down_days", minimum=0, maximum=lookback))
+                                 if current.get("max_down_days") not in (None, "") else None)
     for key in ("return_min_pct", "return_max_pct", "volume_ratio_min", "volume_ratio_max",
                 "period_return_min", "period_return_max", "amount_avg_min", "amount_avg_max",
                 "volume_5_20_min", "volume_5_20_max", "turnover_min", "turnover_max",
@@ -214,7 +216,7 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
             explanations.append("近 %d 日上涨 %d 天，量能未同步增强" % (c["lookback_days"], up_days))
         if c["min_up_days"] is not None and up_days < c["min_up_days"]:
             continue
-        if down_days > c["max_down_days"]:
+        if c["max_down_days"] is not None and down_days > c["max_down_days"]:
             continue
         if c["return_min_pct"] is not None and (ret is None or ret < c["return_min_pct"]):
             continue
