@@ -304,7 +304,7 @@ def stock_series(code: str, *, days: int = 120, as_of: str = "",
     days = max(20, min(int(days), 750))
     con = duckdb.connect()
     try:
-        query = f"SELECT CAST(date AS DATE) AS date, close, high, low, volume, amount FROM read_parquet({files}) WHERE code=? "
+        query = f"SELECT CAST(date AS DATE) AS date, open, close, high, low, volume, amount FROM read_parquet({files}) WHERE code=? "
         params = [code]
         if as_of:
             query += "AND date <= ? "
@@ -315,10 +315,12 @@ def stock_series(code: str, *, days: int = 120, as_of: str = "",
     finally:
         con.close()
     return {"code": code, "dates": [str(x)[:10] for x in frame["date"]],
+            "open": [_round(x) for x in frame.get("open", [])],
             "close": [_round(x) for x in frame.get("close", [])],
             "high": [_round(x) for x in frame.get("high", [])],
             "low": [_round(x) for x in frame.get("low", [])],
-            "volume": [_round(x) for x in frame.get("volume", [])]}
+            "volume": [_round(x) for x in frame.get("volume", [])],
+            "amount": [_round(x) for x in frame.get("amount", [])]}
 
 
 def _attach_names(items: list[dict], warehouse: Warehouse) -> None:

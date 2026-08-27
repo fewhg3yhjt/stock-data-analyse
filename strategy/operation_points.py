@@ -212,7 +212,7 @@ def calculate(df: pd.DataFrame, config: Optional[OperationPointConfig] = None,
     else:
         operation, operation_reason = "WAIT", "当前价格未进入定义的买入观察区域"
     yesterday = enriched.iloc[-2]
-    buy_signal = (buy_watch and close > float(yesterday["close"]) and close > float(row["open"]) and float(row["low"]) >= float(yesterday["low"]) - .2 * atr)
+    buy_signal = ((buy_watch or bottom_watch) and close > float(yesterday["close"]) and close > float(row["open"]) and float(row["low"]) >= float(yesterday["low"]) - .2 * atr)
     if buy_signal:
         operation = "BUY_SIGNAL"
         operation_reason = "收盘高于昨日和今日开盘，且未明显跌破昨日低点"
@@ -233,17 +233,31 @@ def run_backtest(df: pd.DataFrame, config: Optional[OperationPointConfig] = None
     config = config or OperationPointConfig()
     enriched = add_indicators(df, config)
     trades, equity = [], []
+    diagnostics = {"eligible_days": 0, "states": {}, "watch_days": 0,
+                   "stop_confirmed_days": 0, "rr_pass_days": 0,
+                   "rejected_no_signal": 0, "rejected_rr": 0,
+                   "rejected_entry": 0}
     cash = 100000.0
     for index in range(max(60, config.bottoming_lookback), len(enriched) - 1):
         visible = enriched.iloc[:index + 1].copy()
         result = calculate(visible, config)
+        diagnostics["eligible_days"] += 1
+        diagnostics["states"][result.state] = diagnostics["states"].get(result.state, 0) + 1
+        if result.buy_watch or result.bottom_buy_watch:
+            diagnostics["watch_days"] += 1
+        if result.buy_signal:
+            diagnostics["stop_confirmed_days"] += 1
+        if result.rr1 is not None and result.rr1 >= config.min_rr:
+            diagnostics["rr_pass_days"] += 1
         if result.operation != "BUY_SIGNAL" or result.rr1 is None:
+            diagnostics["rejected_no_signal"] += 1
             equity.append(cash)
             continue
         next_row = enriched.iloc[index + 1]
         entry = float(next_row["open"]) * (1 + config.slippage_rate)
         stop, target = result.stop_price, result.target1
         if stop is None or target is None or entry <= stop or target <= entry:
+            diagnostics["rejected_entry"] += 1
             continue
         exit_price, reason = None, "期末"
         for future_index in range(index + 1, len(enriched)):
@@ -263,4 +277,13 @@ def run_backtest(df: pd.DataFrame, config: Optional[OperationPointConfig] = None
         trades.append({"signal_date": result.calculation_as_of, "entry_date": str(next_row["date"])[:10], "exit_date": exit_date, "entry": round(entry, 4), "exit": round(exit_price, 4), "return_pct": round(net * 100, 2), "reason": reason, "state": result.state})
     wins = [trade for trade in trades if trade["return_pct"] > 0]
     losses = [trade for trade in trades if trade["return_pct"] <= 0]
-    return {"strategy": config.to_dict(), "trades": trades, "trade_count": len(trades), "win_rate": round(len(wins) / len(trades) * 100, 2) if trades else 0, "average_profit": round(sum(t["return_pct"] for t in wins) / len(wins), 2) if wins else 0, "average_loss": round(sum(t["return_pct"] for t in losses) / len(losses), 2) if losses else 0, "profit_factor": round(sum(t["return_pct"] for t in wins) / abs(sum(t["return_pct"] for t in losses)), 2) if losses and sum(t["return_pct"] for t in losses) else None}
+    return {"strategy": config.to_dict(), "trades": trades, "trade_count": len(trades),
+            "win_rate": round(len(wins) / len(trades) * 100, 2) if trades else 0,
+            "average_profit": round(sum(t["return_pct"] for t in wins) / len(wins), 2) if wins else 0,
+            "average_loss": round(sum(t["return_pct"] for t in losses) / len(losses), 2) if losses else 0,
+            "profit_factor": round(sum(t["return_pct"] for t in wins) / abs(sum(t["return_pct"] for t in losses)), 2) if losses and sum(t["return_pct"] for t in losses) else None,
+            "diagnostics": diagnostics,
+            "data_start": str(enriched["date"].iloc[0])[:10] if len(enriched) else None,
+            "data_end": str(enriched["date"].iloc[-1])[:10] if len(enriched) else None,
+            "effective_start": str(enriched["date"].iloc[max(60, config.bottoming_lookback)])[:10] if len(enriched) > max(60, config.bottoming_lookback) else None,
+            "effective_end": str(enriched["date"].iloc[-2])[:10] if len(enriched) > 1 else None}

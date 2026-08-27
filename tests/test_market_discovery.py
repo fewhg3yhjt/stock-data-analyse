@@ -50,6 +50,7 @@ def test_stock_series_uses_local_daily_data(tmp_path):
     result = stock_series("sh600900", warehouse=warehouse, days=20)
     assert len(result["dates"]) == 20
     assert result["close"][-1] == 99
+    assert result["open"][-1] == 99
 
 
 def test_discovery_run_store_records_conditions(tmp_path):

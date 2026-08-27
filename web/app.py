@@ -1509,7 +1509,7 @@ def api_operation_points_analyze():
         config = OperationPointConfig.from_dict(payload.get("config"))
         warehouse = Warehouse()
         series = stock_series(code, days=750, warehouse=warehouse)
-        frame = pd.DataFrame({"date": series["dates"], "close": series["close"], "high": series["high"], "low": series["low"], "volume": series["volume"], "open": series["close"], "amount": [0] * len(series["dates"])})
+        frame = pd.DataFrame({"date": series["dates"], "open": series["open"], "close": series["close"], "high": series["high"], "low": series["low"], "volume": series["volume"], "amount": series["amount"]})
         result = calculate(frame, config)
         from StockInvestmentTool.strategy.operation_points_store import OperationPointStore
         OperationPointStore().record_run(name=config.name, version=config.version, code=code,
@@ -1531,7 +1531,7 @@ def api_operation_points_backtest():
         code = (payload.get("code") or "").strip().lower().replace(".", "")
         config = OperationPointConfig.from_dict(payload.get("config"))
         series = stock_series(code, days=750)
-        frame = pd.DataFrame({"date": series["dates"], "close": series["close"], "high": series["high"], "low": series["low"], "volume": series["volume"], "open": series["close"], "amount": [0] * len(series["dates"])})
+        frame = pd.DataFrame({"date": series["dates"], "open": series["open"], "close": series["close"], "high": series["high"], "low": series["low"], "volume": series["volume"], "amount": series["amount"]})
         result = run_backtest(frame, config)
         from StockInvestmentTool.strategy.operation_points_store import OperationPointStore
         OperationPointStore().record_run(name=config.name, version=config.version, code=code,
