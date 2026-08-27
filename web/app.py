@@ -2224,12 +2224,14 @@ def settings_reset():
 # ── 登录认证（.env 配置 ADMIN_PASSWORD 后启用；未配置则开发模式免登录）──
 
 def _auth_enabled() -> bool:
-    return bool(os.getenv("ADMIN_PASSWORD"))
+    # Temporary operator-controlled bypass. Keep ADMIN_PASSWORD configured so
+    # removing STOCK_DISABLE_AUTH=1 restores the normal login flow.
+    return bool(os.getenv("ADMIN_PASSWORD")) and os.getenv("STOCK_DISABLE_AUTH") != "1"
 
 
 def _validate_runtime_security(*, allow_test: bool = False) -> None:
     """Fail closed unless an explicit development mode is requested."""
-    if os.getenv("STOCK_DEV_MODE") == "1" or (allow_test and os.getenv("PYTEST_CURRENT_TEST")):
+    if os.getenv("STOCK_DEV_MODE") == "1" or os.getenv("STOCK_DISABLE_AUTH") == "1" or (allow_test and os.getenv("PYTEST_CURRENT_TEST")):
         return
     if not os.getenv("ADMIN_PASSWORD"):
         raise RuntimeError("生产模式必须配置 ADMIN_PASSWORD；调试环境请显式设置 STOCK_DEV_MODE=1")

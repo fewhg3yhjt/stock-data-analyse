@@ -32,3 +32,13 @@ def test_runtime_security_allows_existing_weak_secret_with_warning(monkeypatch, 
     monkeypatch.setenv("SECRET_KEY", "short")
     _validate_runtime_security()
     assert "长度不足" in caplog.text
+
+
+def test_runtime_security_allows_temporary_auth_bypass(monkeypatch):
+    from StockInvestmentTool.web.app import _auth_enabled, _validate_runtime_security
+
+    monkeypatch.setenv("ADMIN_PASSWORD", "configured")
+    monkeypatch.setenv("STOCK_DISABLE_AUTH", "1")
+    monkeypatch.delenv("STOCK_DEV_MODE", raising=False)
+    _validate_runtime_security()
+    assert _auth_enabled() is False

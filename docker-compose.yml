@@ -16,6 +16,8 @@ services:
         required: false
     environment:
       - TZ=Asia/Shanghai
+      # Temporary operator-approved bypass; remove this line to restore login.
+      - STOCK_DISABLE_AUTH=1
       # 代码挂载模式下避免在宿主机代码目录生成 __pycache__
       - PYTHONDONTWRITEBYTECODE=1
     # 运行数据持久化（portfolio.db / 缓存 / 报表；切勿 down -v）
