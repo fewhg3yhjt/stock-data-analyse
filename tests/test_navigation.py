@@ -74,7 +74,7 @@ def test_research_and_system_restore_core_links(client):
 
 def test_market_discovery_page_links_workflow(client):
     html = client.get("/market-discovery").get_data(as_text=True)
-    assert "执行本地筛选" in html
+    assert "开始筛选" in html
     assert "/api/market-discovery/stocks" in html
     assert "板块资金流作为后续待办" in html
     assert "符合条件总数" in html

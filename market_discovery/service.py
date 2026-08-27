@@ -8,7 +8,6 @@ explainable price/volume signals for the observation funnel.
 from __future__ import annotations
 
 import math
-from pathlib import Path
 from typing import Optional
 
 import duckdb
@@ -17,6 +16,10 @@ from StockInvestmentTool.warehouse.storage import Warehouse
 
 
 DEFAULT_CONDITIONS = {
+    "keyword": "",
+    "market": "ALL",
+    "board": "ALL",
+    "industry": "ALL",
     "lookback_days": 3,
     "min_up_days": 0,
     "max_down_days": 3,
@@ -24,6 +27,22 @@ DEFAULT_CONDITIONS = {
     "return_max_pct": None,
     "volume_ratio_min": None,
     "volume_ratio_max": None,
+    "period_return_min": None,
+    "period_return_max": None,
+    "up_days_min": None,
+    "up_days_max": None,
+    "down_days_min": None,
+    "down_days_max": None,
+    "amplitude_min": None,
+    "amplitude_max": None,
+    "amount_avg_min": None,
+    "amount_avg_max": None,
+    "volume_5_20_min": None,
+    "volume_5_20_max": None,
+    "turnover_min": None,
+    "turnover_max": None,
+    "price_min": None,
+    "price_max": None,
     "require_price_up": False,
     "require_volume_decline": False,
     "signal": "",
@@ -57,22 +76,39 @@ def _conditions(raw: Optional[dict]) -> dict:
     current["lookback_days"] = lookback
     current["min_up_days"] = int(_number(current.get("min_up_days"), "min_up_days", minimum=0, maximum=lookback) or 0)
     current["max_down_days"] = int(_number(current.get("max_down_days"), "max_down_days", minimum=0, maximum=lookback) if current.get("max_down_days") not in (None, "") else lookback)
-    for key in ("return_min_pct", "return_max_pct", "volume_ratio_min", "volume_ratio_max"):
+    for key in ("return_min_pct", "return_max_pct", "volume_ratio_min", "volume_ratio_max",
+                "period_return_min", "period_return_max", "amount_avg_min", "amount_avg_max",
+                "volume_5_20_min", "volume_5_20_max", "turnover_min", "turnover_max",
+                "price_min", "price_max", "amplitude_min", "amplitude_max"):
         current[key] = _number(current.get(key), key, minimum=-1000, maximum=1000)
+    for key in ("up_days_min", "up_days_max", "down_days_min", "down_days_max"):
+        current[key] = int(_number(current.get(key), key, minimum=0, maximum=lookback) or 0) if current.get(key) not in (None, "") else None
     current["min_history"] = int(_number(current.get("min_history"), "min_history", minimum=20, maximum=5000) or 80)
     current["require_price_up"] = bool(current.get("require_price_up"))
     current["require_volume_decline"] = bool(current.get("require_volume_decline"))
     current["signal"] = str(current.get("signal") or "").strip().lower()
+    current["keyword"] = str(current.get("keyword") or "").strip()
+    current["market"] = str(current.get("market") or "ALL").upper()
+    current["board"] = str(current.get("board") or "ALL").lower()
+    current["industry"] = str(current.get("industry") or "ALL").strip()
+    if current["market"] not in ("ALL", "SH", "SZ", "BJ"):
+        raise ValueError("未知市场")
+    if current["board"] not in ("all", "main", "cyb", "kcb", "bse"):
+        raise ValueError("未知板块")
     if current["signal"] not in ("", "price_up_volume_down", "price_down_volume_up", "volume_spike", "price_up_volume_up"):
         raise ValueError("未知价量信号")
     return current
 
 
 def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
-                    as_of: str = "", warehouse: Optional[Warehouse] = None) -> dict:
+                    as_of: str = "", warehouse: Optional[Warehouse] = None,
+                    page: int = 1, page_size: int = 20,
+                    sort: str = "return_pct", descending: bool = True) -> dict:
     """Screen local daily data and return rows plus the applied data date."""
     c = _conditions(conditions)
-    top_n = max(1, min(int(top_n), 500))
+    top_n = max(1, min(int(top_n), 5000))
+    page = max(1, int(page))
+    page_size = max(10, min(int(page_size), 100))
     warehouse = warehouse or Warehouse()
     files = _files(warehouse)
     as_of_sql = "" if not as_of else "AND date <= ?"
@@ -87,6 +123,7 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                  LAG(volume, {lookback}) OVER (PARTITION BY code ORDER BY date) AS old_volume,
                  AVG(volume) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) AS avg_volume_5,
                  AVG(volume) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_volume_20,
+                 AVG(volume) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN {lookback} PRECEDING AND 1 PRECEDING) AS avg_volume_prev_n,
                  COUNT(*) OVER (PARTITION BY code) AS history_count
           FROM read_parquet({files})
           WHERE 1=1 {as_of_sql}
@@ -103,26 +140,55 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
           FROM source
         )
         SELECT code, date, close, high, low, volume, amount, prev_close, old_close,
-               old_volume, avg_volume_5, avg_volume_20, history_count, up_days, down_days,
-               (close / NULLIF(old_close, 0) - 1) * 100 AS return_pct,
-               volume / NULLIF(avg_volume_5, 0) AS volume_ratio_5,
-               close / NULLIF(avg_volume_20, 0) AS close_vs_volume20,
-               volume / NULLIF(old_volume, 0) AS volume_change_ratio
-        FROM latest WHERE rn = 1 AND history_count >= ?
+               old_volume, avg_volume_5, avg_volume_20, avg_volume_prev_n, history_count, rn
+        FROM latest WHERE rn <= ? AND history_count >= ?
         """
-        params = ([as_of, c["min_history"]] if as_of else [c["min_history"]])
+        params = ([as_of, lookback + 1, c["min_history"]] if as_of else [lookback + 1, c["min_history"]])
         rows = con.execute(query, params).fetchdf().to_dict("records")
     finally:
         con.close()
 
-    results = []
+    grouped = {}
     for row in rows:
-        ret = _float(row.get("return_pct"))
-        up_days = int(row.get("up_days") or 0)
-        down_days = int(row.get("down_days") or 0)
-        volume_ratio = _float(row.get("volume_ratio_5"))
-        old_volume = _float(row.get("old_volume"))
-        volume_change = (_float(row.get("volume_change_ratio")) - 1) * 100 if old_volume else None
+        grouped.setdefault(str(row["code"]), []).append(row)
+    results = []
+    for code, history in grouped.items():
+        history.sort(key=lambda item: int(item["rn"]))
+        latest = history[0]
+        prior = history[1:]
+        close = _float(latest.get("close"))
+        old_close = _float(history[-1].get("close")) if len(history) > lookback else None
+        ret = (close / old_close - 1) * 100 if close is not None and old_close else None
+        up_days = sum(_float(item.get("close")) is not None and _float(item.get("prev_close")) is not None and item["close"] > item["prev_close"] for item in history[:lookback])
+        down_days = sum(_float(item.get("close")) is not None and _float(item.get("prev_close")) is not None and item["close"] < item["prev_close"] for item in history[:lookback])
+        # history is latest-first; count only the current run, not the max run.
+        consecutive_up = consecutive_down = 0
+        for item in history[:lookback]:
+            if item.get("prev_close") is None or item["close"] == item["prev_close"]:
+                break
+            if item["close"] > item["prev_close"] and consecutive_down == 0:
+                consecutive_up += 1
+            else:
+                break
+        for item in history[:lookback]:
+            if item.get("prev_close") is None or item["close"] == item["prev_close"]:
+                break
+            if item["close"] < item["prev_close"] and consecutive_up == 0:
+                consecutive_down += 1
+            else:
+                break
+        volumes = [_float(item.get("volume")) for item in history[:lookback]]
+        amounts = [_float(item.get("amount")) for item in history[:lookback]]
+        valid_volumes = [v for v in volumes if v is not None]
+        valid_amounts = [v for v in amounts if v is not None]
+        volume_ratio = _float(latest.get("volume")) / _float(latest.get("avg_volume_prev_n")) if _float(latest.get("avg_volume_prev_n")) else None
+        volume_5_20 = _float(latest.get("avg_volume_5")) / _float(latest.get("avg_volume_20")) if _float(latest.get("avg_volume_20")) else None
+        amplitude = ((max((_float(item.get("high")) for item in history[:lookback] if _float(item.get("high")) is not None), default=0) / min((_float(item.get("low")) for item in history[:lookback] if _float(item.get("low")) is not None), default=1)) - 1) * 100
+        up_volumes = [_float(item.get("volume")) for item in history[:lookback] if _float(item.get("close")) is not None and _float(item.get("prev_close")) is not None and item["close"] > item["prev_close"]]
+        down_volumes = [_float(item.get("volume")) for item in history[:lookback] if _float(item.get("close")) is not None and _float(item.get("prev_close")) is not None and item["close"] < item["prev_close"]]
+        up_down_volume = sum(up_volumes) / len(up_volumes) / (sum(down_volumes) / len(down_volumes)) if up_volumes and down_volumes and sum(down_volumes) else None
+        volume_change = (volume_ratio - 1) * 100 if volume_ratio is not None else None
+        row = latest
         price_up = ret is not None and ret > 0
         volume_down = volume_change is not None and volume_change < 0
         volume_spike = volume_ratio is not None and volume_ratio >= 1.8
@@ -146,7 +212,7 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
             tags.append("价量平稳")
         if up_days >= 2 and volume_down:
             explanations.append("近 %d 日上涨 %d 天，量能未同步增强" % (c["lookback_days"], up_days))
-        if c["min_up_days"] and up_days < c["min_up_days"]:
+        if c["min_up_days"] is not None and up_days < c["min_up_days"]:
             continue
         if down_days > c["max_down_days"]:
             continue
@@ -168,19 +234,64 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                       "price_up_volume_up": price_up_volume_up}
         if c["signal"] and not signal_map[c["signal"]]:
             continue
-        results.append({"code": str(row["code"]), "date": str(row["date"])[:10],
-                        "price": _round(row.get("close")), "return_pct": _round(ret),
+        results.append({"code": code, "date": str(row["date"])[:10],
+                        "price": _round(close), "return_pct": _round(ret),
                         "up_days": up_days, "down_days": down_days,
-                        "volume_ratio_5": _round(volume_ratio),
+                        "consecutive_up": consecutive_up, "consecutive_down": consecutive_down,
+                        "amplitude_pct": _round(amplitude), "amount_avg": _round(sum(valid_amounts) / len(valid_amounts) if valid_amounts else None),
+                        "volume_ratio_5": _round(volume_ratio), "volume_5_20": _round(volume_5_20),
+                        "up_down_volume": _round(up_down_volume),
                         "volume_change_pct": _round(volume_change),
-                        "amount": _round(row.get("amount")), "signal_tags": tags,
+                        "amount": _round(row.get("amount")), "amount_avg_yi": _round((sum(valid_amounts) / len(valid_amounts) / 1e8) if valid_amounts else None), "turnover": _round(row.get("turn")),
+                        "pe_ttm": _round(row.get("peTTM")), "pb": _round(row.get("pbMRQ")),
+                        "signal_tags": tags,
                         "explanations": explanations})
-    results.sort(key=lambda item: (-(item["return_pct"] or -999), -(item["volume_ratio_5"] or 0), item["code"]))
-    total_count = len(results)
-    results = results[:top_n]
     _attach_names(results, warehouse)
+    results = [item for item in results if _matches_identity(item, c)]
+    sort_key = sort if sort in {"price", "return_pct", "up_days", "down_days", "volume_ratio_5", "volume_5_20", "turnover", "pe_ttm", "pb", "amount_avg", "amplitude_pct"} else "return_pct"
+    results.sort(key=lambda item: (item.get(sort_key) is None, item.get(sort_key) if item.get(sort_key) is not None else 0, item["code"]), reverse=descending)
+    total_count = len(results)
+    if top_n < total_count:
+        results = results[:top_n]
+    start = (page - 1) * page_size
+    page_items = results[start:start + page_size]
     return {"conditions": c, "as_of": as_of or (results[0]["date"] if results else None),
-            "count": len(results), "total_count": total_count, "items": results}
+            "count": len(page_items), "total_count": total_count, "page": page,
+            "page_size": page_size, "pages": max(1, math.ceil(total_count / page_size)), "items": page_items}
+
+
+def _matches_identity(item: dict, conditions: dict) -> bool:
+    code = item["code"]
+    if conditions["keyword"] and conditions["keyword"].lower() not in (code + " " + item.get("name", "")).lower():
+        return False
+    if conditions["market"] != "ALL" and not code.startswith(conditions["market"].lower()):
+        return False
+    if conditions["industry"] != "ALL" and item.get("industry") != conditions["industry"]:
+        return False
+    from StockInvestmentTool.screener.board import detect_board
+    board = detect_board(code)
+    if conditions["board"] != "all":
+        if conditions["board"] == "main" and board not in ("main_sh", "main_sz"):
+            return False
+        if conditions["board"] == "cyb" and board != "cyb":
+            return False
+        if conditions["board"] == "kcb" and board != "kcb":
+            return False
+        if conditions["board"] == "bse" and board != "bse":
+            return False
+    for key, low_key, high_key in (("price", "price_min", "price_max"), ("return_pct", "period_return_min", "period_return_max"),
+                                   ("up_days", "up_days_min", "up_days_max"), ("down_days", "down_days_min", "down_days_max"),
+                                   ("volume_ratio_5", "volume_ratio_min", "volume_ratio_max"), ("volume_5_20", "volume_5_20_min", "volume_5_20_max"),
+                                   ("amount_avg_yi", "amount_avg_min", "amount_avg_max"), ("amplitude_pct", "amplitude_min", "amplitude_max"),
+                                   ("turnover", "turnover_min", "turnover_max"), ("pe_ttm", "pe_min", "pe_max"),
+                                   ("pb", "pb_min", "pb_max"), ("consecutive_up", "consecutive_up_min", "consecutive_up_max"),
+                                   ("consecutive_down", "consecutive_down_min", "consecutive_down_max")):
+        value = item.get(key)
+        if conditions.get(low_key) is not None and (value is None or value < conditions[low_key]):
+            return False
+        if conditions.get(high_key) is not None and (value is None or value > conditions[high_key]):
+            return False
+    return True
 
 
 def stock_series(code: str, *, days: int = 120, as_of: str = "",
