@@ -380,7 +380,9 @@ def init_scheduler(app) -> None:
             todays = [item for item in store.recent(200)
                       if item.get("job_name") == "daily_sync"
                       and str(item.get("started_at", ""))[:10] == today]
-            if not todays and not store.running("daily_sync"):
+            active_or_success = [item for item in todays
+                                 if item.get("status") in ("running", "success")]
+            if not active_or_success:
                 threading.Thread(target=run_daily_data_pipeline, daemon=True,
                                  name="daily-sync-catchup").start()
 
