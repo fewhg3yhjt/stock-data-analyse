@@ -69,6 +69,9 @@ class AdvisorContext:
         self.trend = ""
         self.market_state = ""
         self.rebound_from_month_low = 0.0
+        self.post_high = 0.0
+        self.post_low = 0.0
+        self.trade_metrics = {}
         self.indicators: dict = {}          # 指标体系计算结果（可配置/组合指标）
         self._dynamic_weak_support = False  # v4.8 基金动态弱支撑（MA20 切换）标记
 
@@ -89,6 +92,9 @@ class AdvisorContext:
             "rebound_from_month_low": self.rebound_from_month_low,
             "indicators": self.indicators,
             "dynamic_weak_support": self._dynamic_weak_support,
+            "post_high": self.post_high,
+            "post_low": self.post_low,
+            "trade_metrics": self.trade_metrics,
         }
 
 
@@ -514,6 +520,17 @@ class PostPurchaseAdvisor:
                 )
 
         ctx = self.compute_context(kline, dividend_anchor, position.scheme_snapshot)
+        try:
+            from StockInvestmentTool.portfolio.trade_metrics import calculate_post_metrics, load_local_minute
+            metrics = calculate_post_metrics(
+                buy_date=position.buy_date, buy_price=position.avg_cost,
+                daily=kline, minute=load_local_minute(position.stock_code),
+                as_of=__import__("datetime").datetime.now(),
+            )
+            ctx.post_high, ctx.post_low = metrics.post_high, metrics.post_low
+            ctx.trade_metrics = metrics.to_dict()
+        except Exception as exc:
+            logger.warning("交易后高/后低计算失败 %s: %s", position.stock_code, exc)
         if current_price:
             ctx.current_price = current_price
         if ctx.current_price > position.peak_price:

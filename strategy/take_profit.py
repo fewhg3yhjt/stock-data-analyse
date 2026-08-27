@@ -902,6 +902,21 @@ class TakeProfitOptimizer:
         total_return = (final_asset - self.initial_cash) / self.initial_cash * 100
         buy_hold_return = (self.df["close"].iloc[-1] / self.df["close"].iloc[0] - 1) * 100
 
+        # Expose the same event-derived metric used by live Advisor.  The
+        # frame is the historical visible window, so no future rows leak into
+        # each reported buy event.
+        post_metrics = []
+        from StockInvestmentTool.portfolio.trade_metrics import calculate_post_metrics
+        for trade in trades:
+            if not str(trade.get("type", "")).startswith("买入"):
+                continue
+            metric = calculate_post_metrics(
+                buy_date=str(trade["date"])[:10], buy_price=trade["price"],
+                daily=self.df, as_of=self.df["date"].iloc[-1],
+            )
+            post_metrics.append({"buy_date": str(trade["date"])[:10],
+                                 "buy_price": trade["price"], **metric.to_dict()})
+
         return {
             "initial_cash": self.initial_cash,
             "final_asset": round(final_asset, 2),
@@ -911,5 +926,6 @@ class TakeProfitOptimizer:
             "trades": trades,
             "trade_count": len(trades),
             "equity_curve": equity_curve,
+            "post_metrics": post_metrics,
             "params": {"trail_threshold": trail_threshold, "offset": offset},
         }

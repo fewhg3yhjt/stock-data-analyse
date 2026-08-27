@@ -126,6 +126,8 @@ class Position:
             "unrealized_pnl": self.unrealized_pnl,
             "unrealized_pnl_pct": self.unrealized_pnl_pct,
             "is_open": self.is_open,
+            "post_high": None,
+            "post_low": None,
         }
 
 
