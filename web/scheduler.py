@@ -339,6 +339,7 @@ def init_scheduler(app) -> None:
             from StockInvestmentTool.ops.job_runs import JobRunStore
             store = JobRunStore()
             today = now.strftime("%Y-%m-%d")
+            store.reclaim_stale("daily_sync", max_age_minutes=30)
             todays = [item for item in store.recent(200)
                       if item.get("job_name") == "daily_sync"
                       and str(item.get("started_at", ""))[:10] == today]

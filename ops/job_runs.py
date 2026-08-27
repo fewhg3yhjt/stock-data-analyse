@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -145,6 +145,19 @@ class JobRunStore:
                 (job_name,),
             ).fetchone()
         return dict(row) if row else None
+
+    def reclaim_stale(self, job_name: str, *, max_age_minutes: int = 30) -> int:
+        """Mark abandoned running rows after a process/container restart."""
+        cutoff = (datetime.now() - timedelta(minutes=max_age_minutes)).isoformat(timespec="seconds")
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._connect() as conn:
+            cur = conn.execute(
+                """UPDATE job_runs SET status='failed', finished_at=?, updated_at=?,
+                   error='任务进程已结束，运行记录自动回收'
+                   WHERE job_name=? AND status='running' AND started_at<?""",
+                (now, now, job_name, cutoff),
+            )
+        return cur.rowcount
 
     def ensure_daily_plan(self, run_date: str | None = None,
                           *, daily_time: str = "15:35") -> list[dict]:
