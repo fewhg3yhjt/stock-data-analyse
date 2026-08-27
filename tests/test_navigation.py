@@ -36,6 +36,7 @@ def client():
         ("/watch-pool", "watchpool"),
         ("/research", "research"),
         ("/system", "system"),
+        ("/market-discovery", "market"),
     ],
 )
 def test_core_page_renders_shared_navigation(client, path, active):
@@ -69,6 +70,13 @@ def test_research_and_system_restore_core_links(client):
     assert 'href="/data-center"' in system
     assert 'href="/notify-center"' in system
     assert 'href="/settings"' in system
+
+
+def test_market_discovery_page_links_workflow(client):
+    html = client.get("/market-discovery").get_data(as_text=True)
+    assert "执行本地筛选" in html
+    assert "/api/market-discovery/stocks" in html
+    assert "板块资金流作为后续待办" in html
 
 
 def _href_for_active(active: str) -> str:

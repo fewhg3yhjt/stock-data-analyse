@@ -1421,6 +1421,51 @@ def strategy_page():
     return flask.render_template("strategy.html", error=None)
 
 
+@web_app.route("/market-discovery", methods=["GET"])
+def market_discovery_page():
+    return flask.render_template("market_discovery.html")
+
+
+@web_app.route("/api/market-discovery/stocks", methods=["POST"])
+def api_market_discovery_stocks():
+    try:
+        from StockInvestmentTool.market_discovery.service import discover_stocks
+        from StockInvestmentTool.market_discovery.storage import DiscoveryRunStore
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        result = discover_stocks(
+            payload.get("conditions"), top_n=payload.get("top_n", 50),
+            as_of=(payload.get("as_of") or "")[:10],
+        )
+        result["run_id"] = DiscoveryRunStore().save(
+            as_of=result.get("as_of"), conditions=result.get("conditions", {}),
+            result_count=result.get("count", 0),
+        )
+        return flask.jsonify({"status": "success", **result})
+    except (TypeError, ValueError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("本地个股发现失败")
+        return flask.jsonify({"status": "error", "error": str(exc)}), 500
+
+
+@web_app.route("/api/market-discovery/series", methods=["GET"])
+def api_market_discovery_series():
+    try:
+        from StockInvestmentTool.market_discovery.service import stock_series
+        code = (flask.request.args.get("code") or "").strip().lower().replace(".", "")
+        if not code:
+            return flask.jsonify({"status": "error", "error": "缺少股票代码"}), 400
+        return flask.jsonify({"status": "success", **stock_series(
+            code, days=flask.request.args.get("days", 120),
+            as_of=(flask.request.args.get("as_of") or "")[:10],
+        )})
+    except (TypeError, ValueError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("个股发现序列读取失败")
+        return flask.jsonify({"status": "error", "error": str(exc)}), 500
+
+
 @web_app.route("/api/strategy/scan", methods=["POST"])
 def api_strategy_scan():
     """策略扫描：找当前/某时点符合条件股票 + 生成折线图"""
