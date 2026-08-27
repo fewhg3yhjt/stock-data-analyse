@@ -104,7 +104,7 @@ select{background:var(--surface2);border:1px solid var(--border);border-radius:6
             <button class="btn btn-outline" onclick="reanalyze('{{ s.stock_code }}','{{ s.stock_name }}',{{ s.id }})"><i class="fas fa-rotate"></i> 重新分析</button>
             <button class="btn btn-outline" onclick="toggleReturn('{{ s.stock_code }}')" title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
             <a class="btn btn-primary" href="/portfolio/add?code={{ s.stock_code }}&name={{ s.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
-            <a class="btn btn-outline" href="/?code={{ s.stock_code }}&name={{ s.stock_name }}" title="进入完整分析/回测"><i class="fas fa-chart-line"></i> 完整分析</a>
+            <a class="btn btn-outline" href="/analyze?code={{ s.stock_code }}&name={{ s.stock_name }}" title="进入完整分析/回测"><i class="fas fa-chart-line"></i> 完整分析</a>
             <button class="btn btn-danger" onclick="delSim({{ s.id }})"><i class="fas fa-trash"></i></button>
           </td>
         </tr>

@@ -267,6 +267,8 @@ pre { background: var(--surface2); border-radius: 6px; padding: 18px; overflow-x
   </div>
 </div>
 
+<div id="home-indicator-help" style="display:none;position:fixed;z-index:2000;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.16);padding:14px 16px;width:min(420px,calc(100vw - 32px));font-size:13px;line-height:1.65;"></div>
+
 <!-- 图表放大弹窗 -->
 <div class="modal-overlay" id="chart-modal" onclick="closeModal(event)">
   <button class="close" onclick="closeModal()">&times;</button>
@@ -353,11 +355,11 @@ function renderResults(data) {
 
   // 统计卡片
   const s = [
-    { label: '当前价', value: fmt(d.current_price) + ' 元', cls: 'blue' },
-    { label: '趋势', value: fmt(d.trend), cls: d.trend && d.trend.includes('多头') ? 'green' : d.trend && d.trend.includes('空头') ? 'red' : 'orange' },
-    { label: '波动率', value: fmt(d.volatility), cls: 'orange' },
-    { label: 'PE', value: fmt(d.pe), cls: d.pe_percentile != null && d.pe_percentile < 30 ? 'green' : d.pe_percentile > 70 ? 'red' : 'blue' },
-    { label: 'PE分位', value: d.pe_percentile != null ? d.pe_percentile + '%' : '-', cls: 'blue' },
+    { key: 'current_price', label: '当前价', value: fmt(d.current_price) + ' 元', cls: 'blue' },
+    { key: 'trend', label: '趋势', value: fmt(d.trend), cls: d.trend && d.trend.includes('多头') ? 'green' : d.trend && d.trend.includes('空头') ? 'red' : 'orange' },
+    { key: 'volatility', label: '波动率', value: fmt(d.volatility), cls: 'orange' },
+    { key: 'pe', label: 'PE', value: fmt(d.pe), cls: d.pe_percentile != null && d.pe_percentile < 30 ? 'green' : d.pe_percentile > 70 ? 'red' : 'blue' },
+    { key: 'pe_percentile', label: 'PE分位', value: d.pe_percentile != null ? d.pe_percentile + '%' : '-', cls: 'blue' },
   ];
   if (d.backtest_done) {
     s.push(
@@ -373,8 +375,11 @@ function renderResults(data) {
   let typeHtml = '';
   if (d.asset_type === 'etf') typeHtml = '<div style="margin-bottom:10px;"><span class="tag blue">ETF</span> <span style="font-size:12px;color:var(--text2);">数据: ' + (d.data_start||'') + ' ~ ' + (d.data_end||'') + '</span></div>';
   document.getElementById('stats-grid').innerHTML = typeHtml + s.map(x =>
-    '<div class="stat-card ' + x.cls + '"><div class="value">' + x.value + '</div><div class="label">' + x.label + '</div></div>'
+    '<div class="stat-card ' + x.cls + '"><div class="value">' + x.value + '</div><div class="label">' + x.label + ' <span class="home-indicator-info" title="查看指标说明" data-indicator="' + x.key + '">!</span></div></div>'
   ).join('');
+  document.querySelectorAll('.home-indicator-info').forEach(el => {
+    el.onclick = function(event) { event.stopPropagation(); showHomeIndicatorHelp(this, this.dataset.indicator); };
+  });
 
   // 买入计划计算过程（操作逻辑说明）
   function planComp(p) {
@@ -461,6 +466,27 @@ function renderResults(data) {
   resultSection.style.display = 'block';
   resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+
+const homeIndicatorDocs = {
+  current_price: {meaning:'当前分析时点的股票价格', calculation:'取最新可用交易日的 close；盘中行情可能来自独立快照', notes:'当前价不是技术指标。'},
+  trend: {meaning:'根据均线排列和价格走势归纳的趋势描述', calculation:'由 TechnicalIndicators.trend_judgment 根据 MA5、MA20、MA60 等关系判断', notes:'趋势分类不是对未来涨跌的预测。'},
+  volatility: {meaning:'描述价格近期波动程度的统计值', calculation:'由分析引擎根据日收益率波动计算', notes:'波动率高表示价格变化幅度较大，不代表方向。'},
+  pe: {meaning:'市盈率，用于观察价格相对每股收益的估值水平', calculation:'沿用数据源提供的 PE(TTM)', notes:'负 PE 或缺失 PE 不应解释为低估。'},
+  pe_percentile: {meaning:'当前 PE 在历史 PE 样本中的百分位', calculation:'将当前 PE 与历史 PE 样本排序后计算所处百分位', notes:'百分位不单独构成买入结论。'}
+};
+function showHomeIndicatorHelp(anchor, name){
+  const doc = homeIndicatorDocs[name] || {meaning:'指标说明暂缺', calculation:'请到指标中心查看完整定义', notes:''};
+  const box = document.getElementById('home-indicator-help');
+  box.innerHTML = '<b style="display:block;margin-bottom:5px;">' + name + ' · 指标说明</b>' +
+    '<div><strong>含义：</strong>' + doc.meaning + '</div>' +
+    '<div><strong>计算：</strong>' + doc.calculation + '</div>' +
+    (doc.notes ? '<div><strong>注意：</strong>' + doc.notes + '</div>' : '');
+  const rect = anchor.getBoundingClientRect();
+  box.style.left = Math.max(16, Math.min(rect.left, window.innerWidth - 436)) + 'px';
+  box.style.top = (rect.bottom + 8) + 'px';
+  box.style.display = 'block';
+}
+document.addEventListener('click', function(){ const box = document.getElementById('home-indicator-help'); if (box) box.style.display = 'none'; });
 </script>
 <footer style="margin-top:30px;padding-top:16px;border-top:1px solid var(--border);text-align:center;font-size:13px;color:var(--text2);">
   <a href="/compare" style="color:var(--accent);text-decoration:none;">方案对比</a>

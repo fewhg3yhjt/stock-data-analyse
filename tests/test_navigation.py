@@ -20,7 +20,8 @@ def client():
 @pytest.mark.parametrize(
     ("path", "active"),
     [
-        ("/", "analyze"),
+        ("/", "workbench"),
+        ("/analyze", "analyze"),
         ("/market", "market"),
         ("/dashboard/observe", "observe"),
         ("/watchlist", "watchlist"),
@@ -46,7 +47,7 @@ def test_core_page_renders_shared_navigation(client, path, active):
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert 'class="nav"' in html
-    assert 'href="/"' in html
+    assert 'href="/workbench"' in html
     assert 'href="/dashboard/warroom"' in html
     assert f'<a href="{_href_for_active(active)}" class="active">' in html
 
@@ -95,9 +96,25 @@ def test_workbench_exposes_market_discovery(client):
     assert 'href="/operation-points"' in html
 
 
+def test_home_is_workbench_and_analyze_is_form(client):
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "完整投资流程" in home.get_data(as_text=True)
+    analyze = client.get("/analyze?code=sh600900&name=长江电力")
+    assert analyze.status_code == 200
+    assert "分析参数" in analyze.get_data(as_text=True)
+
+
+def test_legacy_stock_link_redirects_to_analyze(client):
+    response = client.get("/?code=sh600900&name=长江电力")
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("/analyze?")
+
+
 def _href_for_active(active: str) -> str:
     return {
-        "analyze": "/",
+        "analyze": "/analyze",
+        "workbench": "/workbench",
         "market": "/market",
         "observe": "/dashboard/observe",
         "watchlist": "/watchlist",

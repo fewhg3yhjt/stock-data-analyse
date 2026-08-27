@@ -43,6 +43,11 @@ class IndicatorDocumentationRegistry:
             "pct_chg": IndicatorDocumentation("相邻交易日收盘价的百分比变化", "pct_chg = (今日 close / 昨日 close - 1) × 100%"),
             "volume_ratio": IndicatorDocumentation("当前成交量相对于指定历史均量的比例", "volume_ratio = 当前 volume / 历史均量；窗口由调用方决定"),
             "volume_5_20": IndicatorDocumentation("最近 5 日平均成交量相对于最近 20 日平均成交量的比例", "volume_5_20 = MA(volume,5) / MA(volume,20)"),
+            "current_price": IndicatorDocumentation("当前分析时点的股票价格", "取行情数据中最新可用交易日的 close；盘中页面可能另有独立快照", "日线或在线行情数据", "当前价不是技术指标，不用于替代收盘价"),
+            "trend": IndicatorDocumentation("根据均线排列和价格走势归纳的趋势描述", "由 TechnicalIndicators.trend_judgment 根据 MA5、MA20、MA60 等关系判断", "至少需要包含 close 的日线数据", "这是趋势分类，不是对未来涨跌的预测"),
+            "volatility": IndicatorDocumentation("描述价格近期波动程度的统计值", "由分析引擎根据日收益率波动计算，具体窗口以分析结果为准", "日线 close 序列", "波动率高表示价格变化幅度较大，不代表方向"),
+            "pe": IndicatorDocumentation("市盈率，用于观察价格相对每股收益的估值水平", "PE = 股票价格 / 每股收益，项目沿用数据源提供的 PE(TTM)", "需要 PE(TTM) 基本行情字段", "负 PE 或缺失 PE 不应被解释为低估"),
+            "pe_percentile": IndicatorDocumentation("当前 PE 在历史 PE 样本中的百分位", "将当前 PE 与可用历史 PE 样本排序后计算所处百分位", "需要连续的历史 PE 数据", "百分位越低只表示历史相对位置较低，不单独构成买入结论"),
         }
         items.update({
             "止盈参考线": IndicatorDocumentation("以 MA20 的 95% 作为参考价格线", "0.95 × MA20"),

@@ -126,7 +126,15 @@ def _run_analysis(task_id: str, code: str, name: str,
 
 @web_app.route("/", methods=["GET"])
 def index():
-    """主页：分析表单"""
+    """主页：投资工作台；旧的带股票参数链接兼容到个股分析。"""
+    if flask.request.args.get("code") or flask.request.args.get("name"):
+        return flask.redirect(flask.url_for("stock_web.analyze_page", **flask.request.args))
+    return flask.render_template("workbench.html")
+
+
+@web_app.route("/analyze", methods=["GET"])
+def analyze_page():
+    """个股分析表单（原首页页面）。"""
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     last_year = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
 
@@ -145,7 +153,7 @@ def index():
                                  has_api_key=bool(Config.DEEPSEEK_API_KEY),
                                  prefill_code=flask.request.args.get("code", ""),
                                  prefill_name=flask.request.args.get("name", ""),
-                                 prefill_scheme=flask.request.args.get("scheme", ""))
+                                  prefill_scheme=flask.request.args.get("scheme", ""))
 
 
 @web_app.route("/schemes", methods=["GET"])
