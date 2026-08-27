@@ -1466,6 +1466,17 @@ def api_market_discovery_series():
         return flask.jsonify({"status": "error", "error": str(exc)}), 500
 
 
+@web_app.route("/api/market-discovery/options", methods=["GET"])
+def api_market_discovery_options():
+    try:
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        with Warehouse()._conn() as conn:
+            rows = conn.execute("SELECT DISTINCT industry FROM instruments WHERE industry IS NOT NULL AND TRIM(industry) != '' ORDER BY industry").fetchall()
+        return flask.jsonify({"status": "success", "industries": [row[0] for row in rows]})
+    except Exception as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 500
+
+
 @web_app.route("/api/strategy/scan", methods=["POST"])
 def api_strategy_scan():
     """策略扫描：找当前/某时点符合条件股票 + 生成折线图"""

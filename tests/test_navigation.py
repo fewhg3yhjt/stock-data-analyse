@@ -81,6 +81,12 @@ def test_market_discovery_page_links_workflow(client):
     assert "展开K线" in html
 
 
+def test_market_discovery_options_api(client):
+    response = client.get("/api/market-discovery/options")
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "success"
+
+
 def test_workbench_exposes_market_discovery(client):
     html = client.get("/workbench").get_data(as_text=True)
     assert 'href="/market-discovery"' in html
