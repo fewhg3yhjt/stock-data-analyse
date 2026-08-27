@@ -265,23 +265,27 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
             start_date=start_date, end_date=end_date, include_etf=True,
             include_index=False, source="tencent", progress_callback=progress,
         )
+        store.update_progress(run_id, phase="日线完成，开始重建指标", progress=33,
+                              processed=1, total=3)
         indicator_id = store.start("rebuild_indicators", display_name="指标重建",
                                    input_dataset="daily", output_dataset="indicators",
                                    parent_run_id=run_id)
         store.link_plan_run(run_date, "rebuild_indicators", indicator_id)
         try:
-            result["indicators"] = IndicatorsBuilder().build_all(progress_callback=lambda p, t, c, s: store.update_progress(indicator_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c))
+            result["indicators"] = IndicatorsBuilder().build_all(progress_callback=lambda p, t, c, s: (store.update_progress(indicator_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建指标", progress=33 + round((p / t * 100) * 0.33) if t else 33, processed=p, total=t, current_item=c)))
             store.update_progress(indicator_id, phase="完成", progress=100)
             store.finish(indicator_id, "success", result["indicators"])
         except Exception as exc:
             store.finish(indicator_id, "failed", error=str(exc))
             raise
+        store.update_progress(run_id, phase="指标完成，开始重建因子", progress=66,
+                              processed=2, total=3)
         factor_id = store.start("rebuild_factors", display_name="因子重建",
                                 input_dataset="indicators", output_dataset="factors",
                                 parent_run_id=run_id)
         store.link_plan_run(run_date, "rebuild_factors", factor_id)
         try:
-            result["factors"] = FactorEngine().build_factors(progress_callback=lambda p, t, c, s: store.update_progress(factor_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c))
+            result["factors"] = FactorEngine().build_factors(progress_callback=lambda p, t, c, s: (store.update_progress(factor_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建因子", progress=66 + round((p / t * 100) * 0.34) if t else 66, processed=p, total=t, current_item=c)))
             store.update_progress(factor_id, phase="完成", progress=100)
             store.finish(factor_id, "success", result["factors"])
         except Exception as exc:
