@@ -79,6 +79,12 @@ def test_market_discovery_page_links_workflow(client):
     assert "板块资金流作为后续待办" in html
 
 
+def test_workbench_exposes_market_discovery(client):
+    html = client.get("/workbench").get_data(as_text=True)
+    assert 'href="/market-discovery"' in html
+    assert "发现个股" in html
+
+
 def _href_for_active(active: str) -> str:
     return {
         "analyze": "/",

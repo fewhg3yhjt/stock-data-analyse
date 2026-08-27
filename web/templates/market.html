@@ -45,6 +45,11 @@ select,input{background:var(--surface2);border:1px solid var(--border);border-ra
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   {% endif %}
 
+  <div class="card" style="background:#eef6ff;border-color:#c9def7;">
+    <div class="card-title"><span><i class="fas fa-filter-circle-dollar"></i> 个股发现</span><a class="btn" href="/market-discovery">打开筛选工作台</a></div>
+    <div class="note">基于本地日线数据筛选近 N 日涨跌、成交量变化和价量信号；结果可进入观察池、策略模拟和持仓流程。</div>
+  </div>
+
   <div class="card">
     <div class="card-title"><span><i class="fas fa-landmark"></i> 指数走势</span><a class="btn" href="/market-discovery">进入个股发现</a></div>
     <div class="chart" id="chart-index"></div>
