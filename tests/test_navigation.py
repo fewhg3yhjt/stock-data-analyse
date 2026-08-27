@@ -47,6 +47,15 @@ def test_core_page_renders_shared_navigation(client, path, active):
     assert f'<a href="{_href_for_active(active)}" class="active">' in html
 
 
+def test_watch_pool_contains_expandable_kline_detail(client):
+    response = client.get("/watch-pool")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "/static/stock-detail.js" in html
+    assert "展开K线" in html
+    assert "StockDetail.load" in html
+
+
 def _href_for_active(active: str) -> str:
     return {
         "analyze": "/",
