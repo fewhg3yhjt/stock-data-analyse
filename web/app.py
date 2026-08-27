@@ -348,8 +348,8 @@ def _start_data_job(job_name, worker):
 
 @web_app.route("/api/data/jobs/daily-sync", methods=["POST"])
 def api_data_daily_sync():
-    from StockInvestmentTool.web.scheduler import run_warehouse_daily
-    return _start_data_job("daily_sync", lambda _run_id: run_warehouse_daily())
+    from StockInvestmentTool.web.scheduler import run_daily_data_pipeline
+    return _start_data_job("daily_sync", lambda run_id: run_daily_data_pipeline(run_id))
 
 
 @web_app.route("/api/data/jobs/minute-snapshot", methods=["POST"])

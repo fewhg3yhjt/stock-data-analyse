@@ -235,15 +235,16 @@ def run_warehouse_daily() -> dict:
     return result
 
 
-def run_daily_data_pipeline() -> dict:
+def run_daily_data_pipeline(run_id: int | None = None) -> dict:
     """Run the warehouse chain independently from portfolio reporting."""
     from StockInvestmentTool.ops.job_runs import JobRunStore
 
     store = JobRunStore()
     run_date = datetime.now().strftime("%Y-%m-%d")
-    run_id = store.start("daily_sync", display_name="日线增量同步",
-                         scheduled_at=os.getenv("DAILY_RUN_TIME", DEFAULT_RUN_TIME),
-                         input_dataset="数据源", output_dataset="daily")
+    owns_run = run_id is None
+    run_id = run_id or store.start("daily_sync", display_name="日线增量同步",
+                                   scheduled_at=os.getenv("DAILY_RUN_TIME", DEFAULT_RUN_TIME),
+                                   input_dataset="数据源", output_dataset="daily")
     store.link_plan_run(run_date, "daily_sync", run_id)
     try:
         from StockInvestmentTool.warehouse.collector import MarketCollector
@@ -259,6 +260,7 @@ def run_daily_data_pipeline() -> dict:
         start_date = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
         end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
         result = {}
+        store.update_progress(run_id, phase="获取股票清单", progress=1)
         result["daily"] = MarketCollector().sync_daily(
             start_date=start_date, end_date=end_date, include_etf=True,
             include_index=False, source="tencent", progress_callback=progress,
@@ -286,10 +288,12 @@ def run_daily_data_pipeline() -> dict:
             store.finish(factor_id, "failed", error=str(exc))
             raise
         store.update_progress(run_id, phase="完成", progress=100)
-        store.finish(run_id, "success", result)
+        if owns_run:
+            store.finish(run_id, "success", result)
         return result
     except Exception as exc:
-        store.finish(run_id, "failed", error=str(exc))
+        if owns_run:
+            store.finish(run_id, "failed", error=str(exc))
         raise
 
 
@@ -370,7 +374,9 @@ def init_scheduler(app) -> None:
             from StockInvestmentTool.ops.job_runs import JobRunStore
             store = JobRunStore()
             today = now.strftime("%Y-%m-%d")
-            store.reclaim_stale("daily_sync", max_age_minutes=30)
+            # Any running row that predates this web process is orphaned: the
+            # worker thread cannot survive a container restart.
+            store.reclaim_stale("daily_sync", max_age_minutes=0)
             todays = [item for item in store.recent(200)
                       if item.get("job_name") == "daily_sync"
                       and str(item.get("started_at", ""))[:10] == today]
