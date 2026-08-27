@@ -37,6 +37,7 @@ def client():
         ("/research", "research"),
         ("/system", "system"),
         ("/market-discovery", "market"),
+        ("/operation-points", "research"),
     ],
 )
 def test_core_page_renders_shared_navigation(client, path, active):
@@ -91,6 +92,7 @@ def test_workbench_exposes_market_discovery(client):
     html = client.get("/workbench").get_data(as_text=True)
     assert 'href="/market-discovery"' in html
     assert "发现个股" in html
+    assert 'href="/operation-points"' in html
 
 
 def _href_for_active(active: str) -> str:

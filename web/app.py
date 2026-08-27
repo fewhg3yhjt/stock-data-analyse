@@ -14,6 +14,7 @@ from pathlib import Path
 
 import flask
 import numpy as np
+import pandas as pd
 
 # 确保包路径可访问
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -1474,6 +1475,73 @@ def api_market_discovery_options():
             rows = conn.execute("SELECT DISTINCT industry FROM instruments WHERE industry IS NOT NULL AND TRIM(industry) != '' ORDER BY industry").fetchall()
         return flask.jsonify({"status": "success", "industries": [row[0] for row in rows]})
     except Exception as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 500
+
+
+@web_app.route("/operation-points", methods=["GET"])
+def operation_points_page():
+    return flask.render_template("operation_points.html")
+
+
+@web_app.route("/api/operation-points/configs", methods=["GET", "POST"])
+def api_operation_points_configs():
+    from StockInvestmentTool.strategy.operation_points import OperationPointConfig
+    from StockInvestmentTool.strategy.operation_points_store import OperationPointStore
+    store = OperationPointStore()
+    try:
+        if flask.request.method == "GET":
+            return flask.jsonify({"status": "success", "configs": store.list()})
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        config = OperationPointConfig.from_dict(payload.get("config") or payload)
+        return flask.jsonify({"status": "success", "config": store.save(config.to_dict())})
+    except (TypeError, ValueError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+
+
+@web_app.route("/api/operation-points/analyze", methods=["POST"])
+def api_operation_points_analyze():
+    try:
+        from StockInvestmentTool.market_discovery.service import stock_series
+        from StockInvestmentTool.strategy.operation_points import OperationPointConfig, calculate
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        code = (payload.get("code") or "").strip().lower().replace(".", "")
+        config = OperationPointConfig.from_dict(payload.get("config"))
+        warehouse = Warehouse()
+        series = stock_series(code, days=750, warehouse=warehouse)
+        frame = pd.DataFrame({"date": series["dates"], "close": series["close"], "high": series["high"], "low": series["low"], "volume": series["volume"], "open": series["close"], "amount": [0] * len(series["dates"])})
+        result = calculate(frame, config)
+        from StockInvestmentTool.strategy.operation_points_store import OperationPointStore
+        OperationPointStore().record_run(name=config.name, version=config.version, code=code,
+                                         data_as_of=result.calculation_as_of, result=result.to_dict())
+        return flask.jsonify({"status": "success", "result": result.to_dict(), "series": series})
+    except (TypeError, ValueError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("操作点位分析失败")
+        return flask.jsonify({"status": "error", "error": str(exc)}), 500
+
+
+@web_app.route("/api/operation-points/backtest", methods=["POST"])
+def api_operation_points_backtest():
+    try:
+        from StockInvestmentTool.strategy.operation_points import OperationPointConfig, run_backtest
+        from StockInvestmentTool.market_discovery.service import stock_series
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        code = (payload.get("code") or "").strip().lower().replace(".", "")
+        config = OperationPointConfig.from_dict(payload.get("config"))
+        series = stock_series(code, days=750)
+        frame = pd.DataFrame({"date": series["dates"], "close": series["close"], "high": series["high"], "low": series["low"], "volume": series["volume"], "open": series["close"], "amount": [0] * len(series["dates"])})
+        result = run_backtest(frame, config)
+        from StockInvestmentTool.strategy.operation_points_store import OperationPointStore
+        OperationPointStore().record_run(name=config.name, version=config.version, code=code,
+                                         data_as_of=series["dates"][-1] if series["dates"] else None,
+                                         result=result)
+        return flask.jsonify({"status": "success", "result": result})
+    except (TypeError, ValueError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("操作点位回测失败")
         return flask.jsonify({"status": "error", "error": str(exc)}), 500
 
 
