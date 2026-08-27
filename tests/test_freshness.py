@@ -16,6 +16,11 @@ def test_classify_trade_day_lag():
     assert classify_freshness(None, expected) == "empty"
 
 
+def test_daily_expected_date_is_last_completed_trade_day():
+    from StockInvestmentTool.ops.freshness import latest_completed_trade_day
+    assert latest_completed_trade_day(datetime(2026, 8, 27, 21)) == datetime(2026, 8, 26).date()
+
+
 def test_data_status_reads_actual_files_and_job_failure(tmp_path, monkeypatch):
     monkeypatch.setenv("WAREHOUSE_DAILY_SYNC", "1")
     warehouse = Warehouse(tmp_path / "warehouse")
@@ -31,4 +36,4 @@ def test_data_status_reads_actual_files_and_job_failure(tmp_path, monkeypatch):
     assert datasets["daily"]["status"] == "failed"
     assert datasets["daily"]["last_error"] == "provider timeout"
     assert datasets["indicators"]["latest_value"] == "2026-08-26"
-    assert result["expected_trade_day"] == "2026-08-27"
+    assert result["expected_trade_day"] == "2026-08-26"

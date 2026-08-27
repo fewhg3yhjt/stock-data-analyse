@@ -253,7 +253,8 @@ class MarketCollector:
                    max_symbols: Optional[int] = None,
                    flush_every: int = 1000,
                    source: str = "baostock",
-                   target: str = "daily") -> dict:
+                   target: str = "daily",
+                   progress_callback=None) -> dict:
         """全市场日线增量同步（核心）。
 
         Args:
@@ -360,9 +361,13 @@ class MarketCollector:
 
         end_ts = pd.Timestamp(end_date)
         for i, code in enumerate(symbols, 1):
+            if progress_callback:
+                progress_callback(i - 1, len(symbols), code, "读取日线")
             # 增量判断：该标的自有最后日期 >= end_date → 已覆盖，跳过
             last = last_dates.get(code)
             if last is not None and last >= end_ts:
+                if progress_callback:
+                    progress_callback(i, len(symbols), code, "已是最新")
                 continue
 
             # 只拉缺失区间：已有数据的拉 (last_date+1, end_date]，无数据拉全区间
@@ -371,6 +376,8 @@ class MarketCollector:
             else:
                 fetch_start = start_date
             if fetch_start > end_date:
+                if progress_callback:
+                    progress_callback(i, len(symbols), code, "已是最新")
                 continue
 
             try:
@@ -381,8 +388,12 @@ class MarketCollector:
             except Exception as e:
                 failed.append(code)
                 logger.warning("拉取 %s 失败: %s", code, e)
+                if progress_callback:
+                    progress_callback(i, len(symbols), code, "拉取失败")
                 continue
             if df.empty:
+                if progress_callback:
+                    progress_callback(i, len(symbols), code, "无新增数据")
                 continue
             # 拆入内存中的月份块（去掉该标的旧数据，追加新数据）
             for ym, grp in df.groupby(df["date"].dt.strftime("%Y-%m")):
@@ -396,6 +407,8 @@ class MarketCollector:
                 merged = merged.sort_values(["date", "code"])
                 month_bufs[ym] = merged
             added += len(df)
+            if progress_callback:
+                progress_callback(i, len(symbols), code, "已入库")
             if i % flush_every == 0 or i == len(symbols):
                 _flush()
                 logger.info("进度 %d/%d，已入库 %d 行（已落盘）", i, len(symbols), added)

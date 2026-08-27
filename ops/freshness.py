@@ -46,6 +46,19 @@ def latest_expected_trade_day(now: Optional[datetime] = None) -> date:
     return current
 
 
+def latest_completed_trade_day(now: Optional[datetime] = None) -> date:
+    """Return the latest full daily bar expected by the warehouse pipeline.
+
+    The daily collector intentionally ends at yesterday because today's bar is
+    not complete until the next trading session. Intraday minute data is tracked
+    separately and may use today's date.
+    """
+    current = (now or datetime.now()).date() - timedelta(days=1)
+    while current.weekday() >= 5:
+        current -= timedelta(days=1)
+    return current
+
+
 def _date_value(value) -> Optional[date]:
     if value is None or pd.isna(value):
         return None
@@ -97,6 +110,10 @@ def _apply_job_state(item: DatasetStatus, latest_job: Optional[dict], success_jo
 
 def _classify_daily_task(item: DatasetStatus, latest_job: Optional[dict], current: datetime) -> None:
     if latest_job:
+        if latest_job.get("status") == "running":
+            item.status = "running"
+            item.last_error = latest_job.get("phase") or "日线任务执行中"
+            return
         _apply_job_state(item, latest_job, latest_job if latest_job.get("status") == "success" else None)
         return
     spec = os.getenv("DAILY_RUN_TIME", "15:35")
@@ -202,7 +219,7 @@ def dataset_statuses(*, warehouse=None, job_runs=None, now: Optional[datetime] =
 
     warehouse = warehouse or Warehouse()
     current = now or datetime.now()
-    expected = latest_expected_trade_day(current)
+    expected = latest_completed_trade_day(current)
     runs = job_runs if job_runs is not None else JobRunStore().recent(200)
     result: list[DatasetStatus] = []
 
@@ -263,7 +280,7 @@ def dataset_statuses(*, warehouse=None, job_runs=None, now: Optional[datetime] =
 
 def data_status(*, warehouse=None, job_runs=None, now: Optional[datetime] = None) -> dict:
     current = now or datetime.now()
-    expected = latest_expected_trade_day(current)
+    expected = latest_completed_trade_day(current)
     datasets = dataset_statuses(warehouse=warehouse, job_runs=job_runs, now=current)
     priority = {"failed": 4, "critical": 3, "stale": 2, "empty": 1, "disabled": 1, "unknown": 1, "healthy": 0}
     overall = max((item.status for item in datasets), key=lambda status: priority.get(status, 1), default="unknown")
@@ -287,7 +304,7 @@ def quick_daily_status(*, warehouse=None, now: Optional[datetime] = None) -> dic
             values = pd.to_datetime(frame["date"], errors="coerce").dropna()
             if not values.empty:
                 latest = values.max().date().isoformat()
-    expected = latest_expected_trade_day(current)
+    expected = latest_completed_trade_day(current)
     return {"dataset": "daily", "latest_value": latest,
             "expected_trade_day": expected.isoformat(),
             "status": classify_freshness(latest, expected)}

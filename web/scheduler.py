@@ -111,15 +111,7 @@ def run_daily_tasks(run_id: int | None = None) -> dict:
         logger.error("晨报生成失败: %s", e)
         failures.append("report")
 
-    # ④' 数据仓库离线采集（可选，默认关闭）
-    # 用 WAREHOUSE_DAILY_SYNC=1 开启。开盘期间请勿开启（会在盘中拉全量）。
-    if os.getenv("WAREHOUSE_DAILY_SYNC") == "1":
-        try:
-            results["warehouse"] = run_warehouse_daily()
-        except Exception as e:
-            logger.error("数据仓库采集失败: %s", e)
-            results["warehouse"] = f"error: {e}"
-            failures.append("warehouse")
+    # 数据仓库由独立 daily_sync 任务负责，避免被持仓刷新/晨报阻塞或重复执行。
 
     # ⑤ 消息推送
     try:
@@ -254,7 +246,45 @@ def run_daily_data_pipeline() -> dict:
                          input_dataset="数据源", output_dataset="daily")
     store.link_plan_run(run_date, "daily_sync", run_id)
     try:
-        result = run_warehouse_daily()
+        from StockInvestmentTool.warehouse.collector import MarketCollector
+        from StockInvestmentTool.warehouse.factors import FactorEngine
+        from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
+
+        def progress(processed, total, current, phase):
+            store.update_progress(run_id, phase=phase,
+                                  progress=round(processed / total * 100) if total else 0,
+                                  processed=processed, total=total, current_item=current)
+
+        years = int(os.getenv("WAREHOUSE_YEARS", "3"))
+        start_date = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
+        end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        result = {}
+        result["daily"] = MarketCollector().sync_daily(
+            start_date=start_date, end_date=end_date, include_etf=True,
+            include_index=False, source="tencent", progress_callback=progress,
+        )
+        indicator_id = store.start("rebuild_indicators", display_name="指标重建",
+                                   input_dataset="daily", output_dataset="indicators",
+                                   parent_run_id=run_id)
+        store.link_plan_run(run_date, "rebuild_indicators", indicator_id)
+        try:
+            result["indicators"] = IndicatorsBuilder().build_all(progress_callback=lambda p, t, c, s: store.update_progress(indicator_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c))
+            store.update_progress(indicator_id, phase="完成", progress=100)
+            store.finish(indicator_id, "success", result["indicators"])
+        except Exception as exc:
+            store.finish(indicator_id, "failed", error=str(exc))
+            raise
+        factor_id = store.start("rebuild_factors", display_name="因子重建",
+                                input_dataset="indicators", output_dataset="factors",
+                                parent_run_id=run_id)
+        store.link_plan_run(run_date, "rebuild_factors", factor_id)
+        try:
+            result["factors"] = FactorEngine().build_factors(progress_callback=lambda p, t, c, s: store.update_progress(factor_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c))
+            store.update_progress(factor_id, phase="完成", progress=100)
+            store.finish(factor_id, "success", result["factors"])
+        except Exception as exc:
+            store.finish(factor_id, "failed", error=str(exc))
+            raise
         store.update_progress(run_id, phase="完成", progress=100)
         store.finish(run_id, "success", result)
         return result

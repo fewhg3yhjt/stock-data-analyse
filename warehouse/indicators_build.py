@@ -36,7 +36,8 @@ class IndicatorsBuilder:
     def build_all(self, symbols: Optional[list[str]] = None,
                   max_symbols: Optional[int] = None,
                   metrics: Optional[list[str]] = None,
-                  flush_every: int = 500) -> dict:
+                  flush_every: int = 500,
+                  progress_callback=None) -> dict:
         """全市场指标宽表生成（分组一次遍历 + 分批落盘）。
 
         需仓库已有 daily 分区（先跑 sync_daily）。
@@ -89,6 +90,8 @@ class IndicatorsBuilder:
             month_bufs.clear()
 
         for i, code in enumerate(symbols, 1):
+            if progress_callback:
+                progress_callback(i - 1, len(symbols), code, "计算指标")
             frames = per_code.get(code)
             if not frames:
                 continue
@@ -112,6 +115,8 @@ class IndicatorsBuilder:
                 else:
                     month_bufs[ym] = grp.copy()
             done += 1
+            if progress_callback:
+                progress_callback(i, len(symbols), code, "指标已计算")
             if i % flush_every == 0 or i == len(symbols):
                 _flush()
                 logger.info("指标进度 %d/%d，完成 %d 只（已落盘）", i, len(symbols), done)

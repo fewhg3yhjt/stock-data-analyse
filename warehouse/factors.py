@@ -82,7 +82,8 @@ class FactorEngine:
         return df[keep]
 
     def build_factors(self, symbols: Optional[list[str]] = None,
-                      max_symbols: Optional[int] = None) -> dict:
+                      max_symbols: Optional[int] = None,
+                      progress_callback=None) -> dict:
         """全市场因子宽表计算（分组一次遍历 + 按月落盘）。
 
         需仓库已有日线分区（先跑 collect sync_daily）。
@@ -119,6 +120,8 @@ class FactorEngine:
         done = 0
         t0 = time.time()
         for i, code in enumerate(symbols, 1):
+            if progress_callback:
+                progress_callback(i - 1, len(symbols), code, "计算因子")
             frames = per_code.get(code)
             if not frames:
                 continue
@@ -135,6 +138,8 @@ class FactorEngine:
                 else:
                     month_bufs[ym] = grp.copy()
             done += 1
+            if progress_callback:
+                progress_callback(i, len(symbols), code, "因子已计算")
             if i % 500 == 0 or i == len(symbols):
                 logger.info("因子进度 %d/%d，完成 %d 只", i, len(symbols), done)
 
