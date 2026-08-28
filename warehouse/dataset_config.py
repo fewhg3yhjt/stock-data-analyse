@@ -57,8 +57,8 @@ def validate_dataset_config(data: dict, *, dataset_name: str = "stock_daily") ->
     if not primary_keys or any(not isinstance(item, str) or not item for item in primary_keys):
         raise DatasetConfigError("dataset.primary_keys 必须是非空字符串列表")
     partition = _require_mapping(dataset.get("partition"), "dataset.partition")
-    if partition.get("type") != "month" or not isinstance(partition.get("path"), str):
-        raise DatasetConfigError("dataset.partition 必须声明 month 和 path")
+    if partition.get("type") not in {"month", "snapshot", "symbol"} or not isinstance(partition.get("path"), str):
+        raise DatasetConfigError("dataset.partition 必须声明合法类型（month/snapshot/symbol）和 path")
 
     fields = _require_list(root.get("fields"), "fields")
     names = []

@@ -1,0 +1,21 @@
+dataset:
+  name: valuation_daily
+  display_name: 日度估值
+  description: 证券每日 PE/PB 估值数据
+  grain: 一个证券的一个交易日
+  primary_keys: [date, code]
+  partition:
+    type: month
+    path: "warehouse/raw/valuation/{partition}.parquet"
+  update_frequency: 交易日收盘后
+  schema_version: valuation_daily.v1
+fields:
+  - {name: date, display_name: 交易日期, data_type: date, nullable: false, primary_key: true}
+  - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
+  - {name: peTTM, display_name: 市盈率TTM, data_type: float, nullable: true}
+  - {name: pbMRQ, display_name: 市净率MRQ, data_type: float, nullable: true}
+sources:
+  - {name: eastmoney, role: primary, priority: 1, field_mapping: {date: date, code: code, peTTM: peTTM, pbMRQ: pbMRQ}, unit_conversions: {}}
+consumers:
+  - {name: stock_research, type: research, purpose: 估值分析, required_quality: WARNING, fallback_policy: explicit_online_only, blocked_actions: 正式决策}
+quality: {publish_warning: true, coverage: {pass_min: 0.98, warning_min: 0.95}}

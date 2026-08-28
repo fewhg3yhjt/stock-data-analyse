@@ -1,0 +1,22 @@
+dataset:
+  name: fundamentals
+  display_name: 财务史
+  description: 股票季度财务历史数据
+  grain: 一个证券的一个报告期
+  primary_keys: [code, stat_date]
+  partition:
+    type: symbol
+    path: "warehouse/fundamentals/{code}.parquet"
+  update_frequency: 财报披露后更新
+  schema_version: fundamentals.v1
+fields:
+  - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
+  - {name: stat_date, display_name: 报告期, data_type: date, nullable: false, primary_key: true}
+  - {name: roe, display_name: 净资产收益率, data_type: float, nullable: true}
+  - {name: gross_margin, display_name: 毛利率, data_type: float, nullable: true}
+  - {name: debt_ratio, display_name: 负债率, data_type: float, nullable: true}
+consumers:
+  - {name: stock_research, type: research, purpose: 个股基本面分析, required_quality: WARNING, fallback_policy: explicit_online_only, blocked_actions: 正式决策}
+sources:
+  - {name: akshare, role: primary, priority: 1, field_mapping: {code: code, stat_date: stat_date}, unit_conversions: {}}
+quality: {publish_warning: true, coverage: {pass_min: 0.98, warning_min: 0.95}}

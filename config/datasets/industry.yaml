@@ -1,0 +1,17 @@
+dataset:
+  name: industry
+  display_name: 行业分类
+  description: 证券所属行业分类信息
+  grain: 一个证券的一条当前行业记录
+  primary_keys: [code]
+  partition: {type: snapshot, path: warehouse/meta.db.instruments}
+  update_frequency: 低频定期更新
+  schema_version: industry.v1
+fields:
+  - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
+  - {name: industry, display_name: 行业, data_type: string, nullable: true}
+sources:
+  - {name: baostock, role: primary, priority: 1, field_mapping: {code: code, industry: industry}, unit_conversions: {}}
+consumers:
+  - {name: market_discovery, type: business, purpose: 行业筛选, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式扫描}
+quality: {publish_warning: false, coverage: {pass_min: 0.98, warning_min: 0.95}}

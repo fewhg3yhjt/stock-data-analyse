@@ -1,0 +1,22 @@
+dataset:
+  name: money_flow_daily
+  display_name: 资金流
+  description: 个股和行业资金流事实快照
+  grain: 一个来源周期的一条证券或行业记录
+  primary_keys: [period, code]
+  partition:
+    type: snapshot
+    path: "warehouse/raw/money_flow_daily/{run_date}"
+  update_frequency: 交易日盘后更新
+  schema_version: money_flow_daily.v1
+fields:
+  - {name: period, display_name: 来源周期, data_type: string, nullable: false, primary_key: true}
+  - {name: code, display_name: 证券或行业代码, data_type: string, nullable: false, primary_key: true}
+  - {name: name, display_name: 名称, data_type: string, nullable: true}
+  - {name: net, display_name: 净额, data_type: float, nullable: true}
+  - {name: amount, display_name: 成交额, data_type: float, nullable: true}
+sources:
+  - {name: ths, role: primary, priority: 1, field_mapping: {period: period, code: code, name: name, net: net, amount: amount}, unit_conversions: {}}
+consumers:
+  - {name: market_discovery, type: business, purpose: 资金流筛选, required_quality: WARNING, fallback_policy: published_only, blocked_actions: 正式扫描}
+quality: {publish_warning: true, coverage: {pass_min: 0.98, warning_min: 0.95}}

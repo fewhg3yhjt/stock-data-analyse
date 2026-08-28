@@ -24,6 +24,7 @@ import pandas as pd
 
 from StockInvestmentTool.warehouse.storage import Warehouse
 from StockInvestmentTool.warehouse.process import ProcessEngine
+from StockInvestmentTool.warehouse.source_capture import capture_frames
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,15 @@ class ValuationBackfill:
         if df.empty:
             return {"rows": 0, "months": []}
 
+        # 保留旧的按月估值回补路径，同时留下不可覆盖的来源批次证据。
+        raw = capture_frames(
+            self.warehouse, dataset_name="valuation_daily", source_name="eastmoney",
+            frames=[df], run_date=datetime.now().strftime("%Y-%m-%d"),
+            trade_date_start=start, trade_date_end=end, expected_symbols=1,
+            success_symbols=1, universe_id=f"valuation_{datetime.now():%Y%m%d}",
+            request_context={"code": code, "start": start, "end": end},
+        )
+
         # 写入贴源层 raw/valuation/（按月份拆分，upsert）
         months = []
         for ym, grp in df.groupby(df["date"].dt.strftime("%Y-%m")):
@@ -98,7 +108,7 @@ class ValuationBackfill:
             result = pe.build_all(months=sorted(set(months)))
             logger.info("估值回补后加工完成: %s", result)
 
-        return {"rows": len(df), "months": sorted(set(months))}
+        return {"rows": len(df), "months": sorted(set(months)), "raw_batch_id": raw["batch_id"]}
 
     def backfill_many(self, codes: list[str], start: str, end: str,
                       reprocess: bool = True) -> dict:

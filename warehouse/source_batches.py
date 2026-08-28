@@ -38,7 +38,7 @@ class SourceBatchStore:
                 started_at TEXT NOT NULL, finished_at TEXT, error_summary TEXT, failure_details TEXT
             )""")
 
-    def start(self, *, run_date: str, trade_date_start: str, trade_date_end: str,
+    def start(self, *, dataset_name: str = "stock_daily", run_date: str, trade_date_start: str, trade_date_end: str,
               expected_symbols: int, universe_id: str, request_context: dict,
               job_run_id: Optional[int] = None, source_name: str = "tencent") -> str:
         batch_id = f"{source_name}_{datetime.now():%Y%m%d%H%M%S}_{uuid.uuid4().hex[:10]}"
@@ -47,7 +47,7 @@ class SourceBatchStore:
                 (batch_id,dataset_name,source_name,job_run_id,run_date,trade_date_start,trade_date_end,
                  universe_id,expected_symbols,request_context,schema_version,status,started_at)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (batch_id, "stock_daily", source_name, job_run_id, run_date,
+                (batch_id, dataset_name, source_name, job_run_id, run_date,
                  trade_date_start, trade_date_end, universe_id, expected_symbols,
                  json.dumps(request_context, ensure_ascii=False, default=str),
                  "stock_daily.v1", "running", _now()))

@@ -267,6 +267,8 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
             include_index=False, source="tencent", progress_callback=progress,
             job_run_id=run_id,
         )
+        if os.getenv("WAREHOUSE_AUX_SYNC") == "1":
+            result["auxiliary"] = run_auxiliary_data_pipeline(parent_run_id=run_id)
         daily_status = store.result_status(result["daily"])
         child_statuses.append(daily_status)
         if daily_status == "failed":
@@ -314,6 +316,39 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
         if store.get(run_id) and store.get(run_id).get("status") == "running":
             store.finish(run_id, "failed", result=result, error=str(exc))
         raise
+
+
+def run_auxiliary_data_pipeline(parent_run_id: int | None = None) -> dict:
+    """Collect low-frequency source datasets behind an explicit opt-in flag."""
+    from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    from StockInvestmentTool.fundflow.capture import capture_money_flow
+
+    warehouse = Warehouse()
+    for name in ("industry", "fundamentals", "valuation_daily", "money_flow_daily"):
+        warehouse.metadata.register_dataset(name)
+    result = {}
+    collector = FundamentalsCollector(warehouse=warehouse)
+    try:
+        result["industry"] = collector.collect_industry()
+    except Exception as exc:
+        logger.error("行业采集失败: %s", exc)
+        result["industry"] = {"failed": [str(exc)]}
+    try:
+        result["fundamentals"] = collector.collect_fundamentals()
+    except Exception as exc:
+        logger.error("财务史采集失败: %s", exc)
+        result["fundamentals"] = {"failed": 1, "error": str(exc)}
+    # Valuation is an existing targeted backfill path and remains opt-in here;
+    # it needs the daily universe and should not run before daily succeeds.
+    if os.getenv("WAREHOUSE_MONEY_FLOW_SYNC") == "1":
+        try:
+            result["money_flow"] = capture_money_flow("stock", "now", warehouse=warehouse)
+        except Exception as exc:
+            logger.error("资金流采集失败: %s", exc)
+            result["money_flow"] = {"ok": False, "error": str(exc)}
+    result["enabled"] = True
+    return result
 
 
 def init_scheduler(app) -> None:

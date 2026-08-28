@@ -2004,3 +2004,5 @@ OHLC 和成交数据是否异常？
 - 全量回归：171 个测试通过。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
 - 当前未实施：Daily Builder、Dataset Version、Quality、Publish、Unified Data Access 以及下游迁移。
+- 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和持久化模拟样例；现有生产正式落盘路径保持兼容。
+- 辅助源定时采集使用显式开关：`WAREHOUSE_AUX_SYNC=1` 启用行业和财务史，`WAREHOUSE_MONEY_FLOW_SYNC=1` 额外启用资金流；估值继续由日线后的定向回补流程触发。

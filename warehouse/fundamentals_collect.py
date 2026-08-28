@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime
 from typing import Optional
 
 import pandas as pd
 
 from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 from StockInvestmentTool.warehouse.storage import Warehouse
+from StockInvestmentTool.warehouse.source_capture import capture_frames
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,8 @@ class FundamentalsCollector:
             codes = codes[:max_symbols]
 
         done = updated = skipped = 0
+        captured = []
+        failed = []
         t0 = time.time()
         for i, code in enumerate(codes, 1):
             if not refresh_all and self.warehouse.get_industry(code):
@@ -67,15 +71,25 @@ class FundamentalsCollector:
                 ind = self.fetcher.get_stock_industry(code)
                 if ind:
                     self.warehouse.update_industry(code, ind)
+                    captured.append(pd.DataFrame([{"code": code, "industry": ind}]))
                     updated += 1
                 done += 1
             except Exception as e:
+                failed.append(code)
                 logger.warning("行业采集 %s 失败: %s", code, e)
             if i % 500 == 0 or i == len(codes):
                 logger.info("行业进度 %d/%d, 已更新 %d", i, len(codes), updated)
         logger.info("行业采集完成: 更新 %d, 跳过 %d, 耗时 %.1fs",
                     updated, skipped, time.time() - t0)
-        return {"updated": updated, "skipped": skipped,
+        raw = None
+        if captured:
+            raw = capture_frames(self.warehouse, dataset_name="industry", source_name="baostock",
+                                 frames=captured, expected_symbols=len(codes), success_symbols=updated,
+                                 failed_symbols=len(failed), skipped_symbols=skipped,
+                                 universe_id=f"industry_active_{datetime.now():%Y%m%d}",
+                                 request_context={"refresh_all": refresh_all})
+        return {"updated": updated, "skipped": skipped, "failed": failed,
+                "raw_batch_id": raw["batch_id"] if raw else None,
                 "elapsed_sec": round(time.time() - t0, 1)}
 
     # ── 财务史采集（fundamentals 分区）─────────────────
@@ -97,6 +111,8 @@ class FundamentalsCollector:
             codes = codes[:max_symbols]
 
         done = skipped = failed = 0
+        captured = []
+        failed_codes = []
         t0 = time.time()
         for i, code in enumerate(codes, 1):
             if self.warehouse.has_fundamentals(code):
@@ -105,16 +121,28 @@ class FundamentalsCollector:
             try:
                 df = self.fetcher.get_fundamental_history(code, years=years)
                 if df is not None and not df.empty:
+                    df = df.copy()
+                    df["code"] = code
                     self.warehouse.write_fundamentals(code, df)
+                    captured.append(df)
                     done += 1
                 else:
                     skipped += 1
             except Exception as e:
                 failed += 1
+                failed_codes.append(code)
                 logger.warning("财务史采集 %s 失败: %s", code, e)
             if i % 200 == 0 or i == len(codes):
                 logger.info("财务史进度 %d/%d, 完成 %d", i, len(codes), done)
         logger.info("财务史采集完成: 完成 %d, 跳过 %d, 失败 %d, 耗时 %.1fs",
                     done, skipped, failed, time.time() - t0)
+        raw = None
+        if captured:
+            raw = capture_frames(self.warehouse, dataset_name="fundamentals", source_name="akshare",
+                                 frames=captured, expected_symbols=len(codes), success_symbols=done,
+                                 failed_symbols=failed, skipped_symbols=skipped,
+                                 universe_id=f"fundamentals_stock_{datetime.now():%Y%m%d}",
+                                 request_context={"years": years}, job_run_id=None)
         return {"done": done, "skipped": skipped, "failed": failed,
+                "failed_codes": failed_codes, "raw_batch_id": raw["batch_id"] if raw else None,
                 "elapsed_sec": round(time.time() - t0, 1)}

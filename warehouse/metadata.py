@@ -86,6 +86,13 @@ class MetadataStore:
 
     def register_stock_daily(self, config_path: Path | str | None = None) -> None:
         config = load_dataset_config("stock_daily", config_path)
+        self.register_config(config)
+
+    def register_dataset(self, dataset_name: str, config_path: Path | str | None = None) -> None:
+        """Load one YAML definition and project it into SQLite."""
+        self.register_config(load_dataset_config(dataset_name, config_path))
+
+    def register_config(self, config: dict) -> None:
         dataset = config["dataset"]
         schema_version = dataset["schema_version"]
         now = _now()
