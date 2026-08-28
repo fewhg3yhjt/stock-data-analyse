@@ -29,9 +29,10 @@ class IndicatorsBuilder:
     """全市场指标宽表批量生成器。"""
 
     def __init__(self, warehouse: Optional[Warehouse] = None,
-                 registry: Optional[IndicatorRegistry] = None):
+                 registry: Optional[IndicatorRegistry] = None, allow_legacy: bool = True):
         self.warehouse = warehouse or Warehouse()
         self.registry = registry or IndicatorRegistry()
+        self.allow_legacy = allow_legacy
 
     def build_all(self, symbols: Optional[list[str]] = None,
                   max_symbols: Optional[int] = None,
@@ -56,8 +57,18 @@ class IndicatorsBuilder:
         # ① 每个分区只读一次，按 code 分组，累积各标的全史
         logger.info("指标计算: 载入 %d 个月分区...", len(months))
         per_code: dict[str, list[pd.DataFrame]] = {}
+        input_versions = {}
         for ym in months:
-            df = self.warehouse.read_daily(ym)
+            try:
+                from StockInvestmentTool.warehouse.datasets import load_dataset
+                loaded = load_dataset(self.warehouse, "stock_daily", f"{ym}-01", f"{ym}-31",
+                                      allow_legacy=self.allow_legacy)
+                df = loaded.data
+                input_versions.update(loaded.context.get("partition_versions", {}))
+            except Exception:
+                if not self.allow_legacy:
+                    raise
+                df = self.warehouse.read_daily(ym)
             if df is None or df.empty or "code" not in df.columns:
                 continue
             for code, grp in df.groupby("code"):
@@ -133,6 +144,8 @@ class IndicatorsBuilder:
         logger.info("指标计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
                     done, len(written_months), elapsed)
         return {"symbols": done, "months": len(written_months),
-                "rows": output_rows,
-                "failed": failed[:100], "failed_count": len(failed),
-                "skipped": not symbols, "elapsed_sec": round(elapsed, 1)}
+                 "rows": output_rows,
+                 "failed": failed[:100], "failed_count": len(failed),
+                 "skipped": not symbols, "elapsed_sec": round(elapsed, 1),
+                 "input_dataset": "stock_daily", "input_versions": input_versions,
+                 "input_fallback_used": not bool(input_versions)}

@@ -1,0 +1,77 @@
+import pandas as pd
+import pytest
+
+from StockInvestmentTool.warehouse.daily_build import DailyBuilder
+from StockInvestmentTool.warehouse.datasets import DatasetAccessError, load_dataset
+from StockInvestmentTool.warehouse.pipeline_state import PipelineState
+from StockInvestmentTool.warehouse.quality import check_stock_daily
+from StockInvestmentTool.warehouse.publish import Publisher
+from StockInvestmentTool.warehouse.source_capture import capture_frames
+from StockInvestmentTool.warehouse.storage import Warehouse
+from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
+from StockInvestmentTool.warehouse.factors import FactorEngine
+
+
+def test_access_reads_current_only_and_returns_context(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
+                              "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+                              "volume": [1.0], "amount": [0.1], "turn": [1.0]})],
+        expected_symbols=1, success_symbols=1, universe_id="u", request_context={"fixture": True})
+    build = DailyBuilder(warehouse).build_partition("2026-08", [("tencent", source["raw"]["path"])], include_current=False)
+    state = PipelineState(warehouse.meta_db_path)
+    version = state.create_version(build, source_batches=[source["batch_id"]])
+    quality = check_stock_daily(build["path"], expected_symbols=1)
+    state.quality(version, status=quality["status"], checks=quality["checks"], publish_allowed=True)
+    Publisher(warehouse).publish(version)
+    result = load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-08-28")
+    assert result.data["code"].tolist() == ["sh600000"]
+    assert result.context["partition_versions"]["2026-08"] == version
+    assert result.context["fallback_used"] is False
+
+
+def test_access_rejects_candidate_without_current(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    candidate = warehouse.base_dir / "candidate.parquet"
+    pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"]}).to_parquet(candidate, index=False)
+    with pytest.raises(DatasetAccessError):
+        load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-08-28")
+
+
+def test_access_legacy_mode_is_explicit(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    warehouse.write_daily_partition("2026-08", pd.DataFrame({
+        "date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"], "close": [10.2],
+    }))
+    result = load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-08-28", allow_legacy=True)
+    assert result.context["fallback_used"] is True
+    assert result.context["quality_status"] == "LEGACY"
+
+
+def test_indicators_and_factors_report_published_input_version(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[pd.DataFrame({"date": pd.to_datetime(["2026-08-28"]), "code": ["sh600000"],
+                              "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+                              "volume": [1.0], "amount": [0.1], "turn": [1.0]})],
+        expected_symbols=1, success_symbols=1, universe_id="u", request_context={"fixture": True})
+    build = DailyBuilder(warehouse).build_partition("2026-08", [("tencent", source["raw"]["path"])], include_current=False)
+    state = PipelineState(warehouse.meta_db_path)
+    version = state.create_version(build, source_batches=[source["batch_id"]])
+    quality = check_stock_daily(build["path"], expected_symbols=1)
+    state.quality(version, status=quality["status"], checks=quality["checks"], publish_allowed=True)
+    Publisher(warehouse).publish(version)
+
+    indicators = IndicatorsBuilder(warehouse, allow_legacy=False).build_all(max_symbols=1)
+    factors = FactorEngine(warehouse).build_factors(max_symbols=1)
+    assert indicators["input_versions"] == {"2026-08": version}
+    assert factors["input_versions"] == {"2026-08": version}
+    assert indicators["input_fallback_used"] is False
+    assert factors["input_fallback_used"] is False
