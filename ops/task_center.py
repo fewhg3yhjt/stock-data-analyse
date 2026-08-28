@@ -13,6 +13,8 @@ from typing import Optional
 import pandas as pd
 import yaml
 
+from StockInvestmentTool.ops.terminology import artifact_labels, task_labels
+
 
 TASK_CONFIG_DIR = Path(__file__).resolve().parents[1] / "config" / "tasks"
 METRIC_CONFIG = Path(__file__).resolve().parents[1] / "config" / "metrics" / "catalog.yaml"
@@ -257,7 +259,7 @@ class TaskCenter:
                 rows = conn.execute("""SELECT a.*, r.job_name, r.status AS run_status
                     FROM task_artifacts a LEFT JOIN job_runs r ON r.id=a.run_id
                     ORDER BY a.created_at DESC""").fetchall()
-        return [dict(row) for row in rows]
+        return [artifact_labels(dict(row)) for row in rows]
 
     def set_metric_definition(self, metric_key: str, *, display_name: str, category: str,
                               definition: str, unit: str = "", producer_task: str,
@@ -364,7 +366,7 @@ class TaskCenter:
 
     def list_tasks(self):
         with self._connect() as conn:
-            return [dict(row) for row in conn.execute("SELECT * FROM task_definitions ORDER BY stage,task_key")]
+            return [task_labels(dict(row)) for row in conn.execute("SELECT * FROM task_definitions ORDER BY stage,task_key")]
 
     def list_metrics(self):
         with sqlite3.connect(self.metadata_db_path) as conn:
@@ -392,7 +394,7 @@ class TaskCenter:
         with self._connect() as conn:
             rows = conn.execute("SELECT * FROM task_run_events WHERE run_id=? AND event_id>? ORDER BY event_id LIMIT ?",
                                 (int(run_id), int(after_id), limit)).fetchall()
-        return [dict(row) for row in rows]
+        return [artifact_labels(dict(row)) for row in rows]
 
     def artifacts(self, run_id: int | None = None, artifact_id: str | None = None) -> list[dict]:
         with self._connect() as conn:
@@ -400,7 +402,7 @@ class TaskCenter:
                 rows = conn.execute("SELECT * FROM task_artifacts WHERE artifact_id=?", (artifact_id,)).fetchall()
             else:
                 rows = conn.execute("SELECT * FROM task_artifacts WHERE run_id=? ORDER BY created_at", (int(run_id),)).fetchall()
-        return [dict(row) for row in rows]
+        return [artifact_labels(dict(row)) for row in rows]
 
     def link_lineage(self, upstream_artifact_id: str, downstream_artifact_id: str, relation_type: str = "input") -> None:
         with self._connect() as conn:

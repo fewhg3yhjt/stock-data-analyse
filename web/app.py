@@ -384,7 +384,8 @@ def api_data_job(run_id):
     item = JobRunStore().get(run_id)
     if item is None:
         return flask.jsonify({"status": "error", "error": "任务运行记录不存在"}), 404
-    return flask.jsonify({"status": "success", "job": item})
+    from StockInvestmentTool.ops.terminology import task_labels
+    return flask.jsonify({"status": "success", "job": task_labels(item)})
 
 
 @web_app.route("/api/tasks", methods=["GET"])
@@ -405,7 +406,8 @@ def api_task_detail(task_key):
     task = center.task(task_key)
     if task is None:
         return flask.jsonify({"status": "error", "error": "任务不存在"}), 404
-    return flask.jsonify({"status": "success", "task": task})
+    from StockInvestmentTool.ops.terminology import task_labels
+    return flask.jsonify({"status": "success", "task": task_labels(task)})
 
 
 @web_app.route("/api/tasks/runs/<int:run_id>/events", methods=["GET"])
