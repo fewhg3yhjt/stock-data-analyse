@@ -1,0 +1,22 @@
+dataset:
+  name: indicators
+  display_name: 技术指标
+  description: 基于 Published stock_daily 计算的技术指标宽表
+  grain: 一个证券的一个交易日
+  primary_keys: [date, code]
+  partition:
+    type: month
+    path: "warehouse/indicators/{partition}.parquet"
+  update_frequency: 日线发布后计算
+  schema_version: indicators.v1
+fields:
+  - {name: date, display_name: 交易日期, data_type: date, nullable: false, primary_key: true}
+  - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
+  - {name: close, display_name: 收盘价, data_type: float, nullable: true}
+  - {name: ma5, display_name: 五日均线, data_type: float, nullable: true}
+  - {name: ma20, display_name: 二十日均线, data_type: float, nullable: true}
+sources:
+  - {name: stock_daily, role: input, priority: 1, field_mapping: {date: date, code: code, close: close}, unit_conversions: {}}
+consumers:
+  - {name: strategy, type: business, purpose: 策略分析, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式决策}
+quality: {publish_warning: false, coverage: {pass_min: 1.0, warning_min: 0.98}}

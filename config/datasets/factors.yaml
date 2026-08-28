@@ -1,0 +1,22 @@
+dataset:
+  name: factors
+  display_name: 研究因子
+  description: 基于 Published stock_daily 计算的研究因子宽表
+  grain: 一个证券的一个交易日
+  primary_keys: [date, code]
+  partition:
+    type: month
+    path: "warehouse/factors/{partition}.parquet"
+  update_frequency: 日线发布后计算
+  schema_version: factors.v1
+fields:
+  - {name: date, display_name: 交易日期, data_type: date, nullable: false, primary_key: true}
+  - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
+  - {name: close, display_name: 收盘价, data_type: float, nullable: true}
+  - {name: ma5, display_name: 五日均线, data_type: float, nullable: true}
+  - {name: ret_5d, display_name: 五日动量, data_type: float, nullable: true}
+sources:
+  - {name: stock_daily, role: input, priority: 1, field_mapping: {date: date, code: code, close: close}, unit_conversions: {}}
+consumers:
+  - {name: market_discovery, type: business, purpose: 全市场筛选, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式扫描}
+quality: {publish_warning: false, coverage: {pass_min: 1.0, warning_min: 0.98}}
