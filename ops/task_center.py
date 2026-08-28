@@ -255,6 +255,10 @@ class TaskCenter:
             conn.execute("UPDATE metric_health SET coverage_by_type=? WHERE metric_key=?",
                          (json.dumps(asset_type_counts or {}, ensure_ascii=False), metric_key))
 
+    def metric_applicability(self, metric_key: str, asset_types: list[str]) -> dict[str, str]:
+        from StockInvestmentTool.warehouse.asset_profiles import applicability
+        return {asset_type: applicability(asset_type, "metrics", metric_key) for asset_type in asset_types}
+
     def task_artifacts(self, task_key: str | None = None) -> list[dict]:
         with self._connect() as conn:
             if task_key:

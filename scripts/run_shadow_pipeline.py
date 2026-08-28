@@ -18,6 +18,7 @@ from StockInvestmentTool.warehouse.pipeline_state import PipelineState
 from StockInvestmentTool.warehouse.publish import Publisher
 from StockInvestmentTool.warehouse.quality import check_stock_daily
 from StockInvestmentTool.warehouse.storage import Warehouse
+from StockInvestmentTool.warehouse.asset_profiles import select_symbols
 
 
 DEFAULT_SYMBOLS = ["sh600000", "sh600001", "sz000001"]
@@ -31,7 +32,8 @@ def _business_end(today: datetime) -> datetime:
     return day
 
 
-def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -> dict:
+def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str,
+               asset_types: list[str] | None = None) -> dict:
     root = Path(root).resolve()
     forbidden = (Path.cwd() / "output" / "data" / "warehouse").resolve()
     if root == forbidden or forbidden in root.parents or root in forbidden.parents:
@@ -40,6 +42,9 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -
         raise ValueError("Shadow Run 最多允许 5 只证券")
     if not symbols:
         raise ValueError("Shadow Run 至少需要 1 只证券")
+    symbols, asset_type_counts = select_symbols(symbols, asset_types=asset_types)
+    if not symbols:
+        raise ValueError("没有证券符合任务允许的资产类型")
     if (end := datetime.strptime(end_date, "%Y-%m-%d")) < datetime.strptime(start_date, "%Y-%m-%d"):
         raise ValueError("结束日期不能早于开始日期")
     if (end - datetime.strptime(start_date, "%Y-%m-%d")).days > 10:
@@ -61,7 +66,9 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -
                                request_id=request_id, config_version=request["config_version"],
                                trigger_type="shadow", period_start=start_date, period_end=end_date)
     runner.center.update_request(request_id, "running")
-    result = {"root": str(root), "symbols": symbols, "start_date": start_date, "end_date": end_date,
+    result = {"root": str(root), "symbols": symbols, "asset_type_counts": asset_type_counts,
+              "asset_types": asset_types or ["stock", "etf", "index"],
+              "start_date": start_date, "end_date": end_date,
               "run_id": run_id, "request_id": request_id, "trigger_type": "shadow", "timezone": "Asia/Shanghai"}
     try:
         runner.center.event(run_id, "开始真实腾讯采集", phase="数据采集", event_type="start")
@@ -71,7 +78,8 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -
         )
         captured = collector.sync_daily(start_date=start_date, end_date=end_date, symbols=symbols,
                                         include_etf=True, source="tencent", target="daily",
-                                        flush_every=1, job_run_id=run_id)
+                                        flush_every=1, job_run_id=run_id,
+                                        asset_types=asset_types)
         result["capture"] = captured
         if not captured.get("source_batch_id") or captured.get("raw_capture_failed"):
             raise RuntimeError("真实 Raw Batch 未成功落盘")
@@ -98,10 +106,13 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -
         runner.center.event(run_id, "开始技术指标计算", phase="派生计算", event_type="start")
         job_store.update_progress(run_id, phase="派生计算", progress=65)
         result["indicators"] = IndicatorsBuilder(warehouse, allow_legacy=False,
-                                                   ).build_all(symbols=symbols, flush_every=1)
+                                                   ).build_all(symbols=symbols, flush_every=1,
+                                                               asset_types=asset_types)
         runner.center.event(run_id, "开始研究因子计算", phase="派生计算", event_type="start")
         job_store.update_progress(run_id, phase="派生计算", progress=82)
-        result["factors"] = FactorEngine(warehouse, allow_legacy=False).build_factors(symbols=symbols)
+        result["factors"] = FactorEngine(warehouse, allow_legacy=False).build_factors(
+            symbols=symbols, asset_types=asset_types
+        )
         result["artifacts"] = {
             "raw": captured.get("raw_batch"),
             "daily": str(warehouse.daily_partition(partition)),
@@ -147,11 +158,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS))
     parser.add_argument("--start", default=None)
     parser.add_argument("--end", default=None)
+    parser.add_argument("--asset-types", default="stock,etf",
+                        help="允许的证券类型，逗号分隔")
     args = parser.parse_args(argv)
     symbols = [item.strip().lower().replace(".", "") for item in args.symbols.split(",") if item.strip()]
     end = args.end or _business_end(datetime.now()).strftime("%Y-%m-%d")
     start = args.start or (datetime.strptime(end, "%Y-%m-%d") - timedelta(days=6)).strftime("%Y-%m-%d")
-    result = run_shadow(args.root, symbols, start, end)
+    asset_types = [item.strip().lower() for item in args.asset_types.split(",") if item.strip()]
+    result = run_shadow(args.root, symbols, start, end, asset_types=asset_types)
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0
 
