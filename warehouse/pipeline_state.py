@@ -40,6 +40,9 @@ class PipelineState:
               checker_version TEXT NOT NULL
             );
             """)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(dataset_versions)")}
+            if "rollback_path" not in columns:
+                conn.execute("ALTER TABLE dataset_versions ADD COLUMN rollback_path TEXT")
 
     def create_version(self, build: dict, *, source_batches: list[str],
                        builder_version: str = "daily_builder.v1",
@@ -49,6 +52,9 @@ class PipelineState:
                        publish_status: str = "candidate") -> str:
         version = build["version_id"]
         with sqlite3.connect(self.db_path) as conn:
+            existing = conn.execute("SELECT version_id FROM dataset_versions WHERE version_id=?", (version,)).fetchone()
+            if existing:
+                return version
             conn.execute("""INSERT INTO dataset_versions
               (version_id,dataset_name,partition_key,candidate_path,source_batches,row_count,symbol_count,
                min_date,max_date,schema_version,checksum,builder_version,publish_status,created_at)
@@ -71,8 +77,12 @@ class PipelineState:
             for partition, path in paths.items():
                 if not path.exists():
                     continue
-                version_id = f"{dataset_name}_{partition.replace('-', '')}_{hashlib.sha256(path.read_bytes()).hexdigest()[:10]}"
-                checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+                output_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+                input_fingerprint = hashlib.sha256(
+                    json.dumps(input_versions, ensure_ascii=False, sort_keys=True).encode()
+                ).hexdigest()
+                version_id = f"{dataset_name}_{partition.replace('-', '')}_{output_checksum[:10]}_{input_fingerprint[:10]}"
+                checksum = output_checksum
                 previous = conn.execute(
                     "SELECT version_id FROM dataset_current WHERE dataset_name=? AND partition_key=?",
                     (dataset_name, partition),
@@ -104,6 +114,10 @@ class PipelineState:
                              (_now(), version_id))
                 versions[partition] = version_id
         return versions
+
+    def update_rollback_path(self, version_id: str, path: Path) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("UPDATE dataset_versions SET rollback_path=? WHERE version_id=?", (str(path), version_id))
 
     def quality(self, version_id: str, *, status: str, checks: dict,
                 publish_allowed: bool, affected_symbols: list[str] | None = None) -> str:

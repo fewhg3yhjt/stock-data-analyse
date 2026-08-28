@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import sqlite3
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -18,15 +19,70 @@ class Publisher:
             row = conn.execute("SELECT dataset_name,partition_key,candidate_path,quality_status,publish_status FROM dataset_versions WHERE version_id=?", (version_id,)).fetchone()
             if not row or row[3] not in ("PASS", "WARNING"):
                 raise ValueError("版本不存在或质量不允许发布")
+            candidate = Path(row[2] or "")
+            if not candidate.exists():
+                raise ValueError("候选文件不存在")
             current = conn.execute("SELECT version_id FROM dataset_current WHERE dataset_name=? AND partition_key=?", (row[0], row[1])).fetchone()
+            if row[4] == "published" and current and current[0] == version_id:
+                return {"version_id": version_id, "path": str(self.warehouse.daily_partition(row[1])), "already_published": True}
+            version_row = conn.execute("SELECT checksum FROM dataset_versions WHERE version_id=?", (version_id,)).fetchone()
+            if hashlib.sha256(candidate.read_bytes()).hexdigest() != version_row[0]:
+                raise ValueError("候选文件 checksum 不匹配")
             target = self.warehouse.daily_partition(row[1])
+            if row[0] != "stock_daily":
+                from StockInvestmentTool.warehouse.dataset_config import load_dataset_config
+                definition = load_dataset_config(row[0])["dataset"]["partition"]["path"]
+                relative = definition.removeprefix("warehouse/")
+                target = self.warehouse.base_dir / relative.replace("{partition}", row[1]).replace("{run_date}", row[1]).replace("{code}", row[1])
             target.parent.mkdir(parents=True, exist_ok=True)
+            rollback_path = None
+            if current:
+                previous = conn.execute("SELECT published_path FROM dataset_versions WHERE version_id=?", (current[0],)).fetchone()
+                if previous and previous[0] and Path(previous[0]).exists():
+                    rollback_path = self.warehouse.base_dir / "rollback" / row[0] / row[1] / f"{current[0]}.parquet"
+                    rollback_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(previous[0], rollback_path)
+            conn.execute("UPDATE dataset_versions SET publish_status='publishing' WHERE version_id=?", (version_id,))
             temp = target.with_name(f".{target.name}.{version_id}.tmp")
-            shutil.copyfile(row[2], temp)
-            os.replace(temp, target)
+            try:
+                shutil.copyfile(row[2], temp)
+                os.replace(temp, target)
+            except Exception:
+                temp.unlink(missing_ok=True)
+                conn.execute("UPDATE dataset_versions SET publish_status='publish_failed' WHERE version_id=?", (version_id,))
+                raise
             now = datetime.now().isoformat(timespec="seconds")
-            conn.execute("UPDATE dataset_versions SET published_path=?,previous_version_id=?,publish_status='published',published_at=? WHERE version_id=?",
-                         (str(target), current[0] if current else None, now, version_id))
+            conn.execute("UPDATE dataset_versions SET published_path=?,previous_version_id=?,rollback_path=?,publish_status='published',published_at=? WHERE version_id=?",
+                         (str(target), current[0] if current else None, str(rollback_path) if rollback_path else None, now, version_id))
             conn.execute("INSERT INTO dataset_current (dataset_name,partition_key,version_id,published_at) VALUES (?,?,?,?) ON CONFLICT(dataset_name,partition_key) DO UPDATE SET version_id=excluded.version_id,published_at=excluded.published_at",
                          (row[0], row[1], version_id, now))
+            if current and current[0] != version_id:
+                conn.execute("UPDATE dataset_versions SET publish_status='superseded' WHERE version_id=?", (current[0],))
         return {"version_id": version_id, "path": str(target), "previous_version_id": current[0] if current else None}
+
+    def rollback(self, dataset_name: str, partition: str) -> dict:
+        with sqlite3.connect(self.warehouse.meta_db_path) as conn:
+            current = conn.execute("SELECT version_id FROM dataset_current WHERE dataset_name=? AND partition_key=?", (dataset_name, partition)).fetchone()
+            if not current:
+                raise ValueError("没有当前正式版本")
+            previous = conn.execute("SELECT previous_version_id FROM dataset_versions WHERE version_id=?", (current[0],)).fetchone()
+        if not previous or not previous[0]:
+            raise ValueError("没有可回滚的上一正式版本")
+        with sqlite3.connect(self.warehouse.meta_db_path) as conn:
+            conn.execute("UPDATE dataset_versions SET quality_status='PASS',publish_status='validated' WHERE version_id=?", (previous[0],))
+        return self.publish(previous[0])
+
+    def recovery_check(self) -> list[str]:
+        """Return publish consistency errors without changing or deleting data."""
+        errors = []
+        with sqlite3.connect(self.warehouse.meta_db_path) as conn:
+            rows = conn.execute("SELECT version_id,published_path,checksum,publish_status FROM dataset_versions WHERE publish_status IN ('published','publishing')").fetchall()
+        for version_id, path, checksum, status in rows:
+            if status == "publishing":
+                errors.append(f"未完成发布: {version_id}")
+                continue
+            if not path or not Path(path).exists():
+                errors.append(f"正式文件不存在: {version_id}")
+            elif hashlib.sha256(Path(path).read_bytes()).hexdigest() != checksum:
+                errors.append(f"正式文件 checksum 不匹配: {version_id}")
+        return errors
