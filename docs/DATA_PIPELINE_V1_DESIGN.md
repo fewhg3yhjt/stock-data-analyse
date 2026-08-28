@@ -2001,7 +2001,7 @@ OHLC 和成交数据是否异常？
 - 元数据定义已迁移到 `config/datasets/stock_daily.yaml`：YAML 管理数据集、字段、来源、消费者和质量配置；SQLite 只保存可查询的运行时投影和实际运行事实；Raw 原始数据继续保存为不可覆盖的文件。
 - Phase 2 已完成：腾讯日线采集新增不可覆盖 Raw Batch 双写，记录 Source Batch 和 Job Run 关联，旧 daily 写入继续保留。
 - 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与旧 daily 均可追溯。
-- 全量回归：171 个测试通过。
+- 全量回归：178 个测试通过。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
 - 当前未实施：Daily Builder、Dataset Version、Quality、Publish、Unified Data Access 以及下游迁移。
 - 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和持久化模拟样例；现有生产正式落盘路径保持兼容。
