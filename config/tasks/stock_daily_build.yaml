@@ -1,0 +1,22 @@
+task:
+  key: stock_daily_build
+  display_name: 日线标准化构建
+  stage: BUILD
+  type: DATA_BUILD
+  input_datasets: [stock_daily_raw]
+  output_datasets: [stock_daily]
+  producer_metrics: [close, volume, amount]
+schedule:
+  enabled: false
+  timezone: Asia/Shanghai
+  frequency: after_upstream
+  time: null
+  period_type: month
+  period_start: null
+  period_end: null
+execution:
+  manual_enabled: true
+  retry_limit: 2
+policy:
+  on_partial_success: block_downstream
+  on_failure: block_downstream

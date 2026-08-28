@@ -387,6 +387,109 @@ def api_data_job(run_id):
     return flask.jsonify({"status": "success", "job": item})
 
 
+@web_app.route("/api/tasks", methods=["GET"])
+def api_tasks():
+    """List declarative task definitions for the task center."""
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    from StockInvestmentTool.config import Config
+    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    center.sync_definitions()
+    return flask.jsonify({"status": "success", "tasks": center.list_tasks()})
+
+
+@web_app.route("/api/tasks/<task_key>", methods=["GET"])
+def api_task_detail(task_key):
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    center.sync_definitions()
+    task = center.task(task_key)
+    if task is None:
+        return flask.jsonify({"status": "error", "error": "任务不存在"}), 404
+    return flask.jsonify({"status": "success", "task": task})
+
+
+@web_app.route("/api/tasks/runs/<int:run_id>/events", methods=["GET"])
+def api_task_events(run_id):
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    after = flask.request.args.get("after", "0")
+    limit = flask.request.args.get("limit", "200")
+    try:
+        events = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db").events(run_id, limit=int(limit), after_id=int(after))
+    except (TypeError, ValueError):
+        return flask.jsonify({"status": "error", "error": "事件分页参数无效"}), 400
+    return flask.jsonify({"status": "success", "events": events})
+
+
+@web_app.route("/api/tasks/runs/<int:run_id>/logs", methods=["GET"])
+def api_task_logs(run_id):
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    path = center.db_path.parent / "task_logs" / f"{run_id}.log"
+    if not path.exists():
+        return flask.jsonify({"status": "success", "run_id": run_id, "log": "", "next_offset": 0})
+    try:
+        offset = max(0, int(flask.request.args.get("offset", "0")))
+        limit = max(1, min(int(flask.request.args.get("limit", "200")), 1000))
+    except ValueError:
+        return flask.jsonify({"status": "error", "error": "日志分页参数无效"}), 400
+    lines = path.read_text(encoding="utf-8").splitlines()
+    selected = lines[offset:offset + limit]
+    return flask.jsonify({"status": "success", "run_id": run_id, "log": "\n".join(selected),
+                          "next_offset": offset + len(selected), "has_more": offset + len(selected) < len(lines)})
+
+
+@web_app.route("/api/tasks/runs/<int:run_id>/artifacts", methods=["GET"])
+def api_task_artifacts(run_id):
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    return flask.jsonify({"status": "success", "artifacts": TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db").artifacts(run_id=run_id)})
+
+
+@web_app.route("/api/artifacts/<artifact_id>/preview", methods=["GET"])
+def api_artifact_preview(artifact_id):
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    try:
+        preview = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db").preview_artifact(
+            artifact_id, limit=int(flask.request.args.get("limit", "50")),
+            offset=int(flask.request.args.get("offset", "0")))
+    except FileNotFoundError:
+        return flask.jsonify({"status": "error", "error": "产物不存在"}), 404
+    except (TypeError, ValueError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", **_to_json_safe(preview)})
+
+
+@web_app.route("/api/artifacts/<artifact_id>/lineage", methods=["GET"])
+def api_artifact_lineage(artifact_id):
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    direction = flask.request.args.get("direction", "both")
+    try:
+        result = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db").lineage(artifact_id, direction)
+    except ValueError as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", "artifact_id": artifact_id, **result})
+
+
+@web_app.route("/api/metrics/catalog", methods=["GET"])
+def api_metrics_catalog():
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    center.sync_definitions()
+    center.sync_metrics()
+    return flask.jsonify({"status": "success", "metrics": center.list_metrics()})
+
+
+@web_app.route("/api/metrics/<metric_key>", methods=["GET"])
+def api_metric_detail(metric_key):
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    center.sync_metrics()
+    metric = next((item for item in center.list_metrics() if item["metric_key"] == metric_key), None)
+    if metric is None:
+        return flask.jsonify({"status": "error", "error": "指标不存在"}), 404
+    return flask.jsonify({"status": "success", "metric": metric,
+                          "artifacts": center.task_artifacts(metric.get("producer_task"))})
+
+
 def _start_data_job(job_name, worker):
     from StockInvestmentTool.ops.job_runs import JobRunStore
     store = JobRunStore()

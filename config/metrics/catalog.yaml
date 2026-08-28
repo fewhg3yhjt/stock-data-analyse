@@ -1,0 +1,16 @@
+metrics:
+  - {key: close, name: 收盘价, category: 基础行情, definition: 证券交易日收盘价格, unit: 元, producer_task: stock_daily_capture, builtin: true, editable: false}
+  - {key: volume, name: 成交量, category: 基础行情, definition: 证券交易日成交数量, unit: 股, producer_task: stock_daily_capture, builtin: true, editable: false}
+  - {key: amount, name: 成交额, category: 基础行情, definition: 证券交易日成交金额, unit: 元, producer_task: stock_daily_capture, builtin: true, editable: false}
+  - {key: pe_ttm, name: PE(TTM), category: 估值数据, definition: 滚动市盈率, unit: 倍, producer_task: valuation_capture, builtin: true, editable: false}
+  - {key: pb_mrq, name: PB(MRQ), category: 估值数据, definition: 最近报告期市净率, unit: 倍, producer_task: valuation_capture, builtin: true, editable: false}
+  - {key: roe, name: ROE, category: 基本面数据, definition: 净资产收益率, unit: "%", producer_task: fundamentals_capture, builtin: true, editable: false}
+  - {key: ma5, name: MA5, category: 技术指标, definition: 收盘价五个交易日简单移动平均, unit: 元, producer_task: indicators_build, builtin: true, editable: true}
+  - {key: ma20, name: MA20, category: 技术指标, definition: 收盘价二十个交易日简单移动平均, unit: 元, producer_task: indicators_build, builtin: true, editable: true}
+  - {key: rsi14, name: RSI14, category: 技术指标, definition: 十四个交易日相对强弱指标, unit: 点, producer_task: indicators_build, builtin: true, editable: true}
+  - {key: macd, name: MACD, category: 技术指标, definition: 指数平滑异同移动平均线, unit: 点, producer_task: indicators_build, builtin: true, editable: true}
+  - {key: volatility20, name: 20日波动率, category: 技术指标, definition: 二十日年化波动率, unit: "%", producer_task: indicators_build, builtin: true, editable: true}
+  - {key: money_flow_net, name: 资金流净额, category: 资金流指标, definition: 来源周期内资金流入减流出, unit: 亿元, producer_task: money_flow_capture, builtin: true, editable: false}
+  - {key: position_peak_price, name: 持仓后高, category: 业务指标, definition: 建仓后至当前日期的最高价, unit: 元, producer_task: position_metrics_build, builtin: false, editable: true}
+  - {key: position_drawdown, name: 持仓回撤, category: 业务指标, definition: 当前价格相对持仓后高的回撤, unit: "%", producer_task: position_metrics_build, builtin: false, editable: true}
+  - {key: simulation_return, name: 模拟收益, category: 业务指标, definition: 某次模拟实例的累计收益, unit: "%", producer_task: simulation_run, builtin: false, editable: true}

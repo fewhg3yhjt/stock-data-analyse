@@ -110,9 +110,17 @@ class JobRunStore:
                    updated_at=? WHERE id=?""",
                 (datetime.now().isoformat(timespec="seconds"), status,
                   json.dumps(result or {}, ensure_ascii=False, default=str), str(error)[:2000],
-                  status,
-                  datetime.now().isoformat(timespec="seconds"), run_id),
+                   status,
+                   datetime.now().isoformat(timespec="seconds"), run_id),
             )
+        try:
+            from StockInvestmentTool.ops.task_center import TaskCenter
+            TaskCenter(self.db_path).event(
+                run_id, f"任务结束: {status}", level="ERROR" if status == "failed" else "INFO",
+                phase="finished", event_type="finish", payload={"status": status, "error": error},
+            )
+        except Exception:
+            pass
 
     def update_progress(self, run_id: int, *, phase: str = "", progress: int = 0,
                         processed: int | None = None, total: int | None = None,
@@ -130,6 +138,15 @@ class JobRunStore:
         values.append(int(run_id))
         with self._connect() as conn:
             conn.execute(f"UPDATE job_runs SET {', '.join(fields)} WHERE id=?", values)
+        try:
+            from StockInvestmentTool.ops.task_center import TaskCenter
+            TaskCenter(self.db_path).event(
+                run_id, f"{phase or '任务执行'}: {progress}%",
+                phase=phase, event_type="progress", processed=processed,
+                total=total, current_item=current_item,
+            )
+        except Exception:
+            pass
 
     def recent(self, limit: int = 30) -> list[dict]:
         with self._connect() as conn:
