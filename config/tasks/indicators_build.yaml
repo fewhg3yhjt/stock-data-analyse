@@ -2,7 +2,7 @@ task:
   key: indicators_build
   display_name: 技术指标计算
   stage: DERIVED
-  type: DERIVED_BUILD
+  type: INDICATOR_BUILD
   input_datasets: [stock_daily]
   output_datasets: [indicators]
   producer_metrics: [ma5, ma20, rsi14, macd, volatility20]

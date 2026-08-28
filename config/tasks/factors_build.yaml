@@ -2,7 +2,7 @@ task:
   key: factors_build
   display_name: 研究因子计算
   stage: DERIVED
-  type: DERIVED_BUILD
+  type: FACTOR_BUILD
   input_datasets: [stock_daily]
   output_datasets: [factors]
   producer_metrics: [ret5d, ret20d, vol_ratio, high20d, low20d]

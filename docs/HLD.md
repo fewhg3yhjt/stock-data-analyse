@@ -1,8 +1,8 @@
 # StockInvestmentTool 概要设计说明书（HLD）
 
-> 版本：v0.2（草案，待评审）
-> 日期：2026-08-25
-> 关联文档：`docs/SRD.md`（需求规格）、`docs/STATUS.md`（现状盘点）、`docs/DESIGN.md`（架构总纲）
+> 版本：v0.3（任务驱动数据生产架构）
+> 日期：2026-08-28
+> 关联文档：`docs/SRD.md`（需求规格）、`docs/STATUS.md`（现状盘点）、`docs/DESIGN.md`（架构总纲）、`docs/TASK_DATA_GLOSSARY.md`（统一术语）
 
 ---
 
@@ -27,6 +27,31 @@
 | **schema 元数据**（参数字段/指标定义） | 「让 UI 和运行时都能动态适配」 | 策略编排器动态表单、通知编排器 |
 
 **判断抽象是否正确的金标准**：新增一个「变体」（新规则、新指标、新渠道、新信号源），是否**无需修改既有代码**就能接入。做不到，说明抽象边界切错了。
+
+### 1.3 任务中心与数据中心的领域边界
+
+系统采用“任务负责执行、数据负责语义”的双中心模型：
+
+```text
+任务中心
+  Task Definition
+    -> Schedule
+    -> Execution Request
+    -> Task Run
+    -> Event/Log
+    -> Artifact
+
+数据中心
+  Dataset/Metric Definition
+    -> Definition Version
+    -> Latest Period / Coverage
+    -> Health
+    -> Consumer
+```
+
+任务中心回答“做什么、何时做、处理什么范围、执行到哪里、生成了什么”；数据中心回答“这个数据/指标是什么、口径是什么、最新到哪里、覆盖如何、能否使用”。两者通过 `Task Run -> Artifact -> Dataset/Metric Result` 关联，不把 Raw、Candidate、Quality 等内部技术对象直接作为数据中心主导航。
+
+任务周期是任务属性，必须区分执行频率、数据周期类型、本次执行区间和时区。定时、手动、补数、重试和隔离验证都转换为统一执行请求，由同一个 Runner 执行。
 
 ---
 
@@ -110,6 +135,52 @@ flowchart TB
 ```
 
 **核心主张**：能力层只提供稳定的原子能力与扩展点；配置层把能力编排成产品；展示层只做呈现。三者只依赖接口，不依赖实现。
+
+### 2.3 任务驱动的数据生产生命周期
+
+任务不是调度器中的一个函数名，而是可配置、可追踪、可复用的业务对象：
+
+```text
+Task Definition
+  -> Schedule（频率、周期类型、起止区间、北京时间）
+  -> Execution Request（定时/手动/补数/重试/隔离验证）
+  -> Task Run
+  -> Event / Log
+  -> Artifact
+  -> Dataset or Metric Result
+```
+
+任务配置使用草稿到生效的生命周期：
+
+```text
+draft -> validated -> active -> superseded/disabled
+```
+
+任务中心管理执行过程；数据中心管理数据和指标语义。数据中心主视图不以 Raw Batch、Candidate、Quality Report 等技术产物组织，而以基础行情、估值、基本面、技术指标、研究因子和业务指标组织。技术产物只在任务详情或数据详情的技术区域出现。
+
+### 2.4 指标定义与健康
+
+指标定义和指标结果必须分离：
+
+```text
+Metric Definition
+  = 名称、定义、统一口径、单位、关联任务
+
+Metric Health
+  = 最新业务周期、覆盖对象、覆盖率、最近生成状态
+```
+
+指标定义不负责固定执行范围；实际范围由任务执行请求决定。没有全市场结果的持仓或模拟指标仍然可以存在，只需在健康状态中表达当前是否有可用上下文或结果。
+
+### 2.5 配置、事实与文件
+
+```text
+YAML       声明任务、数据集和指标的静态定义
+SQLite     保存配置版本、执行事实、健康、版本指针和血缘
+Parquet/CSV 保存原始、标准和派生结果
+```
+
+任何新增任务或指标都应优先通过配置、注册表和统一 Runner 接入，不能在页面和调度器中复制一套专用流程。
 
 ---
 
