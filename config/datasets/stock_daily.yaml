@@ -1,0 +1,163 @@
+dataset:
+  name: stock_daily
+  display_name: 日线数据
+  description: 股票和 ETF 等证券每个交易日一条价格及成交事实记录
+  grain: 一个证券的一个交易日
+  primary_keys:
+    - date
+    - code
+  partition:
+    type: month
+    path: warehouse/daily/{partition}.parquet
+  update_frequency: 交易日收盘后
+  schema_version: stock_daily.v1
+
+fields:
+  - name: date
+    display_name: 交易日期
+    data_type: date
+    nullable: false
+    primary_key: true
+    description: 业务交易日
+  - name: code
+    display_name: 证券代码
+    data_type: string
+    nullable: false
+    primary_key: true
+    description: 标准证券代码
+  - name: open
+    display_name: 开盘价
+    data_type: float
+    unit: 元
+    nullable: true
+    description: 停牌或来源缺失时单独报告
+  - name: high
+    display_name: 最高价
+    data_type: float
+    unit: 元
+    nullable: true
+    description: 停牌或来源缺失时单独报告
+  - name: low
+    display_name: 最低价
+    data_type: float
+    unit: 元
+    nullable: true
+    description: 停牌或来源缺失时单独报告
+  - name: close
+    display_name: 收盘价
+    data_type: float
+    unit: 元
+    nullable: false
+    description: 正常交易记录必须大于 0
+  - name: pre_close
+    display_name: 前收盘价
+    data_type: float
+    unit: 元
+    nullable: true
+    description: 用于涨跌计算和校验
+  - name: volume
+    display_name: 成交量
+    data_type: float
+    unit: 股
+    nullable: false
+    description: 停牌允许为 0，不允许负数
+  - name: amount
+    display_name: 成交额
+    data_type: float
+    unit: 元
+    nullable: false
+    description: 停牌允许为 0，不允许负数
+  - name: turn
+    display_name: 换手率
+    data_type: float
+    unit: "%"
+    nullable: true
+    description: 来源缺失时允许为空
+  - name: tradestatus
+    display_name: 交易状态
+    data_type: string/int
+    nullable: true
+    description: 用于停牌与缺口判断
+
+sources:
+  - name: tencent
+    role: primary
+    priority: 1
+    field_mapping:
+      date: date
+      code: code
+      open: open
+      high: high
+      low: low
+      close: close
+      volume: volume
+      amount: amount
+      turn: turn
+    unit_conversions:
+      volume: hand_to_share
+      amount: wan_yuan_to_yuan
+    request_defaults:
+      adjust: qfq
+  - name: baostock
+    role: validate + fallback
+    priority: 2
+    field_mapping:
+      date: date
+      code: code
+      open: open
+      high: high
+      low: low
+      close: close
+      pre_close: preclose
+      volume: volume
+      amount: amount
+      turn: turn
+      tradestatus: tradestatus
+      peTTM: peTTM
+      pbMRQ: pbMRQ
+    unit_conversions: {}
+
+consumers:
+  - name: market_discovery
+    type: business
+    purpose: 全市场筛选
+    required_quality: PASS/WARNING
+    fallback_policy: 禁止在线逐证券回退
+    blocked_actions: 正式扫描
+  - name: indicators
+    type: compute
+    purpose: 指标计算
+    required_quality: PASS/WARNING
+    fallback_policy: 只读正式版本
+    blocked_actions: 指标输入
+  - name: factors
+    type: compute
+    purpose: 因子计算
+    required_quality: PASS/WARNING
+    fallback_policy: 只读正式版本
+    blocked_actions: 因子输入
+  - name: stock_research
+    type: research
+    purpose: K 线分析
+    required_quality: WARNING
+    fallback_policy: 允许显式在线回退
+    blocked_actions: 研究查看
+  - name: position_advice
+    type: business
+    purpose: 正式决策
+    required_quality: PASS
+    fallback_policy: 禁止静默回退
+    blocked_actions: 建仓建议
+
+quality:
+  publish_warning: true
+  coverage:
+    pass_min: 0.995
+    warning_min: 0.98
+  duplicates:
+    fail_if_gt: 0
+  ohlc:
+    fail_if_invalid_gt: 0
+  source_conflict:
+    warning_ratio: 0.001
+    fail_ratio: 0.01

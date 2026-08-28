@@ -1,4 +1,4 @@
-"""Dataset metadata registry and partition indexing."""
+"""Runtime metadata projection for declarative dataset definitions."""
 
 from __future__ import annotations
 
@@ -7,27 +7,11 @@ import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Optional
 
 import pandas as pd
 
-from StockInvestmentTool.warehouse.baseline import _schema, _checksum
-
-
-SCHEMA_VERSION = "stock_daily.v1"
-STOCK_DAILY_FIELDS = [
-    ("date", "交易日期", "date", None, False, True, "业务交易日"),
-    ("code", "证券代码", "string", None, False, True, "标准证券代码"),
-    ("open", "开盘价", "float", "元", True, False, "停牌或来源缺失时单独报告"),
-    ("high", "最高价", "float", "元", True, False, "停牌或来源缺失时单独报告"),
-    ("low", "最低价", "float", "元", True, False, "停牌或来源缺失时单独报告"),
-    ("close", "收盘价", "float", "元", False, False, "正常交易记录必须大于 0"),
-    ("pre_close", "前收盘价", "float", "元", True, False, "用于涨跌计算和校验"),
-    ("volume", "成交量", "float", "股", False, False, "停牌允许为 0，不允许负数"),
-    ("amount", "成交额", "float", "元", False, False, "停牌允许为 0，不允许负数"),
-    ("turn", "换手率", "float", "%", True, False, "来源缺失时允许为空"),
-    ("tradestatus", "交易状态", "string/int", None, True, False, "用于停牌与缺口判断"),
-]
+from StockInvestmentTool.warehouse.baseline import _checksum, _schema
+from StockInvestmentTool.warehouse.dataset_config import load_dataset_config
 
 
 def _now() -> str:
@@ -35,7 +19,7 @@ def _now() -> str:
 
 
 class MetadataStore:
-    """Idempotent metadata operations backed by the warehouse meta.db."""
+    """Project YAML dataset definitions into queryable SQLite metadata."""
 
     def __init__(self, db_path: Path | str):
         self.db_path = Path(db_path)
@@ -56,6 +40,7 @@ class MetadataStore:
                     primary_keys TEXT NOT NULL, partition_type TEXT NOT NULL,
                     storage_path TEXT NOT NULL, update_frequency TEXT,
                     enabled INTEGER NOT NULL DEFAULT 1, schema_version TEXT NOT NULL,
+                    config_checksum TEXT NOT NULL DEFAULT '', config_path TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS dataset_fields (
@@ -91,51 +76,75 @@ class MetadataStore:
                     PRIMARY KEY(dataset_name, partition_key)
                 );
             """)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(dataset_registry)")}
+            if "config_checksum" not in columns:
+                conn.execute("ALTER TABLE dataset_registry ADD COLUMN config_checksum TEXT NOT NULL DEFAULT ''")
+            if "config_path" not in columns:
+                conn.execute("ALTER TABLE dataset_registry ADD COLUMN config_path TEXT NOT NULL DEFAULT ''")
         from StockInvestmentTool.warehouse.source_batches import SourceBatchStore
         SourceBatchStore(self.db_path)
 
-    def register_stock_daily(self, storage_path: str = "warehouse/daily/YYYY-MM.parquet") -> None:
+    def register_stock_daily(self, config_path: Path | str | None = None) -> None:
+        config = load_dataset_config("stock_daily", config_path)
+        dataset = config["dataset"]
+        schema_version = dataset["schema_version"]
         now = _now()
         with self._connect() as conn:
             conn.execute("""INSERT INTO dataset_registry
                 (dataset_name,display_name,description,grain,primary_keys,partition_type,
-                 storage_path,update_frequency,enabled,schema_version,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                 storage_path,update_frequency,enabled,schema_version,config_checksum,config_path,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(dataset_name) DO UPDATE SET
-                display_name=excluded.display_name, description=excluded.description,
-                grain=excluded.grain, primary_keys=excluded.primary_keys,
-                partition_type=excluded.partition_type, storage_path=excluded.storage_path,
-                update_frequency=excluded.update_frequency, schema_version=excluded.schema_version,
-                updated_at=excluded.updated_at""",
-                ("stock_daily", "日线数据", "股票和 ETF 等证券每个交易日一条价格及成交事实记录",
-                 "一个证券的一个交易日", json.dumps(["date", "code"]), "month",
-                 storage_path, "交易日收盘后", 1, SCHEMA_VERSION, now, now))
-            for field in STOCK_DAILY_FIELDS:
-                name, display, dtype, unit, nullable, primary, description = field
+                display_name=excluded.display_name,description=excluded.description,grain=excluded.grain,
+                primary_keys=excluded.primary_keys,partition_type=excluded.partition_type,
+                storage_path=excluded.storage_path,update_frequency=excluded.update_frequency,
+                schema_version=excluded.schema_version,config_checksum=excluded.config_checksum,
+                config_path=excluded.config_path,updated_at=excluded.updated_at""",
+                (dataset["name"], dataset["display_name"], dataset["description"], dataset["grain"],
+                 json.dumps(dataset["primary_keys"], ensure_ascii=False), dataset["partition"]["type"],
+                 dataset["partition"]["path"], dataset["update_frequency"], 1, schema_version,
+                 config["_config_checksum"], config["_config_path"], now, now))
+            field_names = [field["name"] for field in config["fields"]]
+            source_names = [source["name"] for source in config["sources"]]
+            consumer_names = [consumer["name"] for consumer in config["consumers"]]
+            conn.execute(
+                "DELETE FROM dataset_fields WHERE dataset_name=? AND field_name NOT IN (%s)"
+                % ",".join("?" for _ in field_names), [dataset["name"], *field_names]
+            )
+            conn.execute(
+                "DELETE FROM dataset_sources WHERE dataset_name=? AND source_name NOT IN (%s)"
+                % ",".join("?" for _ in source_names), [dataset["name"], *source_names]
+            )
+            conn.execute(
+                "DELETE FROM dataset_consumers WHERE dataset_name=? AND consumer_name NOT IN (%s)"
+                % ",".join("?" for _ in consumer_names), [dataset["name"], *consumer_names]
+            )
+            for field in config["fields"]:
                 conn.execute("""INSERT INTO dataset_fields
                     (dataset_name,field_name,display_name,data_type,unit,nullable,is_primary_key,
                      description,schema_version,created_at,updated_at)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(dataset_name,field_name) DO UPDATE SET
                     display_name=excluded.display_name,data_type=excluded.data_type,unit=excluded.unit,
-                    nullable=excluded.nullable,is_primary_key=excluded.is_primary_key,
-                    description=excluded.description,schema_version=excluded.schema_version,
+                    nullable=excluded.nullable,is_primary_key=excluded.is_primary_key,description=excluded.description,
+                    schema_version=excluded.schema_version,updated_at=excluded.updated_at""",
+                    (dataset["name"], field["name"], field["display_name"], field["data_type"],
+                     field.get("unit"), int(field["nullable"]), int(field.get("primary_key", False)),
+                     field.get("description", ""), schema_version, now, now))
+            for source in config["sources"]:
+                conn.execute("""INSERT INTO dataset_sources
+                    (dataset_name,source_name,role,priority,field_mapping,unit_conversions,
+                     request_defaults,enabled,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(dataset_name,source_name) DO UPDATE SET
+                    role=excluded.role,priority=excluded.priority,field_mapping=excluded.field_mapping,
+                    unit_conversions=excluded.unit_conversions,request_defaults=excluded.request_defaults,
                     updated_at=excluded.updated_at""",
-                    ("stock_daily", name, display, dtype, unit, int(nullable), int(primary),
-                     description, SCHEMA_VERSION, now, now))
-            self._upsert_source(conn, "tencent", "primary", 1,
-                                {field[0]: field[0] for field in STOCK_DAILY_FIELDS if field[0] != "pre_close"},
-                                {"volume": "hand_to_share", "amount": "wan_yuan_to_yuan"})
-            self._upsert_source(conn, "baostock", "validate + fallback", 2,
-                                {field[0]: field[0] for field in STOCK_DAILY_FIELDS}, {})
-            consumers = [
-                ("market_discovery", "business", "全市场筛选", "PASS/WARNING", "禁止在线逐证券回退", "正式扫描"),
-                ("indicators", "compute", "指标计算", "PASS/WARNING", "只读正式版本", "指标输入"),
-                ("factors", "compute", "因子计算", "PASS/WARNING", "只读正式版本", "因子输入"),
-                ("stock_research", "research", "K 线分析", "WARNING", "允许显式在线回退", "研究查看"),
-                ("position_advice", "business", "正式决策", "PASS", "禁止静默回退", "建仓建议"),
-            ]
-            for name, kind, purpose, quality, fallback, blocked in consumers:
+                    (dataset["name"], source["name"], source["role"], source["priority"],
+                     json.dumps(source.get("field_mapping", {}), ensure_ascii=False),
+                     json.dumps(source.get("unit_conversions", {}), ensure_ascii=False),
+                     json.dumps(source.get("request_defaults", {}), ensure_ascii=False), 1, now, now))
+            for consumer in config["consumers"]:
                 conn.execute("""INSERT INTO dataset_consumers
                     (dataset_name,consumer_name,consumer_type,fields_used,purpose,required_quality,
                      fallback_policy,blocked_actions,created_at,updated_at)
@@ -144,20 +153,10 @@ class MetadataStore:
                     consumer_type=excluded.consumer_type,purpose=excluded.purpose,
                     required_quality=excluded.required_quality,fallback_policy=excluded.fallback_policy,
                     blocked_actions=excluded.blocked_actions,updated_at=excluded.updated_at""",
-                    ("stock_daily", name, kind, None, purpose, quality, fallback, blocked, now, now))
-
-    @staticmethod
-    def _upsert_source(conn, source, role, priority, mapping, conversions):
-        now = _now()
-        conn.execute("""INSERT INTO dataset_sources
-            (dataset_name,source_name,role,priority,field_mapping,unit_conversions,
-             request_defaults,enabled,created_at,updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(dataset_name,source_name) DO UPDATE SET
-            role=excluded.role,priority=excluded.priority,field_mapping=excluded.field_mapping,
-            unit_conversions=excluded.unit_conversions,updated_at=excluded.updated_at""",
-            ("stock_daily", source, role, priority, json.dumps(mapping),
-             json.dumps(conversions), None, 1, now, now))
+                    (dataset["name"], consumer["name"], consumer["type"],
+                     json.dumps(consumer.get("fields_used"), ensure_ascii=False), consumer["purpose"],
+                     consumer["required_quality"], consumer["fallback_policy"],
+                     consumer.get("blocked_actions", ""), now, now))
 
     def index_daily_partitions(self, daily_dir: Path) -> int:
         count = 0
@@ -172,14 +171,13 @@ class MetadataStore:
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(dataset_name,partition_key) DO UPDATE SET
                     file_path=excluded.file_path,min_date=excluded.min_date,max_date=excluded.max_date,
-                    row_count=excluded.row_count,symbol_count=excluded.symbol_count,
-                    file_size=excluded.file_size,schema_hash=excluded.schema_hash,
-                    checksum=excluded.checksum,status=excluded.status,updated_at=excluded.updated_at""",
-                    ("stock_daily", path.stem, str(path),
-                     dates.min().date().isoformat() if dates.notna().any() else None,
-                     dates.max().date().isoformat() if dates.notna().any() else None,
-                     len(df), int(df["code"].astype(str).nunique()) if "code" in df else 0,
-                     path.stat().st_size, schema_hash, _checksum(path), "legacy", _now()))
+                    row_count=excluded.row_count,symbol_count=excluded.symbol_count,file_size=excluded.file_size,
+                    schema_hash=excluded.schema_hash,checksum=excluded.checksum,status=excluded.status,
+                    updated_at=excluded.updated_at""",
+                    ("stock_daily", path.stem, str(path), dates.min().date().isoformat() if dates.notna().any() else None,
+                     dates.max().date().isoformat() if dates.notna().any() else None, len(df),
+                     int(df["code"].astype(str).nunique()) if "code" in df else 0, path.stat().st_size,
+                     schema_hash, _checksum(path), "legacy", _now()))
                 count += 1
         return count
 
