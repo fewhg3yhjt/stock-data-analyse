@@ -53,6 +53,8 @@ class DatasetAccess:
             if not allow_legacy:
                 raise DatasetAccessError(f"没有 Published Dataset: {dataset_name}")
             return self._load_legacy(dataset_name, months, start_date, end_date, symbols)
+        if not months:
+            months = sorted(versions)
         frames = []
         contexts = {}
         for month in months:
@@ -73,6 +75,7 @@ class DatasetAccess:
             contexts[month] = {"version_id": version["version_id"],
                                "quality_status": version["quality_status"],
                                "sources": json.loads(version["source_batches"] or "[]"),
+                               "input_versions": json.loads(version["input_versions"] or "{}"),
                                "generated_at": version["created_at"]}
         data = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
         return DatasetResult(self._filter(data, start_date, end_date, symbols), {

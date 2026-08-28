@@ -439,13 +439,13 @@ def api_data_minute_snapshot():
 @web_app.route("/api/data/jobs/rebuild-indicators", methods=["POST"])
 def api_data_rebuild_indicators():
     from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
-    return _start_data_job("rebuild_indicators", lambda _run_id: IndicatorsBuilder().build_all())
+    return _start_data_job("rebuild_indicators", lambda _run_id: IndicatorsBuilder(allow_legacy=False).build_all())
 
 
 @web_app.route("/api/data/jobs/rebuild-factors", methods=["POST"])
 def api_data_rebuild_factors():
     from StockInvestmentTool.warehouse.factors import FactorEngine
-    return _start_data_job("rebuild_factors", lambda _run_id: FactorEngine().build_factors())
+    return _start_data_job("rebuild_factors", lambda _run_id: FactorEngine(allow_legacy=False).build_factors())
 
 
 @web_app.route("/data-center", methods=["GET"])

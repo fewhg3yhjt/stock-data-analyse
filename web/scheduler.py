@@ -21,6 +21,8 @@ import threading
 from datetime import datetime, timedelta
 from typing import Optional
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_RUN_TIME = "15:35"
@@ -267,6 +269,8 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
             include_index=False, source="tencent", progress_callback=progress,
             job_run_id=run_id,
         )
+        if os.getenv("WAREHOUSE_PIPELINE_BUILD") == "1" and result["daily"].get("source_batch_id"):
+            result["published_daily"] = publish_daily_batch(result["daily"]["source_batch_id"], run_id)
         if os.getenv("WAREHOUSE_AUX_SYNC") == "1":
             result["auxiliary"] = run_auxiliary_data_pipeline(parent_run_id=run_id)
         daily_status = store.result_status(result["daily"])
@@ -280,7 +284,7 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
                                    parent_run_id=run_id)
         store.link_plan_run(run_date, "rebuild_indicators", indicator_id)
         try:
-            result["indicators"] = IndicatorsBuilder().build_all(progress_callback=lambda p, t, c, s: (store.update_progress(indicator_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建指标", progress=33 + round((p / t * 100) * 0.33) if t else 33, processed=p, total=t, current_item=c)))
+            result["indicators"] = IndicatorsBuilder(allow_legacy=False).build_all(progress_callback=lambda p, t, c, s: (store.update_progress(indicator_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建指标", progress=33 + round((p / t * 100) * 0.33) if t else 33, processed=p, total=t, current_item=c)))
             indicator_status = store.result_status(result["indicators"])
             child_statuses.append(indicator_status)
             store.finish(indicator_id, indicator_status, result["indicators"])
@@ -296,7 +300,7 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
                                 parent_run_id=run_id)
         store.link_plan_run(run_date, "rebuild_factors", factor_id)
         try:
-            result["factors"] = FactorEngine().build_factors(progress_callback=lambda p, t, c, s: (store.update_progress(factor_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建因子", progress=66 + round((p / t * 100) * 0.34) if t else 66, processed=p, total=t, current_item=c)))
+            result["factors"] = FactorEngine(allow_legacy=False).build_factors(progress_callback=lambda p, t, c, s: (store.update_progress(factor_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建因子", progress=66 + round((p / t * 100) * 0.34) if t else 66, processed=p, total=t, current_item=c)))
             factor_status = store.result_status(result["factors"])
             child_statuses.append(factor_status)
             store.finish(factor_id, factor_status, result["factors"])
@@ -349,6 +353,31 @@ def run_auxiliary_data_pipeline(parent_run_id: int | None = None) -> dict:
             result["money_flow"] = {"ok": False, "error": str(exc)}
     result["enabled"] = True
     return result
+
+
+def publish_daily_batch(batch_id: str, job_run_id: int | None = None) -> dict:
+    """Build, validate and publish one Tencent Raw Batch behind an opt-in flag."""
+    from StockInvestmentTool.warehouse.daily_build import DailyBuilder
+    from StockInvestmentTool.warehouse.pipeline_state import PipelineState
+    from StockInvestmentTool.warehouse.publish import Publisher
+    from StockInvestmentTool.warehouse.quality import check_stock_daily
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    warehouse = Warehouse()
+    with warehouse._conn() as conn:
+        row = conn.execute("SELECT raw_path FROM source_batches WHERE batch_id=?", (batch_id,)).fetchone()
+    if not row or not row[0]:
+        raise RuntimeError(f"Raw Batch 文件不存在: {batch_id}")
+    raw_path = Path(row[0])
+    partition = str(pd.Timestamp(pd.read_parquet(raw_path, columns=["date"])["date"].max()).strftime("%Y-%m"))
+    build = DailyBuilder(warehouse).build_partition(partition, [("tencent", raw_path)])
+    state = PipelineState(warehouse.meta_db_path)
+    version = state.create_version(build, source_batches=[batch_id], input_versions={})
+    quality = check_stock_daily(build["path"], expected_symbols=None)
+    state.quality(version, status=quality["status"], checks=quality["checks"], publish_allowed=quality["publish_allowed"])
+    if not quality["publish_allowed"]:
+        return {"version_id": version, "quality": quality, "published": False, "job_run_id": job_run_id}
+    published = Publisher(warehouse).publish(version)
+    return {"version_id": version, "quality": quality, "published": published, "job_run_id": job_run_id}
 
 
 def init_scheduler(app) -> None:

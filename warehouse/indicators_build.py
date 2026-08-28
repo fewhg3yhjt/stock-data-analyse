@@ -29,7 +29,7 @@ class IndicatorsBuilder:
     """全市场指标宽表批量生成器。"""
 
     def __init__(self, warehouse: Optional[Warehouse] = None,
-                 registry: Optional[IndicatorRegistry] = None, allow_legacy: bool = True):
+                 registry: Optional[IndicatorRegistry] = None, allow_legacy: bool = False):
         self.warehouse = warehouse or Warehouse()
         self.registry = registry or IndicatorRegistry()
         self.allow_legacy = allow_legacy
@@ -38,7 +38,8 @@ class IndicatorsBuilder:
                   max_symbols: Optional[int] = None,
                   metrics: Optional[list[str]] = None,
                   flush_every: int = 500,
-                  progress_callback=None) -> dict:
+                  progress_callback=None, changed_start: Optional[str] = None,
+                  changed_end: Optional[str] = None) -> dict:
         """全市场指标宽表生成（分组一次遍历 + 分批落盘）。
 
         需仓库已有 daily 分区（先跑 sync_daily）。
@@ -52,7 +53,9 @@ class IndicatorsBuilder:
         months = self.warehouse.available_months("daily")
         if not months:
             logger.warning("无日线分区，请先运行 sync")
-            return {"symbols": 0, "months": 0, "rows": 0, "failed": [], "skipped": True, "elapsed_sec": 0}
+            return {"symbols": 0, "months": 0, "rows": 0, "failed": [], "skipped": True,
+                    "elapsed_sec": 0, "input_dataset": "stock_daily", "input_versions": {},
+                    "input_fallback_used": False, "output_versions": {}}
 
         # ① 每个分区只读一次，按 code 分组，累积各标的全史
         logger.info("指标计算: 载入 %d 个月分区...", len(months))
@@ -88,6 +91,10 @@ class IndicatorsBuilder:
         output_rows = 0
         t0 = time.time()
         written_months: set[str] = set()
+        output_months = None
+        if changed_start and changed_end:
+            from StockInvestmentTool.warehouse.incremental import affected_partitions
+            output_months = set(affected_partitions(changed_start, changed_end))
 
         def _flush():
             for ym, df in month_bufs.items():
@@ -123,6 +130,8 @@ class IndicatorsBuilder:
                 if s is not None:
                     out[name] = s.values
             for ym, grp in out.groupby(out["date"].dt.strftime("%Y-%m")):
+                if output_months is not None and ym not in output_months:
+                    continue
                 cur = month_bufs.get(ym)
                 if cur is not None and len(cur):
                     month_bufs[ym] = pd.concat([cur, grp], ignore_index=True)
@@ -141,6 +150,13 @@ class IndicatorsBuilder:
             _flush()
 
         elapsed = time.time() - t0
+        from StockInvestmentTool.warehouse.pipeline_state import PipelineState
+        output_versions = PipelineState(self.warehouse.meta_db_path).record_output_versions(
+            dataset_name="indicators",
+            paths={ym: self.warehouse.indicator_dir / f"{ym}.parquet" for ym in written_months},
+            input_dataset="stock_daily", input_versions=input_versions,
+            builder_version="indicators_builder.v1", schema_version="indicators.v1",
+        )
         logger.info("指标计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
                     done, len(written_months), elapsed)
         return {"symbols": done, "months": len(written_months),
@@ -148,4 +164,4 @@ class IndicatorsBuilder:
                  "failed": failed[:100], "failed_count": len(failed),
                  "skipped": not symbols, "elapsed_sec": round(elapsed, 1),
                  "input_dataset": "stock_daily", "input_versions": input_versions,
-                 "input_fallback_used": not bool(input_versions)}
+                 "input_fallback_used": not bool(input_versions), "output_versions": output_versions}

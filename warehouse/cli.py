@@ -54,7 +54,7 @@ def cmd_sync(args):
 def cmd_factors(args):
     """计算全市场因子宽表。"""
     from StockInvestmentTool.warehouse.factors import FactorEngine
-    fe = FactorEngine()
+    fe = FactorEngine(allow_legacy=False)
     res = fe.build_factors(max_symbols=args.max_symbols)
     print(f"✅ 因子计算: {res['symbols']} 标的, {res['months']} 个月, 耗时 {res['elapsed_sec']}s")
 

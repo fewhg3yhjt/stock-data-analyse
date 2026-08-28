@@ -70,8 +70,32 @@ def test_indicators_and_factors_report_published_input_version(tmp_path):
     Publisher(warehouse).publish(version)
 
     indicators = IndicatorsBuilder(warehouse, allow_legacy=False).build_all(max_symbols=1)
-    factors = FactorEngine(warehouse).build_factors(max_symbols=1)
+    factors = FactorEngine(warehouse, allow_legacy=False).build_factors(max_symbols=1)
     assert indicators["input_versions"] == {"2026-08": version}
     assert factors["input_versions"] == {"2026-08": version}
     assert indicators["input_fallback_used"] is False
     assert factors["input_fallback_used"] is False
+    assert indicators["output_versions"]["2026-08"]
+    assert factors["output_versions"]["2026-08"]
+    indicator_result = load_dataset(warehouse, "indicators", "2026-08-28", "2026-08-28", required_quality="PASS")
+    factor_result = load_dataset(warehouse, "factors", "2026-08-28", "2026-08-28", required_quality="PASS")
+    assert indicator_result.context["fallback_used"] is False
+    assert factor_result.context["fallback_used"] is False
+    assert indicator_result.context["partitions"]["2026-08"]["input_versions"]["stock_daily"]["2026-08"] == version
+    assert factor_result.context["partitions"]["2026-08"]["input_versions"]["stock_daily"]["2026-08"] == version
+    with warehouse._conn() as conn:
+        quality = conn.execute(
+            "SELECT dataset_name, quality_status, input_versions FROM dataset_versions "
+            "WHERE version_id IN (?, ?)",
+            (indicators["output_versions"]["2026-08"], factors["output_versions"]["2026-08"]),
+        ).fetchall()
+    assert {row[0]: row[1] for row in quality} == {"indicators": "PASS", "factors": "PASS"}
+    assert all(version in quality[0][2] for version in (version,))
+    assert indicators["output_versions"]["2026-08"]
+    assert factors["output_versions"]["2026-08"]
+    with warehouse._conn() as conn:
+        rows = conn.execute("SELECT dataset_name, quality_status FROM dataset_versions WHERE version_id IN (?, ?)",
+                            (indicators["output_versions"]["2026-08"], factors["output_versions"]["2026-08"])).fetchall()
+    assert {row[0]: row[1] for row in rows} == {
+        "indicators": "PASS", "factors": "PASS",
+    }

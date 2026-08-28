@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
+import pandas as pd
+
 
 def _now():
     return datetime.now().isoformat(timespec="seconds")
@@ -39,16 +41,69 @@ class PipelineState:
             );
             """)
 
-    def create_version(self, build: dict, *, source_batches: list[str], builder_version: str = "daily_builder.v1") -> str:
+    def create_version(self, build: dict, *, source_batches: list[str],
+                       builder_version: str = "daily_builder.v1",
+                       dataset_name: str = "stock_daily",
+                       schema_version: str = "stock_daily.v1",
+                       input_versions: dict | None = None,
+                       publish_status: str = "candidate") -> str:
         version = build["version_id"]
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""INSERT INTO dataset_versions
               (version_id,dataset_name,partition_key,candidate_path,source_batches,row_count,symbol_count,
                min_date,max_date,schema_version,checksum,builder_version,publish_status,created_at)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (version, "stock_daily", build["partition"],
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (version, dataset_name, build["partition"],
               str(build["path"]), json.dumps(source_batches), build["row_count"], build["symbol_count"],
-              None, None, "stock_daily.v1", build["checksum"], builder_version, "candidate", _now()))
+              build.get("min_date"), build.get("max_date"), schema_version, build["checksum"],
+              builder_version, publish_status, _now()))
+            if input_versions:
+                conn.execute("UPDATE dataset_versions SET input_versions=? WHERE version_id=?",
+                             (json.dumps(input_versions, ensure_ascii=False), version))
         return version
+
+    def record_output_versions(self, *, dataset_name: str, paths: dict[str, Path],
+                               input_dataset: str, input_versions: dict,
+                               builder_version: str, schema_version: str) -> dict[str, str]:
+        """Record already-written derived partitions as published outputs."""
+        import hashlib
+        versions = {}
+        with sqlite3.connect(self.db_path) as conn:
+            for partition, path in paths.items():
+                if not path.exists():
+                    continue
+                version_id = f"{dataset_name}_{partition.replace('-', '')}_{hashlib.sha256(path.read_bytes()).hexdigest()[:10]}"
+                checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+                previous = conn.execute(
+                    "SELECT version_id FROM dataset_current WHERE dataset_name=? AND partition_key=?",
+                    (dataset_name, partition),
+                ).fetchone()
+                frame = pd.read_parquet(path, columns=["date", "code"])
+                min_date = str(pd.to_datetime(frame["date"]).min())[:10] if not frame.empty else None
+                max_date = str(pd.to_datetime(frame["date"]).max())[:10] if not frame.empty else None
+                conn.execute("""INSERT OR IGNORE INTO dataset_versions
+                    (version_id,dataset_name,partition_key,candidate_path,published_path,previous_version_id,
+                     input_versions,source_batches,row_count,symbol_count,min_date,max_date,schema_version,
+                     checksum,builder_version,publish_status,created_at,published_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (version_id, dataset_name, partition, str(path), str(path), previous[0] if previous else None,
+                     json.dumps({input_dataset: input_versions}, ensure_ascii=False), "[]", len(frame),
+                     int(frame["code"].nunique()) if "code" in frame else 0, min_date, max_date,
+                     schema_version, checksum, builder_version, "published", _now(), _now()))
+                conn.execute("""INSERT INTO dataset_current (dataset_name,partition_key,version_id,published_at)
+                    VALUES (?,?,?,?) ON CONFLICT(dataset_name,partition_key) DO UPDATE SET
+                    version_id=excluded.version_id,published_at=excluded.published_at""",
+                    (dataset_name, partition, version_id, _now()))
+                conn.execute("""INSERT OR IGNORE INTO dataset_quality_results
+                    (quality_id,dataset_name,partition_key,version_id,status,checks,affected_symbols,
+                     publish_allowed,checked_at,checker_version)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (f"quality_{version_id}", dataset_name, partition, version_id, "PASS",
+                     json.dumps({"derived_output": True}, ensure_ascii=False), "[]", 1, _now(),
+                    "derived_output.v1"))
+                conn.execute("UPDATE dataset_versions SET quality_status='PASS',validated_at=? WHERE version_id=?",
+                             (_now(), version_id))
+                versions[partition] = version_id
+        return versions
 
     def quality(self, version_id: str, *, status: str, checks: dict,
                 publish_allowed: bool, affected_symbols: list[str] | None = None) -> str:

@@ -40,8 +40,9 @@ FACTOR_COLUMNS = [
 class FactorEngine:
     """因子宽表计算引擎。"""
 
-    def __init__(self, warehouse: Optional[Warehouse] = None):
+    def __init__(self, warehouse: Optional[Warehouse] = None, allow_legacy: bool = False):
         self.warehouse = warehouse or Warehouse()
+        self.allow_legacy = allow_legacy
 
     def compute_factor_row(self, df: pd.DataFrame) -> pd.DataFrame:
         """对单只标的的全史日线计算因子（df 需按日期升序）。
@@ -88,7 +89,8 @@ class FactorEngine:
 
     def build_factors(self, symbols: Optional[list[str]] = None,
                       max_symbols: Optional[int] = None,
-                      progress_callback=None) -> dict:
+                      progress_callback=None, changed_start: Optional[str] = None,
+                      changed_end: Optional[str] = None) -> dict:
         """全市场因子宽表计算（分组一次遍历 + 按月落盘）。
 
         需仓库已有日线分区（先跑 collect sync_daily）。
@@ -101,7 +103,9 @@ class FactorEngine:
         months = self.warehouse.available_months("daily")
         if not months:
             logger.warning("无日线分区，请先运行 sync")
-            return {"symbols": 0, "months": 0, "rows": 0, "failed": [], "skipped": True, "elapsed_sec": 0}
+            return {"symbols": 0, "months": 0, "rows": 0, "failed": [], "skipped": True,
+                    "elapsed_sec": 0, "input_dataset": "stock_daily", "input_versions": {},
+                    "input_fallback_used": False, "output_versions": {}}
 
         # ① 每个分区只读一次，按 code 分组，累积各标的全史
         logger.info("因子计算: 载入 %d 个月分区...", len(months))
@@ -111,10 +115,12 @@ class FactorEngine:
             try:
                 from StockInvestmentTool.warehouse.datasets import load_dataset
                 loaded = load_dataset(self.warehouse, "stock_daily", f"{ym}-01", f"{ym}-31",
-                                      allow_legacy=True)
+                                      allow_legacy=self.allow_legacy)
                 df = loaded.data
                 input_versions.update(loaded.context.get("partition_versions", {}))
             except Exception:
+                if not self.allow_legacy:
+                    raise
                 df = self.warehouse.read_daily(ym)
             if df is None or df.empty or "code" not in df.columns:
                 continue
@@ -134,6 +140,10 @@ class FactorEngine:
         failed: list[str] = []
         output_rows = 0
         t0 = time.time()
+        output_months = None
+        if changed_start and changed_end:
+            from StockInvestmentTool.warehouse.incremental import affected_partitions
+            output_months = set(affected_partitions(changed_start, changed_end))
         for i, code in enumerate(symbols, 1):
             if progress_callback:
                 progress_callback(i - 1, len(symbols), code, "计算因子")
@@ -148,6 +158,8 @@ class FactorEngine:
                 failed.append(str(code))
                 continue
             for ym, grp in fdf.groupby(fdf["date"].dt.strftime("%Y-%m")):
+                if output_months is not None and ym not in output_months:
+                    continue
                 cur = month_bufs.get(ym)
                 if cur is not None and len(cur):
                     month_bufs[ym] = pd.concat([cur, grp], ignore_index=True)
@@ -166,10 +178,17 @@ class FactorEngine:
             self.warehouse.write_factor_partition(ym, df)
 
         elapsed = time.time() - t0
+        from StockInvestmentTool.warehouse.pipeline_state import PipelineState
+        output_versions = PipelineState(self.warehouse.meta_db_path).record_output_versions(
+            dataset_name="factors",
+            paths={ym: self.warehouse.factor_dir / f"{ym}.parquet" for ym in month_bufs},
+            input_dataset="stock_daily", input_versions=input_versions,
+            builder_version="factors_builder.v1", schema_version="factors.v1",
+        )
         logger.info("因子计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
                     done, len(month_bufs), elapsed)
         return {"symbols": done, "months": len(month_bufs), "rows": output_rows,
                 "failed": failed[:100], "failed_count": len(failed),
                 "skipped": not symbols, "elapsed_sec": round(elapsed, 1),
                 "input_dataset": "stock_daily", "input_versions": input_versions,
-                "input_fallback_used": not bool(input_versions)}
+                "input_fallback_used": not bool(input_versions), "output_versions": output_versions}

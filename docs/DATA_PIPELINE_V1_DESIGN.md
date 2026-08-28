@@ -2001,7 +2001,7 @@ OHLC 和成交数据是否异常？
 - 元数据定义已迁移到 `config/datasets/stock_daily.yaml`：YAML 管理数据集、字段、来源、消费者和质量配置；SQLite 只保存可查询的运行时投影和实际运行事实；Raw 原始数据继续保存为不可覆盖的文件。
 - Phase 2 已完成：腾讯日线采集新增不可覆盖 Raw Batch 双写，记录 Source Batch 和 Job Run 关联，旧 daily 写入继续保留。
 - 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与旧 daily 均可追溯。
-- 全量回归：185 个测试通过。
+- 全量回归：188 个测试通过。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
 - Phase 3-6 已在验证目录完成基础闭环：Raw Batch -> Candidate Builder -> Dataset Version -> Quality -> Publish；生产下游仍未切换。
 - 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和持久化模拟样例；现有生产正式落盘路径保持兼容。
@@ -2009,3 +2009,5 @@ OHLC 和成交数据是否异常？
 - 持久化验证目录 `output/validation/data_pipeline/` 已包含 `stock_daily` Raw、Candidate、版本/质量/current 台账及四类辅助源 Raw；该目录仅用于后续流程验证，不作为生产数据。
 - Phase 7 已完成验证：`warehouse/datasets.py` 只读取 `dataset_current` 指向的 Published 文件，校验 checksum 并返回版本、质量、来源上下文；没有 current 时必须显式开启 legacy 兼容模式。
 - Phase 8 已完成小量接入验证：指标和因子 Builder 通过 Unified Data Access 读取 Published `stock_daily`，返回 `input_versions`，验证数据输出成功且未使用旧路径回退。
+- 数据、指标、因子阶段已完成验证收口：指标和因子输出均登记为 Published 派生数据集，具有输出版本、质量状态和 `stock_daily` 输入版本血缘；默认生产入口禁止 legacy daily 回退。
+- Phase 9 已完成基础有界窗口规划：增量计算按最大 lookback 计算受影响月份，支持只重写受影响输出分区；完整历史增量性能基线仍待生产规模数据验证。
