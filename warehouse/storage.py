@@ -83,6 +83,12 @@ class Warehouse:
         self._init_meta()
 
     @property
+    def metadata(self):
+        """Unified dataset metadata registry for the staged data pipeline."""
+        from StockInvestmentTool.warehouse.metadata import MetadataStore
+        return MetadataStore(self.meta_db_path)
+
+    @property
     def raw(self):
         """贴源层（各接口原始数据独立存放）"""
         from StockInvestmentTool.warehouse.raw import RawStore
