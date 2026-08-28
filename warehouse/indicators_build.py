@@ -157,6 +157,14 @@ class IndicatorsBuilder:
             input_dataset="stock_daily", input_versions=input_versions,
             builder_version="indicators_builder.v1", schema_version="indicators.v1",
         )
+        from StockInvestmentTool.ops.task_center import TaskCenter
+        center = TaskCenter(self.warehouse.meta_db_path)
+        center.sync_metrics()
+        latest_period = max(months) if months else None
+        for metric in metrics or [item["metric_key"] for item in center.list_metrics() if item["producer_task"] == "indicators_build"]:
+            center.update_metric_health(metric, latest_period=latest_period, covered_objects=done,
+                                        expected_objects=len(symbols), status="healthy" if not failed else "partial",
+                                        message="; ".join(failed[:5]))
         logger.info("指标计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
                     done, len(written_months), elapsed)
         return {"symbols": done, "months": len(written_months),
