@@ -10,6 +10,7 @@ from pathlib import Path
 
 from StockInvestmentTool.ops.job_runs import JobRunStore
 from StockInvestmentTool.ops.task_center import TaskCenter
+from StockInvestmentTool.ops.task_runner import TaskRunner
 from StockInvestmentTool.warehouse.daily_build import DailyBuilder
 from StockInvestmentTool.warehouse.factors import FactorEngine
 from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
@@ -50,12 +51,21 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -
     metadata.sync_definitions()
     metadata.sync_metrics()
     job_store = JobRunStore(root / "job_runs.db")
-    run_id = job_store.start("shadow_pipeline", run_date=end_date, display_name="生产小批量 Shadow 数据流程",
-                             input_dataset="source", output_dataset="factors")
+    runner = TaskRunner(root / "job_runs.db", warehouse.meta_db_path)
+    request_id = runner.center.create_request("stock_daily_capture", "shadow",
+                                              period_start=start_date, period_end=end_date,
+                                              symbols=symbols, requested_by="shadow_script")
+    request = runner.center.request(request_id)
+    run_id = runner.jobs.start("stock_daily_capture", run_date=end_date, display_name="腾讯日线采集",
+                               input_dataset="universe", output_dataset="stock_daily",
+                               request_id=request_id, config_version=request["config_version"],
+                               trigger_type="shadow", period_start=start_date, period_end=end_date)
+    runner.center.update_request(request_id, "running")
     result = {"root": str(root), "symbols": symbols, "start_date": start_date, "end_date": end_date,
-              "run_id": run_id, "trigger_type": "manual_shadow", "timezone": "Asia/Shanghai"}
+              "run_id": run_id, "request_id": request_id, "trigger_type": "shadow", "timezone": "Asia/Shanghai"}
     try:
-        job_store.update_progress(run_id, phase="真实腾讯采集", progress=5, total=len(symbols))
+        runner.center.event(run_id, "开始真实腾讯采集", phase="数据采集", event_type="start")
+        job_store.update_progress(run_id, phase="数据采集", progress=5, total=len(symbols))
         collector = __import__("StockInvestmentTool.warehouse.collector", fromlist=["MarketCollector"]).MarketCollector(
             warehouse=warehouse, query_interval=0.3
         )
@@ -66,7 +76,8 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -
         if not captured.get("source_batch_id") or captured.get("raw_capture_failed"):
             raise RuntimeError("真实 Raw Batch 未成功落盘")
 
-        job_store.update_progress(run_id, phase="标准化构建", progress=30)
+        runner.center.event(run_id, "采集完成，开始标准化构建", phase="数据构建", event_type="start")
+        job_store.update_progress(run_id, phase="数据构建", progress=30)
         builder = DailyBuilder(warehouse)
         partition = end_date[:7]
         build = builder.build_partition(partition, include_current=False)
@@ -80,13 +91,16 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -
         result["quality"] = quality
         if not quality["publish_allowed"]:
             raise RuntimeError(f"Shadow 数据质量不允许发布: {quality['status']}")
-        job_store.update_progress(run_id, phase="Shadow 发布", progress=50)
+        runner.center.event(run_id, "质量检查通过，开始隔离验证发布", phase="数据发布", event_type="start")
+        job_store.update_progress(run_id, phase="数据发布", progress=50)
         result["publish"] = Publisher(warehouse).publish(version)
 
-        job_store.update_progress(run_id, phase="指标计算", progress=65)
+        runner.center.event(run_id, "开始技术指标计算", phase="派生计算", event_type="start")
+        job_store.update_progress(run_id, phase="派生计算", progress=65)
         result["indicators"] = IndicatorsBuilder(warehouse, allow_legacy=False,
                                                    ).build_all(symbols=symbols, flush_every=1)
-        job_store.update_progress(run_id, phase="因子计算", progress=82)
+        runner.center.event(run_id, "开始研究因子计算", phase="派生计算", event_type="start")
+        job_store.update_progress(run_id, phase="派生计算", progress=82)
         result["factors"] = FactorEngine(warehouse, allow_legacy=False).build_factors(symbols=symbols)
         result["artifacts"] = {
             "raw": captured.get("raw_batch"),
@@ -114,6 +128,7 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -
         ):
             if upstream in artifact_ids and downstream in artifact_ids:
                 metadata.link_lineage(artifact_ids[upstream], artifact_ids[downstream], relation)
+        runner.center.update_request(request_id, "success")
         result["status"] = "success"
         job_store.update_progress(run_id, phase="完成", progress=100)
         job_store.finish(run_id, "success", result)
@@ -121,6 +136,7 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str) -
     except Exception as exc:
         result["status"] = "failed"
         result["error"] = str(exc)
+        runner.center.update_request(request_id, "failed")
         job_store.finish(run_id, "failed", result, error=str(exc))
         raise
 

@@ -296,6 +296,10 @@ class TaskCenter:
 
     def create_request(self, task_key: str, trigger_type: str, *, period_start=None, period_end=None,
                        symbols=None, requested_by="admin") -> str:
+        if trigger_type not in {"scheduled", "manual", "backfill", "retry", "shadow"}:
+            raise TaskConfigError("非法任务触发类型")
+        if period_start and period_end and str(period_end) < str(period_start):
+            raise TaskConfigError("任务结束周期不能早于开始周期")
         request_id = f"req_{datetime.now():%Y%m%d%H%M%S}_{hashlib.sha1(f'{task_key}{_now()}'.encode()).hexdigest()[:10]}"
         with self._connect() as conn:
             row = conn.execute("SELECT active_config_version FROM task_definitions WHERE task_key=?", (task_key,)).fetchone()
@@ -305,6 +309,24 @@ class TaskCenter:
                          (request_id, task_key, trigger_type, period_start, period_end,
                           json.dumps(symbols or [], ensure_ascii=False), row[0], requested_by, "requested", _now()))
         return request_id
+
+    def request(self, request_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM task_execution_requests WHERE request_id=?", (request_id,)).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        try:
+            item["symbols"] = json.loads(item.get("symbols") or "[]")
+        except (TypeError, ValueError):
+            item["symbols"] = []
+        return item
+
+    def update_request(self, request_id: str, status: str) -> None:
+        if status not in {"requested", "running", "success", "partial_success", "failed", "cancelled"}:
+            raise TaskConfigError("非法执行请求状态")
+        with self._connect() as conn:
+            conn.execute("UPDATE task_execution_requests SET status=? WHERE request_id=?", (status, request_id))
 
     def event(self, run_id: int, message: str, *, level="INFO", phase="", event_type="log",
               processed=None, total=None, current_item=None, payload=None):

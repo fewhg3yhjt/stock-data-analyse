@@ -2014,5 +2014,6 @@ OHLC 和成交数据是否异常？
 - 数据构建层已完成验证收口：`stock_daily` 支持按 Source Batch 自动选取、YAML 来源优先级和单位转换、Candidate 幂等、新旧差异报告、完整基础质量检查、Publish 状态和回滚；辅助数据集具备通用 YAML Builder/Publish 骨架，尚未切换生产正式消费。
 - 已新增 `scripts/convert_legacy_daily.py`，旧 daily 只能只读转换到隔离迁移目录并标记为 `legacy_daily`，不得伪装成原始 Raw 或直接进入正式 current。
 - 任务/指标管理后端基础层已完成：任务定义与配置版本、统一执行请求、结构化事件和文本日志、任务产物、文件预览、基础血缘、指标定义/版本/健康和任务指标关联均已具备；前端页面尚未按新信息架构改版。
+- 任务执行框架已补充统一 Runner：定时、手动、补数、重试和 Shadow 使用统一执行请求契约，执行请求绑定任务配置版本、周期区间、触发方式和证券范围；阶段事件、文本日志、产物登记和血缘可统一查询。
 - 真实 Shadow Run 已完成两次小批量验证：首轮 `sh600000/sh600001/sz000001` 中 `sh600001` 无有效返回，覆盖率 2/3，质量 FAIL 且正确阻断；第二轮使用 `sh600000/sh600519/sz000001`，覆盖 3/3、5 个交易日共 15 行，质量 PASS，完整生成 Shadow Raw/Candidate/Published/指标/因子并登记产物血缘。
 - Shadow 输出位于 `output/data/shadow_validation_retry/`，与正式 `output/data/warehouse/` 隔离；正式 meta.db、daily、indicators、factors 的 checksum 在运行前后保持不变。

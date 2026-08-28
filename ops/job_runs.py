@@ -74,6 +74,8 @@ class JobRunStore:
             "total": "INTEGER", "current_item": "TEXT NOT NULL DEFAULT ''",
             "input_dataset": "TEXT NOT NULL DEFAULT ''", "output_dataset": "TEXT NOT NULL DEFAULT ''",
             "parent_run_id": "INTEGER", "updated_at": "TEXT",
+            "request_id": "TEXT", "config_version": "INTEGER", "trigger_type": "TEXT NOT NULL DEFAULT 'scheduled'",
+            "period_start": "TEXT", "period_end": "TEXT", "timezone": "TEXT NOT NULL DEFAULT 'Asia/Shanghai'",
         }
         for name, definition in additions.items():
             if name not in columns:
@@ -88,16 +90,21 @@ class JobRunStore:
     def start(self, job_name: str, *, run_date: str | None = None,
               display_name: str = "", scheduled_at: str | None = None,
               input_dataset: str = "", output_dataset: str = "",
-              parent_run_id: int | None = None) -> int:
+              parent_run_id: int | None = None, request_id: str | None = None,
+              config_version: int | None = None, trigger_type: str = "scheduled",
+              period_start: str | None = None, period_end: str | None = None,
+              timezone: str = "Asia/Shanghai") -> int:
         now = datetime.now().isoformat(timespec="seconds")
         with self._connect() as conn:
             cur = conn.execute(
                 """INSERT INTO job_runs(
                     job_name,started_at,run_date,display_name,scheduled_at,
-                    input_dataset,output_dataset,parent_run_id,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                    input_dataset,output_dataset,parent_run_id,updated_at,request_id,config_version,
+                    trigger_type,period_start,period_end,timezone)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (job_name, now, run_date or now[:10], display_name, scheduled_at,
-                 input_dataset, output_dataset, parent_run_id, now),
+                  input_dataset, output_dataset, parent_run_id, now, request_id, config_version,
+                  trigger_type, period_start, period_end, timezone),
             )
             return int(cur.lastrowid)
 
