@@ -10,6 +10,22 @@ from typing import Optional
 
 
 class JobRunStore:
+    DATA_JOBS = {"daily_sync", "rebuild_indicators", "rebuild_factors", "minute_snapshot", "online_snapshot"}
+    CATEGORIES = {"data", "notification", "business", "all"}
+
+    @staticmethod
+    def result_status(result: Optional[dict], *, empty_is_skipped: bool = True) -> str:
+        """Use one conservative status policy for warehouse worker results."""
+        result = result or {}
+        failed = result.get("failed") or result.get("failed_count", 0)
+        produced = result.get("rows", result.get("added_rows", 0)) or 0
+        if result.get("skipped") or (empty_is_skipped and result.get("up_to_date") and not failed):
+            return "skipped"
+        if failed and produced:
+            return "partial_success"
+        if failed or ("symbols" in result and not produced and not result.get("up_to_date")):
+            return "failed"
+        return "success" if produced or result.get("ok", True) else "failed"
     def __init__(self, db_path: Optional[Path | str] = None):
         if db_path is None:
             from StockInvestmentTool.config import Config
@@ -89,10 +105,12 @@ class JobRunStore:
                error: str = "") -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE job_runs SET finished_at=?,status=?,result=?,error=?,progress=?,updated_at=? WHERE id=?",
+                """UPDATE job_runs SET finished_at=?,status=?,result=?,error=?,
+                   progress=CASE WHEN ? IN ('success','skipped') THEN 100 ELSE progress END,
+                   updated_at=? WHERE id=?""",
                 (datetime.now().isoformat(timespec="seconds"), status,
                   json.dumps(result or {}, ensure_ascii=False, default=str), str(error)[:2000],
-                  100 if status == "success" else 0,
+                  status,
                   datetime.now().isoformat(timespec="seconds"), run_id),
             )
 
@@ -126,6 +144,50 @@ class JobRunStore:
             out.append(item)
         return out
 
+    @classmethod
+    def category_for(cls, job_name: str) -> str:
+        if job_name in cls.DATA_JOBS:
+            return "data"
+        if job_name == "notification_outbox" or job_name.startswith("notification"):
+            return "notification"
+        return "business"
+
+    def query(self, *, limit: int = 50, offset: int = 0,
+              job_names: Optional[list[str]] = None, status: Optional[str] = None,
+              parent: Optional[int] = None, category: str = "all") -> tuple[list[dict], int]:
+        """Filter in SQL before pagination; returns (page, total)."""
+        if category not in self.CATEGORIES:
+            raise ValueError("非法任务类别")
+        where, args = [], []
+        if job_names:
+            where.append("job_name IN (%s)" % ",".join("?" for _ in job_names)); args.extend(job_names)
+        if status:
+            where.append("status=?"); args.append(status)
+        if parent is not None:
+            where.append("parent_run_id=?"); args.append(int(parent))
+        if category != "all":
+            names = [n for n in self._all_job_names() if self.category_for(n) == category]
+            if not names:
+                return [], 0
+            where.append("job_name IN (%s)" % ",".join("?" for _ in names)); args.extend(names)
+        clause = " WHERE " + " AND ".join(where) if where else ""
+        with self._connect() as conn:
+            total = conn.execute("SELECT COUNT(*) FROM job_runs" + clause, args).fetchone()[0]
+            rows = conn.execute("SELECT * FROM job_runs" + clause + " ORDER BY id DESC LIMIT ? OFFSET ?",
+                                args + [max(1, int(limit)), max(0, int(offset))]).fetchall()
+        return [self._decode(row) for row in rows], int(total)
+
+    def _all_job_names(self) -> list[str]:
+        with self._connect() as conn:
+            return [row[0] for row in conn.execute("SELECT DISTINCT job_name FROM job_runs")]
+
+    @staticmethod
+    def _decode(row) -> dict:
+        item = dict(row)
+        try: item["result"] = json.loads(item.get("result") or "{}")
+        except Exception: item["result"] = {}
+        return item
+
     def get(self, run_id: int) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM job_runs WHERE id=?", (int(run_id),)).fetchone()
@@ -136,7 +198,25 @@ class JobRunStore:
             item["result"] = json.loads(item["result"])
         except Exception:
             item["result"] = {}
+        item["children"] = self.children(run_id)
         return item
+
+    def children(self, run_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM job_runs WHERE parent_run_id=? ORDER BY id", (int(run_id),)).fetchall()
+        return [self._decode(row) for row in rows]
+
+    def reclaim_data_running(self, *, before: datetime | str) -> int:
+        """Recover running data rows left by a process restart, once at startup."""
+        boundary = before.isoformat(timespec="seconds") if isinstance(before, datetime) else str(before)
+        names = tuple(self.DATA_JOBS)
+        with self._connect() as conn:
+            marks = ",".join("?" for _ in names)
+            cur = conn.execute(f"""UPDATE job_runs SET status='failed', finished_at=?, updated_at=?,
+                error='任务进程已结束，运行记录自动回收' WHERE status='running' AND started_at<?
+                AND job_name IN ({marks})""",
+                [datetime.now().isoformat(timespec="seconds")] * 2 + [boundary] + list(names))
+        return cur.rowcount
 
     def running(self, job_name: str) -> Optional[dict]:
         with self._connect() as conn:
@@ -166,7 +246,7 @@ class JobRunStore:
         tasks = [
             ("daily_sync", "日线增量同步", daily_time, "数据源", "daily", ""),
             ("rebuild_indicators", "指标重建", "日线完成后", "daily", "indicators", "daily_sync"),
-            ("rebuild_factors", "因子重建", "指标完成后", "indicators", "factors", "rebuild_indicators"),
+            ("rebuild_factors", "因子重建", "指标完成后（串行顺序）", "daily", "factors", "daily_sync"),
             ("minute_snapshot", "观察池分钟采集", "09:30-11:30 / 13:00-15:00", "观察池", "minute", ""),
             ("online_snapshot", "在线快照兜底", "分钟采集未启用时", "观察池", "online", "minute_snapshot"),
         ]
@@ -178,14 +258,31 @@ class JobRunStore:
                        run_date,task_key,display_name,scheduled_at,input_dataset,
                        output_dataset,blocked_by,updated_at)
                        VALUES(?,?,?,?,?,?,?,?)
-                       ON CONFLICT(run_date,task_key) DO UPDATE SET updated_at=excluded.updated_at""",
+                       ON CONFLICT(run_date,task_key) DO UPDATE SET
+                       input_dataset=excluded.input_dataset, output_dataset=excluded.output_dataset,
+                       blocked_by=excluded.blocked_by, scheduled_at=excluded.scheduled_at,
+                       updated_at=excluded.updated_at""",
                     (run_date, task_key, name, scheduled, source, output, blocked_by, now),
                 )
         plans = self.daily_plan(run_date)
-        runs = self.recent(200)
+        # High-frequency jobs can push a long-running data pipeline out of the
+        # global recent window. Query only jobs relevant to this plan first.
+        runs, _ = self.query(
+            limit=1000,
+            job_names={task[0] for task in tasks},
+        )
         now = datetime.now()
         for plan in plans:
-            run = next((item for item in runs if item.get("job_name") == plan["task_key"] and str(item.get("started_at", ""))[:10] == run_date), None)
+            # A long warehouse rebuild may cross midnight. Prefer a currently
+            # running task regardless of its start date, then use the plan
+            # date for completed historical runs.
+            run = next((item for item in runs
+                        if item.get("job_name") == plan["task_key"]
+                        and item.get("status") == "running"), None)
+            if run is None:
+                run = next((item for item in runs
+                            if item.get("job_name") == plan["task_key"]
+                            and str(item.get("started_at", ""))[:10] == run_date), None)
             if run:
                 plan.update({"status": run.get("status"), "run_id": run.get("id"), "phase": run.get("phase", ""), "progress": run.get("progress", 0), "processed": run.get("processed"), "total": run.get("total"), "current_item": run.get("current_item", ""), "error": run.get("error", "")})
                 continue

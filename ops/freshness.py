@@ -219,8 +219,20 @@ def dataset_statuses(*, warehouse=None, job_runs=None, now: Optional[datetime] =
 
     warehouse = warehouse or Warehouse()
     current = now or datetime.now()
+    minute_configured = os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1"
+    online_configured = os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1"
     expected = latest_completed_trade_day(current)
-    runs = job_runs if job_runs is not None else JobRunStore().recent(200)
+    if job_runs is not None:
+        runs = job_runs
+    else:
+        # Do not let high-frequency records hide long-running data jobs.
+        runs, _ = JobRunStore().query(
+            limit=1000,
+            job_names={
+                "daily_sync", "daily_tasks", "rebuild_indicators",
+                "rebuild_factors", "minute_snapshot", "online_snapshot",
+            },
+        )
     result: list[DatasetStatus] = []
 
     specs = [
@@ -266,6 +278,9 @@ def dataset_statuses(*, warehouse=None, job_runs=None, now: Optional[datetime] =
                            symbols=symbols, job_name="online_snapshot", source="在线快照 CSV")
     latest_job, success_job = _job_context({"online_snapshot"}, runs)
     _apply_job_state(online, latest_job, success_job)
+    if minute_configured:
+        online.status = "disabled"
+        online.last_error = "分钟采集已启用，在线快照被抑制"
     result.append(online)
 
     latest, rows, symbols = _minute_latest(warehouse)
@@ -274,6 +289,9 @@ def dataset_statuses(*, warehouse=None, job_runs=None, now: Optional[datetime] =
                            symbols=symbols, job_name="minute_snapshot", source="腾讯分钟 CSV")
     latest_job, success_job = _job_context({"minute_snapshot"}, runs)
     _apply_job_state(minute, latest_job, success_job)
+    if not minute_configured:
+        minute.status = "disabled"
+        minute.last_error = "WAREHOUSE_MINUTE_SNAPSHOT 未开启"
     result.append(minute)
     return result
 

@@ -51,7 +51,7 @@ class IndicatorsBuilder:
         months = self.warehouse.available_months("daily")
         if not months:
             logger.warning("无日线分区，请先运行 sync")
-            return {"symbols": 0, "months": 0, "elapsed_sec": 0}
+            return {"symbols": 0, "months": 0, "rows": 0, "failed": [], "skipped": True, "elapsed_sec": 0}
 
         # ① 每个分区只读一次，按 code 分组，累积各标的全史
         logger.info("指标计算: 载入 %d 个月分区...", len(months))
@@ -73,6 +73,8 @@ class IndicatorsBuilder:
         #    避免中断丢失全部成果（2C2G 下内存也有界）。
         month_bufs: dict[str, pd.DataFrame] = {}
         done = 0
+        failed: list[str] = []
+        output_rows = 0
         t0 = time.time()
         written_months: set[str] = set()
 
@@ -100,6 +102,7 @@ class IndicatorsBuilder:
                 ind_series = self.registry.compute(df, metrics)
             except Exception as e:
                 logger.warning("指标计算 %s 失败: %s", code, e)
+                failed.append(str(code))
                 continue
             if not ind_series:
                 continue
@@ -115,6 +118,7 @@ class IndicatorsBuilder:
                 else:
                     month_bufs[ym] = grp.copy()
             done += 1
+            output_rows += len(out)
             if progress_callback:
                 progress_callback(i, len(symbols), code, "指标已计算")
             if i % flush_every == 0 or i == len(symbols):
@@ -129,4 +133,6 @@ class IndicatorsBuilder:
         logger.info("指标计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
                     done, len(written_months), elapsed)
         return {"symbols": done, "months": len(written_months),
-                "elapsed_sec": round(elapsed, 1)}
+                "rows": output_rows,
+                "failed": failed[:100], "failed_count": len(failed),
+                "skipped": not symbols, "elapsed_sec": round(elapsed, 1)}

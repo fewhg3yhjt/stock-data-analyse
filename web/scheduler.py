@@ -244,8 +244,9 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
     owns_run = run_id is None
     run_id = run_id or store.start("daily_sync", display_name="日线增量同步",
                                    scheduled_at=os.getenv("DAILY_RUN_TIME", DEFAULT_RUN_TIME),
-                                   input_dataset="数据源", output_dataset="daily")
+                                    input_dataset="source", output_dataset="daily")
     store.link_plan_run(run_date, "daily_sync", run_id)
+    result = {}
     try:
         from StockInvestmentTool.warehouse.collector import MarketCollector
         from StockInvestmentTool.warehouse.factors import FactorEngine
@@ -259,12 +260,16 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
         years = int(os.getenv("WAREHOUSE_YEARS", "3"))
         start_date = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
         end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        result = {}
+        child_statuses = []
         store.update_progress(run_id, phase="获取股票清单", progress=1)
         result["daily"] = MarketCollector().sync_daily(
             start_date=start_date, end_date=end_date, include_etf=True,
             include_index=False, source="tencent", progress_callback=progress,
         )
+        daily_status = store.result_status(result["daily"])
+        child_statuses.append(daily_status)
+        if daily_status == "failed":
+            raise RuntimeError("日线同步未产生有效产出")
         store.update_progress(run_id, phase="日线完成，开始重建指标", progress=33,
                               processed=1, total=3)
         indicator_id = store.start("rebuild_indicators", display_name="指标重建",
@@ -273,36 +278,47 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
         store.link_plan_run(run_date, "rebuild_indicators", indicator_id)
         try:
             result["indicators"] = IndicatorsBuilder().build_all(progress_callback=lambda p, t, c, s: (store.update_progress(indicator_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建指标", progress=33 + round((p / t * 100) * 0.33) if t else 33, processed=p, total=t, current_item=c)))
-            store.update_progress(indicator_id, phase="完成", progress=100)
-            store.finish(indicator_id, "success", result["indicators"])
+            indicator_status = store.result_status(result["indicators"])
+            child_statuses.append(indicator_status)
+            store.finish(indicator_id, indicator_status, result["indicators"])
         except Exception as exc:
-            store.finish(indicator_id, "failed", error=str(exc))
+            if store.get(indicator_id).get("status") == "running":
+                store.finish(indicator_id, "failed", error=str(exc))
+            child_statuses.append("failed")
             raise
         store.update_progress(run_id, phase="指标完成，开始重建因子", progress=66,
                               processed=2, total=3)
         factor_id = store.start("rebuild_factors", display_name="因子重建",
-                                input_dataset="indicators", output_dataset="factors",
+                                input_dataset="daily", output_dataset="factors",
                                 parent_run_id=run_id)
         store.link_plan_run(run_date, "rebuild_factors", factor_id)
         try:
             result["factors"] = FactorEngine().build_factors(progress_callback=lambda p, t, c, s: (store.update_progress(factor_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建因子", progress=66 + round((p / t * 100) * 0.34) if t else 66, processed=p, total=t, current_item=c)))
-            store.update_progress(factor_id, phase="完成", progress=100)
-            store.finish(factor_id, "success", result["factors"])
+            factor_status = store.result_status(result["factors"])
+            child_statuses.append(factor_status)
+            store.finish(factor_id, factor_status, result["factors"])
         except Exception as exc:
-            store.finish(factor_id, "failed", error=str(exc))
+            if store.get(factor_id).get("status") == "running":
+                store.finish(factor_id, "failed", error=str(exc))
+            child_statuses.append("failed")
             raise
+        parent_status = ("failed" if "failed" in child_statuses else
+                         "partial_success" if "partial_success" in child_statuses else
+                         "skipped" if all(s == "skipped" for s in child_statuses) else "success")
         store.update_progress(run_id, phase="完成", progress=100)
-        if owns_run:
-            store.finish(run_id, "success", result)
+        if store.get(run_id).get("status") == "running":
+            store.finish(run_id, parent_status, result)
         return result
     except Exception as exc:
-        if owns_run:
-            store.finish(run_id, "failed", error=str(exc))
+        if store.get(run_id) and store.get(run_id).get("status") == "running":
+            store.finish(run_id, "failed", result=result, error=str(exc))
         raise
 
 
 def init_scheduler(app) -> None:
     """创建并启动 APScheduler（单容器方案：web 进程内定时任务）。"""
+    startup_boundary = datetime.now()
+    app.extensions["scheduler_state"] = {"running": False, "reason": "disabled_by_config" if os.getenv("DISABLE_SCHEDULER") == "1" else "not_initialized"}
     if os.getenv("DISABLE_SCHEDULER") == "1" or os.getenv("PYTEST_CURRENT_TEST"):
         logger.info("定时任务已跳过（DISABLE_SCHEDULER=1 或测试环境）")
         return
@@ -310,6 +326,7 @@ def init_scheduler(app) -> None:
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.cron import CronTrigger
     except ImportError:
+        app.extensions["scheduler_state"] = {"running": False, "reason": "dependency_missing"}
         logger.warning("APScheduler 未安装，定时任务不可用")
         return
 
@@ -323,6 +340,7 @@ def init_scheduler(app) -> None:
         lock_file = open(lock_path, "a+", encoding="utf-8")
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except (BlockingIOError, OSError):
+        app.extensions["scheduler_state"] = {"running": False, "reason": "lock_not_acquired"}
         logger.warning("已有其他进程持有 scheduler 锁，本进程不启动定时任务")
         if lock_file:
             lock_file.close()
@@ -334,10 +352,11 @@ def init_scheduler(app) -> None:
         run_daily_tasks, CronTrigger(hour=hour, minute=minute, timezone=TZ),
         id="daily_tasks", misfire_grace_time=3600, coalesce=True, max_instances=1,
     )
-    scheduler.add_job(
-        run_daily_data_pipeline, CronTrigger(hour=hour, minute=minute, timezone=TZ),
-        id="daily_sync", misfire_grace_time=21600, coalesce=True, max_instances=1,
-    )
+    if os.getenv("WAREHOUSE_DAILY_SYNC") == "1":
+        scheduler.add_job(
+            run_daily_data_pipeline, CronTrigger(hour=hour, minute=minute, timezone=TZ),
+            id="daily_sync", misfire_grace_time=21600, coalesce=True, max_instances=1,
+        )
     scheduler.add_job(
         process_notification_outbox, CronTrigger(minute="*/5", timezone=TZ),
         id="notification_outbox", misfire_grace_time=600, coalesce=True,
@@ -367,6 +386,7 @@ def init_scheduler(app) -> None:
 
     scheduler.start()
     app.extensions["scheduler"] = scheduler
+    app.extensions["scheduler_state"] = {"running": True, "reason": "registered", "startup_at": startup_boundary.isoformat(timespec="seconds")}
     app.extensions["scheduler_lock"] = lock_file
     if lock_file is not None:
         import atexit
@@ -380,7 +400,7 @@ def init_scheduler(app) -> None:
             today = now.strftime("%Y-%m-%d")
             # Any running row that predates this web process is orphaned: the
             # worker thread cannot survive a container restart.
-            store.reclaim_stale("daily_sync", max_age_minutes=0)
+            store.reclaim_data_running(before=startup_boundary)
             todays = [item for item in store.recent(200)
                       if item.get("job_name") == "daily_sync"
                       and str(item.get("started_at", ""))[:10] == today]
@@ -561,11 +581,16 @@ def process_notification_outbox() -> dict:
     """Retry pending notifications after process/container restarts."""
     from StockInvestmentTool.notifier.outbox import NotificationOutbox
 
-    from StockInvestmentTool.ops.job_runs import JobRunStore
-    run_id = JobRunStore().start("notification_outbox")
     outbox = NotificationOutbox()
+    due = outbox.due()
+    if not due:
+        return {"sent": 0, "failed": 0, "pending": outbox.counts().get("pending", 0),
+                "dead": outbox.counts().get("dead", 0)}
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    store = JobRunStore()
+    run_id = store.start("notification_outbox")
     sent = failed = 0
-    for item in outbox.due():
+    for item in due:
         result = _deliver_outbox_item(item)
         if result.get("ok"):
             outbox.mark_sent(item["id"])
@@ -575,7 +600,7 @@ def process_notification_outbox() -> dict:
     counts = outbox.counts()
     result = {"sent": sent, "failed": failed, "pending": counts.get("pending", 0),
               "dead": counts.get("dead", 0)}
-    JobRunStore().finish(run_id, "success", result)
+    store.finish(run_id, "success" if not failed else ("partial_success" if sent else "failed"), result)
     return result
 
 

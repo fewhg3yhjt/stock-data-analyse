@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -103,6 +105,25 @@ def test_home_is_workbench_and_analyze_is_form(client):
     analyze = client.get("/analyze?code=sh600900&name=长江电力")
     assert analyze.status_code == 200
     assert "分析参数" in analyze.get_data(as_text=True)
+
+
+def test_analyze_marks_visible_research_navigation_active(client):
+    html = client.get("/analyze").get_data(as_text=True)
+
+    primary = html.split('<div class="nav-secondary">', 1)[0]
+    assert '<a href="/research" class="active">研究</a>' in primary
+    assert '<a href="/analyze" class="active">个股分析</a>' in html
+
+
+def test_workbench_data_status_uses_safe_status_classes(client):
+    html = client.get("/workbench").get_data(as_text=True)
+
+    assert "const dataStatuses=new Set" in html
+    assert "status-'+normalized" in html
+    assert "setDataStatus('failed')" in html
+
+    css = Path(__file__).parents[1].joinpath("web/static/base.css").read_text()
+    assert ".tag.status-running" in css
 
 
 def test_legacy_stock_link_redirects_to_analyze(client):

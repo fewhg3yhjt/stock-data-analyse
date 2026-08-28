@@ -421,7 +421,8 @@ class MarketCollector:
         logger.info("日线增量完成: +%d 行, 失败 %d, 耗时 %.1fs",
                     added, len(failed), elapsed)
         return {"added_rows": added, "symbols": len(symbols),
-                "failed": failed, "elapsed_sec": round(elapsed, 1)}
+                "failed": failed, "up_to_date": not failed and added == 0,
+                "rows": added, "elapsed_sec": round(elapsed, 1)}
 
 
 # ── baostock 包装（供 _bs_query 使用，统一走连接自愈）──

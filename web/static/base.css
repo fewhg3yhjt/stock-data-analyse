@@ -17,13 +17,18 @@ a{color:var(--accent);text-decoration:none;}
 
 /* ── 布局 ── */
 .app{max-width:1400px;margin:0 auto;padding:28px 22px 60px;}
-.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header{display:grid;grid-template-columns:1fr;gap:16px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
 .header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
 .header h1 i{color:var(--accent);}
 .header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
-.header .nav{font-size:14px;}
-.header .nav a{color:var(--accent);text-decoration:none;margin-left:12px;}
-.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
+.header .nav{font-size:14px;width:100%;}
+.nav-primary{display:flex;align-items:center;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.header .nav a{color:var(--text2);text-decoration:none;margin:0;padding:6px 12px;border-radius:6px;}
+.header .nav a:hover,.header .nav a:focus-visible{background:#eef5ff;color:var(--accent);outline:2px solid transparent;}
+.header .nav a.active{font-weight:700;color:var(--accent);background:#eaf2ff;}
+.nav-secondary{display:flex;align-items:center;gap:2px;flex-wrap:wrap;padding-top:4px;}
+.nav-secondary span{font-size:12px;color:var(--text2);margin-right:8px;}
+.nav-secondary a{font-size:13px!important;padding:3px 9px!important;}
 .nav-legacy{display:none;}
 
 /* ── 组件：卡片 / 按钮 / 表格 / 标签 / 提示 / Toast ── */
@@ -46,6 +51,7 @@ a{color:var(--accent);text-decoration:none;}
 
 table{width:100%;border-collapse:collapse;font-size:14px;}
 .table-wrap{overflow-x:auto;}
+.results{overflow-x:auto;}
 th{text-align:left;padding:9px 10px;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap;}
 td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
@@ -56,6 +62,11 @@ tr:last-child td{border-bottom:none;}
 .tag.orange{background:#fff3e0;color:var(--orange);}
 .tag.blue{background:#e3f2fd;color:var(--accent);}
 .tag.gray{background:#eceff1;color:var(--text2);}
+.tag.status-healthy{background:#e8f5e9;color:var(--green);}
+.tag.status-stale{background:#fff3e0;color:var(--orange);}
+.tag.status-critical,.tag.status-failed{background:#fbe9e7;color:var(--red);}
+.tag.status-empty,.tag.status-disabled,.tag.status-unknown{background:#eceff1;color:var(--text2);}
+.tag.status-running{background:#e3f2fd;color:var(--accent);}
 .tag-buy{background:#e8f5e9;color:var(--green);}
 .tag-sell{background:#fbe9e7;color:var(--red);}
 .tag.instant{background:#fbe9e7;color:var(--red);}
@@ -108,11 +119,9 @@ tr:last-child td{border-bottom:none;}
 
 /* 移动端（FR-4.1 验收）：≤700px 可用 */
 @media(max-width:700px){
-  .header{flex-direction:column;align-items:flex-start;}
+  .header{display:block;}
   .header .nav{margin-top:8px;}
-  .header .nav a{margin-left:0;margin-right:14px;display:inline-block;}
-  .nav{display:flex;flex-wrap:wrap;gap:4px 10px;}
-  .header .nav a{margin-right:0;}
+  .nav-primary,.nav-secondary{margin-top:8px;}
    .form-row{grid-template-columns:1fr;}
    .indicator-layout{grid-template-columns:1fr;}
    .preview-chart{height:260px;}

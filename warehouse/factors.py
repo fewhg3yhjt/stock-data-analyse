@@ -49,6 +49,11 @@ class FactorEngine:
         返回含原始列 + 因子列的 DataFrame。
         """
         df = df.sort_values("date").reset_index(drop=True).copy()
+        # Historical daily sources use vendor spellings; retain canonical values.
+        if "pe_ttm" not in df.columns and "peTTM" in df.columns:
+            df["pe_ttm"] = df["peTTM"]
+        if "pb" not in df.columns and "pbMRQ" in df.columns:
+            df["pb"] = df["pbMRQ"]
         close = df["close"]
 
         # 均线
@@ -96,7 +101,7 @@ class FactorEngine:
         months = self.warehouse.available_months("daily")
         if not months:
             logger.warning("无日线分区，请先运行 sync")
-            return {"symbols": 0, "months": 0, "elapsed_sec": 0}
+            return {"symbols": 0, "months": 0, "rows": 0, "failed": [], "skipped": True, "elapsed_sec": 0}
 
         # ① 每个分区只读一次，按 code 分组，累积各标的全史
         logger.info("因子计算: 载入 %d 个月分区...", len(months))
@@ -118,6 +123,8 @@ class FactorEngine:
         # ③ 逐标的算因子，按月份累积
         month_bufs: dict[str, pd.DataFrame] = {}
         done = 0
+        failed: list[str] = []
+        output_rows = 0
         t0 = time.time()
         for i, code in enumerate(symbols, 1):
             if progress_callback:
@@ -130,6 +137,7 @@ class FactorEngine:
                 fdf = self.compute_factor_row(df)
             except Exception as e:
                 logger.warning("因子计算 %s 失败: %s", code, e)
+                failed.append(str(code))
                 continue
             for ym, grp in fdf.groupby(fdf["date"].dt.strftime("%Y-%m")):
                 cur = month_bufs.get(ym)
@@ -138,6 +146,7 @@ class FactorEngine:
                 else:
                     month_bufs[ym] = grp.copy()
             done += 1
+            output_rows += len(fdf)
             if progress_callback:
                 progress_callback(i, len(symbols), code, "因子已计算")
             if i % 500 == 0 or i == len(symbols):
@@ -151,5 +160,6 @@ class FactorEngine:
         elapsed = time.time() - t0
         logger.info("因子计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
                     done, len(month_bufs), elapsed)
-        return {"symbols": done, "months": len(month_bufs),
-                "elapsed_sec": round(elapsed, 1)}
+        return {"symbols": done, "months": len(month_bufs), "rows": output_rows,
+                "failed": failed[:100], "failed_count": len(failed),
+                "skipped": not symbols, "elapsed_sec": round(elapsed, 1)}

@@ -69,7 +69,7 @@ def review_to_excel(data: dict, path: Optional[str | Path] = None) -> str:
 
     # ── 全量交易流水 ──
     ws2 = wb.create_sheet("交易流水(FIFO)")
-    headers = ["日期", "标的", "代码", "方向", "价格", "数量", "金额", "手续费", "盈亏", "备注"]
+    headers = ["日期", "证券", "代码", "方向", "价格", "数量", "金额", "手续费", "盈亏", "备注"]
     ws2.append(headers)
     for c, h in enumerate(headers, 1):
         ws2.cell(1, c).font = Font(bold=True)

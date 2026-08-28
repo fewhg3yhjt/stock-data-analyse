@@ -111,7 +111,7 @@ def build_fundflow_messages(rules: NotifyRules, overview: dict, sustained, diver
                 lines.append(f"- {name}: 多日净额 {net_days:.1f}亿（持续流入）")
                 added += 1
     if added == 0:
-        lines.append("- 今日无达到阈值的持续流入标的")
+        lines.append("- 今日无达到阈值的持续流入证券")
     if divergent is not None and not divergent.empty and rules.fundflow.get("divergent_top"):
         lines.append("**⚠️ 背离警示**（价涨钱走）:")
         for _, r in divergent.head(int(rules.fundflow.get("divergent_top") or 5)).iterrows():

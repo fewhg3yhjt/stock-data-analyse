@@ -281,19 +281,40 @@ def api_data_jobs():
     """Read the durable job ledger used by the data center."""
     try:
         from StockInvestmentTool.ops.job_runs import JobRunStore
-        limit = max(1, min(int(flask.request.args.get("limit", 50)), 200))
+        raw_page = flask.request.args.get("page")
+        raw_size = flask.request.args.get("page_size")
+        raw_limit = flask.request.args.get("limit")
+        for param, raw in (("page", raw_page), ("page_size", raw_size), ("limit", raw_limit)):
+            if raw is not None and not raw.isdigit():
+                return flask.jsonify({"status": "error", "error": f"{param} 必须为整数"}), 400
+        if raw_limit is not None and int(raw_limit) < 1:
+            return flask.jsonify({"status": "error", "error": "limit 必须为正整数"}), 400
+        limit = max(1, min(int(raw_limit or raw_size or 50), 200))
+        if raw_page is not None and int(raw_page) < 1:
+            return flask.jsonify({"status": "error", "error": "page 必须为正整数"}), 400
+        if raw_page is not None and int(raw_page) > 1_000_000:
+            return flask.jsonify({"status": "error", "error": "page 超出允许范围"}), 400
+        if raw_size is not None and int(raw_size) < 1:
+            return flask.jsonify({"status": "error", "error": "page_size 必须为正整数"}), 400
+        page = max(1, int(raw_page or 1))
+        category = flask.request.args.get("category", "all")
+        if category not in JobRunStore.CATEGORIES:
+            return flask.jsonify({"status": "error", "error": "非法任务类别"}), 400
         store = JobRunStore()
-        store.ensure_daily_plan(daily_time=os.getenv("DAILY_RUN_TIME", "15:35"))
-        items = store.recent(limit)
+        if category == "data":
+            store.ensure_daily_plan(daily_time=os.getenv("DAILY_RUN_TIME", "15:35"))
         name = flask.request.args.get("job_name")
         status = flask.request.args.get("status")
-        if name:
-            items = [item for item in items if item.get("job_name") == name]
-        if status:
-            items = [item for item in items if item.get("status") == status]
-        return flask.jsonify({"status": "success", "jobs": items})
+        items, total = store.query(limit=limit, offset=(page - 1) * limit,
+                                   job_names=[name] if name else None, status=status,
+                                   category=category)
+        return flask.jsonify({"status": "success", "jobs": items, "total": total,
+                              "page": page, "page_size": limit, "has_more": page * limit < total,
+                              "category": category})
     except (TypeError, ValueError):
-        return flask.jsonify({"status": "error", "error": "limit 必须为整数"}), 400
+        return flask.jsonify({"status": "error", "error": "分页参数必须为整数"}), 400
+    except OverflowError:
+        return flask.jsonify({"status": "error", "error": "分页参数超出范围"}), 400
     except Exception as e:
         logger.exception("任务台账读取失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
@@ -303,8 +324,42 @@ def api_data_jobs():
 def api_data_plan():
     from StockInvestmentTool.ops.job_runs import JobRunStore
     store = JobRunStore()
+    scheduler = flask.current_app.extensions.get("scheduler")
+    real_jobs = [{"id": j.id, "trigger": str(j.trigger), "next_run": str(j.next_run_time) if j.next_run_time else None}
+                 for j in scheduler.get_jobs()] if scheduler else []
     return flask.jsonify({"status": "success", "run_date": flask.request.args.get("date") or datetime.now().strftime("%Y-%m-%d"),
+                          "scheduler_jobs": real_jobs,
                           "tasks": store.ensure_daily_plan(run_date=flask.request.args.get("date"), daily_time=os.getenv("DAILY_RUN_TIME", "15:35"))})
+
+
+@web_app.route("/api/data/scheduler", methods=["GET"])
+def api_data_scheduler():
+    scheduler = flask.current_app.extensions.get("scheduler")
+    scheduler_state = flask.current_app.extensions.get("scheduler_state") or {}
+    daily = os.getenv("WAREHOUSE_DAILY_SYNC") == "1"
+    minute = os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1"
+    online = os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1"
+    effective = "minute" if minute else "online" if online else None
+    jobs = [{"id": j.id, "trigger": str(j.trigger), "next_run": str(j.next_run_time) if j.next_run_time else None}
+            for j in scheduler.get_jobs()] if scheduler else []
+    running = bool(scheduler)
+    base_reason = scheduler_state.get("reason", "registered" if running else "scheduler_not_running")
+    def feature(configured, registered, eligible, suppressed=False):
+        if not configured: reason = "disabled_by_config"
+        elif suppressed: reason = "suppressed_by_minute"
+        elif not running: reason = base_reason if base_reason != "not_initialized" else "scheduler_not_running"
+        elif not eligible: reason = "not_registered"
+        elif not registered: reason = "not_registered"
+        else: reason = "registered"
+        return {"configured": configured, "eligible": eligible, "effective": running and registered,
+                "registered": registered, "reason": reason}
+    return flask.jsonify({"status": "success", "running": running,
+        "reason": base_reason if not running else "registered",
+        "timezone": "Asia/Shanghai", "features": {
+            "daily_sync": feature(daily, any(j["id"] == "daily_sync" for j in jobs), daily),
+            "minute_snapshot": feature(minute, any(j["id"].startswith("minute_snapshot") for j in jobs), minute),
+            "online_snapshot": feature(online, any(j["id"] == "online_snapshot" for j in jobs), online and not minute, minute and online)},
+        "jobs": jobs})
 
 
 @web_app.route("/api/data/jobs/<int:run_id>", methods=["GET"])
@@ -323,6 +378,11 @@ def _start_data_job(job_name, worker):
     if active:
         return flask.jsonify({"status": "error", "error": "同一任务正在运行",
                               "run_id": active["id"]}), 409
+    conflict_group = {"daily_sync", "rebuild_indicators", "rebuild_factors"}
+    if job_name in conflict_group:
+        active, _ = store.query(category="data", status="running", limit=200)
+        if any(item["job_name"] in conflict_group and item.get("parent_run_id") is None for item in active):
+            return flask.jsonify({"status": "error", "error": "离线数据任务正在运行"}), 409
     run_id = store.start(job_name, display_name={
         "daily_sync": "日线增量同步", "minute_snapshot": "观察池分钟采集",
         "rebuild_indicators": "指标重建", "rebuild_factors": "因子重建",
@@ -337,7 +397,8 @@ def _start_data_job(job_name, worker):
             # Workers that own a ledger entry finish it themselves; otherwise
             # the dispatcher records the common success/failure transition.
             if store.get(run_id) and store.get(run_id)["status"] == "running":
-                store.finish(run_id, "success", result if isinstance(result, dict) else {"result": result})
+                payload = result if isinstance(result, dict) else {"result": result}
+                store.finish(run_id, store.result_status(payload), payload)
         except Exception as exc:
             logger.exception("手动任务失败: %s", job_name)
             store.finish(run_id, "failed", error=str(exc))
