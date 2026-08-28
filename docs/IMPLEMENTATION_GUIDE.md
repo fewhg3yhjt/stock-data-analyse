@@ -23,6 +23,7 @@
 - [概要设计 HLD](HLD.md)
 - [现状盘点 STATUS](STATUS.md)
 - [总体设计 DESIGN](DESIGN.md)
+- [可信数据链路设计与实施规范 V1.1](DATA_PIPELINE_V1_DESIGN.md)
 - [项目 README](../README.md)
 
 其中 `STATUS.md` 第九节对 FR-1 至 FR-5 的完成判断偏乐观。后续执行以本文的代码审计结论和 `SRD.md` 的逐条验收标准为准，不得仅凭模块文件存在或单元测试通过宣布完成。
