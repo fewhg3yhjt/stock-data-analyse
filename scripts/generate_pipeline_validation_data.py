@@ -35,6 +35,16 @@ def generate(root: Path) -> dict:
     warehouse.write_daily_partition("2026-08", daily)
     metadata.index_daily_partitions(warehouse.daily_dir)
 
+    stock_raw_frame = daily.copy()
+    stock_raw_frame["volume"] = stock_raw_frame["volume"] / 100
+    stock_raw_frame["amount"] = stock_raw_frame["amount"] / 10000
+    stock_raw = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent", frames=[stock_raw_frame],
+        run_date="2026-08-28", trade_date_start="2026-08-27", trade_date_end="2026-08-28",
+        expected_symbols=2, success_symbols=2, universe_id="validation_stock_daily",
+        request_context={"fixture": True, "source": "tencent"},
+    )
+
     industry = pd.DataFrame({"code": ["sh600000", "sh600001"], "industry": ["银行", "证券"]})
     fundamentals = pd.DataFrame({
         "code": ["sh600000", "sh600001"],
@@ -67,6 +77,7 @@ def generate(root: Path) -> dict:
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "root": str(root), "datasets": configs,
         "daily_path": str(warehouse.daily_partition("2026-08")),
+        "stock_daily_raw": {"batch_id": stock_raw["batch_id"], "raw_path": str(stock_raw["raw"]["path"])},
         "batches": {name: {"batch_id": item["batch_id"], "raw_path": str(item["raw"]["path"]),
                            "status": item["status"]} for name, item in captures.items()},
     }

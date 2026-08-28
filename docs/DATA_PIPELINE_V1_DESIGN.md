@@ -2003,6 +2003,7 @@ OHLC 和成交数据是否异常？
 - 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与旧 daily 均可追溯。
 - 全量回归：178 个测试通过。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
-- 当前未实施：Daily Builder、Dataset Version、Quality、Publish、Unified Data Access 以及下游迁移。
+- Phase 3-6 已在验证目录完成基础闭环：Raw Batch -> Candidate Builder -> Dataset Version -> Quality -> Publish；生产下游仍未切换。
 - 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和持久化模拟样例；现有生产正式落盘路径保持兼容。
 - 辅助源定时采集使用显式开关：`WAREHOUSE_AUX_SYNC=1` 启用行业和财务史，`WAREHOUSE_MONEY_FLOW_SYNC=1` 额外启用资金流；估值继续由日线后的定向回补流程触发。
+- 持久化验证目录 `output/validation/data_pipeline/` 已包含 `stock_daily` Raw、Candidate、版本/质量/current 台账及四类辅助源 Raw；该目录仅用于后续流程验证，不作为生产数据。

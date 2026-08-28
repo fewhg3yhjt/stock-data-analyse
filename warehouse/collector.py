@@ -423,7 +423,13 @@ class MarketCollector:
                 continue
             if capture_raw and not raw_capture_failed:
                 try:
-                    raw_writer.append(df)
+                    raw_frame = df.copy()
+                    # Keep Tencent's transport units in Raw; YAML-driven Builder
+                    # performs the single canonical conversion to shares/yuan.
+                    if source == "tencent":
+                        raw_frame["volume"] = raw_frame["volume"] / 100
+                        raw_frame["amount"] = raw_frame["amount"] / 10000
+                    raw_writer.append(raw_frame)
                 except Exception:
                     raw_capture_failed = True
                     raw_writer.abort()
