@@ -492,6 +492,78 @@ def api_metric_detail(metric_key):
                           "artifacts": center.task_artifacts(metric.get("producer_task"))})
 
 
+def _task_center_service():
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    return TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+
+
+@web_app.route("/api/data-center/overview", methods=["GET"])
+def api_data_center_overview():
+    center = _task_center_service()
+    center.sync_definitions()
+    center.sync_metrics()
+    assets = center.data_assets()
+    counts = {"total": len(assets), "normal": 0, "attention": 0, "unknown": 0}
+    for asset in assets:
+        status = asset.get("health_status") or "unknown"
+        if status in ("healthy", "normal"):
+            counts["normal"] += 1
+        elif status in ("partial", "stale", "critical"):
+            counts["attention"] += 1
+        else:
+            counts["unknown"] += 1
+    return flask.jsonify({"status": "success", "counts": counts,
+                          "task": center.task_overview(),
+                          "assets": assets})
+
+
+@web_app.route("/api/data-center/assets", methods=["GET"])
+def api_data_center_assets():
+    center = _task_center_service()
+    center.sync_metrics()
+    assets = center.data_assets(category=flask.request.args.get("category"),
+                                status=flask.request.args.get("status"),
+                                date=flask.request.args.get("date"))
+    return flask.jsonify({"status": "success", "assets": assets, "total": len(assets)})
+
+
+@web_app.route("/api/data-center/assets/<metric_key>", methods=["GET"])
+def api_data_center_asset_detail(metric_key):
+    center = _task_center_service()
+    center.sync_metrics()
+    asset = next((item for item in center.data_assets() if item["metric_key"] == metric_key), None)
+    if asset is None:
+        return flask.jsonify({"status": "error", "error": "数据项不存在"}), 404
+    applicability = {}
+    if metric_key not in {"stock_daily", "indicators", "factors"}:
+        from StockInvestmentTool.warehouse.asset_profiles import applicability as profile_applicability
+        for asset_type in ("stock", "etf", "index"):
+            applicability[asset_type] = profile_applicability(asset_type, "metrics", metric_key)
+    return flask.jsonify({"status": "success", "asset": asset,
+                          "applicability": applicability,
+                          "tasks": center.task_artifacts(asset.get("producer_task"))})
+
+
+@web_app.route("/api/task-center/overview", methods=["GET"])
+def api_task_center_overview():
+    center = _task_center_service()
+    center.sync_definitions()
+    return flask.jsonify({"status": "success", "overview": center.task_overview(),
+                          "tasks": center.list_tasks()})
+
+
+@web_app.route("/api/task-center/tasks", methods=["GET"])
+def api_task_center_tasks():
+    center = _task_center_service()
+    center.sync_definitions()
+    return flask.jsonify({"status": "success", "tasks": center.list_tasks()})
+
+
+@web_app.route("/task-center", methods=["GET"])
+def task_center_page():
+    return flask.render_template("task_center.html")
+
+
 def _start_data_job(job_name, worker):
     from StockInvestmentTool.ops.job_runs import JobRunStore
     store = JobRunStore()

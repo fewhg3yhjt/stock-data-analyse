@@ -407,6 +407,42 @@ class TaskCenter:
                 h.expected_objects,h.coverage,h.last_success_at,h.last_run_id,h.status AS health_status,h.message
                 FROM metric_definitions d LEFT JOIN metric_health h ON h.metric_key=d.metric_key ORDER BY d.category,d.metric_key""")]
 
+    def data_assets(self, *, category: str | None = None, status: str | None = None,
+                    date: str | None = None) -> list[dict]:
+        """Return user-facing data assets, not technical batch artifacts."""
+        with sqlite3.connect(self.metadata_db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("""SELECT d.*, h.latest_period, h.expected_period,
+                h.covered_objects, h.expected_objects, h.coverage, h.last_success_at,
+                h.last_run_id, h.status AS health_status, h.message, h.coverage_by_type
+                FROM metric_definitions d LEFT JOIN metric_health h ON h.metric_key=d.metric_key
+                ORDER BY d.category, d.display_name""").fetchall()
+            assets = [dict(row) for row in rows]
+            datasets = conn.execute("""SELECT dataset_name AS metric_key, display_name,
+                '数据集' AS category, description AS definition, NULL AS unit,
+                NULL AS producer_task, 1 AS builtin, 0 AS editable, enabled,
+                updated_at, NULL AS latest_period, NULL AS expected_period,
+                NULL AS covered_objects, NULL AS expected_objects, NULL AS coverage,
+                NULL AS last_success_at, NULL AS last_run_id, NULL AS health_status,
+                NULL AS message, '{}' AS coverage_by_type
+                FROM dataset_registry ORDER BY display_name""").fetchall()
+            assets.extend(dict(row) for row in datasets)
+        if category:
+            assets = [item for item in assets if item.get("category") == category]
+        if status:
+            assets = [item for item in assets if item.get("health_status") == status]
+        if date:
+            assets = [item for item in assets if str(item.get("latest_period") or "") <= date]
+        return assets
+
+    def task_overview(self) -> dict:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT status, COUNT(*) AS count FROM job_runs GROUP BY status").fetchall()
+            running = conn.execute("SELECT COUNT(*) FROM job_runs WHERE status='running'").fetchone()[0]
+            today = datetime.now().strftime("%Y-%m-%d")
+            completed = conn.execute("SELECT COUNT(*) FROM job_runs WHERE started_at LIKE ? AND status IN ('success','partial_success')", (today + "%",)).fetchone()[0]
+        return {"counts": {row[0]: row[1] for row in rows}, "running": running, "today_completed": completed}
+
     def task(self, task_key: str) -> dict | None:
         with self._connect() as conn:
             task = conn.execute("SELECT * FROM task_definitions WHERE task_key=?", (task_key,)).fetchone()
