@@ -26,6 +26,11 @@ services:
       - ${STOCK_OUTPUT_DIR:-./output}:/app/StockInvestmentTool/output
       - ./:/app/StockInvestmentTool
     restart: unless-stopped
+    # Keep a runaway pandas/backtest request from consuming the host memory.
+    # The host has 2 GiB and other services run alongside this container.
+    mem_limit: ${STOCK_MEMORY_LIMIT:-1g}
+    memswap_limit: ${STOCK_MEMORY_SWAP_LIMIT:-1536m}
+    pids_limit: 128
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:9000/', timeout=5)"]
       interval: 30s

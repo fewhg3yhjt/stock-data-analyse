@@ -24,6 +24,7 @@ from StockInvestmentTool.core.engine import AnalysisEngine, AnalysisOptions
 from StockInvestmentTool.core.registry import SchemeRegistry
 from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 from StockInvestmentTool.prompt.llm_client import DeepSeekClient, LLMError
+from StockInvestmentTool.runtime.memory import memory_snapshot, monitor_memory
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,14 @@ web_app = flask.Blueprint("stock_web", __name__, template_folder="templates")
 
 # 在线程中存储分析进度
 _analysis_status: dict[str, dict] = {}
+_heavy_task_lock = threading.BoundedSemaphore(1)
+
+
+def _attach_memory(status: dict, label: str, memory_result: dict) -> None:
+    """Expose task memory in the response while keeping logs concise."""
+    result = memory_result.get("state", {}).get("result")
+    if result:
+        status["memory"] = result
 
 
 def _run_analysis(task_id: str, code: str, name: str,
@@ -61,67 +70,73 @@ def _run_analysis(task_id: str, code: str, name: str,
                   stock_type: str = "B"):
     """后台执行分析流程（通过统一 AnalysisEngine）"""
     status = _analysis_status[task_id]
-    try:
-        status["stage"] = "初始化引擎"
-        status["progress"] = 5
-        engine = AnalysisEngine(scheme_name)
-
-        status["stage"] = "获取数据"
-        status["progress"] = 10
-
-        options = AnalysisOptions(
-            do_backtest=do_backtest,
-            do_prompt=do_prompt,
-            do_api=do_api,
-            skip_charts=False,
-            stock_type=stock_type,
-            initial_cash=initial_cash if initial_cash else None,
-        )
-
-        result = engine.analyze(
-            code=code,
-            name=name,
-            start_date=start_date,
-            end_date=end_date,
-            options=options,
-            progress_callback=lambda stage, progress: status.update(
-                stage=stage, progress=progress
-            ),
-        )
-
-        status["stage"] = "生成结果"
-        status["progress"] = 95
-
-        result_data = result.to_dict()
-
-        # 交易日期格式化（numpy datetime64 兼容）
-        if "trades" in result_data:
-            for t in result_data["trades"]:
-                if "date" in t:
-                    dt = t["date"]
-                    if hasattr(dt, "strftime"):
-                        t["date"] = dt.strftime("%Y-%m-%d")
-                    else:
-                        t["date"] = str(dt)[:10]
-
-        # 报告内容用于前端展示
-        if result.report_path:
+    with _heavy_task_lock:
+        with monitor_memory(f"analysis:{task_id}") as memory:
             try:
-                result_data["report_content"] = Path(result.report_path).read_text(encoding="utf-8")
-            except OSError:
+                status["stage"] = "初始化引擎"
+                status["progress"] = 5
+                engine = AnalysisEngine(scheme_name)
+
+                status["stage"] = "获取数据"
+                status["progress"] = 10
+
+                options = AnalysisOptions(
+                    do_backtest=do_backtest,
+                    do_prompt=do_prompt,
+                    do_api=do_api,
+                    skip_charts=False,
+                    stock_type=stock_type,
+                    initial_cash=initial_cash if initial_cash else None,
+                )
+
+                result = engine.analyze(
+                    code=code,
+                    name=name,
+                    start_date=start_date,
+                    end_date=end_date,
+                    options=options,
+                    progress_callback=lambda stage, progress: status.update(
+                        stage=stage, progress=progress
+                    ),
+                )
+
+                status["stage"] = "生成结果"
+                status["progress"] = 95
+
+                result_data = result.to_dict()
+
+                # 交易日期格式化（numpy datetime64 兼容）
+                if "trades" in result_data:
+                    for t in result_data["trades"]:
+                        if "date" in t:
+                            dt = t["date"]
+                            if hasattr(dt, "strftime"):
+                                t["date"] = dt.strftime("%Y-%m-%d")
+                            else:
+                                t["date"] = str(dt)[:10]
+
+                # 报告内容用于前端展示
+                if result.report_path:
+                    try:
+                        result_data["report_content"] = Path(result.report_path).read_text(encoding="utf-8")
+                    except OSError:
+                        pass
+
+                status["result"] = result_data
+                status["status"] = "success"
+                status["stage"] = "完成"
+                status["progress"] = 100
+
+            except Exception as e:
+                logger.exception("分析失败")
+                status["status"] = "error"
+                status["error"] = str(e)
+                status["stage"] = "失败"
+                status["progress"] = -1
+            finally:
+                # monitor_memory finalizes its result after this block exits.
                 pass
-
-        status["result"] = result_data
-        status["status"] = "success"
-        status["stage"] = "完成"
-        status["progress"] = 100
-
-    except Exception as e:
-        logger.exception("分析失败")
-        status["status"] = "error"
-        status["error"] = str(e)
-        status["stage"] = "失败"
-        status["progress"] = -1
+        _attach_memory(status, "analysis", memory)
 
 
 @web_app.route("/", methods=["GET"])
@@ -256,6 +271,7 @@ def api_health_details():
                 "auth": bool(os.getenv("ADMIN_PASSWORD")),
             },
             "paths": {"data_dir": str(Config.DATA_DIR)},
+            "memory": memory_snapshot(),
         })
     except Exception as e:
         logger.exception("健康详情读取失败")
@@ -980,7 +996,10 @@ def analyze():
     thread.join(timeout=300)  # 最多等5分钟
 
     result = _analysis_status.get(task_id, {})
-    return flask.jsonify(_to_json_safe(result))
+    response = _to_json_safe(result)
+    if not thread.is_alive():
+        _analysis_status.pop(task_id, None)
+    return flask.jsonify(response)
 
 
 def _run_comparison(task_id: str, code: str, name: str,
@@ -988,45 +1007,48 @@ def _run_comparison(task_id: str, code: str, name: str,
                     scheme_names: list[str], stock_type: str):
     """后台执行多方案对比"""
     status = _analysis_status[task_id]
-    try:
-        status["stage"] = "初始化"
-        status["progress"] = 5
+    with _heavy_task_lock:
+        with monitor_memory(f"comparison:{task_id}") as memory:
+            try:
+                status["stage"] = "初始化"
+                status["progress"] = 5
 
-        from StockInvestmentTool.comparison.runner import MultiSchemeRunner
-        from StockInvestmentTool.comparison.report import write_report
+                from StockInvestmentTool.comparison.runner import MultiSchemeRunner
+                from StockInvestmentTool.comparison.report import write_report
 
-        runner = MultiSchemeRunner(scheme_names)
-        report = runner.compare(
-            code=code, name=name,
-            start_date=start_date, end_date=end_date,
-            stock_type=stock_type,
-            progress_callback=lambda stage, progress: status.update(
-                stage=stage, progress=progress
-            ),
-        )
+                runner = MultiSchemeRunner(scheme_names)
+                report = runner.compare(
+                    code=code, name=name,
+                    start_date=start_date, end_date=end_date,
+                    stock_type=stock_type,
+                    progress_callback=lambda stage, progress: status.update(
+                        stage=stage, progress=progress
+                    ),
+                )
 
-        status["stage"] = "生成报告"
-        status["progress"] = 95
-        report_path, chart_paths = write_report(report)
+                status["stage"] = "生成报告"
+                status["progress"] = 95
+                report_path, chart_paths = write_report(report)
 
-        result = report.to_dict()
-        result["report_file"] = Path(report_path).name
-        try:
-            result["report_content"] = Path(report_path).read_text(encoding="utf-8")
-        except OSError:
-            pass
-        result["charts"] = [{"name": k, "file": Path(v).name} for k, v in chart_paths.items()]
+                result = report.to_dict()
+                result["report_file"] = Path(report_path).name
+                try:
+                    result["report_content"] = Path(report_path).read_text(encoding="utf-8")
+                except OSError:
+                    pass
+                result["charts"] = [{"name": k, "file": Path(v).name} for k, v in chart_paths.items()]
 
-        status["result"] = result
-        status["status"] = "success"
-        status["stage"] = "完成"
-        status["progress"] = 100
-    except Exception as e:
-        logger.exception("对比失败")
-        status["status"] = "error"
-        status["error"] = str(e)
-        status["stage"] = "失败"
-        status["progress"] = -1
+                status["result"] = result
+                status["status"] = "success"
+                status["stage"] = "完成"
+                status["progress"] = 100
+            except Exception as e:
+                logger.exception("对比失败")
+                status["status"] = "error"
+                status["error"] = str(e)
+                status["stage"] = "失败"
+                status["progress"] = -1
+        _attach_memory(status, "comparison", memory)
 
 
 @web_app.route("/compare", methods=["GET", "POST"])
@@ -1085,7 +1107,10 @@ def compare():
     thread.join(timeout=300)
 
     result = _analysis_status.get(task_id, {})
-    return flask.jsonify(_to_json_safe(result))
+    response = _to_json_safe(result)
+    if not thread.is_alive():
+        _analysis_status.pop(task_id, None)
+    return flask.jsonify(response)
 
 
 # ── 持仓管理 ────────────────────────────────────
@@ -2537,6 +2562,26 @@ def require_login():
     if flask.request.path.startswith("/api/"):
         return flask.jsonify({"status": "error", "error": "未登录"}), 401
     return flask.redirect(flask.url_for("stock_web.login", next=flask.request.path))
+
+
+@web_app.before_request
+def record_request_memory_start():
+    """Record a cheap request baseline for post-request leak diagnostics."""
+    flask.g.memory_start = memory_snapshot()
+
+
+@web_app.after_request
+def log_request_memory(response):
+    """Log request RSS delta so heavy dashboard/data endpoints are traceable."""
+    start = getattr(flask.g, "memory_start", None)
+    end = memory_snapshot()
+    if start:
+        delta = round((end.get("rss_bytes") or 0) / 1024 / 1024
+                      - (start.get("rss_bytes") or 0) / 1024 / 1024, 1)
+        logger.info("memory request=%s method=%s status=%s start=%sMiB end=%sMiB delta=%sMiB",
+                    flask.request.path, flask.request.method, response.status_code,
+                    start.get("rss_mb"), end.get("rss_mb"), delta)
+    return response
 
 
 def _same_origin_request() -> bool:

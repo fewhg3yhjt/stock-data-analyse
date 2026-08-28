@@ -33,7 +33,8 @@ class BacktestEngine:
         dividend_anchor: Optional[float] = None,
         scheme: Optional[SchemeConfig] = None,
     ):
-        self.df = df.copy()
+        # TakeProfitOptimizer owns the working copy; avoid duplicating it here.
+        self.df = df
         self.initial_cash = initial_cash
         self.stock_type = stock_type
         self.dividend_anchor = dividend_anchor
