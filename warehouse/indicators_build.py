@@ -39,7 +39,7 @@ class IndicatorsBuilder:
                   metrics: Optional[list[str]] = None,
                   flush_every: int = 500,
                   progress_callback=None, changed_start: Optional[str] = None,
-                  changed_end: Optional[str] = None) -> dict:
+                  changed_end: Optional[str] = None, asset_types: Optional[list[str]] = None) -> dict:
         """全市场指标宽表生成（分组一次遍历 + 分批落盘）。
 
         需仓库已有 daily 分区（先跑 sync_daily）。
@@ -79,6 +79,10 @@ class IndicatorsBuilder:
 
         if symbols is None:
             symbols = list(per_code.keys())
+        from StockInvestmentTool.warehouse.asset_profiles import select_symbols
+        symbols, asset_type_counts = select_symbols(
+            symbols, asset_types=asset_types, known_types=self.warehouse.instrument_types()
+        )
         if max_symbols:
             symbols = symbols[:max_symbols]
         logger.info("指标计算: %d 标的", len(symbols))
@@ -164,7 +168,8 @@ class IndicatorsBuilder:
         for metric in metrics or [item["metric_key"] for item in center.list_metrics() if item["producer_task"] == "indicators_build"]:
             center.update_metric_health(metric, latest_period=latest_period, covered_objects=done,
                                         expected_objects=len(symbols), status="healthy" if not failed else "partial",
-                                        message="; ".join(failed[:5]))
+                                        message="; ".join(failed[:5]),
+                                        asset_type_counts=asset_type_counts)
         logger.info("指标计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
                     done, len(written_months), elapsed)
         return {"symbols": done, "months": len(written_months),
@@ -172,4 +177,5 @@ class IndicatorsBuilder:
                  "failed": failed[:100], "failed_count": len(failed),
                  "skipped": not symbols, "elapsed_sec": round(elapsed, 1),
                  "input_dataset": "stock_daily", "input_versions": input_versions,
-                 "input_fallback_used": not bool(input_versions), "output_versions": output_versions}
+                 "input_fallback_used": not bool(input_versions), "output_versions": output_versions,
+                 "asset_type_counts": asset_type_counts}

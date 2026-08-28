@@ -6,6 +6,9 @@ task:
   input_datasets: [stock_daily]
   output_datasets: [indicators]
   producer_metrics: [ma5, ma20, rsi14, macd, volatility20]
+scope:
+  asset_types: [stock, etf]
+  universe: active
 schedule:
   enabled: false
   timezone: Asia/Shanghai

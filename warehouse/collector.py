@@ -255,7 +255,8 @@ class MarketCollector:
                    source: str = "baostock",
                    target: str = "daily",
                    progress_callback=None, job_run_id: Optional[int] = None,
-                   capture_raw: Optional[bool] = None) -> dict:
+                   capture_raw: Optional[bool] = None,
+                   asset_types: Optional[list[str]] = None) -> dict:
         """全市场日线增量同步（核心）。
 
         Args:
@@ -287,6 +288,10 @@ class MarketCollector:
                 extra = [c for c, t in types.items()
                          if t in ("etf", "index") and c not in symbols]
                 symbols.extend(extra)
+        from StockInvestmentTool.warehouse.asset_profiles import select_symbols
+        symbols, asset_type_counts = select_symbols(
+            symbols, asset_types=asset_types, known_types=self.warehouse.instrument_types()
+        )
         if max_symbols:
             symbols = symbols[:max_symbols]
 
@@ -487,6 +492,7 @@ class MarketCollector:
                 "source_batch_id": batch_id, "source_batch_ids": [batch_id] if batch_id else [],
                 "raw_capture_failed": raw_capture_failed,
                 "skipped_symbols": skipped,
+                "asset_type_counts": asset_type_counts,
                 "raw_batch": raw_result}
 
 

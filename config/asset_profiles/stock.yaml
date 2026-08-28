@@ -1,0 +1,23 @@
+asset_type:
+  key: stock
+  display_name: 股票
+  enabled: true
+  code_prefixes: [sh6, sz0, sz3, bj8, bj4]
+datasets:
+  stock_daily: required
+  valuation_daily: optional
+  fundamentals: optional
+  money_flow_daily: optional
+metrics:
+  close: required
+  volume: required
+  amount: required
+  ma5: optional
+  ma20: optional
+  pe_ttm: optional
+  pb_mrq: optional
+  roe: optional
+quality:
+  require_ohlc: true
+  require_volume_amount: true
+  allow_zero_volume: true

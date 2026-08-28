@@ -6,6 +6,9 @@ task:
   input_datasets: [stock_daily]
   output_datasets: [stock_daily_quality]
   producer_metrics: []
+scope:
+  asset_types: [stock, etf]
+  universe: active
 schedule:
   enabled: false
   timezone: Asia/Shanghai

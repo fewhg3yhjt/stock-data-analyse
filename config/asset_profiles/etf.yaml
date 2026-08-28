@@ -1,0 +1,23 @@
+asset_type:
+  key: etf
+  display_name: ETF
+  enabled: true
+  code_prefixes: [sh5, sh51, sh56, sh58, sz15, sz16, sz18]
+datasets:
+  stock_daily: required
+  valuation_daily: optional
+  fundamentals: not_applicable
+  money_flow_daily: optional
+metrics:
+  close: required
+  volume: required
+  amount: required
+  ma5: optional
+  ma20: optional
+  pe_ttm: not_applicable
+  pb_mrq: not_applicable
+  roe: not_applicable
+quality:
+  require_ohlc: true
+  require_volume_amount: true
+  allow_zero_volume: true

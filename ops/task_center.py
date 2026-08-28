@@ -112,7 +112,7 @@ class TaskCenter:
               checksum TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL,
               activated_at TEXT, PRIMARY KEY(metric_key, version)
             );
-            CREATE TABLE IF NOT EXISTS metric_health (
+        CREATE TABLE IF NOT EXISTS metric_health (
               metric_key TEXT PRIMARY KEY, metric_version INTEGER, latest_period TEXT,
               expected_period TEXT, covered_objects INTEGER, expected_objects INTEGER,
               coverage REAL, last_success_at TEXT, last_run_id INTEGER, status TEXT NOT NULL,
@@ -143,7 +143,7 @@ class TaskCenter:
               metric_key TEXT PRIMARY KEY, metric_version INTEGER, latest_period TEXT,
               expected_period TEXT, covered_objects INTEGER, expected_objects INTEGER,
               coverage REAL, last_success_at TEXT, last_run_id INTEGER, status TEXT NOT NULL,
-              message TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
+              message TEXT NOT NULL DEFAULT '', coverage_by_type TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS task_metric_links (
               task_key TEXT NOT NULL, metric_key TEXT NOT NULL, relation_type TEXT NOT NULL,
@@ -231,10 +231,14 @@ class TaskCenter:
     def update_metric_health(self, metric_key: str, *, latest_period: str | None,
                              covered_objects: int, expected_objects: int | None,
                              last_run_id: int | None = None, status: str = "healthy",
-                             message: str = "", metric_version: int | None = None) -> None:
+                             message: str = "", metric_version: int | None = None,
+                             asset_type_counts: dict | None = None) -> None:
         expected = expected_objects or 0
         coverage = (covered_objects / expected) if expected else None
         with sqlite3.connect(self.metadata_db_path) as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(metric_health)")}
+            if "coverage_by_type" not in columns:
+                conn.execute("ALTER TABLE metric_health ADD COLUMN coverage_by_type TEXT NOT NULL DEFAULT '{}' ")
             conn.execute("""INSERT INTO metric_health
                 (metric_key,metric_version,latest_period,expected_period,covered_objects,
                  expected_objects,coverage,last_success_at,last_run_id,status,message,updated_at)
@@ -243,11 +247,13 @@ class TaskCenter:
                 metric_version=excluded.metric_version,latest_period=excluded.latest_period,
                 expected_period=excluded.expected_period,covered_objects=excluded.covered_objects,
                 expected_objects=excluded.expected_objects,coverage=excluded.coverage,
-                last_success_at=excluded.last_success_at,last_run_id=excluded.last_run_id,
-                status=excluded.status,message=excluded.message,updated_at=excluded.updated_at""",
+                 last_success_at=excluded.last_success_at,last_run_id=excluded.last_run_id,
+                 status=excluded.status,message=excluded.message,updated_at=excluded.updated_at""",
                          (metric_key, metric_version, latest_period, latest_period, covered_objects,
                           expected_objects, coverage, _now() if status == "healthy" else None,
                           last_run_id, status, message, _now()))
+            conn.execute("UPDATE metric_health SET coverage_by_type=? WHERE metric_key=?",
+                         (json.dumps(asset_type_counts or {}, ensure_ascii=False), metric_key))
 
     def task_artifacts(self, task_key: str | None = None) -> list[dict]:
         with self._connect() as conn:
