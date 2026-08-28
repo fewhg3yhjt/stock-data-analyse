@@ -91,6 +91,8 @@ class MetadataStore:
                     PRIMARY KEY(dataset_name, partition_key)
                 );
             """)
+        from StockInvestmentTool.warehouse.source_batches import SourceBatchStore
+        SourceBatchStore(self.db_path)
 
     def register_stock_daily(self, storage_path: str = "warehouse/daily/YYYY-MM.parquet") -> None:
         now = _now()

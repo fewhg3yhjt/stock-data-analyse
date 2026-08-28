@@ -254,7 +254,8 @@ class MarketCollector:
                    flush_every: int = 1000,
                    source: str = "baostock",
                    target: str = "daily",
-                   progress_callback=None) -> dict:
+                   progress_callback=None, job_run_id: Optional[int] = None,
+                   capture_raw: Optional[bool] = None) -> dict:
         """全市场日线增量同步（核心）。
 
         Args:
@@ -289,12 +290,34 @@ class MarketCollector:
         if max_symbols:
             symbols = symbols[:max_symbols]
 
+        capture_raw = (source == "tencent" and target == "daily") if capture_raw is None else capture_raw
+        batch_store = None
+        batch_id = None
+        raw_writer = None
+        raw_capture_failed = False
+        if capture_raw:
+            from StockInvestmentTool.warehouse.source_batches import SourceBatchStore
+            run_date = datetime.now().strftime("%Y-%m-%d")
+            universe_id = f"stock_etf_active_{run_date.replace('-', '')}"
+            batch_store = SourceBatchStore(self.warehouse.meta_db_path)
+            batch_id = batch_store.start(
+                run_date=run_date, trade_date_start=start_date, trade_date_end=end_date,
+                expected_symbols=len(symbols), universe_id=universe_id,
+                request_context={"source": source, "symbols_limited": max_symbols is not None,
+                                  "include_etf": include_etf, "include_index": include_index},
+                job_run_id=job_run_id, source_name=source,
+            )
+            raw_writer = self.warehouse.raw.begin_batch(
+                source, "stock_daily", datetime.now().strftime("%Y-%m-%d")
+            )
+
         months = self._month_range(start_date, end_date)
         logger.info("增量同步: %d 标的 × %d 月份 (%s ~ %s)",
                     len(symbols), len(months), start_date, end_date)
 
         added = 0
         failed: list[str] = []
+        skipped = 0
         t0 = time.time()
 
         # 解析写入目标
@@ -366,6 +389,7 @@ class MarketCollector:
             # 增量判断：该标的自有最后日期 >= end_date → 已覆盖，跳过
             last = last_dates.get(code)
             if last is not None and last >= end_ts:
+                skipped += 1
                 if progress_callback:
                     progress_callback(i, len(symbols), code, "已是最新")
                 continue
@@ -376,6 +400,7 @@ class MarketCollector:
             else:
                 fetch_start = start_date
             if fetch_start > end_date:
+                skipped += 1
                 if progress_callback:
                     progress_callback(i, len(symbols), code, "已是最新")
                 continue
@@ -392,9 +417,18 @@ class MarketCollector:
                     progress_callback(i, len(symbols), code, "拉取失败")
                 continue
             if df.empty:
+                skipped += 1
                 if progress_callback:
                     progress_callback(i, len(symbols), code, "无新增数据")
                 continue
+            if capture_raw and not raw_capture_failed:
+                try:
+                    raw_writer.append(df)
+                except Exception:
+                    raw_capture_failed = True
+                    raw_writer.abort()
+                    raw_writer = None
+                    logger.exception("Raw Batch 采集过程中写入失败")
             # 拆入内存中的月份块（去掉该标的旧数据，追加新数据）
             for ym, grp in df.groupby(df["date"].dt.strftime("%Y-%m")):
                 cur = month_bufs.get(ym)
@@ -418,11 +452,36 @@ class MarketCollector:
             _flush()
 
         elapsed = time.time() - t0
+        raw_result = None
+        if capture_raw and batch_store and batch_id:
+            try:
+                if raw_writer is None:
+                    raise ValueError("Raw Batch 写入失败或没有可写数据")
+                raw_result = raw_writer.finish()
+                batch_status = "partial_success" if failed else "success"
+                batch_store.finish(batch_id, success_symbols=len(symbols) - len(failed) - skipped,
+                                   failed_symbols=len(failed), skipped_symbols=skipped,
+                                   row_count=raw_result["row_count"], raw_path=str(raw_result["path"]),
+                                   checksum=raw_result["checksum"], file_size=raw_result["file_size"],
+                                   status=batch_status, failure_details=failed)
+            except Exception as exc:
+                raw_capture_failed = True
+                logger.error("Raw Batch 写入失败，不阻断旧 daily: %s", exc)
+                batch_store.finish(batch_id, success_symbols=len(symbols) - len(failed) - skipped,
+                                   failed_symbols=len(failed), skipped_symbols=skipped, row_count=0,
+                                   raw_path=None, checksum=None, file_size=None, status="failed",
+                                   error_summary=str(exc), failure_details=failed)
         logger.info("日线增量完成: +%d 行, 失败 %d, 耗时 %.1fs",
                     added, len(failed), elapsed)
+        if raw_writer is not None:
+            raw_writer.abort()
         return {"added_rows": added, "symbols": len(symbols),
                 "failed": failed, "up_to_date": not failed and added == 0,
-                "rows": added, "elapsed_sec": round(elapsed, 1)}
+                "rows": added, "elapsed_sec": round(elapsed, 1),
+                "source_batch_id": batch_id, "source_batch_ids": [batch_id] if batch_id else [],
+                "raw_capture_failed": raw_capture_failed,
+                "skipped_symbols": skipped,
+                "raw_batch": raw_result}
 
 
 # ── baostock 包装（供 _bs_query 使用，统一走连接自愈）──

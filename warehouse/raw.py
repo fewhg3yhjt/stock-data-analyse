@@ -20,6 +20,10 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import os
+import tempfile
+import uuid
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -40,7 +44,7 @@ BAOSTOCK_COLUMNS = [
 ]
 
 
-class RawStore:
+class _BatchRawStore:
     """贴源层存储：按源 + 月分区读写原始数据。
 
     Args:
@@ -52,16 +56,77 @@ class RawStore:
         self.raw_dir = self.base_dir / "raw"
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
+    def batch_dir(self, source: str, dataset: str, run_date: str) -> Path:
+        day = pd.Timestamp(run_date)
+        return self.raw_dir / source / dataset / f"{day:%Y}" / f"{day:%m}" / f"{day:%d}"
+
+    def write_batch(self, source: str, dataset: str, run_date: str,
+                    frames: Iterable[pd.DataFrame]) -> dict:
+        """Stream frames into one immutable Parquet batch using an atomic replace."""
+        writer = self.begin_batch(source, dataset, run_date)
+        try:
+            for frame in frames:
+                writer.append(frame)
+            return writer.finish()
+        except Exception:
+            writer.abort()
+            raise
+
+    def begin_batch(self, source: str, dataset: str, run_date: str):
+        return _RawBatchWriter(self.batch_dir(source, dataset, run_date))
+
+
+class _RawBatchWriter:
+    def __init__(self, destination_dir: Path):
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        self.batch_id = uuid.uuid4().hex
+        self.path = destination_dir / f"batch_{self.batch_id}.parquet"
+        fd, temp_name = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=destination_dir)
+        os.close(fd)
+        self.temp = Path(temp_name)
+        self.writer = None
+        self.row_count = 0
+
+    def append(self, frame: pd.DataFrame) -> None:
+        if frame is None or frame.empty:
+            return
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        table = pa.Table.from_pandas(frame, preserve_index=False)
+        if self.writer is None:
+            self.writer = pq.ParquetWriter(self.temp, table.schema, compression="zstd")
+        self.writer.write_table(table)
+        self.row_count += len(frame)
+
+    def finish(self) -> dict:
+        if self.writer is None:
+            raise ValueError("Raw Batch 没有数据")
+        self.writer.close()
+        self.writer = None
+        os.replace(self.temp, self.path)
+        digest = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        return {"path": self.path, "row_count": self.row_count, "checksum": digest,
+                "file_size": self.path.stat().st_size}
+
+    def abort(self) -> None:
+        if self.writer is not None:
+            self.writer.close()
+            self.writer = None
+        self.temp.unlink(missing_ok=True)
+        self._aborted = True
+
+
+
+class RawStore(_BatchRawStore):
+    """Keep the legacy monthly raw API alongside immutable batch capture."""
+
     def source_dir(self, source: str) -> Path:
-        """某源的目录（自动创建）"""
         d = self.raw_dir / source
         d.mkdir(parents=True, exist_ok=True)
         return d
 
     def partition_path(self, source: str, month: str) -> Path:
         return self.source_dir(source) / f"{month}.parquet"
-
-    # ── 写入 ─────────────────────────────────────────
 
     def write(self, source: str, month: str, df: pd.DataFrame,
               overwrite: bool = False) -> int:
@@ -100,8 +165,6 @@ class RawStore:
         logger.info("贴源层写入 %s/%s: %d 行", source, path.name, len(df))
         return len(df)
 
-    # ── 读取 ─────────────────────────────────────────
-
     def read(self, source: str, month: str) -> Optional[pd.DataFrame]:
         """读某源某月分区，不存在返回 None"""
         path = self.partition_path(source, month)
@@ -124,8 +187,6 @@ class RawStore:
         if not self.raw_dir.exists():
             return []
         return sorted(d.name for d in self.raw_dir.iterdir() if d.is_dir())
-
-    # ── 单标的/单字段回补 ─────────────────────────────
 
     def upsert_rows(self, source: str, df: pd.DataFrame) -> int:
         """把某标的的（部分字段）数据回补进对应月份分区。

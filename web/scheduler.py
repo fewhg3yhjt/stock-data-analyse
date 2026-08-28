@@ -265,6 +265,7 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
         result["daily"] = MarketCollector().sync_daily(
             start_date=start_date, end_date=end_date, include_etf=True,
             include_index=False, source="tencent", progress_callback=progress,
+            job_run_id=run_id,
         )
         daily_status = store.result_status(result["daily"])
         child_statuses.append(daily_status)

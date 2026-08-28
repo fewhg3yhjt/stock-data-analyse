@@ -8,7 +8,7 @@
 >
 > 保密说明：本文包含真实项目目录和内部模块信息，仅限项目内部使用，勿对外传播。
 >
-> 状态：待按阶段实施。文档中明确标注为“目标”的内容不得描述成“已经完成”。
+> 状态：Phase 0、Phase 1、Phase 2 已完成并通过定向与全量测试；Phase 3 及以后待实施。文档中明确标注为“目标”的内容不得描述成“已经完成”。
 >
 > 关联文档：[架构总纲](DESIGN.md) · [概要设计](HLD.md) · [执行指南](IMPLEMENTATION_GUIDE.md) · [现状盘点](STATUS.md)
 
@@ -1991,3 +1991,15 @@ OHLC 和成交数据是否异常？
 - 当前正式链路是否已经切换。
 
 不得仅通过提交记录判断完成度。实现状态以代码、测试和本文档三者一致为准。
+
+### 28.1 当前实施记录
+
+截至 2026-08-28：
+
+- Phase 0 已完成：新增只读 `stock_daily` 基线审计脚本，支持按月份抽样和 JSON 报告。
+- Phase 1 已完成：新增数据集、字段、来源、消费者和分区索引元数据，保留现有 manifest 和 daily 读取路径。
+- Phase 2 已完成：腾讯日线采集新增不可覆盖 Raw Batch 双写，记录 Source Batch 和 Job Run 关联，旧 daily 写入继续保留。
+- 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与旧 daily 均可追溯。
+- 全量回归：171 个测试通过。
+- 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
+- 当前未实施：Daily Builder、Dataset Version、Quality、Publish、Unified Data Access 以及下游迁移。
