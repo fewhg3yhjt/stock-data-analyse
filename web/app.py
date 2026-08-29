@@ -561,6 +561,102 @@ def api_task_center_task_detail(task_key):
     return flask.jsonify({"status": "success", "task": task})
 
 
+@web_app.route("/api/task-center/tasks/<task_key>/config", methods=["POST"])
+def api_task_center_task_config(task_key):
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    payload = flask.request.get_json(silent=True) or {}
+    config = payload.get("config") or payload
+    try:
+        result = TaskCenterService(management_db_path()).save_config(
+            task_key, config, activate=bool(payload.get("activate", False)))
+    except (ValueError, TypeError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", **result})
+
+
+@web_app.route("/api/task-center/tasks/<task_key>/enabled", methods=["POST"])
+def api_task_center_task_enabled(task_key):
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    payload = flask.request.get_json(silent=True) or {}
+    try:
+        result = TaskCenterService(management_db_path()).set_enabled(task_key, bool(payload.get("enabled")))
+    except ValueError as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", **result})
+
+
+@web_app.route("/api/task-center/tasks/<task_key>/config/<int:version>/activate", methods=["POST"])
+def api_task_center_task_config_activate(task_key, version):
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    try:
+        result = TaskCenterService(management_db_path()).activate_config(task_key, version)
+    except ValueError as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", **result})
+
+
+@web_app.route("/api/task-center/tasks/<task_key>/execute", methods=["POST"])
+def api_task_center_task_execute(task_key):
+    """Start a supported task through the existing production job handlers."""
+    payload = flask.request.get_json(silent=True) or {}
+    handlers = {
+        "stock_daily_capture": ("daily-sync", api_data_daily_sync),
+        "indicators_build": ("rebuild-indicators", api_data_rebuild_indicators),
+        "factors_build": ("rebuild-factors", api_data_rebuild_factors),
+    }
+    handler = handlers.get(task_key)
+    if handler is None:
+        return flask.jsonify({"status": "error", "error": "该任务尚未接入统一执行处理器"}), 409
+    # The legacy handlers currently use their configured production scope.
+    # Reject unsupported ad-hoc scope rather than silently ignoring it.
+    if any(payload.get(key) for key in ("period_start", "period_end", "symbols", "force_refresh")):
+        return flask.jsonify({"status": "error", "error": "该任务处理器暂不支持自定义执行范围"}), 400
+    return handler[1]()
+
+
+@web_app.route("/api/task-center/runs/<int:run_id>/retry", methods=["POST"])
+def api_task_center_run_retry(run_id):
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    item = JobRunStore(management_db_path()).get(run_id)
+    if not item:
+        return flask.jsonify({"status": "error", "error": "任务运行记录不存在"}), 404
+    if item.get("status") not in {"failed", "partial_success"}:
+        return flask.jsonify({"status": "error", "error": "只有失败或部分完成的任务可以重试"}), 400
+    task_key = item.get("job_name")
+    handlers = {"daily_sync": api_data_daily_sync, "rebuild_indicators": api_data_rebuild_indicators,
+                "rebuild_factors": api_data_rebuild_factors}
+    handler = handlers.get(task_key)
+    if handler is None:
+        return flask.jsonify({"status": "error", "error": "该任务尚未接入重试处理器"}), 409
+    return handler()
+
+
+@web_app.route("/api/data-center/versions/<version_id>/publish", methods=["POST"])
+def api_data_version_publish(version_id):
+    from StockInvestmentTool.warehouse.publish import Publisher
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    try:
+        warehouse = Warehouse()
+        warehouse.meta_db_path = management_db_path()
+        result = Publisher(warehouse).publish(version_id)
+    except (ValueError, FileNotFoundError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", **result})
+
+
+@web_app.route("/api/data-center/versions/<dataset_name>/<partition>/rollback", methods=["POST"])
+def api_data_version_rollback(dataset_name, partition):
+    from StockInvestmentTool.warehouse.publish import Publisher
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    try:
+        warehouse = Warehouse()
+        warehouse.meta_db_path = management_db_path()
+        result = Publisher(warehouse).rollback(dataset_name, partition)
+    except (ValueError, FileNotFoundError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", **result})
+
+
 @web_app.route("/api/task-center/runs/<int:run_id>", methods=["GET"])
 def api_task_center_run_detail(run_id):
     from StockInvestmentTool.ops.task_run_service import TaskRunService

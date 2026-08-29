@@ -95,6 +95,18 @@ class TaskCenterService:
             ).fetchall()]
         return task
 
+    def save_config(self, task_key: str, config: dict, *, activate: bool = False) -> dict:
+        version = self.center.save_task_config(task_key, config, activate=activate)
+        return {"task_key": task_key, "version": version, "active": activate}
+
+    def set_enabled(self, task_key: str, enabled: bool) -> dict:
+        self.center.set_task_enabled(task_key, enabled)
+        return {"task_key": task_key, "enabled": bool(enabled)}
+
+    def activate_config(self, task_key: str, version: int) -> dict:
+        self.center.activate_task_config(task_key, version)
+        return {"task_key": task_key, "version": int(version), "active": True}
+
     def runs(self, task_key: str, *, limit: int = 50, date: str | None = None) -> list[dict]:
         names = self._runtime_names(task_key)
         marks = ",".join("?" for _ in names)

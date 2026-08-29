@@ -43,7 +43,7 @@
     const config = task.config || {};
     document.getElementById('task-drawer-title').textContent = task.display_name;
     document.getElementById('task-drawer-sub').textContent = `${stageNames[task.stage] || task.stage} · ${task.task_type_label || typeNames[task.task_type] || task.task_type}`;
-    document.getElementById('task-drawer-body').innerHTML = `<section class="dm-detail-section"><h3>执行概览</h3><dl class="dm-kv"><dt>任务代码</dt><dd>${esc(task.task_key)}</dd><dt>状态</dt><dd>${statusTag(taskStatus(task))}</dd><dt>配置版本</dt><dd>v${esc(task.active_config_version || '—')}</dd><dt>默认周期</dt><dd>${esc(task.schedule?.frequency || '手动')} ${esc(task.schedule?.time || '')}</dd><dt>本次范围</dt><dd>${esc(formatRange(run))}</dd><dt>输入数据</dt><dd>${esc((config.task?.input_datasets || []).join('、') || '—')}</dd><dt>输出数据</dt><dd>${esc((config.task?.output_datasets || []).join('、') || '—')}</dd></dl></section><section class="dm-detail-section"><h3>运行进度</h3><dl class="dm-kv"><dt>运行记录</dt><dd>${run?.run_id ? `#${run.run_id}` : '暂无'}</dd><dt>当前阶段</dt><dd>${esc(run?.phase || '—')}</dd><dt>进度</dt><dd>${run?.progress == null ? '—' : `${run.progress}% (${run.processed ?? '—'}/${run.total ?? '—'})`}</dd><dt>最近结果</dt><dd>${esc(run?.error || '—')}</dd></dl></section><section class="dm-detail-section"><h3>相关操作</h3><div class="dm-toolbar"><button class="dm-btn" onclick="window.taskCenterShowLogs(${run?.run_id || 0})">查看日志</button><button class="dm-btn" onclick="window.taskCenterShowArtifacts(${run?.run_id || 0})">查看产物</button></div></section>`;
+    document.getElementById('task-drawer-body').innerHTML = `<section class="dm-detail-section"><h3>执行概览</h3><dl class="dm-kv"><dt>任务代码</dt><dd>${esc(task.task_key)}</dd><dt>状态</dt><dd>${statusTag(taskStatus(task))}</dd><dt>配置版本</dt><dd>v${esc(task.active_config_version || '—')}</dd><dt>默认周期</dt><dd>${esc(task.schedule?.frequency || '手动')} ${esc(task.schedule?.time || '')}</dd><dt>本次范围</dt><dd>${esc(formatRange(run))}</dd><dt>输入数据</dt><dd>${esc((config.task?.input_datasets || []).join('、') || '—')}</dd><dt>输出数据</dt><dd>${esc((config.task?.output_datasets || []).join('、') || '—')}</dd></dl></section><section class="dm-detail-section"><h3>运行进度</h3><dl class="dm-kv"><dt>运行记录</dt><dd>${run?.run_id ? `#${run.run_id}` : '暂无'}</dd><dt>当前阶段</dt><dd>${esc(run?.phase || '—')}</dd><dt>进度</dt><dd>${run?.progress == null ? '—' : `${run.progress}% (${run.processed ?? '—'}/${run.total ?? '—'})`}</dd><dt>最近结果</dt><dd>${esc(run?.error || '—')}</dd></dl></section><section class="dm-detail-section"><h3>任务管理</h3><div class="dm-toolbar"><button class="dm-btn" onclick="window.taskCenterToggle('${esc(task.task_key)}',${!task.enabled})">${task.enabled ? '停用调度' : '启用调度'}</button><button class="dm-btn" onclick="window.taskCenterEdit('${esc(task.task_key)}')">编辑配置</button>${(task.config_versions || []).filter(v => v.status === 'validated').map(v => `<button class="dm-btn" onclick="window.taskCenterActivate('${esc(task.task_key)}',${v.version})">生效 v${v.version}</button>`).join('')}${run?.status === 'failed' || run?.status === 'partial_success' ? `<button class="dm-btn" onclick="window.taskCenterRetry(${run.run_id})">重试</button>` : ''}</div></section><section class="dm-detail-section"><h3>相关操作</h3><div class="dm-toolbar"><button class="dm-btn" onclick="window.taskCenterShowLogs(${run?.run_id || 0})">查看日志</button><button class="dm-btn" onclick="window.taskCenterShowArtifacts(${run?.run_id || 0})">查看产物</button><button class="dm-btn primary" onclick="window.taskCenterExecute('${esc(task.task_key)}')">立即执行</button></div></section>`;
     document.getElementById('task-mask').classList.add('open');
   }
 
@@ -54,6 +54,21 @@
       if (data.status !== 'success') alert(data.error || '启动失败'); else loadTasks();
     }).catch(error => alert(`启动失败：${error.message}`));
   }
+
+  const postJson = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  window.taskCenterToggle = (key, enabled) => postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/enabled`, {enabled}).then(d => { if (d.status !== 'success') throw new Error(d.error); loadTasks(); }).catch(e => alert(e.message));
+  window.taskCenterActivate = (key, version) => { if (!confirm(`确认生效任务配置 v${version}？`)) return; postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config/${version}/activate`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert('配置已生效'); loadTasks(); }).catch(e => alert(e.message)); };
+  window.taskCenterEdit = key => {
+    const task = state.tasks.find(item => item.task_key === key);
+    if (!task) return;
+    const raw = prompt('编辑任务配置 JSON（确认后保存为草稿）', JSON.stringify(task.config || {}, null, 2));
+    if (raw == null) return;
+    let config;
+    try { config = JSON.parse(raw); } catch (e) { alert(`JSON 无效：${e.message}`); return; }
+    postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config`, {config, activate: false}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert(`配置草稿 v${d.version} 已保存`); loadTasks(); }).catch(e => alert(e.message));
+  };
+  window.taskCenterExecute = key => postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/execute`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert('任务已提交'); loadTasks(); }).catch(e => alert(e.message));
+  window.taskCenterRetry = runId => postJson(`/api/task-center/runs/${runId}/retry`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert('重试已提交'); loadTasks(); }).catch(e => alert(e.message));
 
   function loadTasks() {
     fetch('/api/task-center/overview').then(response => response.json()).then(data => {
@@ -73,7 +88,7 @@
   document.getElementById('task-status').onchange = renderTasks;
   document.getElementById('task-search').oninput = renderTasks;
   document.getElementById('refresh-tasks').onclick = loadTasks;
-  document.getElementById('new-task').onclick = () => alert('任务模板和配置编辑将在管理操作阶段开放');
+  document.getElementById('new-task').onclick = () => alert('新建任务需先注册任务定义；当前支持已有任务的配置管理');
   document.getElementById('close-task').onclick = () => document.getElementById('task-mask').classList.remove('open');
   document.getElementById('task-mask').onclick = event => { if (event.target.id === 'task-mask') document.getElementById('task-mask').classList.remove('open'); };
   loadTasks();

@@ -217,6 +217,51 @@ class TaskCenter:
                 (int(version), _now(), task_key),
             )
 
+    def validate_task_config(self, config: dict) -> dict:
+        """Validate the stable task configuration shape before saving it."""
+        if not isinstance(config, dict) or not isinstance(config.get("task"), dict):
+            raise TaskConfigError("任务配置必须包含 task 对象")
+        task = config["task"]
+        for key in ("key", "display_name"):
+            if not task.get(key):
+                raise TaskConfigError(f"任务缺少 {key}")
+        schedule = config.get("schedule") or {}
+        if schedule.get("timezone") != "Asia/Shanghai":
+            raise TaskConfigError("任务必须使用北京时间")
+        if schedule.get("enabled") is not None and not isinstance(schedule["enabled"], bool):
+            raise TaskConfigError("schedule.enabled 必须是布尔值")
+        execution = config.get("execution") or {}
+        if int(execution.get("retry_limit", 0)) < 0:
+            raise TaskConfigError("retry_limit 不能为负数")
+        return {"valid": True, "task_key": task["key"]}
+
+    def save_task_config(self, task_key: str, config: dict, *, activate: bool = False) -> int:
+        """Persist a draft task configuration, optionally making it active."""
+        self.validate_task_config(config)
+        if config["task"].get("key") != task_key:
+            raise TaskConfigError("配置中的任务 key 与请求不一致")
+        raw = json.dumps(config, ensure_ascii=False, sort_keys=True)
+        checksum = hashlib.sha256(raw.encode()).hexdigest()
+        with self._connect() as conn:
+            if not conn.execute("SELECT 1 FROM task_definitions WHERE task_key=?", (task_key,)).fetchone():
+                raise TaskConfigError(f"任务不存在: {task_key}")
+            version = (conn.execute("SELECT MAX(version) FROM task_config_versions WHERE task_key=?", (task_key,)).fetchone()[0] or 0) + 1
+            now = _now()
+            conn.execute("INSERT INTO task_config_versions VALUES (?,?,?,?,?,?,?)",
+                         (task_key, version, raw, checksum, "active" if activate else "validated", now, now if activate else None))
+            if activate:
+                conn.execute("UPDATE task_config_versions SET status='superseded' WHERE task_key=? AND version<>? AND status='active'", (task_key, version))
+                conn.execute("UPDATE task_definitions SET active_config_version=?,enabled=?,updated_at=? WHERE task_key=?",
+                             (version, int((config.get("schedule") or {}).get("enabled", False)), now, task_key))
+        return version
+
+    def set_task_enabled(self, task_key: str, enabled: bool) -> None:
+        with self._connect() as conn:
+            if not conn.execute("SELECT 1 FROM task_definitions WHERE task_key=?", (task_key,)).fetchone():
+                raise TaskConfigError(f"任务不存在: {task_key}")
+            conn.execute("UPDATE task_definitions SET enabled=?,updated_at=? WHERE task_key=?",
+                         (int(bool(enabled)), _now(), task_key))
+
     def sync_metrics(self) -> int:
         data = yaml.safe_load(METRIC_CONFIG.read_text(encoding="utf-8")) or {}
         count = 0
