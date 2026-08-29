@@ -31,7 +31,7 @@ class DataCenterService:
             elif status == "critical": counts["critical"] += 1
             else: counts["unknown"] += 1
         task_items = self.tasks.tasks()
-        pipeline_keys = ("stock_daily_capture", "stock_daily_build", "stock_daily_quality", "stock_daily_publish", "indicators_build", "factors_build")
+        pipeline_keys = ("stock_daily_capture", "stock_daily_build", "stock_daily_quality", "stock_daily_publish", "indicators_build", "factors_build", "industry_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture")
         task_summary = self.tasks.overview()
         return {"counts": counts, "core_assets": core, "attention": attention,
                 "task_summary": task_summary,
@@ -111,13 +111,16 @@ class DataCenterService:
         by_type = record.get("coverage_by_type") or "{}"
         try: by_type = json.loads(by_type) if isinstance(by_type, str) else by_type
         except (TypeError, ValueError): by_type = {}
+        health_status = record.get("health_status")
+        if not health_status and record.get("metric_key"):
+            health_status = "healthy" if record.get("latest_period") else "unknown"
         return {"asset_key": record["metric_key"], "display_name": record["display_name"],
                 "kind": "dataset" if record.get("category") == "数据集" else "metric",
                 "category": record.get("category") or "数据集", "definition": record.get("definition"),
                 "unit": record.get("unit"), "producer_task": record.get("producer_task"),
                 "editable": bool(record.get("editable")), "builtin": bool(record.get("builtin")),
                 "latest_actual_date": record.get("latest_period"), "expected_date": record.get("expected_period"),
-                "health": {"status": record.get("health_status") or "unknown", "message": record.get("message") or "",
+                 "health": {"status": health_status or "unknown", "message": record.get("message") or "",
                            "last_success_at": record.get("last_success_at")},
                 "coverage": {"covered": record.get("covered_objects"), "expected": record.get("expected_objects"),
                              "ratio": record.get("coverage"), "by_asset_type": by_type},
