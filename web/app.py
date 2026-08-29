@@ -628,6 +628,11 @@ def api_task_center_task_enabled(task_key):
         result = TaskCenterService(management_db_path()).set_enabled(task_key, bool(payload.get("enabled")))
     except ValueError as exc:
         return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    try:
+        from StockInvestmentTool.web.scheduler import _reload_scheduler_jobs
+        _reload_scheduler_jobs(flask.current_app)
+    except Exception as exc:
+        logger.warning("任务启停后重载调度失败: %s", exc)
     return flask.jsonify({"status": "success", **result})
 
 
@@ -638,6 +643,11 @@ def api_task_center_task_config_activate(task_key, version):
         result = TaskCenterService(management_db_path()).activate_config(task_key, version)
     except ValueError as exc:
         return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    try:
+        from StockInvestmentTool.web.scheduler import _reload_scheduler_jobs
+        _reload_scheduler_jobs(flask.current_app)
+    except Exception as exc:
+        logger.warning("任务配置生效后重载调度失败: %s", exc)
     return flask.jsonify({"status": "success", **result})
 
 
@@ -647,10 +657,15 @@ def api_task_center_task_execute(task_key):
     payload = flask.request.get_json(silent=True) or {}
     from StockInvestmentTool.ops.task_execution import execute_task
     from StockInvestmentTool.ops.task_center_service import TaskCenterService
-    if TaskCenterService(management_db_path()).task(task_key) is None:
+    task = TaskCenterService(management_db_path()).task(task_key)
+    if task is None:
         return flask.jsonify({"status": "error", "error": "任务不存在"}), 404
     if not task_key:
         return flask.jsonify({"status": "error", "error": "任务不能为空"}), 400
+    if task_key in {"stock_daily_build", "stock_daily_quality", "stock_daily_publish", "indicators_build", "factors_build"} and not payload.get("period_start"):
+        latest = task.get("latest_run") or {}
+        payload["period_start"] = latest.get("period_start") or (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+        payload["period_end"] = payload.get("period_end") or latest.get("period_end") or (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     # The unified worker creates the request and run itself; execute it in a
     # daemon thread so the UI receives a run acknowledgement immediately.
     result_holder = {}

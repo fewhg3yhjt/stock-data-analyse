@@ -457,11 +457,7 @@ def init_scheduler(app) -> None:
         run_daily_tasks, CronTrigger(hour=hour, minute=minute, timezone=TZ),
         id="daily_tasks", misfire_grace_time=3600, coalesce=True, max_instances=1,
     )
-    if os.getenv("WAREHOUSE_DAILY_SYNC") == "1":
-        scheduler.add_job(
-            run_daily_data_pipeline, CronTrigger(hour=hour, minute=minute, timezone=TZ),
-            id="daily_sync", misfire_grace_time=21600, coalesce=True, max_instances=1,
-        )
+    _schedule_configured_data_tasks(scheduler)
     scheduler.add_job(
         process_notification_outbox, CronTrigger(minute="*/5", timezone=TZ),
         id="notification_outbox", misfire_grace_time=600, coalesce=True,
@@ -497,23 +493,49 @@ def init_scheduler(app) -> None:
         import atexit
         atexit.register(lock_file.close)
     logger.info("每日定时任务已启动: %02d:%02d (%s)", hour, minute, TZ)
-    if os.getenv("WAREHOUSE_DAILY_SYNC") == "1":
-        now = datetime.now()
-        if now.weekday() < 5 and (now.hour, now.minute) > (hour, minute):
-            from StockInvestmentTool.ops.job_runs import JobRunStore
-            store = JobRunStore()
-            today = now.strftime("%Y-%m-%d")
-            # Any running row that predates this web process is orphaned: the
-            # worker thread cannot survive a container restart.
-            store.reclaim_data_running(before=startup_boundary)
-            todays = [item for item in store.recent(200)
-                      if item.get("job_name") == "daily_sync"
-                      and str(item.get("started_at", ""))[:10] == today]
-            active_or_success = [item for item in todays
-                                 if item.get("status") in ("running", "success")]
-            if not active_or_success:
-                threading.Thread(target=run_daily_data_pipeline, daemon=True,
-                                 name="daily-sync-catchup").start()
+
+
+def _schedule_configured_data_tasks(scheduler) -> None:
+    """Register enabled data tasks from config/tasks through the new runner."""
+    from apscheduler.triggers.cron import CronTrigger
+    from StockInvestmentTool.ops.task_center import load_task_definitions
+
+    def run_task(task_key):
+        from StockInvestmentTool.ops.task_execution import execute_task, execute_pipeline
+        from StockInvestmentTool.ops.task_center import management_db_path
+        payload = {
+            "trigger_type": "scheduled", "requested_by": "scheduler",
+        }
+        if task_key == "stock_daily_capture":
+            configured_keys = {item.get("task", {}).get("key"): item for item in load_task_definitions()}
+            chain = [key for key in ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
+                                     "stock_daily_publish", "indicators_build", "factors_build")
+                     if (configured_keys.get(key, {}).get("schedule") or {}).get("enabled")]
+            return execute_pipeline(management_db_path(), chain or [task_key], payload)
+        return execute_task(management_db_path(), task_key, payload)
+
+    for item in load_task_definitions():
+        task = item.get("task") or {}
+        schedule = item.get("schedule") or {}
+        key = task.get("key")
+        if not key or not schedule.get("enabled"):
+            continue
+        frequency = schedule.get("frequency")
+        spec = schedule.get("time")
+        if frequency == "after_upstream" or not spec:
+            continue
+        hour, minute = _parse_time(spec)
+        kwargs = {"day_of_week": "mon-fri"} if frequency == "trading_day" else {}
+        if frequency in {"weekly", "quarterly"}:
+            kwargs["day_of_week"] = "mon"
+        if frequency == "monthly":
+            kwargs["day"] = "1"
+        scheduler.add_job(
+            run_task, CronTrigger(hour=hour, minute=minute, timezone=TZ, **kwargs),
+            id=f"task:{key}", args=[key], misfire_grace_time=21600,
+            coalesce=True, max_instances=1,
+        )
+        logger.info("配置任务已注册: %s (%s %s)", key, frequency, spec)
 
 
 def _load_notify_settings() -> dict:

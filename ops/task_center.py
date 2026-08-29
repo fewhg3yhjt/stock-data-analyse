@@ -92,7 +92,8 @@ class TaskCenter:
             CREATE TABLE IF NOT EXISTS task_execution_requests (
               request_id TEXT PRIMARY KEY, task_key TEXT NOT NULL, trigger_type TEXT NOT NULL,
               period_start TEXT, period_end TEXT, symbols TEXT, config_version INTEGER,
-              requested_by TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL
+              input_versions TEXT NOT NULL DEFAULT '{}', requested_by TEXT NOT NULL,
+              status TEXT NOT NULL, created_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS task_run_events (
               event_id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL,
@@ -134,6 +135,9 @@ class TaskCenter:
               enabled INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(task_key, metric_key)
             );
             """)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(task_execution_requests)")}
+            if "input_versions" not in columns:
+                conn.execute("ALTER TABLE task_execution_requests ADD COLUMN input_versions TEXT NOT NULL DEFAULT '{}' ")
 
     @staticmethod
     def _initialize_metric_tables(db_path: Path) -> None:
@@ -199,7 +203,7 @@ class TaskCenter:
         """Make a validated task configuration version active."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT status FROM task_config_versions WHERE task_key=? AND version=?",
+                "SELECT status,config FROM task_config_versions WHERE task_key=? AND version=?",
                 (task_key, int(version)),
             ).fetchone()
             if row is None:
@@ -215,6 +219,11 @@ class TaskCenter:
             conn.execute(
                 "UPDATE task_definitions SET active_config_version=?,updated_at=? WHERE task_key=?",
                 (int(version), _now(), task_key),
+            )
+            config = json.loads(row[1])
+            conn.execute(
+                "UPDATE task_definitions SET enabled=?,updated_at=? WHERE task_key=?",
+                (int(bool((config.get("schedule") or {}).get("enabled", False))), _now(), task_key),
             )
 
     def validate_task_config(self, config: dict) -> dict:
@@ -257,8 +266,21 @@ class TaskCenter:
 
     def set_task_enabled(self, task_key: str, enabled: bool) -> None:
         with self._connect() as conn:
-            if not conn.execute("SELECT 1 FROM task_definitions WHERE task_key=?", (task_key,)).fetchone():
+            row = conn.execute("SELECT active_config_version FROM task_definitions WHERE task_key=?", (task_key,)).fetchone()
+            if not row:
                 raise TaskConfigError(f"任务不存在: {task_key}")
+            config_row = conn.execute(
+                "SELECT config FROM task_config_versions WHERE task_key=? AND version=?",
+                (task_key, row[0]),
+            ).fetchone()
+            if config_row:
+                config = json.loads(config_row[0])
+                config.setdefault("schedule", {})["enabled"] = bool(enabled)
+                raw_config = json.dumps(config, ensure_ascii=False, sort_keys=True)
+                conn.execute(
+                    "UPDATE task_config_versions SET config=?,checksum=? WHERE task_key=? AND version=?",
+                    (raw_config, hashlib.sha256(raw_config.encode()).hexdigest(), task_key, row[0]),
+                )
             conn.execute("UPDATE task_definitions SET enabled=?,updated_at=? WHERE task_key=?",
                          (int(bool(enabled)), _now(), task_key))
 
@@ -361,7 +383,7 @@ class TaskCenter:
             conn.execute("UPDATE metric_definitions SET enabled=0,updated_at=? WHERE metric_key=?", (_now(), metric_key))
 
     def create_request(self, task_key: str, trigger_type: str, *, period_start=None, period_end=None,
-                       symbols=None, requested_by="admin") -> str:
+                       symbols=None, requested_by="admin", input_versions=None) -> str:
         if trigger_type not in {"scheduled", "manual", "backfill", "retry", "shadow"}:
             raise TaskConfigError("非法任务触发类型")
         if period_start and period_end and str(period_end) < str(period_start):
@@ -371,9 +393,14 @@ class TaskCenter:
             row = conn.execute("SELECT active_config_version FROM task_definitions WHERE task_key=?", (task_key,)).fetchone()
             if not row:
                 raise TaskConfigError(f"任务不存在: {task_key}")
-            conn.execute("INSERT INTO task_execution_requests VALUES(?,?,?,?,?,?,?,?,?,?)",
+            conn.execute("""INSERT INTO task_execution_requests
+                (request_id,task_key,trigger_type,period_start,period_end,symbols,config_version,
+                 input_versions,requested_by,status,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                          (request_id, task_key, trigger_type, period_start, period_end,
-                          json.dumps(symbols or [], ensure_ascii=False), row[0], requested_by, "requested", _now()))
+                          json.dumps(symbols or [], ensure_ascii=False), row[0],
+                          json.dumps(input_versions or {}, ensure_ascii=False), requested_by,
+                          "requested", _now()))
         return request_id
 
     def request(self, request_id: str) -> dict | None:
@@ -386,6 +413,10 @@ class TaskCenter:
             item["symbols"] = json.loads(item.get("symbols") or "[]")
         except (TypeError, ValueError):
             item["symbols"] = []
+        try:
+            item["input_versions"] = json.loads(item.get("input_versions") or "{}")
+        except (TypeError, ValueError):
+            item["input_versions"] = {}
         return item
 
     def update_request(self, request_id: str, status: str) -> None:

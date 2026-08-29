@@ -91,7 +91,8 @@ class FactorEngine:
                       max_symbols: Optional[int] = None,
                       progress_callback=None, changed_start: Optional[str] = None,
                       changed_end: Optional[str] = None, asset_types: Optional[list[str]] = None,
-                      months: Optional[list[str]] = None) -> dict:
+                      months: Optional[list[str]] = None,
+                      partition_versions: Optional[dict[str, str]] = None) -> dict:
         """全市场因子宽表计算（分组一次遍历 + 按月落盘）。
 
         需仓库已有日线分区（先跑 collect sync_daily）。
@@ -118,7 +119,8 @@ class FactorEngine:
                 month_start = pd.Timestamp(f"{ym}-01")
                 month_end = month_start + pd.offsets.MonthEnd(1)
                 loaded = load_dataset(self.warehouse, "stock_daily", str(month_start.date()), str(month_end.date()),
-                                      allow_legacy=self.allow_legacy)
+                                      allow_legacy=self.allow_legacy,
+                                      partition_versions=partition_versions)
                 df = loaded.data
                 input_versions.update(loaded.context.get("partition_versions", {}))
             except Exception:

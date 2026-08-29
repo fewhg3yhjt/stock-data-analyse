@@ -62,11 +62,27 @@
   window.taskCenterEdit = key => {
     const task = state.tasks.find(item => item.task_key === key);
     if (!task) return;
-    const raw = prompt('编辑任务配置 JSON（确认后保存为草稿）', JSON.stringify(task.config || {}, null, 2));
-    if (raw == null) return;
-    let config;
-    try { config = JSON.parse(raw); } catch (e) { alert(`JSON 无效：${e.message}`); return; }
-    postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config`, {config, activate: false}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert(`配置草稿 v${d.version} 已保存`); loadTasks(); }).catch(e => alert(e.message));
+    const config = JSON.parse(JSON.stringify(task.config || {}));
+    const schedule = config.schedule ||= {};
+    const execution = config.execution ||= {};
+    const policy = config.policy ||= {};
+    const scope = config.scope ||= {};
+    const body = document.getElementById('task-drawer-body');
+    const escapeValue = value => esc(value ?? '');
+    body.innerHTML = `<section class="dm-detail-section"><h3>编辑任务配置</h3><div class="dm-config-form"><label>调度启用 <input id="cfg-enabled" type="checkbox" ${schedule.enabled ? 'checked' : ''}></label><label>频率 <select id="cfg-frequency"><option value="trading_day">交易日</option><option value="daily">每日</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="quarterly">每季度</option><option value="after_upstream">依赖上游</option><option value="manual">手动</option></select></label><label>执行时间 <input id="cfg-time" type="time" value="${escapeValue(schedule.time || '')}"></label><label>资产类型 <input id="cfg-assets" value="${escapeValue((scope.asset_types || []).join(','))}" placeholder="stock,etf"></label><label>重试次数 <input id="cfg-retry" type="number" min="0" max="10" value="${Number(execution.retry_limit || 0)}"></label><label>失败策略 <select id="cfg-failure"><option value="block_downstream">阻断下游</option><option value="continue">继续执行</option></select></label><div class="dm-toolbar"><button class="dm-btn" id="cfg-save">保存草稿</button><button class="dm-btn primary" id="cfg-save-active">保存并生效</button></div><p class="dm-muted">保存后会生成新配置版本；“保存并生效”会立即用于后续调度。</p></div></section>`;
+    document.getElementById('cfg-frequency').value = schedule.frequency || 'manual';
+    document.getElementById('cfg-failure').value = policy.on_failure || 'block_downstream';
+    const save = activate => {
+      config.schedule.enabled = document.getElementById('cfg-enabled').checked;
+      config.schedule.frequency = document.getElementById('cfg-frequency').value;
+      config.schedule.time = document.getElementById('cfg-time').value || null;
+      config.scope.asset_types = document.getElementById('cfg-assets').value.split(',').map(x => x.trim()).filter(Boolean);
+      config.execution.retry_limit = Number(document.getElementById('cfg-retry').value || 0);
+      config.policy.on_failure = document.getElementById('cfg-failure').value;
+      postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config`, {config, activate}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert(activate ? '配置已保存并生效' : `配置草稿 v${d.version} 已保存`); loadTasks(); }).catch(e => alert(e.message));
+    };
+    document.getElementById('cfg-save').onclick = () => save(false);
+    document.getElementById('cfg-save-active').onclick = () => { if (confirm('确认保存并立即生效？')) save(true); };
   };
   window.taskCenterExecute = key => postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/execute`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert('任务已提交'); loadTasks(); }).catch(e => alert(e.message));
   window.taskCenterRetry = runId => postJson(`/api/task-center/runs/${runId}/retry`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert('重试已提交'); loadTasks(); }).catch(e => alert(e.message));

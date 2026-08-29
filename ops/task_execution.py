@@ -70,11 +70,16 @@ def _build(warehouse: Warehouse, request: dict) -> dict:
         version = PipelineState(warehouse.meta_db_path).create_version(build, source_batches=[batch_id])
         versions[partition] = {"version": version, "build": build}
         rows += build["row_count"]
-    return {"rows": rows, "months": len(versions), "versions": versions, "source_batch_id": batch_id}
+    return {"rows": rows, "months": len(versions),
+            "versions": versions,
+            "output_versions": {partition: item["version"] for partition, item in versions.items()},
+            "source_batch_id": batch_id}
 
 
 def _quality(warehouse: Warehouse, request: dict) -> dict:
     versions = request.get("input_versions") or {}
+    versions = {key: value.get("version") if isinstance(value, dict) else value
+                for key, value in versions.items()}
     if not versions:
         with sqlite3.connect(warehouse.meta_db_path) as conn:
             rows = conn.execute(
@@ -100,11 +105,14 @@ def _quality(warehouse: Warehouse, request: dict) -> dict:
         reports[partition] = report
         allowed = allowed and report["publish_allowed"]
     return {"rows": len(reports), "status": "PASS" if allowed else "FAIL",
-            "publish_allowed": allowed, "reports": reports, "input_versions": versions}
+            "publish_allowed": allowed, "reports": reports,
+            "input_versions": versions, "output_versions": versions if allowed else {}}
 
 
 def _publish(warehouse: Warehouse, request: dict) -> dict:
     versions = request.get("input_versions") or {}
+    versions = {key: value.get("version") if isinstance(value, dict) else value
+                for key, value in versions.items()}
     if not versions:
         with sqlite3.connect(warehouse.meta_db_path) as conn:
             rows = conn.execute(
@@ -116,7 +124,10 @@ def _publish(warehouse: Warehouse, request: dict) -> dict:
             ).fetchall()
         versions = {partition: version for partition, version in rows}
     published = {partition: Publisher(warehouse).publish(version) for partition, version in versions.items()}
-    return {"rows": len(published), "published": published, "input_versions": versions}
+    return {"rows": len(published), "published": published,
+            "input_versions": versions,
+            "output_versions": {key: value.get("version_id", version)
+                                 for key, value in published.items()}}
 
 
 def _auxiliary(warehouse: Warehouse, request: dict, task_key: str) -> dict:
@@ -166,10 +177,12 @@ def worker(task_key: str, warehouse: Warehouse, request: dict, run_id: int) -> d
         return _publish(warehouse, request)
     if task_key == "indicators_build":
         return IndicatorsBuilder(warehouse, allow_legacy=False).build_all(
-            symbols=_symbols(request), asset_types=["stock", "etf"], months=_months(request.get("period_start"), request.get("period_end")))
+            symbols=_symbols(request), asset_types=["stock", "etf"], months=_months(request.get("period_start"), request.get("period_end")),
+            partition_versions=request.get("input_versions") or None)
     if task_key == "factors_build":
         return FactorEngine(warehouse, allow_legacy=False).build_factors(
-            symbols=_symbols(request), asset_types=["stock", "etf"], months=_months(request.get("period_start"), request.get("period_end")))
+            symbols=_symbols(request), asset_types=["stock", "etf"], months=_months(request.get("period_start"), request.get("period_end")),
+            partition_versions=request.get("input_versions") or None)
     if task_key in {"industry_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture"}:
         return _auxiliary(warehouse, request, task_key)
     raise ValueError(f"未注册的任务: {task_key}")
@@ -189,17 +202,51 @@ def execute_task(db_path: Path, task_key: str, payload: dict) -> dict:
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='instruments'"
             ).fetchone()
             rows = conn.execute("SELECT code,type FROM instruments ORDER BY code").fetchall() if has_instruments else []
+        from StockInvestmentTool.ops.task_center import management_db_path
+        if not rows and Path(db_path).resolve() == Path(management_db_path()).resolve():
+            from StockInvestmentTool.config import Config
+            legacy_db = Config.DATA_DIR / "warehouse" / "meta.db"
+            if legacy_db.exists():
+                with sqlite3.connect(legacy_db) as conn:
+                    rows = conn.execute("SELECT code,type FROM instruments ORDER BY code").fetchall()
         symbols = [code for code, kind in rows if not asset_types or kind in asset_types]
     if not symbols:
         raise ValueError(f"任务 {task_key} 没有可执行的证券范围")
     payload = {**payload, "symbols": symbols}
     request_id = center.create_request(task_key, payload.get("trigger_type", "manual"),
                                        period_start=payload.get("period_start"), period_end=payload.get("period_end"),
-                                       symbols=symbols, requested_by=payload.get("requested_by", "admin"))
+                                       symbols=symbols, requested_by=payload.get("requested_by", "admin"),
+                                       input_versions=payload.get("input_versions") or {})
     from StockInvestmentTool.ops.task_runner import TaskRunner
     warehouse = Warehouse()
     warehouse.meta_db_path = db_path
     runner = TaskRunner(db_path, db_path)
     return runner.execute(task_key, lambda run_id, request: worker(task_key, warehouse, {**request, **payload}, run_id),
                           request_id=request_id, input_dataset=payload.get("input_dataset", ""),
-                          output_dataset=payload.get("output_dataset", ""))
+                          output_dataset=payload.get("output_dataset", ""),
+                          parent_run_id=payload.get("parent_run_id"))
+
+
+def execute_pipeline(db_path: Path, task_keys: list[str], payload: dict | None = None) -> dict:
+    """Run configured task keys in order and pass each result to its child."""
+    if not task_keys:
+        raise ValueError("流水线至少需要一个任务")
+    payload = dict(payload or {})
+    runs = []
+    parent_run_id = None
+    input_versions = payload.get("input_versions") or {}
+    for task_key in task_keys:
+        current = {**payload, "input_versions": input_versions, "parent_run_id": parent_run_id}
+        item = execute_task(db_path, task_key, current)
+        runs.append(item)
+        result = item.get("result") or {}
+        parent_run_id = item.get("run_id")
+        output_versions = result.get("output_versions") or result.get("versions") or {}
+        if output_versions:
+            input_versions = output_versions
+        if result.get("source_batch_id"):
+            payload["input_batch_id"] = result["source_batch_id"]
+        if item.get("status") not in {"success", "partial_success", "skipped"}:
+            break
+    return {"status": runs[-1].get("status", "failed"), "runs": runs,
+            "request_ids": [item.get("request_id") for item in runs]}

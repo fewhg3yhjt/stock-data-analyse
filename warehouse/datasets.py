@@ -46,9 +46,12 @@ class DatasetAccess:
 
     def load_dataset(self, dataset_name: str, start_date: Optional[str] = None,
                      end_date: Optional[str] = None, symbols: Optional[list[str]] = None,
-                     required_quality: str = "WARNING", *, allow_legacy: bool = False) -> DatasetResult:
+                     required_quality: str = "WARNING", *, allow_legacy: bool = False,
+                     partition_versions: dict[str, str] | None = None) -> DatasetResult:
         months = self._months(start_date, end_date)
         versions = self.get_current_version(dataset_name)
+        if partition_versions:
+            versions = {month: {"version_id": version_id} for month, version_id in partition_versions.items()}
         if not versions:
             if not allow_legacy:
                 raise DatasetAccessError(f"没有 Published Dataset: {dataset_name}")
@@ -145,6 +148,8 @@ class DatasetAccess:
 
 
 def load_dataset(warehouse, dataset_name: str, start_date=None, end_date=None,
-                 symbols=None, required_quality="WARNING", *, allow_legacy=False):
+                 symbols=None, required_quality="WARNING", *, allow_legacy=False,
+                 partition_versions=None):
     return DatasetAccess(warehouse).load_dataset(dataset_name, start_date, end_date, symbols,
-                                                  required_quality, allow_legacy=allow_legacy)
+                                                  required_quality, allow_legacy=allow_legacy,
+                                                  partition_versions=partition_versions)

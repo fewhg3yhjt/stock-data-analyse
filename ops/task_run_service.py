@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from StockInvestmentTool.ops.artifact_service import ArtifactService
 from StockInvestmentTool.ops.job_runs import JobRunStore
@@ -22,6 +23,13 @@ class TaskRunService:
         if item is None:
             return None
         run = TaskCenterService._run_dto(item)
+        request = self.center.request(item.get("request_id")) if item.get("request_id") else None
+        if request:
+            run["request"] = request
+        payload = run.get("result") or {}
+        if isinstance(payload, dict):
+            run["input_versions"] = payload.get("input_versions", request.get("input_versions", {}) if request else {})
+            run["output_versions"] = payload.get("output_versions", {})
         artifacts = self.center.artifacts(run_id=run_id)
         return {"run": run, "events": self.center.events(run_id), "artifacts": artifacts,
                 "lineage": {artifact["artifact_id"]: self.center.lineage(artifact["artifact_id"]) for artifact in artifacts}}

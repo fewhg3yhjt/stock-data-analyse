@@ -1,5 +1,6 @@
 /* Data module workspace. Deliberately independent from the legacy business-page layout. */
 .dm-management-banner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#eef5ff;border:1px solid #cfe1fb;border-radius:10px;padding:12px 15px;margin-bottom:16px;color:#31547c;font-size:12px}.dm-management-banner strong{color:#1765cf;font-size:13px}.dm-management-hint{margin-left:auto;color:#7187a2}
+.dm-config-form{display:grid;gap:12px;max-width:520px}.dm-config-form label{display:grid;grid-template-columns:110px 1fr;align-items:center;gap:10px;color:#647286;font-size:12px}.dm-config-form input,.dm-config-form select{height:32px;border:1px solid #d8dfe7;border-radius:6px;padding:0 8px;color:#263449;background:#fff}.dm-config-form input[type=checkbox]{width:16px;height:16px;justify-self:start}
 #new-task{display:none}
 .dm-page{min-height:100vh;background:#f7f8fa;color:#172033;display:flex;font-family:var(--font)}
 .dm-sidebar{width:218px;flex:0 0 218px;background:#172331;color:#dce5ee;display:flex;flex-direction:column;padding:24px 14px 18px;min-height:100vh}
