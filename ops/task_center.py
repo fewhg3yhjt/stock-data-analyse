@@ -377,7 +377,10 @@ class TaskCenter:
             frame = None
         checksum = hashlib.sha256(path.read_bytes()).hexdigest()
         with self._connect() as conn:
-            conn.execute("""INSERT OR REPLACE INTO task_artifacts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            conn.execute("""INSERT OR REPLACE INTO task_artifacts
+                (artifact_id,run_id,dataset_name,artifact_type,partition_key,file_path,file_name,
+                 file_format,row_count,symbol_count,min_date,max_date,checksum,size_bytes,status,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                          (artifact_id, run_id, dataset_name, artifact_type, partition_key, str(path), path.name,
                           path.suffix.lstrip("."), len(frame) if frame is not None else None,
                           int(frame["code"].nunique()) if frame is not None and "code" in frame else None,

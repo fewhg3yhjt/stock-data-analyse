@@ -25,6 +25,7 @@ from StockInvestmentTool.core.registry import SchemeRegistry
 from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 from StockInvestmentTool.prompt.llm_client import DeepSeekClient, LLMError
 from StockInvestmentTool.runtime.memory import memory_snapshot, monitor_memory
+from StockInvestmentTool.ops.task_center import management_db_path
 
 logger = logging.getLogger(__name__)
 
@@ -503,78 +504,47 @@ def _task_center_service():
 
 @web_app.route("/api/data-center/overview", methods=["GET"])
 def api_data_center_overview():
-    center = _task_center_service()
-    center.sync_definitions()
-    center.sync_metrics()
-    all_assets = center.data_assets()
-    assets = [item for item in all_assets if item.get("metric_key") in {"stock_daily", "indicators", "factors", "close", "ma20", "money_flow_net", "roe", "pe_ttm"}]
-    counts = {"total": len(all_assets), "normal": 0, "attention": 0, "critical": 0, "unknown": 0}
-    for asset in all_assets:
-        status = asset.get("health_status") or "unknown"
-        if status in ("healthy", "normal"):
-            counts["normal"] += 1
-        elif status in ("partial", "stale"):
-            counts["attention"] += 1
-        elif status == "critical":
-            counts["critical"] += 1
-        else:
-            counts["unknown"] += 1
-    task_catalog = center.task_catalog()
-    pipeline_keys = ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
-                     "stock_daily_publish", "indicators_build", "factors_build")
-    pipeline = [task for key in pipeline_keys for task in task_catalog if task["task_key"] == key]
-    return flask.jsonify({"status": "success", "counts": counts,
-                          "task": center.task_overview(), "pipeline": pipeline,
-                          "attention": [item for item in all_assets if item.get("health_status") in ("partial", "stale", "critical")],
-                          "assets": assets})
+    from StockInvestmentTool.ops.data_center_service import DataCenterService
+    return flask.jsonify({"status": "success", **DataCenterService(management_db_path()).overview()})
 
 
 @web_app.route("/api/data-center/assets", methods=["GET"])
 def api_data_center_assets():
-    center = _task_center_service()
-    center.sync_metrics()
-    assets = center.data_assets(category=flask.request.args.get("category"),
-                                status=flask.request.args.get("status"),
-                                date=flask.request.args.get("date"))
+    from StockInvestmentTool.ops.data_center_service import DataCenterService
+    assets = DataCenterService(management_db_path()).assets(
+        category=flask.request.args.get("category"), status=flask.request.args.get("status"),
+        date=flask.request.args.get("date"))
     return flask.jsonify({"status": "success", "assets": assets, "total": len(assets)})
 
 
 @web_app.route("/api/data-center/assets/<metric_key>", methods=["GET"])
 def api_data_center_asset_detail(metric_key):
-    center = _task_center_service()
-    center.sync_metrics()
-    asset = next((item for item in center.data_assets() if item["metric_key"] == metric_key), None)
+    from StockInvestmentTool.ops.data_center_service import DataCenterService
+    asset = DataCenterService(management_db_path()).asset(metric_key)
     if asset is None:
         return flask.jsonify({"status": "error", "error": "数据项不存在"}), 404
-    applicability = {}
-    if metric_key not in {"stock_daily", "indicators", "factors"}:
-        from StockInvestmentTool.warehouse.asset_profiles import applicability as profile_applicability
-        for asset_type in ("stock", "etf", "index"):
-            applicability[asset_type] = profile_applicability(asset_type, "metrics", metric_key)
-    return flask.jsonify({"status": "success", "asset": asset,
-                          "applicability": applicability,
-                          "tasks": center.task_artifacts(asset.get("producer_task"))})
+    return flask.jsonify({"status": "success", "asset": asset})
 
 
 @web_app.route("/api/task-center/overview", methods=["GET"])
 def api_task_center_overview():
-    center = _task_center_service()
-    center.sync_definitions()
-    return flask.jsonify({"status": "success", **center.task_overview_payload()})
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    service = TaskCenterService(management_db_path())
+    return flask.jsonify({"status": "success", "overview": service.overview(), "tasks": service.tasks()})
 
 
 @web_app.route("/api/task-center/tasks", methods=["GET"])
 def api_task_center_tasks():
-    center = _task_center_service()
-    center.sync_definitions()
-    return flask.jsonify({"status": "success", **center.task_overview_payload()})
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    service = TaskCenterService(management_db_path())
+    return flask.jsonify({"status": "success", "tasks": service.tasks(
+        stage=flask.request.args.get("stage"), status=flask.request.args.get("status"))})
 
 
 @web_app.route("/api/task-center/tasks/<task_key>", methods=["GET"])
 def api_task_center_task_detail(task_key):
-    center = _task_center_service()
-    center.sync_definitions()
-    task = next((item for item in center.task_catalog() if item["task_key"] == task_key), None)
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    task = TaskCenterService(management_db_path()).task(task_key)
     if task is None:
         return flask.jsonify({"status": "error", "error": "任务不存在"}), 404
     return flask.jsonify({"status": "success", "task": task})
@@ -582,12 +552,39 @@ def api_task_center_task_detail(task_key):
 
 @web_app.route("/api/task-center/runs/<int:run_id>", methods=["GET"])
 def api_task_center_run_detail(run_id):
-    from StockInvestmentTool.ops.job_runs import JobRunStore
-    from StockInvestmentTool.ops.task_center import management_db_path
-    item = JobRunStore(management_db_path()).get(run_id)
+    from StockInvestmentTool.ops.task_run_service import TaskRunService
+    item = TaskRunService(management_db_path()).detail(run_id)
     if item is None:
         return flask.jsonify({"status": "error", "error": "任务运行记录不存在"}), 404
-    return flask.jsonify({"status": "success", "run": item})
+    return flask.jsonify({"status": "success", **item})
+
+
+@web_app.route("/api/task-center/runs/<int:run_id>/logs", methods=["GET"])
+def api_task_center_run_logs(run_id):
+    from StockInvestmentTool.ops.task_run_service import TaskRunService
+    result = TaskRunService(management_db_path()).logs(
+        run_id, offset=flask.request.args.get("offset", 0), limit=flask.request.args.get("limit", 200),
+        level=flask.request.args.get("level"), phase=flask.request.args.get("phase"))
+    return flask.jsonify({"status": "success", **result})
+
+
+@web_app.route("/api/artifacts/<artifact_id>", methods=["GET"])
+def api_artifact_detail(artifact_id):
+    from StockInvestmentTool.ops.artifact_service import ArtifactService
+    item = ArtifactService(management_db_path()).detail(artifact_id)
+    if item is None:
+        return flask.jsonify({"status": "error", "error": "产物不存在"}), 404
+    return flask.jsonify({"status": "success", "artifact": item})
+
+
+@web_app.route("/api/artifacts/<artifact_id>/summary", methods=["GET"])
+def api_artifact_summary(artifact_id):
+    from StockInvestmentTool.ops.artifact_service import ArtifactService
+    try:
+        result = ArtifactService(management_db_path()).summary(artifact_id)
+    except FileNotFoundError:
+        return flask.jsonify({"status": "error", "error": "产物不存在"}), 404
+    return flask.jsonify({"status": "success", **_to_json_safe(result)})
 
 
 def _start_data_job(job_name, worker):
