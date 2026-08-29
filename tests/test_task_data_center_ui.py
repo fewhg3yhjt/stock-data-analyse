@@ -13,6 +13,8 @@ def test_data_center_uses_user_data_item_language():
     assert "Candidate" not in content
     assert "重点数据状态" in content
     assert "查看全部数据项" in content
+    script = (ROOT / "web/static/data-module.js").read_text(encoding="utf-8")
+    assert "if(search) search.addEventListener" in script
 
 
 def test_data_assets_is_a_distinct_catalog_page():

@@ -15,5 +15,10 @@
   async function openAsset(key){ state.selected=key; renderAssets(); const data=await json('/api/data-center/assets/'+encodeURIComponent(key)); if(data.status!=='success')return; const x=data.asset||{}; const byType=x.coverage_by_type?JSON.parse(x.coverage_by_type):{}; const applicability=data.applicability||{}; document.getElementById('asset-detail').innerHTML=`<div class="dm-detail"><h2 class="dm-detail-title">${esc(x.display_name||key)}</h2><div class="dm-detail-sub">${esc(x.category||'数据项')} · ${esc(key)}</div><section class="dm-detail-section"><h3>定义与统一口径</h3><dl class="dm-kv"><dt>定义</dt><dd>${esc(x.definition||'暂无')}</dd><dt>单位</dt><dd>${esc(x.unit||'—')}</dd><dt>关联任务</dt><dd>${esc(x.producer_task||'—')}</dd></dl></section><section class="dm-detail-section"><h3>健康情况</h3><dl class="dm-kv"><dt>状态</dt><dd>${health(x.health_status)}</dd><dt>最新实际日期</dt><dd>${esc(x.latest_period||'暂无')}</dd><dt>覆盖</dt><dd>${x.coverage==null?'暂无':`${x.covered_objects??0} / ${x.expected_objects??'—'} (${(x.coverage*100).toFixed(1)}%)`}</dd><dt>最近成功</dt><dd>${esc(x.last_success_at||'暂无')}</dd></dl></section><section class="dm-detail-section"><h3>证券类型覆盖</h3><div class="dm-type-grid">${['stock','etf','index'].map(t=>{const v=byType[t];const rule=applicability[t];return `<div class="dm-type ${v==null?'na':''}"><span>${typeName(t)}</span><b>${rule==='not_applicable'?'不适用':v==null?'暂无':esc(v)}</b></div>`}).join('')}</div></section><section class="dm-detail-section"><h3>操作</h3><div class="dm-toolbar"><a class="dm-btn" href="/data-center/tasks">查看关联任务</a><button class="dm-btn primary" onclick="window.location='/data-center/tasks'">重新生成</button></div></section></div>`; }
   window.openAsset=openAsset;
   window.loadDataOverview=loadOverview;
-  if(document.getElementById('asset-rows')){ document.getElementById('asset-search').addEventListener('input',renderAssets); loadOverview(); setInterval(loadOverview,30000); }
+  if(document.getElementById('asset-rows')){
+    const search=document.getElementById('asset-search');
+    if(search) search.addEventListener('input',renderAssets);
+    loadOverview();
+    setInterval(loadOverview,30000);
+  }
 })();
