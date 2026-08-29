@@ -27,13 +27,15 @@
       <section class="dm-task-group">
         <div class="dm-task-group-head">${esc(stageNames[stageKey] || stageKey)} <b>${tasks.length}</b></div>
         <table class="dm-task-table"><thead><tr><th>任务名称</th><th>任务类型</th><th>默认周期</th><th>本次执行范围</th><th>状态</th><th>进度</th><th>操作</th></tr></thead><tbody>
-        ${tasks.map(task => { const run = task.running_run || task.latest_run; const schedule = task.schedule || {}; return `<tr data-task-key="${esc(task.task_key)}"><td><strong>${esc(task.display_name)}</strong><div class="dm-code">${esc(task.task_key)}</div></td><td>${esc(task.task_type_label || typeNames[task.task_type] || task.task_type)}</td><td>${esc(schedule.frequency || '手动')}<div class="dm-code">${schedule.time ? esc(schedule.time) : '依赖上游'} · ${schedule.enabled ? '已启用' : '未启用'}</div></td><td>${esc(formatRange(run))}</td><td>${statusTag(taskStatus(task))}</td><td>${run?.progress == null ? '—' : `${run.progress}%`}</td><td><div class="dm-task-actions"><button class="dm-mini-btn detail-task">查看详情</button><button class="dm-mini-btn run-task">立即执行</button></div></td></tr>`; }).join('')}
+         ${tasks.map(task => { const run = task.running_run || task.latest_run; const schedule = task.schedule || {}; const retry = run && ['failed','partial_success'].includes(run.status); return `<tr data-task-key="${esc(task.task_key)}"><td><strong>${esc(task.display_name)}</strong><div class="dm-code">${esc(task.task_key)}</div></td><td>${esc(task.task_type_label || typeNames[task.task_type] || task.task_type)}</td><td>${esc(schedule.frequency || '手动')}<div class="dm-code">${schedule.time ? esc(schedule.time) : '依赖上游'} · ${schedule.enabled ? '已启用' : '未启用'}</div></td><td>${esc(formatRange(run))}</td><td>${statusTag(taskStatus(task))}</td><td>${run?.progress == null ? '—' : `${run.progress}%`}</td><td><div class="dm-task-actions"><button class="dm-mini-btn detail-task">配置/详情</button><button class="dm-mini-btn toggle-task">${task.enabled ? '停用' : '启用'}</button><button class="dm-mini-btn run-task">执行</button>${retry ? '<button class="dm-mini-btn retry-task">重试</button>' : ''}</div></td></tr>`; }).join('')}
         </tbody></table>
       </section>`).join('') || '<div class="dm-empty">没有匹配的任务</div>';
     document.querySelectorAll('#task-list [data-task-key]').forEach(row => {
       const task = state.tasks.find(item => item.task_key === row.dataset.taskKey);
       row.querySelector('.detail-task').onclick = () => showTask(task);
       row.querySelector('.run-task').onclick = () => runTask(task);
+      row.querySelector('.toggle-task')?.addEventListener('click', event => { event.stopPropagation(); window.taskCenterToggle(task.task_key, !task.enabled); });
+      row.querySelector('.retry-task')?.addEventListener('click', event => { event.stopPropagation(); window.taskCenterRetry((task.running_run || task.latest_run).run_id); });
     });
   }
 
@@ -74,12 +76,22 @@
     fetch('/api/task-center/overview').then(response => response.json()).then(data => {
       if (data.status !== 'success') throw new Error(data.error || '任务数据读取失败');
       state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
-      const overview = data.overview || {};
+       const overview = data.overview || {};
+       renderManagementSummary(overview);
       const counts = overview.run_counts || {};
       document.getElementById('task-kpis').innerHTML = [['任务定义',state.tasks.length,'已配置任务'],['今日完成',overview.today_completed || 0,'执行实例'],['执行中',overview.running || 0,'执行实例'],['执行失败',overview.failed || 0,'需要关注'],['今日执行',overview.today_total || 0,'执行实例']].map(item => `<div class="dm-kpi"><div class="dm-kpi-label">${item[0]}</div><div class="dm-kpi-value">${item[1]}</div><div class="dm-kpi-note">${item[2]}</div></div>`).join('');
       renderTasks();
       document.getElementById('task-refresh').textContent = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
     }).catch(error => { document.getElementById('task-list').innerHTML = `<div class="dm-empty">${esc(error.message)}，请刷新重试</div>`; });
+  }
+
+  function renderManagementSummary(overview) {
+    let banner = document.getElementById('task-management-summary');
+    if (!banner) {
+      banner = document.createElement('div'); banner.id = 'task-management-summary'; banner.className = 'dm-management-banner';
+      document.getElementById('task-kpis').before(banner);
+    }
+    banner.innerHTML = `<strong>任务管理</strong><span>共 ${overview.task_definition_count || 0} 个任务，${overview.enabled_schedule_count || 0} 个已启用调度，${overview.registered || 0} 个已有运行记录。</span><span class="dm-management-hint">列表可直接启用/停用、执行和重试。</span>`;
   }
 
   window.taskCenterShowLogs = runId => { if (!runId) return alert('当前任务还没有执行记录'); fetch(`/api/task-center/runs/${runId}/logs`).then(r => r.json()).then(d => alert(d.text || '暂无日志')); };
