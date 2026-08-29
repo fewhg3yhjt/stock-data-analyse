@@ -526,6 +526,52 @@ def api_data_center_asset_detail(metric_key):
     return flask.jsonify({"status": "success", "asset": asset})
 
 
+@web_app.route("/api/data-center/assets/<metric_key>/definition", methods=["POST"])
+def api_data_center_asset_definition(metric_key):
+    from StockInvestmentTool.ops.task_center import TaskConfigError
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    payload = flask.request.get_json(silent=True) or {}
+    try:
+        center = TaskCenterService(management_db_path()).center
+        result = center.set_metric_definition(
+            metric_key, display_name=payload.get("display_name", ""),
+            category=payload.get("category", "技术指标"), definition=payload.get("definition", ""),
+            unit=payload.get("unit", ""), producer_task=payload.get("producer_task", "indicators_build"),
+            builtin=bool(payload.get("builtin", False)))
+    except (ValueError, TypeError, TaskConfigError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", "metric_key": metric_key, "version": result})
+
+
+@web_app.route("/api/data-center/assets/<metric_key>/disable", methods=["POST"])
+def api_data_center_asset_disable(metric_key):
+    from StockInvestmentTool.ops.task_center import TaskConfigError
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    try:
+        TaskCenterService(management_db_path()).center.disable_metric(metric_key)
+    except (ValueError, TaskConfigError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", "metric_key": metric_key, "enabled": False})
+
+
+@web_app.route("/api/data-center/assets/<metric_key>/regenerate", methods=["POST"])
+def api_data_center_asset_regenerate(metric_key):
+    from StockInvestmentTool.ops.task_execution import execute_task
+    from StockInvestmentTool.ops.task_center import TaskCenter
+    center = TaskCenter(management_db_path(), management_db_path())
+    metric = next((item for item in center.list_metrics() if item["metric_key"] == metric_key), None)
+    if not metric:
+        return flask.jsonify({"status": "error", "error": "指标不存在"}), 404
+    task_key = metric.get("producer_task")
+    try:
+        result = execute_task(management_db_path(), task_key, {
+            "trigger_type": "manual", "requested_by": "data_asset_regenerate",
+        })
+    except (ValueError, RuntimeError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", "metric_key": metric_key, **result}), 202
+
+
 @web_app.route("/api/task-center/overview", methods=["GET"])
 def api_task_center_overview():
     from StockInvestmentTool.ops.task_center_service import TaskCenterService
@@ -597,38 +643,51 @@ def api_task_center_task_config_activate(task_key, version):
 
 @web_app.route("/api/task-center/tasks/<task_key>/execute", methods=["POST"])
 def api_task_center_task_execute(task_key):
-    """Start a supported task through the existing production job handlers."""
+    """Start a configured task through the new task runner."""
     payload = flask.request.get_json(silent=True) or {}
-    handlers = {
-        "stock_daily_capture": ("daily-sync", api_data_daily_sync),
-        "indicators_build": ("rebuild-indicators", api_data_rebuild_indicators),
-        "factors_build": ("rebuild-factors", api_data_rebuild_factors),
-    }
-    handler = handlers.get(task_key)
-    if handler is None:
-        return flask.jsonify({"status": "error", "error": "该任务尚未接入统一执行处理器"}), 409
-    # The legacy handlers currently use their configured production scope.
-    # Reject unsupported ad-hoc scope rather than silently ignoring it.
-    if any(payload.get(key) for key in ("period_start", "period_end", "symbols", "force_refresh")):
-        return flask.jsonify({"status": "error", "error": "该任务处理器暂不支持自定义执行范围"}), 400
-    return handler[1]()
+    from StockInvestmentTool.ops.task_execution import execute_task
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    if TaskCenterService(management_db_path()).task(task_key) is None:
+        return flask.jsonify({"status": "error", "error": "任务不存在"}), 404
+    if not task_key:
+        return flask.jsonify({"status": "error", "error": "任务不能为空"}), 400
+    # The unified worker creates the request and run itself; execute it in a
+    # daemon thread so the UI receives a run acknowledgement immediately.
+    result_holder = {}
+    def execute():
+        try:
+            result_holder["result"] = execute_task(management_db_path(), task_key, payload)
+        except Exception as exc:
+            result_holder["error"] = str(exc)
+    thread = threading.Thread(target=execute, daemon=True, name=f"task-center-{task_key}")
+    thread.start()
+    return flask.jsonify({"status": "success", "task_key": task_key,
+                          "message": "任务已提交"}), 202
 
 
 @web_app.route("/api/task-center/runs/<int:run_id>/retry", methods=["POST"])
 def api_task_center_run_retry(run_id):
     from StockInvestmentTool.ops.job_runs import JobRunStore
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
     item = JobRunStore(management_db_path()).get(run_id)
     if not item:
         return flask.jsonify({"status": "error", "error": "任务运行记录不存在"}), 404
     if item.get("status") not in {"failed", "partial_success"}:
         return flask.jsonify({"status": "error", "error": "只有失败或部分完成的任务可以重试"}), 400
-    task_key = item.get("job_name")
-    handlers = {"daily_sync": api_data_daily_sync, "rebuild_indicators": api_data_rebuild_indicators,
-                "rebuild_factors": api_data_rebuild_factors}
-    handler = handlers.get(task_key)
-    if handler is None:
-        return flask.jsonify({"status": "error", "error": "该任务尚未接入重试处理器"}), 409
-    return handler()
+    task_key = {"daily_sync": "stock_daily_capture", "rebuild_indicators": "indicators_build",
+                "rebuild_factors": "factors_build"}.get(item.get("job_name"), item.get("job_name"))
+    if TaskCenterService(management_db_path()).task(task_key) is None:
+        return flask.jsonify({"status": "error", "error": "对应的新任务不存在"}), 404
+    from StockInvestmentTool.ops.task_execution import execute_task
+    try:
+        result = execute_task(management_db_path(), task_key, {
+            "trigger_type": "retry", "period_start": item.get("period_start"),
+            "period_end": item.get("period_end"), "symbols": [],
+            "requested_by": "task_center_retry",
+        })
+    except (ValueError, RuntimeError) as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", **result}), 202
 
 
 @web_app.route("/api/data-center/versions/<version_id>/publish", methods=["POST"])

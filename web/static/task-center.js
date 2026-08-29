@@ -50,9 +50,8 @@
   }
 
   function runTask(task) {
-    const map = {stock_daily_capture:'daily-sync', indicators_build:'rebuild-indicators', factors_build:'rebuild-factors'};
-    if (!task || !map[task.task_key]) return alert('该任务已登记，但执行处理器尚未接入');
-    fetch(`/api/data/jobs/${map[task.task_key]}`, {method:'POST'}).then(response => response.json()).then(data => {
+    if (!task) return;
+    fetch(`/api/task-center/tasks/${encodeURIComponent(task.task_key)}/execute`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})}).then(response => response.json()).then(data => {
       if (data.status !== 'success') alert(data.error || '启动失败'); else loadTasks();
     }).catch(error => alert(`启动失败：${error.message}`));
   }

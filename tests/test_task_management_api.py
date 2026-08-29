@@ -40,3 +40,11 @@ def test_task_service_can_toggle_enabled(tmp_path):
     with sqlite3.connect(path) as conn:
         assert conn.execute("SELECT enabled FROM task_definitions WHERE task_key=?",
                             ("money_flow_capture",)).fetchone()[0] == 1
+
+
+def test_task_execution_rejects_missing_universe(tmp_path):
+    from StockInvestmentTool.ops.task_execution import execute_task
+    center = TaskCenter(tmp_path / "management.db")
+    center.sync_definitions()
+    with pytest.raises(ValueError, match="证券范围"):
+        execute_task(tmp_path / "management.db", "indicators_build", {})
