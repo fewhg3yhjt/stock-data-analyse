@@ -519,8 +519,12 @@ def api_data_center_overview():
             counts["critical"] += 1
         else:
             counts["unknown"] += 1
+    task_catalog = center.task_catalog()
+    pipeline_keys = ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
+                     "stock_daily_publish", "indicators_build", "factors_build")
+    pipeline = [task for key in pipeline_keys for task in task_catalog if task["task_key"] == key]
     return flask.jsonify({"status": "success", "counts": counts,
-                          "task": center.task_overview(),
+                          "task": center.task_overview(), "pipeline": pipeline,
                           "attention": [item for item in all_assets if item.get("health_status") in ("partial", "stale", "critical")],
                           "assets": assets})
 

@@ -139,6 +139,10 @@ def test_legacy_stock_link_redirects_to_analyze(client):
     assert response.headers["Location"].startswith("/analyze?")
 
 
+def test_removed_task_center_route_is_not_available(client):
+    assert client.get("/task-center").status_code == 404
+
+
 def _href_for_active(active: str) -> str:
     return {
         "analyze": "/analyze",

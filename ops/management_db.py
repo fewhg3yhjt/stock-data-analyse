@@ -232,6 +232,10 @@ class ManagementDB:
                 counts[table] = len(rows)
             new.execute("INSERT OR REPLACE INTO management_meta(key,value,updated_at) VALUES(?,?,?)",
                         (f"migrated_{kind}", json.dumps(counts, ensure_ascii=False), now()))
+            if kind == "job_runs":
+                new.execute("""UPDATE job_runs SET status='failed',finished_at=?,updated_at=?,
+                    error=CASE WHEN error='' THEN '旧任务进程已结束，迁移时回收运行状态' ELSE error END
+                    WHERE record_origin='legacy_job_runs' AND status='running'""", (now(), now()))
         return {"source": str(source), "kind": kind, "tables": counts, "skipped": False}
 
     def migrate_from(self, *, job_db: Path | str | None = None,

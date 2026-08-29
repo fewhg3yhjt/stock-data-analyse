@@ -11,6 +11,15 @@ def test_data_center_uses_user_data_item_language():
     assert "股票类型覆盖" not in content
     assert "Raw Batch" not in content
     assert "Candidate" not in content
+    assert "重点数据状态" in content
+    assert "查看全部数据项" in content
+
+
+def test_data_assets_is_a_distinct_catalog_page():
+    content = (ROOT / "web/templates/data_center_assets.html").read_text(encoding="utf-8")
+    assert "数据项目录" in content
+    assert "全部分类" in content
+    assert "重点数据状态" not in content
 
 
 def test_task_center_has_explicit_actions_and_period_language():
@@ -20,3 +29,5 @@ def test_task_center_has_explicit_actions_and_period_language():
     assert "立即执行" in content
     assert "配置版本" in content
     assert "数据总览" in content
+    assert "本次执行范围" in content
+    assert "查看日志" in content

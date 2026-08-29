@@ -448,11 +448,13 @@ class TaskCenter:
 
     def task_overview(self) -> dict:
         with self._connect() as conn:
-            rows = conn.execute("SELECT status, COUNT(*) AS count FROM job_runs GROUP BY status").fetchall()
-            running = conn.execute("SELECT COUNT(*) FROM job_runs WHERE status='running'").fetchone()[0]
             today = datetime.now().strftime("%Y-%m-%d")
+            rows = conn.execute("SELECT status, COUNT(*) AS count FROM job_runs WHERE started_at LIKE ? GROUP BY status", (today + "%",)).fetchall()
+            running = conn.execute("SELECT COUNT(*) FROM job_runs WHERE status='running'").fetchone()[0]
             completed = conn.execute("SELECT COUNT(*) FROM job_runs WHERE started_at LIKE ? AND status IN ('success','partial_success')", (today + "%",)).fetchone()[0]
-        return {"counts": {row[0]: row[1] for row in rows}, "running": running, "today_completed": completed}
+            total = conn.execute("SELECT COUNT(*) FROM job_runs WHERE started_at LIKE ?", (today + "%",)).fetchone()[0]
+        return {"counts": {row[0]: row[1] for row in rows}, "running": running,
+                "today_completed": completed, "today_total": total, "date": today}
 
     def task_catalog(self) -> list[dict]:
         """Return one task object with configuration and runtime facts."""
@@ -481,7 +483,7 @@ class TaskCenter:
                 running = conn.execute(f"SELECT * FROM job_runs WHERE job_name IN ({marks}) AND status='running' ORDER BY id DESC LIMIT 1", runtime_names).fetchone()
                 item["latest_run"] = dict(latest) if latest else None
                 item["running_run"] = dict(running) if running else None
-                item["runtime_task_key"] = runtime_name
+                item["runtime_task_keys"] = runtime_names
         return [task_labels(item) for item in definitions]
 
     def task_overview_payload(self) -> dict:
