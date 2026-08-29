@@ -2017,6 +2017,7 @@ OHLC 和成交数据是否异常？
 - 任务执行框架已补充统一 Runner：定时、手动、补数、重试和 Shadow 使用统一执行请求契约，执行请求绑定任务配置版本、周期区间、触发方式和证券范围；阶段事件、文本日志、产物登记和血缘可统一查询。
 - 架构沉淀：任务中心负责任务定义、周期、执行请求、运行过程和技术产物；数据中心负责数据/指标定义、统一口径、最新周期、覆盖和健康。任务阶段、任务类型、数据产物和指标健康不得混用，统一术语见 `TASK_DATA_GLOSSARY.md`。
 - 证券类型适配已完成基础实现：`stock/etf/index` 使用独立 YAML profile 定义数据集和指标的 `required/optional/not_applicable`，任务通过 `scope.asset_types` 声明范围，采集、指标和因子执行会按类型筛选并返回类型统计；混合证券的大批量真实验证尚未执行。
+- 新管理库阶段已完成验证：`output/validation/data_pipeline/management.db` 可独立承载 YAML 定义和旧数据版本事实，管理服务支持通过 `MANAGEMENT_DB_PATH` 显式切换；生产页面和调度尚未切换，旧库未删除。
 - 混合证券小量 Shadow 验证已完成：3 只股票（`sh600000`、`sh600519`、`sz000001`）和 1 只 ETF（`sh510050`）在 `2026-08-25` 至 `2026-08-28` 完成真实腾讯采集、标准构建、质量、隔离发布、指标和因子计算；类型统计为 `stock=3`、`etf=1`，覆盖率 100%。
 - 真实 Shadow Run 已完成两次小批量验证：首轮 `sh600000/sh600001/sz000001` 中 `sh600001` 无有效返回，覆盖率 2/3，质量 FAIL 且正确阻断；第二轮使用 `sh600000/sh600519/sz000001`，覆盖 3/3、5 个交易日共 15 行，质量 PASS，完整生成 Shadow Raw/Candidate/Published/指标/因子并登记产物血缘。
 - Shadow 输出位于 `output/data/shadow_validation_retry/`，与正式 `output/data/warehouse/` 隔离；正式 meta.db、daily、indicators、factors 的 checksum 在运行前后保持不变。

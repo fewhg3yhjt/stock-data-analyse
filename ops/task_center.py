@@ -20,6 +20,17 @@ TASK_CONFIG_DIR = Path(__file__).resolve().parents[1] / "config" / "tasks"
 METRIC_CONFIG = Path(__file__).resolve().parents[1] / "config" / "metrics" / "catalog.yaml"
 
 
+def management_db_path(default: Path | str | None = None) -> Path:
+    """Resolve the active management DB without changing the default legacy path."""
+    import os
+    if os.getenv("MANAGEMENT_DB_PATH"):
+        return Path(os.environ["MANAGEMENT_DB_PATH"])
+    if default is not None:
+        return Path(default)
+    from StockInvestmentTool.config import Config
+    return Config.DATA_DIR / "management.db"
+
+
 class TaskConfigError(ValueError):
     pass
 

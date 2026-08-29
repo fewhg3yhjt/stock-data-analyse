@@ -393,7 +393,7 @@ def api_tasks():
     """List declarative task definitions for the task center."""
     from StockInvestmentTool.ops.task_center import TaskCenter
     from StockInvestmentTool.config import Config
-    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    center = _task_center_service()
     center.sync_definitions()
     return flask.jsonify({"status": "success", "tasks": center.list_tasks()})
 
@@ -401,7 +401,7 @@ def api_tasks():
 @web_app.route("/api/tasks/<task_key>", methods=["GET"])
 def api_task_detail(task_key):
     from StockInvestmentTool.ops.task_center import TaskCenter
-    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    center = _task_center_service()
     center.sync_definitions()
     task = center.task(task_key)
     if task is None:
@@ -416,7 +416,7 @@ def api_task_events(run_id):
     after = flask.request.args.get("after", "0")
     limit = flask.request.args.get("limit", "200")
     try:
-        events = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db").events(run_id, limit=int(limit), after_id=int(after))
+        events = _task_center_service().events(run_id, limit=int(limit), after_id=int(after))
     except (TypeError, ValueError):
         return flask.jsonify({"status": "error", "error": "事件分页参数无效"}), 400
     return flask.jsonify({"status": "success", "events": events})
@@ -425,7 +425,7 @@ def api_task_events(run_id):
 @web_app.route("/api/tasks/runs/<int:run_id>/logs", methods=["GET"])
 def api_task_logs(run_id):
     from StockInvestmentTool.ops.task_center import TaskCenter
-    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    center = _task_center_service()
     path = center.db_path.parent / "task_logs" / f"{run_id}.log"
     if not path.exists():
         return flask.jsonify({"status": "success", "run_id": run_id, "log": "", "next_offset": 0})
@@ -443,14 +443,14 @@ def api_task_logs(run_id):
 @web_app.route("/api/tasks/runs/<int:run_id>/artifacts", methods=["GET"])
 def api_task_artifacts(run_id):
     from StockInvestmentTool.ops.task_center import TaskCenter
-    return flask.jsonify({"status": "success", "artifacts": TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db").artifacts(run_id=run_id)})
+    return flask.jsonify({"status": "success", "artifacts": _task_center_service().artifacts(run_id=run_id)})
 
 
 @web_app.route("/api/artifacts/<artifact_id>/preview", methods=["GET"])
 def api_artifact_preview(artifact_id):
     from StockInvestmentTool.ops.task_center import TaskCenter
     try:
-        preview = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db").preview_artifact(
+        preview = _task_center_service().preview_artifact(
             artifact_id, limit=int(flask.request.args.get("limit", "50")),
             offset=int(flask.request.args.get("offset", "0")))
     except FileNotFoundError:
@@ -465,7 +465,7 @@ def api_artifact_lineage(artifact_id):
     from StockInvestmentTool.ops.task_center import TaskCenter
     direction = flask.request.args.get("direction", "both")
     try:
-        result = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db").lineage(artifact_id, direction)
+        result = _task_center_service().lineage(artifact_id, direction)
     except ValueError as exc:
         return flask.jsonify({"status": "error", "error": str(exc)}), 400
     return flask.jsonify({"status": "success", "artifact_id": artifact_id, **result})
@@ -474,7 +474,7 @@ def api_artifact_lineage(artifact_id):
 @web_app.route("/api/metrics/catalog", methods=["GET"])
 def api_metrics_catalog():
     from StockInvestmentTool.ops.task_center import TaskCenter
-    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    center = _task_center_service()
     center.sync_definitions()
     center.sync_metrics()
     return flask.jsonify({"status": "success", "metrics": center.list_metrics()})
@@ -483,7 +483,7 @@ def api_metrics_catalog():
 @web_app.route("/api/metrics/<metric_key>", methods=["GET"])
 def api_metric_detail(metric_key):
     from StockInvestmentTool.ops.task_center import TaskCenter
-    center = TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    center = _task_center_service()
     center.sync_metrics()
     metric = next((item for item in center.list_metrics() if item["metric_key"] == metric_key), None)
     if metric is None:
@@ -494,7 +494,11 @@ def api_metric_detail(metric_key):
 
 def _task_center_service():
     from StockInvestmentTool.ops.task_center import TaskCenter
-    return TaskCenter(Config.DATA_DIR / "job_runs.db", Config.DATA_DIR / "warehouse" / "meta.db")
+    from StockInvestmentTool.ops.task_center import management_db_path
+    path = management_db_path()
+    if path.name == "management.db":
+        return TaskCenter(path, path)
+    return TaskCenter(path, Config.DATA_DIR / "warehouse" / "meta.db")
 
 
 @web_app.route("/api/data-center/overview", methods=["GET"])
