@@ -114,7 +114,9 @@ class FactorEngine:
         for ym in months:
             try:
                 from StockInvestmentTool.warehouse.datasets import load_dataset
-                loaded = load_dataset(self.warehouse, "stock_daily", f"{ym}-01", f"{ym}-31",
+                month_start = pd.Timestamp(f"{ym}-01")
+                month_end = month_start + pd.offsets.MonthEnd(1)
+                loaded = load_dataset(self.warehouse, "stock_daily", str(month_start.date()), str(month_end.date()),
                                       allow_legacy=self.allow_legacy)
                 df = loaded.data
                 input_versions.update(loaded.context.get("partition_versions", {}))
