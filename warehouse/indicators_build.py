@@ -38,8 +38,9 @@ class IndicatorsBuilder:
                   max_symbols: Optional[int] = None,
                   metrics: Optional[list[str]] = None,
                   flush_every: int = 500,
-                  progress_callback=None, changed_start: Optional[str] = None,
-                  changed_end: Optional[str] = None, asset_types: Optional[list[str]] = None) -> dict:
+                   progress_callback=None, changed_start: Optional[str] = None,
+                   changed_end: Optional[str] = None, asset_types: Optional[list[str]] = None,
+                   months: Optional[list[str]] = None) -> dict:
         """全市场指标宽表生成（分组一次遍历 + 分批落盘）。
 
         需仓库已有 daily 分区（先跑 sync_daily）。
@@ -50,7 +51,7 @@ class IndicatorsBuilder:
         Returns:
             dict: 标的数 / 覆盖月份 / 耗时
         """
-        months = self.warehouse.available_months("daily")
+        months = months or self.warehouse.available_months("daily")
         if not months:
             logger.warning("无日线分区，请先运行 sync")
             return {"symbols": 0, "months": 0, "rows": 0, "failed": [], "skipped": True,
@@ -108,6 +109,8 @@ class IndicatorsBuilder:
                     continue
                 existing = self.warehouse.read_indicator(ym)
                 if existing is not None and len(existing):
+                    selected_codes = set(df["code"].astype(str))
+                    existing = existing[~existing["code"].astype(str).isin(selected_codes)]
                     df = pd.concat([existing, df], ignore_index=True)
                 # Rebuilds may add indicator columns; prefer the new row so
                 # stale rows from an older schema cannot mask fresh values.

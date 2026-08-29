@@ -256,7 +256,8 @@ class MarketCollector:
                    target: str = "daily",
                    progress_callback=None, job_run_id: Optional[int] = None,
                    capture_raw: Optional[bool] = None,
-                   asset_types: Optional[list[str]] = None) -> dict:
+                   asset_types: Optional[list[str]] = None,
+                   force_refresh: bool = False) -> dict:
         """全市场日线增量同步（核心）。
 
         Args:
@@ -270,6 +271,7 @@ class MarketCollector:
             target: 写入目标
                 daily     → 加工层 daily/ 分区（旧行为，直接写完整宽表）
                 raw:<src> → 贴源层 raw/<src>/ 分区（源数据独立存放，不覆盖）
+            force_refresh: 忽略已有覆盖日期，重新请求指定证券的完整区间。
 
         Returns:
             dict: 统计（新增行数/失败数/耗时）
@@ -393,14 +395,14 @@ class MarketCollector:
                 progress_callback(i - 1, len(symbols), code, "读取日线")
             # 增量判断：该标的自有最后日期 >= end_date → 已覆盖，跳过
             last = last_dates.get(code)
-            if last is not None and last >= end_ts:
+            if not force_refresh and last is not None and last >= end_ts:
                 skipped += 1
                 if progress_callback:
                     progress_callback(i, len(symbols), code, "已是最新")
                 continue
 
             # 只拉缺失区间：已有数据的拉 (last_date+1, end_date]，无数据拉全区间
-            if last is not None:
+            if not force_refresh and last is not None:
                 fetch_start = (last + timedelta(days=1)).strftime("%Y-%m-%d")
             else:
                 fetch_start = start_date

@@ -90,7 +90,8 @@ class FactorEngine:
     def build_factors(self, symbols: Optional[list[str]] = None,
                       max_symbols: Optional[int] = None,
                       progress_callback=None, changed_start: Optional[str] = None,
-                      changed_end: Optional[str] = None, asset_types: Optional[list[str]] = None) -> dict:
+                      changed_end: Optional[str] = None, asset_types: Optional[list[str]] = None,
+                      months: Optional[list[str]] = None) -> dict:
         """全市场因子宽表计算（分组一次遍历 + 按月落盘）。
 
         需仓库已有日线分区（先跑 collect sync_daily）。
@@ -100,7 +101,7 @@ class FactorEngine:
         内存峰值 = 全量日线一份（近3年全市场约 500-600MB，2C2G 可承受，
         作为独立离线任务运行；与 web 同进程时建议错峰）。
         """
-        months = self.warehouse.available_months("daily")
+        months = months or self.warehouse.available_months("daily")
         if not months:
             logger.warning("无日线分区，请先运行 sync")
             return {"symbols": 0, "months": 0, "rows": 0, "failed": [], "skipped": True,
@@ -180,6 +181,11 @@ class FactorEngine:
 
         # ④ 统一写盘
         for ym, df in month_bufs.items():
+            existing = self.warehouse.read_factor(ym)
+            if existing is not None and len(existing):
+                selected_codes = set(df["code"].astype(str))
+                existing = existing[~existing["code"].astype(str).isin(selected_codes)]
+                df = pd.concat([existing, df], ignore_index=True)
             df = df.drop_duplicates(subset=["date", "code"]).sort_values(["date", "code"])
             self.warehouse.write_factor_partition(ym, df)
 

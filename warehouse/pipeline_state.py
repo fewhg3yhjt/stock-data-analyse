@@ -115,6 +115,60 @@ class PipelineState:
                 versions[partition] = version_id
         return versions
 
+    def record_file_versions(self, *, dataset_name: str, files: dict[str, Path],
+                             source_batches: list[str], quality: dict,
+                             builder_version: str = "source_capture.v1",
+                             schema_version: str = "source.v1") -> dict[str, str]:
+        """Register already-written auxiliary files as published versions.
+
+        The operation is idempotent by checksum and keeps the current pointer
+        on the newest file version without rewriting the file itself.
+        """
+        import hashlib
+        versions = {}
+        with sqlite3.connect(self.db_path) as conn:
+            for partition, path in files.items():
+                path = Path(path)
+                if not path.exists():
+                    continue
+                checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+                version_id = f"{dataset_name}_{partition.replace('-', '').replace('/', '_')}_{checksum[:12]}"
+                frame = None
+                try:
+                    frame = pd.read_parquet(path)
+                except Exception:
+                    pass
+                row_count = len(frame) if frame is not None else 0
+                symbol_count = int(frame["code"].nunique()) if frame is not None and "code" in frame else 0
+                min_date = max_date = None
+                if frame is not None:
+                    date_col = "date" if "date" in frame else "stat_date" if "stat_date" in frame else None
+                    if date_col and len(frame):
+                        values = pd.to_datetime(frame[date_col], errors="coerce")
+                        min_date, max_date = str(values.min())[:10], str(values.max())[:10]
+                conn.execute("""INSERT OR IGNORE INTO dataset_versions
+                    (version_id,dataset_name,partition_key,candidate_path,published_path,source_batches,
+                     row_count,symbol_count,min_date,max_date,schema_version,checksum,builder_version,
+                     quality_status,publish_status,created_at,published_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (version_id, dataset_name, partition, str(path), str(path), json.dumps(source_batches),
+                     row_count, symbol_count, min_date, max_date, schema_version, checksum,
+                     builder_version, quality.get("status", "PASS"), "published", _now(), _now()))
+                conn.execute("""INSERT INTO dataset_current(dataset_name,partition_key,version_id,published_at)
+                    VALUES(?,?,?,?) ON CONFLICT(dataset_name,partition_key) DO UPDATE SET
+                    version_id=excluded.version_id,published_at=excluded.published_at""",
+                    (dataset_name, partition, version_id, _now()))
+                conn.execute("""INSERT OR IGNORE INTO dataset_quality_results
+                    (quality_id,dataset_name,partition_key,version_id,status,checks,affected_symbols,
+                     publish_allowed,checked_at,checker_version)
+                    VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (f"quality_{version_id}", dataset_name, partition, version_id,
+                     quality.get("status", "PASS"), json.dumps(quality, ensure_ascii=False),
+                     json.dumps([], ensure_ascii=False), int(quality.get("publish_allowed", True)),
+                     _now(), "source_capture.v1"))
+                versions[partition] = version_id
+        return versions
+
     def update_rollback_path(self, version_id: str, path: Path) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("UPDATE dataset_versions SET rollback_path=? WHERE version_id=?", (str(path), version_id))

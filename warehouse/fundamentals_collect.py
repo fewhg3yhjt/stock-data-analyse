@@ -96,7 +96,7 @@ class FundamentalsCollector:
 
     def collect_fundamentals(self, codes: Optional[list[str]] = None,
                              max_symbols: Optional[int] = None,
-                             years: int = 5) -> dict:
+                             years: int = 5, force_refresh: bool = False) -> dict:
         """全市场财务史采集，写入 warehouse/fundamentals/<code>.parquet。
 
         已采集（has_fundamentals）的跳过（财务史季度静态，财报更新后重采）。
@@ -115,7 +115,7 @@ class FundamentalsCollector:
         failed_codes = []
         t0 = time.time()
         for i, code in enumerate(codes, 1):
-            if self.warehouse.has_fundamentals(code):
+            if not force_refresh and self.warehouse.has_fundamentals(code):
                 skipped += 1
                 continue
             try:
