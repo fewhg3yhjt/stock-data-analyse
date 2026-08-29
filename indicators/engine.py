@@ -50,6 +50,34 @@ def _abs(v):
     return abs(v)
 
 
+def _rsi(series, n: int = 14) -> pd.Series:
+    """Wilder-style RSI using rolling average gains and losses."""
+    values = pd.Series(series)
+    delta = values.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(int(n), min_periods=int(n)).mean()
+    avg_loss = loss.rolling(int(n), min_periods=int(n)).mean()
+    relative_strength = avg_gain / avg_loss.replace(0, pd.NA)
+    result = 100 - (100 / (1 + relative_strength))
+    result = result.where(avg_loss.ne(0), 100.0)
+    return result.astype(float)
+
+
+def _macd(series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.Series:
+    """Return the MACD line (fast EMA minus slow EMA)."""
+    values = pd.Series(series)
+    fast_ema = values.ewm(span=int(fast), adjust=False, min_periods=int(fast)).mean()
+    slow_ema = values.ewm(span=int(slow), adjust=False, min_periods=int(slow)).mean()
+    return fast_ema - slow_ema
+
+
+def _volatility(series, n: int = 20) -> pd.Series:
+    """Annualized rolling volatility of close-to-close returns in percent."""
+    returns = pd.Series(series).pct_change()
+    return returns.rolling(int(n), min_periods=int(n)).std() * (252 ** 0.5) * 100
+
+
 # 安全函数白名单（表达式可调用）
 SAFE_FUNCS: dict[str, Callable] = {
     "MA": _ma,
@@ -96,6 +124,11 @@ class IndicatorRegistry:
             "MA240": IndicatorDef("MA240", "base", "MA(close,240)", description="240日均线"),
         }
         self._bases.update(builtin)
+        self._code.update({
+            "rsi14": IndicatorDef("rsi14", "code", fn=lambda df, env: _rsi(df["close"], 14), description="14日相对强弱指标"),
+            "macd": IndicatorDef("macd", "code", fn=lambda df, env: _macd(df["close"]), description="MACD线"),
+            "volatility20": IndicatorDef("volatility20", "code", fn=lambda df, env: _volatility(df["close"], 20), description="20日年化波动率"),
+        })
 
         # 从 YAML 加载自定义指标
         if not self.config_path.exists():

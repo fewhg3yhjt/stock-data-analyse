@@ -109,7 +109,9 @@ class IndicatorsBuilder:
                 existing = self.warehouse.read_indicator(ym)
                 if existing is not None and len(existing):
                     df = pd.concat([existing, df], ignore_index=True)
-                df = df.drop_duplicates(subset=["date", "code"])
+                # Rebuilds may add indicator columns; prefer the new row so
+                # stale rows from an older schema cannot mask fresh values.
+                df = df.drop_duplicates(subset=["date", "code"], keep="last")
                 df = df.sort_values(["date", "code"])
                 self.warehouse.write_indicator_partition(ym, df)
                 written_months.add(ym)
