@@ -48,6 +48,11 @@ def test_core_page_renders_shared_navigation(client, path, active):
 
     assert response.status_code == 200
     html = response.get_data(as_text=True)
+    if path in ("/data-center", "/task-center"):
+        assert 'class="dm-sidebar"' in html
+        assert 'class="dm-tabs"' in html
+        assert "任务中心" in html
+        return
     assert 'class="nav"' in html
     assert 'href="/workbench"' in html
     assert 'href="/dashboard/warroom"' in html
