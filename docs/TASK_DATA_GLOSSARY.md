@@ -2,6 +2,12 @@
 
 本文是任务中心、数据中心、API 和后续页面的统一用词依据。
 
+辅助数据采集由任务配置驱动。行业、财务史、估值和资金流分别使用
+`config/tasks/industry_capture.yaml`、`fundamentals_capture.yaml`、
+`valuation_capture.yaml` 和 `money_flow_capture.yaml` 的 `schedule.enabled`
+决定是否参与调度；不得使用环境变量单独绕过任务配置。AkShare、Baostock
+等依赖以生产运行环境为准，不以宿主机 Python 环境的安装状态判断数据源可用性。
+
 ## 一、对象边界
 
 | 对象 | 用户理解 | 系统职责 |

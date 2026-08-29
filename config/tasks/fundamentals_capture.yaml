@@ -1,0 +1,25 @@
+task:
+  key: fundamentals_capture
+  display_name: 财务史采集
+  stage: CAPTURE
+  type: SOURCE_CAPTURE
+  input_datasets: [universe]
+  output_datasets: [fundamentals]
+  producer_metrics: [roe]
+scope:
+  asset_types: [stock]
+  universe: active
+schedule:
+  enabled: false
+  timezone: Asia/Shanghai
+  frequency: quarterly
+  time: "16:00"
+  period_type: quarter
+  period_start: null
+  period_end: null
+execution:
+  manual_enabled: true
+  retry_limit: 2
+policy:
+  on_partial_success: continue
+  on_failure: continue

@@ -1,0 +1,25 @@
+task:
+  key: money_flow_capture
+  display_name: 资金流采集
+  stage: CAPTURE
+  type: SOURCE_CAPTURE
+  input_datasets: [universe]
+  output_datasets: [money_flow_daily]
+  producer_metrics: [money_flow_net]
+scope:
+  asset_types: [stock]
+  universe: active
+schedule:
+  enabled: false
+  timezone: Asia/Shanghai
+  frequency: trading_day
+  time: "15:40"
+  period_type: trading_day
+  period_start: null
+  period_end: null
+execution:
+  manual_enabled: true
+  retry_limit: 2
+policy:
+  on_partial_success: continue
+  on_failure: continue

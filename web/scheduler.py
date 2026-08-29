@@ -271,7 +271,7 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
         )
         if os.getenv("WAREHOUSE_PIPELINE_BUILD") == "1" and result["daily"].get("source_batch_id"):
             result["published_daily"] = publish_daily_batch(result["daily"]["source_batch_id"], run_id)
-        if os.getenv("WAREHOUSE_AUX_SYNC") == "1":
+        if _has_enabled_auxiliary_tasks():
             result["auxiliary"] = run_auxiliary_data_pipeline(parent_run_id=run_id)
         daily_status = store.result_status(result["daily"])
         child_statuses.append(daily_status)
@@ -323,36 +323,76 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
 
 
 def run_auxiliary_data_pipeline(parent_run_id: int | None = None) -> dict:
-    """Collect low-frequency source datasets behind an explicit opt-in flag."""
+    """Collect auxiliary datasets according to task configuration."""
     from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
     from StockInvestmentTool.warehouse.storage import Warehouse
+    from StockInvestmentTool.ops.task_center import load_task_definitions
     from StockInvestmentTool.fundflow.capture import capture_money_flow
 
     warehouse = Warehouse()
     for name in ("industry", "fundamentals", "valuation_daily", "money_flow_daily"):
         warehouse.metadata.register_dataset(name)
-    result = {}
+    configured = {
+        item["task"]["key"]: item
+        for item in load_task_definitions()
+        if item.get("task", {}).get("key")
+    }
+    result = {"enabled_tasks": []}
     collector = FundamentalsCollector(warehouse=warehouse)
-    try:
-        result["industry"] = collector.collect_industry()
-    except Exception as exc:
-        logger.error("行业采集失败: %s", exc)
-        result["industry"] = {"failed": [str(exc)]}
-    try:
-        result["fundamentals"] = collector.collect_fundamentals()
-    except Exception as exc:
-        logger.error("财务史采集失败: %s", exc)
-        result["fundamentals"] = {"failed": 1, "error": str(exc)}
-    # Valuation is an existing targeted backfill path and remains opt-in here;
-    # it needs the daily universe and should not run before daily succeeds.
-    if os.getenv("WAREHOUSE_MONEY_FLOW_SYNC") == "1":
+    if _task_schedule_enabled(configured, "industry_capture"):
+        try:
+            result["industry"] = collector.collect_industry()
+        except Exception as exc:
+            logger.error("行业采集失败: %s", exc)
+            result["industry"] = {"failed": [str(exc)]}
+        result["enabled_tasks"].append("industry_capture")
+    if _task_schedule_enabled(configured, "fundamentals_capture"):
+        try:
+            result["fundamentals"] = collector.collect_fundamentals()
+        except Exception as exc:
+            logger.error("财务史采集失败: %s", exc)
+            result["fundamentals"] = {"failed": 1, "error": str(exc)}
+        result["enabled_tasks"].append("fundamentals_capture")
+    if _task_schedule_enabled(configured, "valuation_capture"):
+        try:
+            from StockInvestmentTool.warehouse.backfill import ValuationBackfill
+            daily = warehouse.read_daily(warehouse.available_months("daily")[-1])
+            codes = sorted(c for c in daily["code"].unique()
+                           if c.startswith(("sh6", "sz0", "sz3", "bj4", "bj8")))
+            result["valuation"] = ValuationBackfill(warehouse).backfill_many(
+                codes, (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d"),
+                (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"), reprocess=True)
+        except Exception as exc:
+            logger.error("估值采集失败: %s", exc)
+            result["valuation"] = {"failed": 1, "error": str(exc)}
+        result["enabled_tasks"].append("valuation_capture")
+    if _task_schedule_enabled(configured, "money_flow_capture"):
         try:
             result["money_flow"] = capture_money_flow("stock", "now", warehouse=warehouse)
         except Exception as exc:
             logger.error("资金流采集失败: %s", exc)
             result["money_flow"] = {"ok": False, "error": str(exc)}
+        result["enabled_tasks"].append("money_flow_capture")
     result["enabled"] = True
     return result
+
+
+def _has_enabled_auxiliary_tasks() -> bool:
+    """Whether any configured auxiliary capture task is enabled."""
+    from StockInvestmentTool.ops.task_center import load_task_definitions
+    auxiliary_keys = {"industry_capture", "fundamentals_capture",
+                      "valuation_capture", "money_flow_capture"}
+    return any(
+        item.get("task", {}).get("key") in auxiliary_keys
+        and bool((item.get("schedule") or {}).get("enabled", False))
+        for item in load_task_definitions()
+    )
+
+
+def _task_schedule_enabled(configured: dict[str, dict], task_key: str) -> bool:
+    """Return whether an auxiliary task is enabled for scheduled execution."""
+    item = configured.get(task_key) or {}
+    return bool((item.get("schedule") or {}).get("enabled", False))
 
 
 def publish_daily_batch(batch_id: str, job_run_id: int | None = None) -> dict:

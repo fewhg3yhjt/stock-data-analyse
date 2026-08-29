@@ -1,0 +1,25 @@
+task:
+  key: valuation_capture
+  display_name: 估值数据采集
+  stage: CAPTURE
+  type: SOURCE_CAPTURE
+  input_datasets: [stock_daily]
+  output_datasets: [valuation_daily]
+  producer_metrics: [pe_ttm, pb_mrq]
+scope:
+  asset_types: [stock]
+  universe: active
+schedule:
+  enabled: false
+  timezone: Asia/Shanghai
+  frequency: trading_day
+  time: "15:45"
+  period_type: trading_day
+  period_start: null
+  period_end: null
+execution:
+  manual_enabled: true
+  retry_limit: 2
+policy:
+  on_partial_success: continue
+  on_failure: continue
