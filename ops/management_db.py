@@ -264,3 +264,50 @@ class ManagementDB:
                   "metric_health", "artifact_lineage")
         with self.connect() as conn:
             return {table: int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]) for table in tables}
+
+    def seed_health_from_warehouse(self, warehouse_dir: Path | str) -> dict:
+        """Seed conservative health facts from existing result files.
+
+        This indexes what is present; it does not claim a missing data family is
+        healthy and never rewrites the source files.
+        """
+        import pandas as pd
+
+        root = Path(warehouse_dir)
+        results = {}
+        for directory, metric_keys in (("daily", ("close", "volume", "amount")),
+                                        ("indicators", ("ma5", "ma20", "rsi14", "macd", "volatility20")),
+                                        ("factors", ("ret5d", "ret20d", "vol_ratio", "high20d", "low20d"))):
+            paths = sorted((root / directory).glob("*.parquet"))
+            if not paths:
+                continue
+            frames = []
+            for path in paths:
+                try:
+                    frames.append(pd.read_parquet(path, columns=["date", "code"]))
+                except Exception:
+                    continue
+            if not frames:
+                continue
+            frame = pd.concat(frames, ignore_index=True)
+            latest = str(pd.to_datetime(frame["date"], errors="coerce").max())[:10]
+            covered = int(frame["code"].astype(str).nunique())
+            for metric_key in metric_keys:
+                self._upsert_health(metric_key, latest, covered, covered, "healthy", "已有正式结果文件")
+            results[directory] = {"latest_date": latest, "covered_objects": covered, "metrics": len(metric_keys)}
+        with self.connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO management_meta(key,value,updated_at) VALUES(?,?,?)",
+                         ("health_seeded_from", str(root), now()))
+        return results
+
+    def _upsert_health(self, metric_key, latest, covered, expected, status, message):
+        with self.connect() as conn:
+            conn.execute("""INSERT INTO metric_health
+                (metric_key,latest_period,expected_period,covered_objects,expected_objects,coverage,
+                 last_success_at,status,message,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(metric_key) DO UPDATE SET
+                latest_period=excluded.latest_period,expected_period=excluded.expected_period,
+                covered_objects=excluded.covered_objects,expected_objects=excluded.expected_objects,
+                coverage=excluded.coverage,last_success_at=excluded.last_success_at,
+                status=excluded.status,message=excluded.message,updated_at=excluded.updated_at""",
+                         (metric_key, latest, latest, covered, expected, 1.0, now(), status, message, now()))

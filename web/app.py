@@ -565,7 +565,7 @@ def api_task_center_tasks():
 
 @web_app.route("/task-center", methods=["GET"])
 def task_center_page():
-    return flask.render_template("task_center.html")
+    return flask.redirect("/data-center/tasks")
 
 
 def _start_data_job(job_name, worker):
@@ -632,6 +632,16 @@ def api_data_rebuild_factors():
 @web_app.route("/data-center", methods=["GET"])
 def data_center_page():
     return flask.render_template("data_center.html")
+
+
+@web_app.route("/data-center/assets", methods=["GET"])
+def data_center_assets_page():
+    return flask.render_template("data_center_assets.html")
+
+
+@web_app.route("/data-center/tasks", methods=["GET"])
+def data_center_tasks_page():
+    return flask.render_template("task_center.html")
 
 
 @web_app.route("/api/watch-pool", methods=["GET"])

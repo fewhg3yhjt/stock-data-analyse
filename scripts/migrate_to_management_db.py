@@ -15,11 +15,15 @@ def main(argv=None) -> int:
     parser.add_argument("--output", type=Path, required=True, help="新 management.db 路径")
     parser.add_argument("--job-db", type=Path, default=None, help="旧 job_runs.db")
     parser.add_argument("--warehouse-db", type=Path, default=None, help="旧 warehouse/meta.db")
+    parser.add_argument("--warehouse-dir", type=Path, default=None, help="现有 warehouse 文件目录，用于健康索引")
     args = parser.parse_args(argv)
     db = ManagementDB(args.output)
     result = db.migrate_from(job_db=args.job_db, warehouse_db=args.warehouse_db)
     result["output"] = str(args.output)
     result["counts"] = db.counts()
+    if args.warehouse_dir:
+        result["health"] = db.seed_health_from_warehouse(args.warehouse_dir)
+        result["counts"] = db.counts()
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
