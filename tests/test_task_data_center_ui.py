@@ -31,5 +31,7 @@ def test_task_center_has_explicit_actions_and_period_language():
     assert "立即执行" in content
     assert "配置版本" in content
     assert "数据总览" in content
+    assert "d.overview||d.summary" in content
+    assert "任务数据读取失败" in content
     assert "本次执行范围" in content
     assert "查看日志" in content
