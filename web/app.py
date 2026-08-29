@@ -541,6 +541,17 @@ def api_task_center_tasks():
         stage=flask.request.args.get("stage"), status=flask.request.args.get("status"))})
 
 
+@web_app.route("/api/task-center/tasks/<task_key>/runs", methods=["GET"])
+def api_task_center_task_runs(task_key):
+    from StockInvestmentTool.ops.task_center_service import TaskCenterService
+    try:
+        runs = TaskCenterService(management_db_path()).runs(
+            task_key, limit=flask.request.args.get("limit", 50), date=flask.request.args.get("date"))
+    except ValueError as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    return flask.jsonify({"status": "success", "runs": runs})
+
+
 @web_app.route("/api/task-center/tasks/<task_key>", methods=["GET"])
 def api_task_center_task_detail(task_key):
     from StockInvestmentTool.ops.task_center_service import TaskCenterService

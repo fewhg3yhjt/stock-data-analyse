@@ -36,6 +36,8 @@ class TaskCenterService:
             "running": counts.get("running", 0),
             "failed": counts.get("failed", 0),
             "waiting": counts.get("requested", 0) + counts.get("scheduled", 0) + counts.get("waiting", 0),
+            "configured": len(tasks),
+            "registered": sum(1 for item in tasks if item.get("latest_run") or item.get("running_run")),
         }
 
     def tasks(self, stage: str | None = None, status: str | None = None) -> list[dict]:
@@ -63,6 +65,13 @@ class TaskCenterService:
                 "latest_run": latest,
                 "running_run": running,
                 "current_status": (running or latest or {}).get("status") or ("scheduled" if item.get("enabled") else "disabled"),
+                "configured": True,
+                "registered": bool(item.get("enabled")),
+                "enabled": bool(item.get("enabled")),
+                "running": bool(running),
+                "has_history": bool(latest),
+                "latest_success": latest if latest and latest.get("status") in ("success", "partial_success") else None,
+                "latest_failure": latest if latest and latest.get("status") == "failed" else None,
             }
             if stage and dto["stage"] != stage:
                 continue
@@ -85,6 +94,21 @@ class TaskCenterService:
                 ",".join("?" for _ in self._runtime_names(task_key)), self._runtime_names(task_key),
             ).fetchall()]
         return task
+
+    def runs(self, task_key: str, *, limit: int = 50, date: str | None = None) -> list[dict]:
+        names = self._runtime_names(task_key)
+        marks = ",".join("?" for _ in names)
+        where = [f"job_name IN ({marks})"]
+        args = list(names)
+        if date:
+            where.append("started_at LIKE ?")
+            args.append(f"{date}%")
+        with self.center._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM job_runs WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT ?",
+                args + [max(1, min(int(limit), 200))],
+            ).fetchall()
+        return [self._run_dto(dict(row)) for row in rows]
 
     @staticmethod
     def _runtime_names(task_key):
@@ -118,4 +142,6 @@ class TaskCenterService:
             item["result"] = json.loads(item.get("result") or "{}") if isinstance(item.get("result"), str) else item.get("result", {})
         except (TypeError, ValueError):
             item["result"] = {}
+        item["failed_items"] = item["result"].get("failed", []) if isinstance(item["result"], dict) else []
+        item["failed_count"] = len(item["failed_items"]) if isinstance(item["failed_items"], list) else int(item["result"].get("failed_count", 0) or 0) if isinstance(item["result"], dict) else 0
         return item
