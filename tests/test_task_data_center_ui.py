@@ -26,12 +26,13 @@ def test_data_assets_is_a_distinct_catalog_page():
 
 def test_task_center_has_explicit_actions_and_period_language():
     content = (ROOT / "web/templates/task_center.html").read_text(encoding="utf-8")
+    script = (ROOT / "web/static/task-center.js").read_text(encoding="utf-8")
     assert "任务列表" in content
     assert "执行周期" in content
-    assert "立即执行" in content
-    assert "配置版本" in content
+    assert "立即执行" in script
+    assert "配置版本" in script
     assert "数据总览" in content
-    assert "d.overview||d.summary" in content
-    assert "任务数据读取失败" in content
-    assert "本次执行范围" in content
-    assert "查看日志" in content
+    assert "data.overview" in script
+    assert "任务数据读取失败" in script
+    assert "本次执行范围" in script
+    assert "查看日志" in script
