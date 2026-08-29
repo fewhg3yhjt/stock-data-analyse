@@ -454,6 +454,44 @@ class TaskCenter:
             completed = conn.execute("SELECT COUNT(*) FROM job_runs WHERE started_at LIKE ? AND status IN ('success','partial_success')", (today + "%",)).fetchone()[0]
         return {"counts": {row[0]: row[1] for row in rows}, "running": running, "today_completed": completed}
 
+    def task_catalog(self) -> list[dict]:
+        """Return one task object with configuration and runtime facts."""
+        with self._connect() as conn:
+            definitions = [dict(row) for row in conn.execute("SELECT * FROM task_definitions ORDER BY stage, task_key")]
+            for item in definitions:
+                configs = conn.execute("SELECT config,version,status FROM task_config_versions WHERE task_key=? ORDER BY version DESC", (item["task_key"],)).fetchall()
+                active = next((dict(row) for row in configs if row["status"] == "active"), None)
+                item["config"] = json.loads(active["config"]) if active else {}
+                item["schedule"] = item["config"].get("schedule", {})
+                item["scope"] = item["config"].get("scope", {})
+                item["execution"] = item["config"].get("execution", {})
+                item["policy"] = item["config"].get("policy", {})
+                item["config_versions"] = [dict(row) for row in configs]
+                aliases = {
+                    "stock_daily_capture": ["stock_daily_capture", "daily_sync"],
+                    "stock_daily_build": ["stock_daily_build"],
+                    "stock_daily_quality": ["stock_daily_quality"],
+                    "stock_daily_publish": ["stock_daily_publish"],
+                    "indicators_build": ["indicators_build", "rebuild_indicators"],
+                    "factors_build": ["factors_build", "rebuild_factors"],
+                }
+                runtime_names = aliases.get(item["task_key"], [item["task_key"]])
+                marks = ",".join("?" for _ in runtime_names)
+                latest = conn.execute(f"SELECT * FROM job_runs WHERE job_name IN ({marks}) ORDER BY id DESC LIMIT 1", runtime_names).fetchone()
+                running = conn.execute(f"SELECT * FROM job_runs WHERE job_name IN ({marks}) AND status='running' ORDER BY id DESC LIMIT 1", runtime_names).fetchone()
+                item["latest_run"] = dict(latest) if latest else None
+                item["running_run"] = dict(running) if running else None
+                item["runtime_task_key"] = runtime_name
+        return [task_labels(item) for item in definitions]
+
+    def task_overview_payload(self) -> dict:
+        tasks = self.task_catalog()
+        groups = {}
+        for task in tasks:
+            groups.setdefault(task["stage"], []).append(task)
+        return {"summary": self.task_overview(), "tasks": tasks,
+                "groups": [{"stage": stage, "tasks": items} for stage, items in groups.items()]}
+
     def task(self, task_key: str) -> dict | None:
         with self._connect() as conn:
             task = conn.execute("SELECT * FROM task_definitions WHERE task_key=?", (task_key,)).fetchone()

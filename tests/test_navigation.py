@@ -50,7 +50,7 @@ def test_core_page_renders_shared_navigation(client, path, active):
 
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    if path in ("/data-center", "/data-center/assets", "/data-center/tasks", "/task-center"):
+    if path in ("/data-center", "/data-center/assets", "/data-center/tasks"):
         assert 'class="dm-sidebar"' in html
         assert 'class="dm-tabs"' in html
         assert "任务中心" in html
@@ -137,12 +137,6 @@ def test_legacy_stock_link_redirects_to_analyze(client):
     response = client.get("/?code=sh600900&name=长江电力")
     assert response.status_code == 302
     assert response.headers["Location"].startswith("/analyze?")
-
-
-def test_legacy_task_center_redirects_to_data_module_tasks(client):
-    response = client.get("/task-center")
-    assert response.status_code == 302
-    assert response.headers["Location"] == "/data-center/tasks"
 
 
 def _href_for_active(active: str) -> str:

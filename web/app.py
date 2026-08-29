@@ -506,18 +506,22 @@ def api_data_center_overview():
     center = _task_center_service()
     center.sync_definitions()
     center.sync_metrics()
-    assets = center.data_assets()
-    counts = {"total": len(assets), "normal": 0, "attention": 0, "unknown": 0}
-    for asset in assets:
+    all_assets = center.data_assets()
+    assets = [item for item in all_assets if item.get("metric_key") in {"stock_daily", "indicators", "factors", "close", "ma20", "money_flow_net", "roe", "pe_ttm"}]
+    counts = {"total": len(all_assets), "normal": 0, "attention": 0, "critical": 0, "unknown": 0}
+    for asset in all_assets:
         status = asset.get("health_status") or "unknown"
         if status in ("healthy", "normal"):
             counts["normal"] += 1
-        elif status in ("partial", "stale", "critical"):
+        elif status in ("partial", "stale"):
             counts["attention"] += 1
+        elif status == "critical":
+            counts["critical"] += 1
         else:
             counts["unknown"] += 1
     return flask.jsonify({"status": "success", "counts": counts,
                           "task": center.task_overview(),
+                          "attention": [item for item in all_assets if item.get("health_status") in ("partial", "stale", "critical")],
                           "assets": assets})
 
 
@@ -552,20 +556,34 @@ def api_data_center_asset_detail(metric_key):
 def api_task_center_overview():
     center = _task_center_service()
     center.sync_definitions()
-    return flask.jsonify({"status": "success", "overview": center.task_overview(),
-                          "tasks": center.list_tasks()})
+    return flask.jsonify({"status": "success", **center.task_overview_payload()})
 
 
 @web_app.route("/api/task-center/tasks", methods=["GET"])
 def api_task_center_tasks():
     center = _task_center_service()
     center.sync_definitions()
-    return flask.jsonify({"status": "success", "tasks": center.list_tasks()})
+    return flask.jsonify({"status": "success", **center.task_overview_payload()})
 
 
-@web_app.route("/task-center", methods=["GET"])
-def task_center_page():
-    return flask.redirect("/data-center/tasks")
+@web_app.route("/api/task-center/tasks/<task_key>", methods=["GET"])
+def api_task_center_task_detail(task_key):
+    center = _task_center_service()
+    center.sync_definitions()
+    task = next((item for item in center.task_catalog() if item["task_key"] == task_key), None)
+    if task is None:
+        return flask.jsonify({"status": "error", "error": "任务不存在"}), 404
+    return flask.jsonify({"status": "success", "task": task})
+
+
+@web_app.route("/api/task-center/runs/<int:run_id>", methods=["GET"])
+def api_task_center_run_detail(run_id):
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    from StockInvestmentTool.ops.task_center import management_db_path
+    item = JobRunStore(management_db_path()).get(run_id)
+    if item is None:
+        return flask.jsonify({"status": "error", "error": "任务运行记录不存在"}), 404
+    return flask.jsonify({"status": "success", "run": item})
 
 
 def _start_data_job(job_name, worker):
