@@ -344,7 +344,7 @@ class TaskCenter:
         return item
 
     def update_request(self, request_id: str, status: str) -> None:
-        if status not in {"requested", "running", "success", "partial_success", "failed", "cancelled"}:
+        if status not in {"requested", "running", "success", "partial_success", "failed", "skipped", "cancelled"}:
             raise TaskConfigError("非法执行请求状态")
         with self._connect() as conn:
             conn.execute("UPDATE task_execution_requests SET status=? WHERE request_id=?", (status, request_id))
