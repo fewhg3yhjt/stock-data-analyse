@@ -24,6 +24,7 @@
 ## 专项设计与实施
 
 - [策略核心与回测模拟子模块设计](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)：指标条件、策略编排、统一决策协议和回测/模拟执行模型。
+- [选股与行情分析子模块设计](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)：筛选方案、筛选运行、候选追溯、走势图查询及观察池/模拟衔接。
 - [Phase 4 设计](PHASE4_DESIGN.md)
 - [Phase 4 实施记录](PHASE4_IMPLEMENTATION.md)
 - [市场发现待办](MARKET_DISCOVERY_TODO.md)

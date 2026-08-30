@@ -397,7 +397,7 @@ planned → accumulating → holding
 推荐顺序：
 
 1. [策略核心与回测模拟](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)
-2. 选股与行情分析
+2. [选股与行情分析](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)
 3. 观察池
 4. 真实账户、持仓与交易
 5. 收益分析与复盘
