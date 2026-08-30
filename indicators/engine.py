@@ -91,6 +91,43 @@ def _atr(df: pd.DataFrame, n: int = 14) -> pd.Series:
     return true_range.rolling(int(n), min_periods=int(n)).mean()
 
 
+def _pct_chg(df, env=None) -> pd.Series:
+    """日涨跌幅 % = close 相对前一日变化百分比。"""
+    return df["close"].astype(float).pct_change() * 100
+
+
+def _change_amount(df, env=None) -> pd.Series:
+    """日涨跌额 = close 相对前一日差值。"""
+    return df["close"].astype(float).diff()
+
+
+def _amplitude(df, env=None) -> pd.Series:
+    """振幅 % = (最高价 - 最低价) / 昨日收盘 × 100。"""
+    return (df["high"].astype(float) - df["low"].astype(float)) / df["close"].astype(float).shift(1) * 100
+
+
+def _vol_ma5(df, env=None) -> pd.Series:
+    """成交量 5 日均线（手口径保留，量能辅助）。"""
+    return df["volume"].astype(float).rolling(5).mean()
+
+
+def _low_3m(df, env=None) -> pd.Series:
+    """近 3 月低点（63 个交易日滚动最低价）。"""
+    return df["low"].astype(float).rolling(63, min_periods=1).min()
+
+
+def _year_low(df, env=None) -> pd.Series:
+    """年内低点（全历史/年内最低价）。"""
+    return df["low"].astype(float).expanding(min_periods=1).min()
+
+
+def _bias_ratio(df, env=None) -> pd.Series:
+    """乖离率 = (close - ma240) / ma240 × 100（年线统一为 ma240）。"""
+    close = df["close"].astype(float)
+    ma240 = close.rolling(240).mean()
+    return (close - ma240) / ma240 * 100
+
+
 # 安全函数白名单（表达式可调用）
 SAFE_FUNCS: dict[str, Callable] = {
     "MA": _ma,
@@ -142,6 +179,13 @@ class IndicatorRegistry:
             "macd": IndicatorDef("macd", "code", fn=lambda df, env: _macd(df["close"]), description="MACD线"),
             "volatility_20": IndicatorDef("volatility_20", "code", fn=lambda df, env: _volatility(df["close"], 20), description="20日年化波动率"),
             "atr14": IndicatorDef("atr14", "code", fn=lambda df, env: _atr(df, 14), description="14日平均真实波幅"),
+            "pct_chg": IndicatorDef("pct_chg", "code", fn=_pct_chg, description="日涨跌幅"),
+            "change_amount": IndicatorDef("change_amount", "code", fn=_change_amount, description="日涨跌额"),
+            "amplitude": IndicatorDef("amplitude", "code", fn=_amplitude, description="振幅百分比"),
+            "vol_ma5": IndicatorDef("vol_ma5", "code", fn=_vol_ma5, description="成交量5日均线"),
+            "low_3m": IndicatorDef("low_3m", "code", fn=_low_3m, description="近3月低点"),
+            "year_low": IndicatorDef("year_low", "code", fn=_year_low, description="年内低点"),
+            "bias_ratio": IndicatorDef("bias_ratio", "code", fn=_bias_ratio, description="MA240乖离率"),
         })
 
         # 从 YAML 加载自定义指标

@@ -10,86 +10,37 @@ logger = logging.getLogger(__name__)
 
 
 class TechnicalIndicators:
-    """技术指标计算（纯函数，不修改输入）"""
+    """技术指标计算（纯函数，不修改输入）。
+
+    指标计算统一复用 IndicatorRegistry（与 indicators 分区同口径）；
+    本类仅保留非指标的判定/辅助函数（均线排列、MA 方向、支撑压力、波动率）。
+    """
 
     @staticmethod
-    def calc_change(df: pd.DataFrame, price_col: str = "close") -> pd.DataFrame:
-        """涨跌幅(%) + 涨跌额"""
-        df = df.copy()
-        df["change_pct"] = (
-            (df[price_col] - df[price_col].shift(1)) / df[price_col].shift(1) * 100
-        ).round(2)
-        df["change_amount"] = (df[price_col] - df[price_col].shift(1)).round(2)
-        return df
+    def compute_all(df: pd.DataFrame) -> pd.DataFrame:
+        """批量计算常用技术指标列（统一走 IndicatorRegistry）。
 
-    @staticmethod
-    def calc_amplitude(df: pd.DataFrame) -> pd.DataFrame:
-        """振幅(%) = (最高-最低) / 昨日收盘 * 100"""
-        df = df.copy()
-        df["amplitude"] = (
-            (df["high"] - df["low"]) / df["close"].shift(1) * 100
-        ).round(2)
-        return df
-
-    @staticmethod
-    def calc_ma(df: pd.DataFrame, windows: Optional[list[int]] = None,
-                price_col: str = "close") -> pd.DataFrame:
-        """移动平均线（复用 IndicatorRegistry，与 indicators 分区同口径）
-
-        windows 默认含 ma240（年线，V6.0 市场状态/止盈硬上限需要）。
-        ma240 滚动窗口 240 天，前 239 行为 NaN（正常，计算方需容忍）。
+        产出：ma5/10/20/60/120/240、change_pct（=引擎 pct_chg）、change_amount、
+        amplitude、vol_ma5、low_3m、year_low、bias_ratio。
+        缺失的原始列（date/open/high/low/close/volume/amount/turn/pe_ttm/pb_mrq）原样保留。
         """
-        windows = windows or [5, 10, 20, 60, 120, 240]
-        df = df.copy()
+        if df is None or df.empty:
+            return df.copy()
         from StockInvestmentTool.indicators.engine import IndicatorRegistry
+        import pandas as _pd
+        df = df.copy()
         reg = IndicatorRegistry()
-        needed = [w for w in windows if f"ma{w}" not in df.columns]
-        computed = reg.compute(df, [f"ma{w}" for w in needed])
-        for w in needed:
-            df[f"ma{w}"] = computed.get(f"ma{w}", pd.Series(index=df.index, dtype=float))
-        return df
-
-    @staticmethod
-    def calc_volume_ma(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
-        """成交量均线"""
-        df = df.copy()
-        df["vol_ma5"] = df["volume"].rolling(window=window).mean().round(0)
-        return df
-
-    @staticmethod
-    def calc_rolling_lows(df: pd.DataFrame) -> pd.DataFrame:
-        """滚动低点（用于交叉验证支撑位）"""
-        df = df.copy()
-        df["low_3m"] = df["low"].rolling(window=63, min_periods=1).min()  # 近3月低点
-        df["year_low"] = df["low"].expanding(min_periods=1).min()         # 年内低点
-        return df
-
-    @classmethod
-    def compute_all(cls, df: pd.DataFrame) -> pd.DataFrame:
-        """计算所有常用技术指标"""
-        df = cls.calc_change(df)
-        df = cls.calc_amplitude(df)
-        df = cls.calc_ma(df)
-        df = cls.calc_volume_ma(df)
-        df = cls.calc_rolling_lows(df)
-        df = cls.calc_bias_ratio(df)
-        return df
-
-    # ── V6.0 乖离率 / MA 方向 ────────────────────────
-
-    @staticmethod
-    def calc_bias_ratio(df: pd.DataFrame, ma_col: str = "ma240",
-                        price_col: str = "close") -> pd.DataFrame:
-        """乖离率 = (收盘价 − MA240) / MA240 × 100
-
-        V6.0 定义: 乖离率 = (当前价 − MA240) / MA240 × 100%。
-        用于市场状态辅助判断（>+20% 强多头超买降级 / <-20% 极度超卖）与仓位乘数。
-        ma_col 不存在时原样返回（不抛错，兼容 1 年窗口数据）。
-        """
-        df = df.copy()
-        if ma_col not in df.columns:
-            return df
-        df["bias_ratio"] = ((df[price_col] - df[ma_col]) / df[ma_col] * 100).round(2)
+        ind_names = ["ma5", "ma10", "ma20", "ma60", "ma120", "ma240",
+                     "pct_chg", "change_amount", "amplitude", "vol_ma5",
+                     "low_3m", "year_low", "bias_ratio"]
+        computed = reg.compute(df, ind_names)
+        # 引擎列 → DataFrame 列（pct_chg 兼容为 change_pct，保留旧列名）
+        for name in ind_names:
+            s = computed.get(name)
+            if s is None:
+                continue
+            col = "change_pct" if name == "pct_chg" else name
+            df[col] = s.values
         return df
 
     @staticmethod

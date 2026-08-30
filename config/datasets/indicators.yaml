@@ -24,6 +24,11 @@ fields:
   - {name: rsi14, display_name: RSI14, data_type: float, nullable: true}
   - {name: macd, display_name: MACD, data_type: float, nullable: true}
   - {name: atr14, display_name: 十四日平均真实波幅, data_type: float, nullable: true}
+  - {name: change_amount, display_name: 日涨跌额, data_type: float, nullable: true}
+  - {name: amplitude, display_name: 振幅, data_type: float, nullable: true}
+  - {name: vol_ma5, display_name: 成交量5日均线, data_type: float, nullable: true}
+  - {name: low_3m, display_name: 近3月低点, data_type: float, nullable: true}
+  - {name: year_low, display_name: 年内低点, data_type: float, nullable: true}
   - {name: volatility_20, display_name: 二十日波动率, data_type: float, nullable: true}
   - {name: take_profit_reference, display_name: 止盈参考线, data_type: float, nullable: true}
   - {name: dual_ma_low, display_name: 双均线低点, data_type: float, nullable: true}

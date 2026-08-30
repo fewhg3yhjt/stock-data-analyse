@@ -83,3 +83,24 @@ V4.5 回测结果需重录基线并比对（SRD 验收标准要求逐字段一�
   （year_high/low_6m/回测绩效），不属于指标层。
 - 冒烟验证：临时仓库真实链路（daily + indicators 分区 → 合并读取），
   引擎与 indicators 分区结果逐位一致（float64 口径），`pe_ttm/pb_mrq` 读取正常。
+
+## 9. compute_all 下线硬编码，指标全部入引擎（2026-08-30）
+
+`TechnicalIndicators.compute_all` 原先硬编码 `calc_change/calc_amplitude/calc_ma/
+calc_volume_ma/calc_rolling_lows/calc_bias_ratio` 一套运行时指标。现改为**统一走
+IndicatorRegistry**：
+
+- 引擎新增注册：`pct_chg`、`change_amount`、`amplitude`、`vol_ma5`、`low_3m`、
+  `year_low`、`bias_ratio`（均为中性指标，对 stock/etf 适用）
+- `compute_all` 重写：批量调 `IndicatorRegistry.compute` 产出全部指标列，
+  删除 `calc_change/calc_amplitude/calc_ma/calc_volume_ma/calc_rolling_lows/
+  calc_bias_ratio` 硬编码方法（`ma_slope/trend_judgment/support_resistance/
+  annualized_volatility` 为判定/辅助函数，保留）
+- catalog + `datasets/indicators.yaml` 补登记 5 个新 indicators 指标
+  （`change_amount/amplitude/vol_ma5/low_3m/year_low`）；
+  `pct_chg/bias_ratio` 保持 factors 生产（研究因子），引擎注册同名仅供运行时消费
+- 维持指标中性：全部指标对 stock/etf 统一计算，不按类别裁剪；
+  `applies_to` 仅作任务调度范围控制（index 不跑 indicators_build），非指标级过滤
+
+**消费兼容**：`compute_all` 产出列名不变（`change_pct` = 引擎 `pct_chg` 别名，
+`vol_ma5/low_3m/year_low/bias_ratio` 同名），advisor/market_state/回测零改动。
