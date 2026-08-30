@@ -62,7 +62,7 @@ class MarketStateResult:
 def _is_bull_alignment(df: pd.DataFrame, last) -> bool:
     """多头排列：MA5 > MA20 > MA60（容忍 NaN 视为不满足）"""
     try:
-        return last["ma_5"] > last["ma_20"] > last["ma_60"]
+        return last["ma5"] > last["ma20"] > last["ma60"]
     except (KeyError, TypeError):
         return False
 
@@ -70,19 +70,19 @@ def _is_bull_alignment(df: pd.DataFrame, last) -> bool:
 def _is_bear_alignment(df: pd.DataFrame, last) -> bool:
     """空头排列：MA5 < MA20 < MA60"""
     try:
-        return last["ma_5"] < last["ma_20"] < last["ma_60"]
+        return last["ma5"] < last["ma20"] < last["ma60"]
     except (KeyError, TypeError):
         return False
 
 
 def judge_market_state(df: pd.DataFrame) -> MarketStateResult:
-    """V6.0 六态市场状态判定（纯函数，输入需含 ma_5/20/60/250 + close + bias_ratio）
+    """V6.0 六态市场状态判定（纯函数，输入需含 ma5/20/60/250 + close + bias_ratio）
 
     Parameters
     ----------
     df : pd.DataFrame
-        compute_all 后的 K 线（含 ma_5/ma_20/ma_60/ma_250/bias_ratio）。
-        若缺 ma_250（不足1年数据），返回基于均线排列的近似状态并标注 data_insufficient。
+        compute_all 后的 K 线（含 ma5/ma20/ma60/ma240/bias_ratio）。
+        若缺 ma240（不足1年数据），返回基于均线排列的近似状态并标注 data_insufficient。
 
     Returns
     -------
@@ -96,7 +96,7 @@ def judge_market_state(df: pd.DataFrame) -> MarketStateResult:
         )
 
     last = df.iloc[-1]
-    ma250_missing = pd.isna(last.get("ma_250", float("nan")))
+    ma240_missing = pd.isna(last.get("ma240", float("nan")))
     bias = last.get("bias_ratio", float("nan"))
     if pd.isna(bias):
         bias = None
@@ -104,30 +104,30 @@ def judge_market_state(df: pd.DataFrame) -> MarketStateResult:
     bull_align = _is_bull_alignment(df, last)
     bear_align = _is_bear_alignment(df, last)
     price = last.get("close", float("nan"))
-    ma250 = last.get("ma_250", float("nan"))
-    price_above_250 = (not ma250_missing) and price > ma250
+    ma240 = last.get("ma240", float("nan"))
+    price_above_ma240 = (not ma240_missing) and price > ma240
 
     # MA250 方向（强多头/强空头需要）
-    ma250_dir = None
-    if not ma250_missing:
-        slope = TechnicalIndicators.ma_slope(df, "ma_250")
-        ma250_dir = slope  # "向上"/"走平"/"向下"/"数据不足"
+    ma240_dir = None
+    if not ma240_missing:
+        slope = TechnicalIndicators.ma_slope(df, "ma240")
+        ma240_dir = slope  # "向上"/"走平"/"向下"/"数据不足"
 
     detail = {
         "close": float(price) if not pd.isna(price) else None,
-        "ma_5": float(last["ma_5"]) if not pd.isna(last.get("ma_5", float("nan"))) else None,
-        "ma_20": float(last["ma_20"]) if not pd.isna(last.get("ma_20", float("nan"))) else None,
-        "ma_60": float(last["ma_60"]) if not pd.isna(last.get("ma_60", float("nan"))) else None,
-        "ma_250": float(ma250) if not ma250_missing else None,
+        "ma5": float(last["ma5"]) if not pd.isna(last.get("ma5", float("nan"))) else None,
+        "ma20": float(last["ma20"]) if not pd.isna(last.get("ma20", float("nan"))) else None,
+        "ma60": float(last["ma60"]) if not pd.isna(last.get("ma60", float("nan"))) else None,
+        "ma240": float(ma240) if not ma240_missing else None,
         "bias_ratio": bias,
-        "ma250_direction": ma250_dir,
+        "ma240_direction": ma240_dir,
         "bull_alignment": bull_align,
         "bear_alignment": bear_align,
-        "price_above_ma250": price_above_250,
+        "price_above_ma240": price_above_ma240,
     }
 
     # ── 强多头：均线多头 + 股价>MA250 + MA250向上 ──
-    if bull_align and price_above_250 and ma250_dir == "向上":
+    if bull_align and price_above_ma240 and ma240_dir == "向上":
         if bias is not None and bias > OVERBOUGHT_BIAS:
             state = STRONG_BULL_OVERBOUGHT
             rule = "规则A（等回调）"
@@ -139,7 +139,7 @@ def judge_market_state(df: pd.DataFrame) -> MarketStateResult:
         return MarketStateResult(state, STATE_MULTIPLIER[state], rule, detail)
 
     # ── 弱多头：均线多头 但 股价<MA250 ──
-    if bull_align and not price_above_250:
+    if bull_align and not price_above_ma240:
         state = WEAK_BULL
         return MarketStateResult(
             state, STATE_MULTIPLIER[state], "规则A（左侧挂单等待）",
@@ -147,7 +147,7 @@ def judge_market_state(df: pd.DataFrame) -> MarketStateResult:
         )
 
     # ── 弱空头：均线空头 但 股价>MA250 ──
-    if bear_align and price_above_250:
+    if bear_align and price_above_ma240:
         state = WEAK_BEAR
         return MarketStateResult(
             state, STATE_MULTIPLIER[state], "禁止操作或极小仓位",
@@ -155,11 +155,11 @@ def judge_market_state(df: pd.DataFrame) -> MarketStateResult:
         )
 
     # ── 强空头：均线空头 + 股价<MA250 + MA250向下/方向数据不足 ──
-    # 边界 bar（ma_250 刚满窗、斜率需再等 5 天）ma_slope 返回"数据不足"，
+    # 边界 bar（ma240 刚满窗、斜率需再等 5 天）ma_slope 返回"数据不足"，
     # 此时空头排列+跌破年线已是明确空头形态，若放行会误落震荡市→允许
     # 规则A买入，违背"排除比预测重要、不误买"原则，故按强空头处理。
     # （MA250 走平仍归震荡市，避免把横盘小幅回踩误判为空头）
-    if bear_align and not price_above_250 and ma250_dir in ("向下", "数据不足"):
+    if bear_align and not price_above_ma240 and ma240_dir in ("向下", "数据不足"):
         state = STRONG_BEAR
         return MarketStateResult(
             state, STATE_MULTIPLIER[state], "禁止操作（空仓等待）",

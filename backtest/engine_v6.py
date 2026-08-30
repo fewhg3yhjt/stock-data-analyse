@@ -21,7 +21,7 @@
   - 股债收益差 ERP 依赖宏观（当前拉取挂起）→ None → 硬止损豁免(>5.5%)不触发。
   - 成长(A) 营收加速不可得 → None → 时间止损按"未出现"从严（方案口径）。
     强周期(C) 右侧信号 = 持仓期内曾突破前高（close ≥ 前高）。
-  - 最小仓位 250 行预热：ma_250 从第 250 根起有效；此前市场状态按
+  - 最小仓位 250 行预热：ma240 从第 250 根起有效；此前市场状态按
     market_state_v6 的 data_insufficient 分支降级（不误判强/弱多头）。
 """
 
@@ -82,7 +82,7 @@ class BacktestEngineV6:
     """V6.0 单股回测引擎
 
     Args:
-        df: K 线（已 compute_all，含 ma_5/20/60/250、bias_ratio、year_low、low_3m）
+        df: K 线（已 compute_all，含 ma5/20/60/250、bias_ratio、year_low、low_3m）
         initial_cash: 初始资金
         stock_type: A/B/C/D/E
         dividend_anchor: 股息率极端低估锚（与 v4.5 相同来源）
@@ -138,17 +138,17 @@ class BacktestEngineV6:
         # 沪深300（贝塔保护 / 年线熔断）：按日期对齐，取 ≤ 当前 bar 的最后一行
         self._csi_index = None
         self._csi_close = None
-        self._csi_ma250 = None
+        self._csi_ma240 = None
         if csi300 is not None and not csi300.empty:
             csi = csi300.copy()
-            if "ma_250" not in csi.columns:
+            if "ma240" not in csi.columns:
                 from StockInvestmentTool.datasource.indicators import TechnicalIndicators
                 csi = TechnicalIndicators.compute_all(csi)
             csi["date"] = pd.to_datetime(csi["date"])
             csi = csi.drop_duplicates("date").sort_values("date").set_index("date")
             self._csi_index = csi.index
             self._csi_close = csi["close"].to_numpy(dtype=float)
-            self._csi_ma250 = csi.get("ma_250", pd.Series(index=csi.index, dtype=float)).to_numpy(dtype=float)
+            self._csi_ma240 = csi.get("ma240", pd.Series(index=csi.index, dtype=float)).to_numpy(dtype=float)
 
     # ── 支撑位（与 v4.5 _get_support_levels 完全同口径）────────────
 
@@ -180,7 +180,7 @@ class BacktestEngineV6:
             return None
         return {
             "close": self._csi_close[idx],
-            "ma250": self._csi_ma250[idx],
+            "ma240": self._csi_ma240[idx],
             "date": self._csi_index[idx],
         }
 
@@ -209,13 +209,13 @@ class BacktestEngineV6:
                 weak, strong, extreme = self._get_support_levels(row)
                 state_res = judge_market_state(df.iloc[: i + 1])
                 circuit_ok = True
-                if csi is not None and not pd.isna(csi["ma250"]):
-                    circuit_ok = csi["close"] >= csi["ma250"]   # 未跌破年线（"跌破"=严格小于）
+                if csi is not None and not pd.isna(csi["ma240"]):
+                    circuit_ok = csi["close"] >= csi["ma240"]   # 未跌破年线（"跌破"=严格小于）
                 res = judge_buy_tree(
                     market_state=state_res.state,
                     stock_type=self.stock_type,
                     price=close,
-                    ma20=self._num(row, "ma_20"),
+                    ma20=self._num(row, "ma20"),
                     weak_support=weak,
                     strong_support=strong,
                     extreme_anchor=extreme,
@@ -347,7 +347,7 @@ class BacktestEngineV6:
         low = float(row["low"])
         avg_cost = pos.avg_cost
         year_high = self._num(row, "year_high_rolling") or close
-        ma250 = self._num(row, "ma_250")
+        ma240 = self._num(row, "ma240")
         # 右侧突破锚 = 入场日的前高（避免旧前高滑出 252 窗口后"自然突破"的退化）
         breakout_anchor = pos.year_high_at_entry or year_high
 
@@ -376,7 +376,7 @@ class BacktestEngineV6:
             revenue_accel=None,                  # 成长信号不可得 → 从严按未出现
             high=high,
             year_high=year_high,
-            ma250=ma250,
+            ma240=ma240,
             right_peak=pos.right_peak,
             close=close,
             left_tiers_sold=pos.left_tiers_sold,
@@ -419,7 +419,7 @@ class BacktestEngineV6:
             return cash, pos
 
         # ── 持有：止盈硬上限检查（V6 特有）──
-        hard = take_profit_hard_cap(year_high, ma250)
+        hard = take_profit_hard_cap(year_high, ma240)
         if hard and close >= hard:
             decision = SellDecisionStub("止盈硬上限", f"收盘{close:.2f}≥硬上限{hard:.2f}")
             cash, pos = self._close_position(close, date, cash, pos, trades, decision)

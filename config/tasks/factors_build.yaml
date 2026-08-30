@@ -5,7 +5,7 @@ task:
   type: FACTOR_BUILD
   input_datasets: [stock_daily]
   output_datasets: [factors]
-  producer_metrics: [ret5d, ret20d, vol_ratio, high20d, low20d]
+  producer_metrics: [pct_chg, vol_ratio, ret_5d, ret_20d, high_20d, low_20d, bias_ratio]
 scope:
   asset_types: [stock, etf]
   universe: active

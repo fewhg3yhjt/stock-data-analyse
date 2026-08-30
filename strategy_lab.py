@@ -151,16 +151,16 @@ def _attach_names(hits: list[dict]) -> None:
 # 可用指标及其中文名（前端勾选器用）
 METRICS = {
     "close": "收盘价",
-    "ma5": "MA5",
-    "ma10": "MA10",
-    "ma20": "MA20",
-    "ma60": "MA60",
-    "ma120": "MA120",
+    "ma5": "ma5",
+    "ma10": "ma10",
+    "ma20": "ma20",
+    "ma60": "ma60",
+    "ma120": "ma120",
     "vol_ratio": "量比",
     "turn": "换手率",
     "amount": "成交额(亿)",
     "pe": "PE",
-    "pb": "PB",
+    "pb_mrq": "PB(MRQ)",
 }
 
 

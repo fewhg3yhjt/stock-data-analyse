@@ -37,7 +37,7 @@ buy_rules:
     params:
       support_sources:
         - "dividend_anchor"   # 股息率锚（每股分红÷4.0%）
-        - "ma_60"             # 60日均线
+        - "ma60"             # 60日均线
         - "low_3m"            # 近3月低点
         - "year_low"          # 年内低点
       sort_direction: "asc"   # 升序 → position_index 0 = 最低值(强支撑)

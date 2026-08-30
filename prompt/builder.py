@@ -42,7 +42,7 @@ class PromptBuilder:
 
     def _fallback_template(self, template_type: str) -> str:
         if template_type == "stock":
-            return "{stock_name} ({stock_code}) 个股分析\n当前价: {current_price}\nMA20: {ma_20} | MA60: {ma_60}\n趋势: {trend}\nPE(TTM): {pe_ttm}\n强支撑: {strong_support} | 弱支撑: {weak_support}"
+            return "{stock_name} ({stock_code}) 个股分析\n当前价: {current_price}\nMA20: {ma20} | MA60: {ma60}\n趋势: {trend}\nPE(TTM): {pe_ttm}\n强支撑: {strong_support} | 弱支撑: {weak_support}"
         return "基金分析模板"
 
     # ── 核心：逐行填充 ──────────────────────────────
@@ -83,9 +83,9 @@ class PromptBuilder:
         if technical:
             for key, label in [
                 ("current_price", "当前价"),
-                ("ma_20", "MA20"),
-                ("ma_60", "MA60"),
-                ("ma_120", "MA120"),
+                ("ma20", "MA20"),
+                ("ma60", "MA60"),
+                ("ma120", "MA120"),
                 ("recent_low", "近期低点"),
                 ("year_high", "近12个月最高点"),
                 ("year_low", "近12个月最低点"),
@@ -198,8 +198,8 @@ class PromptBuilder:
         cs = cross_support or {}
         replacements = {
             "当前净值/价格": str(tech.get("current_price", "N/A")),
-            "MA60": str(tech.get("ma_60", "N/A")),
-            "MA20": str(tech.get("ma_20", "N/A")),
+            "MA60": str(tech.get("ma60", "N/A")),
+            "MA20": str(tech.get("ma20", "N/A")),
             "近期低点": str(tech.get("recent_low", "N/A")),
             "近12个月最高点": str(tech.get("year_high", "N/A")),
             "近12个月最低点": str(tech.get("year_low", "N/A")),

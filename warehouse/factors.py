@@ -30,8 +30,8 @@ FACTOR_COLUMNS = [
     "bias_ratio",          # 乖离率 (close - MA250)/MA250
     "vol_ratio",           # 量比 = volume / 5日均量
     "pct_chg",             # 单日涨跌幅 %
-    "volatility_20",       # 20日年化波动率 %
-    "pe_ttm", "pb",
+    "volatility_20_factor", # 20日年化波动率 %
+    "pe_ttm", "pb_mrq",
     "ret_5d", "ret_20d",   # 5/20 日动量
     "high_20d", "low_20d", # 20 日高低
 ]
@@ -50,11 +50,8 @@ class FactorEngine:
         返回含原始列 + 因子列的 DataFrame。
         """
         df = df.sort_values("date").reset_index(drop=True).copy()
-        # Historical daily sources use vendor spellings; retain canonical values.
-        if "pe_ttm" not in df.columns and "peTTM" in df.columns:
-            df["pe_ttm"] = df["peTTM"]
-        if "pb" not in df.columns and "pbMRQ" in df.columns:
-            df["pb"] = df["pbMRQ"]
+        if "peTTM" in df.columns or "pbMRQ" in df.columns:
+            raise ValueError("stock_daily 必须使用标准估值字段 pe_ttm/pb_mrq")
         close = df["close"]
 
         # 均线
@@ -73,7 +70,7 @@ class FactorEngine:
 
         # 20日年化波动率（对数收益率）
         log_ret = (close / close.shift(1)).apply(lambda x: __import__("math").log(x))
-        df["volatility_20"] = log_ret.rolling(20).std() * (252 ** 0.5) * 100
+        df["volatility_20_factor"] = log_ret.rolling(20).std() * (252 ** 0.5) * 100
 
         # 动量
         df["ret_5d"] = close.pct_change(5) * 100

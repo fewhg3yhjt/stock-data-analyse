@@ -105,12 +105,12 @@ def _record_version(name: str, item: dict) -> None:
 def _builtin_names() -> set[str]:
     from StockInvestmentTool.config import Config
 
-    names = {"MA5", "MA10", "MA20", "MA60", "MA120", "MA240"}
+    names = {"ma5", "ma10", "ma20", "ma60", "ma120", "ma240"}
     path = Config.BASE_DIR / "schemes" / "indicators.yaml"
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for kind in ("bases", "composite", "code"):
-            names.update(str(item.get("name")) for item in (data.get(kind) or []) if item.get("name"))
+            names.update(str(item.get("name")).lower() for item in (data.get(kind) or []) if item.get("name"))
     except Exception as exc:
         logger.warning("内置指标列表读取失败: %s", exc)
     return names

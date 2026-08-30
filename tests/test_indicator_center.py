@@ -31,7 +31,7 @@ def client():
 
 
 def test_ad_hoc_expression_uses_configured_indicators(sample_kline):
-    series = IndicatorRegistry().evaluate_expression(sample_kline, "0.95*MIN(MA20,MA240)")
+    series = IndicatorRegistry().evaluate_expression(sample_kline, "0.95*MIN(ma20,ma240)")
 
     assert len(series) == len(sample_kline)
     assert series.iloc[-1] == pytest.approx(0.95 * 199.5)
@@ -42,7 +42,7 @@ def test_indicator_preview_api(client, sample_kline, monkeypatch):
 
     monkeypatch.setattr(WarehouseSource, "fetch_daily_series", lambda *_args, **_kwargs: sample_kline)
     response = client.post("/api/indicators/preview", json={
-        "code": "sh.600900", "expr": "0.95*MA20",
+        "code": "sh.600900", "expr": "0.95*ma20",
     })
 
     assert response.status_code == 200
@@ -76,7 +76,7 @@ def test_indicator_center_page(client):
 
 def test_indicator_api_includes_definition_metadata(client):
     data = client.get("/api/indicators").get_json()
-    ma20 = next(item for item in data["groups"]["base"] if item["name"] == "MA20")
+    ma20 = next(item for item in data["groups"]["base"] if item["name"] == "ma20")
     assert ma20["meaning"]
     assert ma20["calculation"]
     assert ma20["data_requirements"]
@@ -86,12 +86,12 @@ def test_custom_indicator_store_crud_isolated(tmp_path, monkeypatch):
     from StockInvestmentTool.indicators import store
 
     monkeypatch.setattr(store, "_root", lambda: tmp_path / "custom")
-    saved = store.save_indicator("MyMA17", "base", "MA(close,17)", "自定义 17 日均线")
-    assert saved["name"] == "MyMA17"
+    saved = store.save_indicator("my_ma17", "base", "MA(close,17)", "自定义 17 日均线")
+    assert saved["name"] == "my_ma17"
     assert store.list_indicators()[0]["editable"] is True
-    assert store.set_enabled("MyMA17", False)["enabled"] is False
+    assert store.set_enabled("my_ma17", False)["enabled"] is False
     assert store.list_indicators()[0]["enabled"] is False
-    assert store.delete_indicator("MyMA17") is True
+    assert store.delete_indicator("my_ma17") is True
     assert store.list_indicators() == []
 
 
@@ -100,7 +100,7 @@ def test_custom_indicator_cannot_override_builtin(tmp_path, monkeypatch):
 
     monkeypatch.setattr(store, "_root", lambda: tmp_path / "custom")
     with pytest.raises(ValueError, match="内置指标"):
-        store.save_indicator("MA20", "base", "MA(close,20)")
+        store.save_indicator("ma20", "base", "MA(close,20)")
 
 
 def test_indicator_crud_api(client, tmp_path, monkeypatch):
@@ -108,18 +108,18 @@ def test_indicator_crud_api(client, tmp_path, monkeypatch):
 
     monkeypatch.setattr(store, "_root", lambda: tmp_path / "custom")
     response = client.post("/api/indicators/save", json={
-        "name": "ApiMA17", "kind": "base", "expr": "MA(close,17)",
+        "name": "api_ma17", "kind": "base", "expr": "MA(close,17)",
         "description": "API 指标",
     })
     assert response.status_code == 200
     assert response.get_json()["indicator"]["editable"] is True
 
     response = client.post("/api/indicators/toggle", json={
-        "name": "ApiMA17", "enabled": False,
+        "name": "api_ma17", "enabled": False,
     })
     assert response.status_code == 200
     assert response.get_json()["enabled"] is False
 
-    response = client.post("/api/indicators/delete", json={"name": "ApiMA17"})
+    response = client.post("/api/indicators/delete", json={"name": "api_ma17"})
     assert response.status_code == 200
     assert response.get_json()["deleted"] is True

@@ -5,12 +5,30 @@ metrics:
   - {key: pe_ttm, name: PE(TTM), category: 估值数据, definition: 滚动市盈率, unit: 倍, producer_task: valuation_capture, builtin: true, editable: false}
   - {key: pb_mrq, name: PB(MRQ), category: 估值数据, definition: 最近报告期市净率, unit: 倍, producer_task: valuation_capture, builtin: true, editable: false}
   - {key: roe, name: ROE, category: 基本面数据, definition: 净资产收益率, unit: "%", producer_task: fundamentals_capture, builtin: true, editable: false}
-  - {key: ma5, name: MA5, category: 技术指标, definition: 收盘价五个交易日简单移动平均, unit: 元, producer_task: indicators_build, builtin: true, editable: true}
-  - {key: ma20, name: MA20, category: 技术指标, definition: 收盘价二十个交易日简单移动平均, unit: 元, producer_task: indicators_build, builtin: true, editable: true}
-  - {key: rsi14, name: RSI14, category: 技术指标, definition: 十四个交易日相对强弱指标, unit: 点, producer_task: indicators_build, builtin: true, editable: true}
-  - {key: macd, name: MACD, category: 技术指标, definition: 指数平滑异同移动平均线, unit: 点, producer_task: indicators_build, builtin: true, editable: true}
-  - {key: volatility20, name: 20日波动率, category: 技术指标, definition: 二十日年化波动率, unit: "%", producer_task: indicators_build, builtin: true, editable: true}
+  - {key: ma5, name: MA5, category: 技术指标, definition: 收盘价五个交易日简单移动平均, unit: 元, dataset: indicators, output_column: ma5, min_history: 5, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: ma10, name: MA10, category: 技术指标, definition: 收盘价十个交易日简单移动平均, unit: 元, dataset: indicators, output_column: ma10, min_history: 10, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: ma20, name: MA20, category: 技术指标, definition: 收盘价二十个交易日简单移动平均, unit: 元, dataset: indicators, output_column: ma20, min_history: 20, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: ma60, name: MA60, category: 技术指标, definition: 收盘价六十个交易日简单移动平均, unit: 元, dataset: indicators, output_column: ma60, min_history: 60, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: ma120, name: MA120, category: 技术指标, definition: 收盘价一百二十个交易日简单移动平均, unit: 元, dataset: indicators, output_column: ma120, min_history: 120, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: ma240, name: MA240, category: 技术指标, definition: 收盘价二百四十个交易日简单移动平均, unit: 元, dataset: indicators, output_column: ma240, min_history: 240, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: ma17, name: MA17, category: 技术指标, definition: 收盘价十七个交易日简单移动平均, unit: 元, dataset: indicators, output_column: ma17, min_history: 17, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: ma63, name: MA63, category: 技术指标, definition: 收盘价六十三个交易日简单移动平均, unit: 元, dataset: indicators, output_column: ma63, min_history: 63, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: rsi14, name: RSI14, category: 技术指标, definition: 十四个交易日相对强弱指标, unit: 点, dataset: indicators, output_column: rsi14, min_history: 14, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: macd, name: MACD, category: 技术指标, definition: 十二二十六指数平滑异同移动平均线, unit: 点, dataset: indicators, output_column: macd, min_history: 26, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
+  - {key: volatility_20, name: 20日波动率, category: 技术指标, definition: 二十日年化波动率, unit: "%", dataset: indicators, output_column: volatility_20, min_history: 20, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: true}
   - {key: money_flow_net, name: 资金流净额, category: 资金流指标, definition: 来源周期内资金流入减流出, unit: 亿元, producer_task: money_flow_capture, builtin: true, editable: false}
+  - {key: pct_chg, name: 日涨跌幅, category: 研究因子, definition: 收盘价日变化百分比, unit: "%", dataset: factors, output_column: pct_chg, producer_task: factors_build, builtin: true, editable: false}
+  - {key: vol_ratio, name: 量比, category: 研究因子, definition: 成交量相对五日均量比值, unit: 倍, dataset: factors, output_column: vol_ratio, min_history: 5, producer_task: factors_build, builtin: true, editable: false}
+  - {key: volatility_20_factor, name: 因子20日波动率, category: 研究因子, definition: 基于对数收益的二十日年化波动率, unit: "%", dataset: factors, output_column: volatility_20_factor, min_history: 20, producer_task: factors_build, builtin: true, editable: false}
+  - {key: ret_5d, name: 5日动量, category: 研究因子, definition: 五日收盘价变化百分比, unit: "%", dataset: factors, output_column: ret_5d, min_history: 5, producer_task: factors_build, builtin: true, editable: false}
+  - {key: ret_20d, name: 20日动量, category: 研究因子, definition: 二十日收盘价变化百分比, unit: "%", dataset: factors, output_column: ret_20d, min_history: 20, producer_task: factors_build, builtin: true, editable: false}
+  - {key: high_20d, name: 20日高点, category: 研究因子, definition: 二十日滚动最高价, unit: 元, dataset: factors, output_column: high_20d, min_history: 20, producer_task: factors_build, builtin: true, editable: false}
+  - {key: low_20d, name: 20日低点, category: 研究因子, definition: 二十日滚动最低价, unit: 元, dataset: factors, output_column: low_20d, min_history: 20, producer_task: factors_build, builtin: true, editable: false}
+  - {key: bias_ratio, name: MA250乖离率, category: 研究因子, definition: 收盘价相对MA250的偏离比例, unit: "%", dataset: factors, output_column: bias_ratio, min_history: 250, producer_task: factors_build, builtin: true, editable: false}
+  - {key: take_profit_reference, name: 止盈参考线, category: 技术指标, definition: MA20的95%作为参考, unit: 元, dataset: indicators, output_column: take_profit_reference, min_history: 20, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: false}
+  - {key: dual_ma_low, name: 双均线低点, category: 技术指标, definition: MA20与MA240较低值的95%, unit: 元, dataset: indicators, output_column: dual_ma_low, min_history: 240, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: false}
+  - {key: amplitude_abs, name: 日内振幅绝对值, category: 技术指标, definition: 最高价与最低价的差值, unit: 元, dataset: indicators, output_column: amplitude_abs, min_history: 1, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: false}
+  - {key: custom_example, name: 自定义示例, category: 技术指标, definition: 代码注册指标示例, unit: 点, dataset: indicators, output_column: custom_example, min_history: 2, applies_to: [stock, etf], producer_task: indicators_build, builtin: true, editable: false}
   - {key: position_peak_price, name: 持仓后高, category: 业务指标, definition: 建仓后至当前日期的最高价, unit: 元, producer_task: position_metrics_build, builtin: false, editable: true}
   - {key: position_drawdown, name: 持仓回撤, category: 业务指标, definition: 当前价格相对持仓后高的回撤, unit: "%", producer_task: position_metrics_build, builtin: false, editable: true}
   - {key: simulation_return, name: 模拟收益, category: 业务指标, definition: 某次模拟实例的累计收益, unit: "%", producer_task: simulation_run, builtin: false, editable: true}

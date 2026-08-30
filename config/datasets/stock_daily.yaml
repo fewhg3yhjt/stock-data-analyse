@@ -101,20 +101,7 @@ sources:
   - name: baostock
     role: validate + fallback
     priority: 2
-    field_mapping:
-      date: date
-      code: code
-      open: open
-      high: high
-      low: low
-      close: close
-      pre_close: preclose
-      volume: volume
-      amount: amount
-      turn: turn
-      tradestatus: tradestatus
-      peTTM: peTTM
-      pbMRQ: pbMRQ
+    field_mapping: {date: date, code: code, open: open, high: high, low: low, close: close, pre_close: preclose, volume: volume, amount: amount, turn: turn, tradestatus: tradestatus, pe_ttm: "peTTM", pb_mrq: "pbMRQ"}
     unit_conversions: {}
 
 consumers:

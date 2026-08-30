@@ -10,7 +10,7 @@
 入口:
     from StockInvestmentTool.indicators.engine import IndicatorRegistry
     reg = IndicatorRegistry()
-    values = reg.latest(df, ["MA20", "MA60"])
+    values = reg.latest(df, ["ma20", "ma60"])
 """
 
 from StockInvestmentTool.indicators.engine import (

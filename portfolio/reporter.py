@@ -99,8 +99,8 @@ class MorningReporter:
                 current = float(last["close"])
                 weak = item.weak_support
                 # 未手动预设时用 MA60 近似
-                if weak <= 0 and "ma_60" in kline.columns:
-                    weak = float(last.get("ma_60", 0))
+                if weak <= 0 and "ma60" in kline.columns:
+                    weak = float(last.get("ma60", 0))
                 dist = (current / weak - 1) * 100 if weak > 0 else None
                 rows.append({
                     "code": item.stock_code, "name": item.stock_name,

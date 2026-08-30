@@ -62,9 +62,9 @@ class AdvisorContext:
         self.weak_support = 0.0
         self.strong_support = 0.0
         self.extreme_anchor = 0.0
-        self.ma_20 = 0.0
-        self.ma_60 = 0.0
-        self.volume_ma_5 = 0.0
+        self.ma20 = 0.0
+        self.ma60 = 0.0
+        self.vol_ma5 = 0.0
         self.last_volume = 0.0
         self.trend = ""
         self.market_state = ""
@@ -83,9 +83,9 @@ class AdvisorContext:
             "weak_support": self.weak_support,
             "strong_support": self.strong_support,
             "extreme_anchor": self.extreme_anchor,
-            "ma_20": self.ma_20,
-            "ma_60": self.ma_60,
-            "volume_ma_5": self.volume_ma_5,
+            "ma20": self.ma20,
+            "ma60": self.ma60,
+            "vol_ma5": self.vol_ma5,
             "last_volume": self.last_volume,
             "trend": self.trend,
             "market_state": self.market_state,
@@ -128,10 +128,10 @@ class PostPurchaseAdvisor:
         ctx.current_price = float(last.get("close", 0))
         ctx.recent_low = float(last.get("low", 0))
         ctx.last_volume = float(last.get("volume", 0))
-        ctx.volume_ma_5 = float(last.get("volume_ma_5", 0)) if "volume_ma_5" in kline.columns else 0
+        ctx.vol_ma5 = float(last.get("vol_ma5", 0)) if "vol_ma5" in kline.columns else 0
         ctx.year_high = float(kline["high"].tail(252).max())
-        ctx.ma_20 = float(last.get("ma_20", 0)) if "ma_20" in kline.columns else 0
-        ctx.ma_60 = float(last.get("ma_60", 0)) if "ma_60" in kline.columns else 0
+        ctx.ma20 = float(last.get("ma20", 0)) if "ma20" in kline.columns else 0
+        ctx.ma60 = float(last.get("ma60", 0)) if "ma60" in kline.columns else 0
 
         # 用统一 IndicatorContext 计算完整指标（可配置/可组合），补充到 context
         # （FR-1.3：全库唯一指标求值入口，替代散落 hardcode 计算）
@@ -225,7 +225,7 @@ class PostPurchaseAdvisor:
                               scheme, check_results: dict) -> Optional[ActionAdvice]:
         """② 技术止损: 最近最低价 < 强支撑 且 放量"""
         surge_th = getattr(scheme.risk, "volume_surge_threshold", 1.8)
-        vol_surge = ctx.volume_ma_5 > 0 and ctx.last_volume > ctx.volume_ma_5 * surge_th
+        vol_surge = ctx.vol_ma5 > 0 and ctx.last_volume > ctx.vol_ma5 * surge_th
         triggered = ctx.strong_support > 0 and ctx.recent_low < ctx.strong_support and vol_surge
         check_results["technical_stop"] = {
             "strong_support": round(ctx.strong_support, 2),
@@ -538,10 +538,10 @@ class PostPurchaseAdvisor:
 
         # v4.8 动态弱支撑（基金/ETF 专用）: 牛市初/中期 + 现价>静态弱支撑 + MA20有值
         # → 弱支撑动态切换为 MA20（趋势跟随），强支撑保持静态（极限防守线）
-        if position.stock_type == "E" and ctx.ma_20 > 0 and ctx.weak_support > 0 \
+        if position.stock_type == "E" and ctx.ma20 > 0 and ctx.weak_support > 0 \
                 and ctx.current_price > ctx.weak_support \
                 and ctx.market_state in ("牛市初期", "牛市中期"):
-            ctx.weak_support = ctx.ma_20
+            ctx.weak_support = ctx.ma20
             ctx._dynamic_weak_support = True  # 标记供前端/日志展示
 
         check_results: dict = {}

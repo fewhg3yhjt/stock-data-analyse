@@ -6,7 +6,7 @@
   - 支撑位来源（MaSource/RollingLowSource/IndicatorExprSource）、规则 executor 的
     RuleContext、advisor 都从同一口井打水；
   - 既支持「整表计算」（compute_all），也支持「按指标名/表达式单点取值」；
-  - 老 yaml 写死字段名（ma_60 / low_3m / year_low / dividend_anchor）由
+  - 老 yaml 写死字段名（ma60 / low_3m / year_low / dividend_anchor）由
     `strategy/support.py` 的 `SUPPORT_SOURCE_FACTORY` 兼容映射，存量方案零迁移。
 
 数据边界（HLD ADR-6）：IndicatorContext 只读**原始行情**列 + 已配置指标，
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # 表达式中可直接引用的原始行情列白名单
 _RAW_COLUMNS = ("open", "high", "low", "close", "volume", "amount",
-                "peTTM", "pbMRQ", "turn", "pct_chg")
+                "pe_ttm", "pb_mrq", "turn", "pct_chg")
 
 
 class IndicatorContext:
@@ -33,9 +33,9 @@ class IndicatorContext:
 
     用法：
         ctx = IndicatorContext(df)          # df: 原始行情 DataFrame
-        ctx["MA20"]                         # 按指标名取当前（末行）值
-        ctx.eval("0.95*MA20")               # 表达式求值
-        ctx.ma(60)                          # 便捷原子：MA60
+        ctx["ma20"]                         # 按指标名取当前（末行）值
+        ctx.eval("0.95*ma20")               # 表达式求值
+        ctx.ma(60)                          # 便捷原子：ma60
         ctx.rolling_low(63)                 # 便捷原子：近63日最低
 
     row 参数：默认取 df 末行（最新值）；回测中可指定 i 以取某行。
@@ -97,7 +97,7 @@ class IndicatorContext:
     def eval(self, expr: str) -> float:
         """求值任意表达式（含引用指标名 / 原始列 / 白名单函数）。
 
-        例如 "0.95*MA20"、"MIN(MA20,MA240)"、"0.95*MIN(MA20,MA240)"。
+        例如 "0.95*ma20"、"MIN(ma20,ma240)"、"0.95*MIN(ma20,ma240)"。
         表达式错误时抛 ValueError，含指标名以便排查（SRD FR-1.3 验收）。
         """
         expr = (expr or "").strip()
@@ -144,15 +144,16 @@ class IndicatorContext:
 
         # 原始列
         for c in self._df.columns:
-            if c in _RAW_COLUMNS or c.startswith("ma_") or c in ("low_3m", "year_low", "bias_ratio"):
+            if c in _RAW_COLUMNS or c.startswith("ma") or c in ("low_3m", "year_low", "bias_ratio"):
                 env[c] = self._df[c]
         env.setdefault("pct_chg", self._df["close"].pct_change() * 100 if "close" in self._df else pd.Series(dtype=float))
 
-        # 已配置指标（基础/组合/代码）
+        # 已配置指标（基础/组合/代码）：引擎结果优先，覆盖 df 同名预计算列，
+        # 统一口径（df 列可能来自 compute_all 的 round(2)，引擎为准）
         try:
             computed = self._registry.compute(self._df)
             for name, s in computed.items():
-                env.setdefault(name, s)
+                env[name] = s
                 self._series_cache.setdefault(name, s)
         except Exception as e:
             logger.debug("指标计算失败，部分表达式可能不可用: %s", e)
@@ -167,14 +168,7 @@ class IndicatorContext:
         """MA(window) 当前值（任意窗口）。"""
         if self._df is None or "close" not in self._df.columns:
             return 0.0
-        # 优先走已配置指标（如 MA60）；任意窗口回退到 rolling 计算
-        try:
-            return self._resolve(f"MA{window}")
-        except Exception:
-            idx = self._row_index if self._row_index >= 0 else len(self._df) - 1
-            s = self._df["close"].iloc[: idx + 1].rolling(int(window)).mean()
-            v = s.dropna()
-            return float(v.iloc[-1]) if len(v) else 0.0
+        return self._resolve(f"ma{window}")
 
     def rolling_low(self, window: Optional[int] = None) -> float:
         """近 N 日（默认全部）最低价。"""

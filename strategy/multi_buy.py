@@ -33,11 +33,11 @@ _DEFAULT_STAGES = [
     {"label": "综合强支撑", "position_index": 0, "ratio": 0.40},
     {"label": "极端低估锚", "use_special": "dividend_anchor_4pct", "ratio": 0.30},
 ]
-_DEFAULT_SUPPORT_SOURCES = ["dividend_anchor", "ma_60", "low_3m", "year_low"]
+_DEFAULT_SUPPORT_SOURCES = ["dividend_anchor", "ma60", "low_3m", "year_low"]
 
 # 支撑位候选来源 → 可读标签（用于操作逻辑说明）
 _SUPPORT_LABELS = {
-    "ma_60": "MA60",
+    "ma60": "MA60",
     "low_3m": "近3月低点",
     "year_low": "年内低点",
     "dividend_anchor": "股息锚",
@@ -269,7 +269,7 @@ class MultiBuyStrategy:
     def generate_rule_c_plan(
         self,
         current_price: float,
-        ma_20: float,
+        ma20: float,
         weak_support: float,
     ) -> list[dict]:
         """生成规则C的建仓计划
@@ -283,8 +283,8 @@ class MultiBuyStrategy:
         plan = [
             {"stage": 1, "label": "当前价(立即买入)", "threshold": current_price,
              "ratio": 0.20, "triggered": True},
-            {"stage": 2, "label": "MA20", "threshold": round(ma_20, 2) if ma_20 > 0 else 0,
-             "ratio": 0.30, "triggered": current_price <= ma_20 if ma_20 > 0 else False},
+            {"stage": 2, "label": "MA20", "threshold": round(ma20, 2) if ma20 > 0 else 0,
+             "ratio": 0.30, "triggered": current_price <= ma20 if ma20 > 0 else False},
             {"stage": 3, "label": "综合弱支撑", "threshold": round(weak_support, 2) if weak_support > 0 else 0,
              "ratio": 0.20, "triggered": current_price <= weak_support if weak_support > 0 else False},
             {"stage": 4, "label": "机动仓位", "threshold": 0,

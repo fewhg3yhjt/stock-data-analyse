@@ -132,12 +132,12 @@ class ChartGenerator:
 
         # ── 上子图：价格 + 均线 + 交易标记 ──
         ax1.plot(df["date"], df["close"], label="收盘价", color="black", linewidth=1)
-        if "ma_20" in df.columns:
-            ax1.plot(df["date"], df["ma_20"], label="MA20", linestyle="--", alpha=0.5)
-        if "ma_60" in df.columns:
-            ax1.plot(df["date"], df["ma_60"], label="MA60", linestyle="--", alpha=0.5)
-        if "ma_120" in df.columns:
-            ax1.plot(df["date"], df["ma_120"], label="MA120", linestyle="--", alpha=0.5)
+        if "ma20" in df.columns:
+            ax1.plot(df["date"], df["ma20"], label="MA20", linestyle="--", alpha=0.5)
+        if "ma60" in df.columns:
+            ax1.plot(df["date"], df["ma60"], label="MA60", linestyle="--", alpha=0.5)
+        if "ma120" in df.columns:
+            ax1.plot(df["date"], df["ma120"], label="MA120", linestyle="--", alpha=0.5)
 
         buy_trades = [t for t in trades if "买入" in t.get("type", "")]
         sell_trades = [t for t in trades if "止盈" in t.get("type", "")

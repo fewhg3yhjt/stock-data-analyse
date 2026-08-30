@@ -31,7 +31,7 @@ class BuyRuleConfig:
     type 决定执行类，params 决定行为细节。例如:
       type="support_level"
         params:
-          support_sources: ["dividend_anchor", "ma_60", "low_3m", "year_low"]
+          support_sources: ["dividend_anchor", "ma60", "low_3m", "year_low"]
           sort_direction: "asc"
           buy_stages: [{label, position_index, ratio}, ...]
     """

@@ -57,7 +57,10 @@ def adapt_legacy_file(dataset: str, source: Path) -> pd.DataFrame:
         out = frame.copy()
         out["date"] = pd.to_datetime(out["date"], errors="coerce")
         out["code"] = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
-        for column in ("peTTM", "pbMRQ"):
+        for column in ("pe_ttm", "pb_mrq"):
+            source_column = {"pe_ttm": "peTTM", "pb_mrq": "pbMRQ"}[column]
+            if column not in out and source_column in out:
+                out[column] = out[source_column]
             out[column] = pd.to_numeric(out[column], errors="coerce")
-        return out[["date", "code", "peTTM", "pbMRQ"]].drop_duplicates(["date", "code"]).sort_values(["date", "code"]).reset_index(drop=True)
+        return out[["date", "code", "pe_ttm", "pb_mrq"]].drop_duplicates(["date", "code"]).sort_values(["date", "code"]).reset_index(drop=True)
     raise ValueError(f"不支持的历史适配数据集: {dataset}")

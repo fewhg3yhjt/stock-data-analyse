@@ -76,8 +76,8 @@ def judge_fuse(csi300_kline: Optional[pd.DataFrame]) -> str:
 
     Parameters
     ----------
-    csi300_kline : compute_all 后的沪深300 日K线（含 ma_250）。
-        None/缺 ma_250 → "未触发"（数据不足，不误杀）。
+    csi300_kline : compute_all 后的沪深300 日K线（含 ma240）。
+        None/缺 ma240 → "未触发"（数据不足，不误杀）。
 
     Returns
     -------
@@ -86,9 +86,9 @@ def judge_fuse(csi300_kline: Optional[pd.DataFrame]) -> str:
     if csi300_kline is None or csi300_kline.empty:
         return "未触发"
     df = csi300_kline.copy()
-    if "ma_250" not in df.columns:
+    if "ma240" not in df.columns:
         return "未触发"
-    below = (df["close"] < df["ma_250"]).fillna(False)
+    below = (df["close"] < df["ma240"]).fillna(False)
     if not below.any():
         return "未触发"
     # 当前（最新）收盘是否仍在年线下：已在年线上 → 预警解除

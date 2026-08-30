@@ -13,8 +13,23 @@ fields:
   - {name: date, display_name: 交易日期, data_type: date, nullable: false, primary_key: true}
   - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
   - {name: close, display_name: 收盘价, data_type: float, nullable: true}
+  - {name: volume, display_name: 成交量, data_type: float, nullable: true}
+  - {name: amount, display_name: 成交额, data_type: float, nullable: true}
   - {name: ma5, display_name: 五日均线, data_type: float, nullable: true}
+  - {name: ma10, display_name: 十日均线, data_type: float, nullable: true}
+  - {name: ma20, display_name: 二十日均线, data_type: float, nullable: true}
+  - {name: ma60, display_name: 六十日均线, data_type: float, nullable: true}
+  - {name: ma120, display_name: 一百二十日均线, data_type: float, nullable: true}
+  - {name: bias_ratio, display_name: MA250乖离率, data_type: float, nullable: true}
+  - {name: vol_ratio, display_name: 量比, data_type: float, nullable: true}
+  - {name: pct_chg, display_name: 日涨跌幅, data_type: float, nullable: true}
+  - {name: volatility_20_factor, display_name: 二十日波动率, data_type: float, nullable: true}
+  - {name: pe_ttm, display_name: PE(TTM), data_type: float, nullable: true}
+  - {name: pb_mrq, display_name: PB(MRQ), data_type: float, nullable: true}
   - {name: ret_5d, display_name: 五日动量, data_type: float, nullable: true}
+  - {name: ret_20d, display_name: 二十日动量, data_type: float, nullable: true}
+  - {name: high_20d, display_name: 二十日高点, data_type: float, nullable: true}
+  - {name: low_20d, display_name: 二十日低点, data_type: float, nullable: true}
 sources:
   - {name: stock_daily, role: input, priority: 1, field_mapping: {date: date, code: code, close: close}, unit_conversions: {}}
 consumers:

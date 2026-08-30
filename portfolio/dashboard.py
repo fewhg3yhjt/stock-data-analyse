@@ -48,7 +48,7 @@ def _open_instruction(market_state: str, ctx) -> str:
     if market_state == "强多":
         return f"🔥规则C激活：现价{price} 立即建仓20%"
     if market_state == "弱多":
-        return f"⏳回踩MA20（{ctx.ma_20:.2f}）建仓"
+        return f"⏳回踩MA20（{ctx.ma20:.2f}）建仓"
     if market_state == "震荡":
         return f"⏳回落至弱支撑（{ctx.weak_support:.2f}）挂单"
     return "🚫禁买（空头趋势不操作）"
@@ -462,14 +462,14 @@ class DashboardService:
                     ind_orig = _tmp.read_indicator_code(code_nodot, days=days)
                     if ind_orig is not None:
                         ind_orig = ind_orig.sort_values("date").reset_index(drop=True)
-                        keep = [c for c in ("MA5", "MA10", "MA20", "MA60") if c in ind_orig.columns]
+                        keep = [c for c in ("ma5", "ma10", "ma20", "ma60") if c in ind_orig.columns]
                         if keep:
                             merged = _pd.merge(
                                 hdf[["date"]], ind_orig[["date"] + keep],
                                 on="date", how="left"
                             ).sort_values("date").reset_index(drop=True)
-                            for n, col in {"MA5": "MA5", "MA10": "MA10",
-                                           "MA20": "MA20", "MA60": "MA60"}.items():
+                            for n, col in {"ma5": "ma5", "ma10": "ma10",
+                                           "ma20": "ma20", "ma60": "ma60"}.items():
                                 if col in keep:
                                     s = _pd.to_numeric(merged[col], errors="coerce")
                                     mas[n] = [round(float(x), 2) if x == x else None for x in s]
@@ -480,7 +480,7 @@ class DashboardService:
                 if not mas:
                     for n in (5, 10, 20, 60):
                         ma = closes_s.rolling(n).mean()
-                        mas[f"MA{n}"] = [round(float(x), 2) if x == x else None for x in ma]
+                        mas[f"ma{n}"] = [round(float(x), 2) if x == x else None for x in ma]
 
                 result["daily_history"] = {
                     "dates": [str(d)[:10] for d in hdf["date"]],
@@ -491,8 +491,8 @@ class DashboardService:
                     "volumes": [round(float(x), 0) if x == x else None for x in hdf["volume"]],
                     "amounts": [round(float(x), 2) if x == x else None for x in hdf.get("amount", _pd.Series([None]*len(hdf)))],
                     "turns": [round(float(x), 2) if x == x else None for x in hdf.get("turn", _pd.Series([None]*len(hdf)))],
-                    "pe": [round(float(x), 2) if x == x else None for x in hdf.get("peTTM", _pd.Series([None]*len(hdf)))],
-                    "pb": [round(float(x), 2) if x == x else None for x in hdf.get("pbMRQ", _pd.Series([None]*len(hdf)))],
+                    "pe": [round(float(x), 2) if x == x else None for x in hdf.get("pe_ttm", _pd.Series([None]*len(hdf)))],
+                    "pb": [round(float(x), 2) if x == x else None for x in hdf.get("pb_mrq", _pd.Series([None]*len(hdf)))],
                     "mas": mas,
                 }
         except Exception as e:
@@ -599,7 +599,7 @@ class DashboardService:
         norm = StockDataFetcher.normalize_code(code)
         code_nodot = norm.replace(".", "")
         if metrics is None:
-            metrics = ["MA20", "MA60"]
+            metrics = ["ma20", "ma60"]
 
         # 读 warehouse 日线（DuckDB 单查询，替代逐月 read_parquet —— FR-1.4/P1）
         try:
@@ -675,7 +675,7 @@ class DashboardService:
         Returns:
             {"norm", "kline", "ctx", "market_state",
              "basic": {code, market_state, weak_support, strong_support,
-                       ma_20, ma_60, trend, year_high}}
+                       ma20, ma60, trend, year_high}}
         """
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
         from StockInvestmentTool.portfolio.monitor import PriceMonitor
@@ -697,8 +697,8 @@ class DashboardService:
             "market_state": market_state,
             "weak_support": round(ctx.weak_support, 2) if ctx.weak_support else None,
             "strong_support": round(ctx.strong_support, 2) if ctx.strong_support else None,
-            "ma_20": round(ctx.ma_20, 2) if ctx.ma_20 else None,
-            "ma_60": round(ctx.ma_60, 2) if ctx.ma_60 else None,
+            "ma20": round(ctx.ma20, 2) if ctx.ma20 else None,
+            "ma60": round(ctx.ma60, 2) if ctx.ma60 else None,
             "trend": ctx.trend,
             "year_high": round(ctx.year_high, 2) if ctx.year_high else None,
         }
@@ -873,8 +873,8 @@ class DashboardService:
             "risk_light": _risk_light(name),
             "weak_support": basic.get("weak_support"),
             "strong_support": basic.get("strong_support"),
-            "ma_20": basic.get("ma_20"),
-            "ma_60": basic.get("ma_60"),
+            "ma20": basic.get("ma20"),
+            "ma60": basic.get("ma60"),
             "year_high": basic.get("year_high"),
             "trend": basic.get("trend"),
             "instruction": _open_instruction(market_state, ctx),
@@ -890,7 +890,7 @@ class DashboardService:
         return {
             "code": code, "name": name, "price": None, "market_state": "数据缺失",
             "risk_light": "🟡待核",             "weak_support": None, "strong_support": None,
-            "ma_20": None, "ma_60": None, "year_high": None, "trend": None,
+            "ma20": None, "ma60": None, "year_high": None, "trend": None,
             "instruction": f"⚠️ 数据获取失败：{err[:60]}",
             "notes": item.get("notes") or "", "ok": False,
         }

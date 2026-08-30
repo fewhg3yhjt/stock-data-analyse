@@ -36,20 +36,20 @@ class TechnicalIndicators:
                 price_col: str = "close") -> pd.DataFrame:
         """移动平均线
 
-        windows 默认含 ma_250（年线，V6.0 市场状态/止盈硬上限需要）。
-        ma_250 滚动窗口 250 天，前 249 行为 NaN（正常，计算方需容忍）。
+        windows 默认含 ma240（年线，V6.0 市场状态/止盈硬上限需要）。
+        ma240 滚动窗口 240 天，前 239 行为 NaN（正常，计算方需容忍）。
         """
-        windows = windows or [5, 10, 20, 60, 120, 250]
+        windows = windows or [5, 10, 20, 60, 120, 240]
         df = df.copy()
         for w in windows:
-            df[f"ma_{w}"] = df[price_col].rolling(window=w).mean().round(2)
+            df[f"ma{w}"] = df[price_col].rolling(window=w).mean().round(2)
         return df
 
     @staticmethod
     def calc_volume_ma(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
         """成交量均线"""
         df = df.copy()
-        df["volume_ma_5"] = df["volume"].rolling(window=window).mean().round(0)
+        df["vol_ma5"] = df["volume"].rolling(window=window).mean().round(0)
         return df
 
     @staticmethod
@@ -74,11 +74,11 @@ class TechnicalIndicators:
     # ── V6.0 乖离率 / MA 方向 ────────────────────────
 
     @staticmethod
-    def calc_bias_ratio(df: pd.DataFrame, ma_col: str = "ma_250",
+    def calc_bias_ratio(df: pd.DataFrame, ma_col: str = "ma240",
                         price_col: str = "close") -> pd.DataFrame:
-        """乖离率 = (收盘价 − MA250) / MA250 × 100
+        """乖离率 = (收盘价 − MA240) / MA240 × 100
 
-        V6.0 定义: 乖离率 = (当前价 − MA250) / MA250 × 100%。
+        V6.0 定义: 乖离率 = (当前价 − MA240) / MA240 × 100%。
         用于市场状态辅助判断（>+20% 强多头超买降级 / <-20% 极度超卖）与仓位乘数。
         ma_col 不存在时原样返回（不抛错，兼容 1 年窗口数据）。
         """
@@ -89,7 +89,7 @@ class TechnicalIndicators:
         return df
 
     @staticmethod
-    def ma_slope(df: pd.DataFrame, ma_col: str = "ma_60",
+    def ma_slope(df: pd.DataFrame, ma_col: str = "ma60",
                  compare_days: int = 5, tolerance: float = 0.005) -> str:
         """MA 方向量化判定（V6.0: MA60 方向对支撑位的影响）
 
@@ -119,9 +119,9 @@ class TechnicalIndicators:
         """判定均线排列: 多头 / 空头 / 震荡"""
         last = df.iloc[-1]
         try:
-            if last["ma_5"] > last["ma_20"] > last["ma_60"]:
+            if last["ma5"] > last["ma20"] > last["ma60"]:
                 return "多头排列（MA5 > MA20 > MA60）"
-            elif last["ma_5"] < last["ma_20"] < last["ma_60"]:
+            elif last["ma5"] < last["ma20"] < last["ma60"]:
                 return "空头排列（MA5 < MA20 < MA60）"
             else:
                 return "震荡格局"
@@ -249,8 +249,8 @@ class ValuationHelper:
             sources.append("近12月最低价")
 
         # MA60
-        if "ma_60" in technical:
-            candidates.append(technical["ma_60"])
+        if "ma60" in technical:
+            candidates.append(technical["ma60"])
             sources.append("MA60均线")
 
         # 近3月低点

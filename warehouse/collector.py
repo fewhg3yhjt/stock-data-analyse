@@ -33,7 +33,7 @@ _DAILY_FIELDS = (
 # 我们仓库关心的列（其余可后续扩展）
 _KEEP_COLS = [
     "date", "code", "open", "high", "low", "close",
-    "volume", "amount", "turn", "tradestatus", "peTTM", "pbMRQ",
+    "volume", "amount", "turn", "tradestatus", "pe_ttm", "pb_mrq",
 ]
 
 # baostock 请求限速：每次查询间最小间隔，避免触发黑名单
@@ -240,7 +240,7 @@ class MarketCollector:
         df = df[(df["date"] >= pd.Timestamp(start)) & (df["date"] <= pd.Timestamp(end))]
         df = df.sort_values("date").drop_duplicates("date")
         # 对齐 _KEEP_COLS（腾讯无 pe/pb/tradestatus，用 NaN 占位）
-        for c in ("tradestatus", "peTTM", "pbMRQ"):
+        for c in ("tradestatus", "pe_ttm", "pb_mrq"):
             df[c] = float("nan")
         df = df[[c for c in _KEEP_COLS if c in df.columns]]
         return df

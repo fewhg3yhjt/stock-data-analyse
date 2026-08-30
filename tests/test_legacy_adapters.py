@@ -32,5 +32,5 @@ def test_valuation_adapter_normalizes_legacy_frame(tmp_path):
     source = tmp_path / "2026-01.parquet"
     pd.DataFrame({"date": ["2026-01-02"], "code": ["sh.600000"], "peTTM": [8], "pbMRQ": [1.2]}).to_parquet(source, index=False)
     result = adapt_legacy_file("valuation_daily", source)
-    assert list(result.columns) == ["date", "code", "peTTM", "pbMRQ"]
+    assert list(result.columns) == ["date", "code", "pe_ttm", "pb_mrq"]
     assert result.iloc[0]["code"] == "sh600000"

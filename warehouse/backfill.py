@@ -59,12 +59,12 @@ class ValuationBackfill:
 
         out = pd.DataFrame({
             "date": pd.to_datetime(df["数据日期"]),
-            "peTTM": pd.to_numeric(df["PE(TTM)"], errors="coerce"),
-            "pbMRQ": pd.to_numeric(df["市净率"], errors="coerce"),
+            "pe_ttm": pd.to_numeric(df["PE(TTM)"], errors="coerce"),
+            "pb_mrq": pd.to_numeric(df["市净率"], errors="coerce"),
         })
         out["code"] = code
         out = out[(out["date"] >= pd.Timestamp(start)) & (out["date"] <= pd.Timestamp(end))]
-        out = out.dropna(subset=["peTTM", "pbMRQ"], how="all")
+        out = out.dropna(subset=["pe_ttm", "pb_mrq"], how="all")
         out = out.sort_values("date").drop_duplicates("date")
         return out
 

@@ -242,13 +242,13 @@ def judge_time_stop(
 # ④ 三层止盈
 # ═══════════════════════════════════════════════════════════
 
-def take_profit_hard_cap(year_high: Optional[float], ma250: Optional[float]) -> Optional[float]:
-    """止盈硬上限 = MIN(近12M最高×1.05, MA250×1.2)。"""
+def take_profit_hard_cap(year_high: Optional[float], ma240: Optional[float]) -> Optional[float]:
+    """止盈硬上限 = MIN(近12M最高×1.05, MA240×1.2)。"""
     if year_high is None or year_high <= 0:
         return None
     candidates = [year_high * 1.05]
-    if ma250 is not None and ma250 > 0:
-        candidates.append(ma250 * 1.2)
+    if ma240 is not None and ma240 > 0:
+        candidates.append(ma240 * 1.2)
     return min(candidates)
 
 
@@ -337,7 +337,7 @@ def judge_sell_tree_v6(
     # 三层止盈
     high: float = 0.0,
     year_high: float = 0.0,
-    ma250: Optional[float] = None,
+    ma240: Optional[float] = None,
     right_peak: float = 0.0,
     close: float = 0.0,
     left_tiers_sold: int = 0,

@@ -88,7 +88,7 @@ def determine_market_state_from_df(
 def dashboard_market_state(df: pd.DataFrame, ma_slope_days: int = 5) -> str:
     """按看板设计返回 4 态市场状态: 强多 / 弱多 / 震荡 / 空头。
 
-    依赖 K 线的 ma_5/ma_20/ma_60 列（用 TechnicalIndicators.compute_all 预计算）。
+    依赖 K 线的 ma5/ma20/ma60 列（用 TechnicalIndicators.compute_all 预计算）。
     """
     from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 
@@ -105,7 +105,7 @@ def dashboard_market_state(df: pd.DataFrame, ma_slope_days: int = 5) -> str:
     # 多头排列: 按 MA20 斜率拆分强/弱多
     if "多头" in trend:
         slope = TechnicalIndicators.ma_slope(
-            df, ma_col="ma_20", compare_days=ma_slope_days
+            df, ma_col="ma20", compare_days=ma_slope_days
         )
         return "强多" if slope == "向上" else "弱多"
 

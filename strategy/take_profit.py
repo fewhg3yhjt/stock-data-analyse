@@ -628,8 +628,8 @@ class TakeProfitOptimizer:
         # ── ① 技术止损：最低价跌破强支撑 + 放量 ──
         weak, strong, extreme = self._get_support_levels(row)
         vol_surge = (
-            row.get("volume", 0) > row.get("volume_ma_5", 0) * self._volume_surge
-            if not pd.isna(row.get("volume_ma_5")) else False
+            row.get("volume", 0) > row.get("vol_ma5", 0) * self._volume_surge
+            if not pd.isna(row.get("vol_ma5")) else False
         )
         if self.technical_stop_enabled and strong > 0 and low < strong and vol_surge:
             fill = close

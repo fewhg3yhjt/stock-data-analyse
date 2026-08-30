@@ -376,6 +376,27 @@ def _register_artifacts(center, warehouse, result, stages):
     result["artifacts"] = artifacts
 
 
+def _update_auxiliary_health(center, auxiliary):
+    metric_tasks = {
+        "fundamentals_capture": ["roe"],
+        "valuation_capture": ["pe_ttm", "pb_mrq"],
+        "money_flow_capture": ["money_flow_net"],
+    }
+    for task_key, metric_keys in metric_tasks.items():
+        payload = auxiliary.get(task_key) or {}
+        quality = payload.get("quality") or {}
+        covered = int(quality.get("covered_objects") or payload.get("symbols") or 0)
+        expected = int(quality.get("expected_objects") or covered or 0)
+        status = "healthy" if quality.get("publish_allowed") else "partial"
+        for metric_key in metric_keys:
+            center.update_metric_health(
+                metric_key,
+                latest_period=quality.get("period_end") or datetime.now().strftime("%Y-%m-%d"),
+                covered_objects=covered, expected_objects=expected,
+                status=status, message=f"{task_key}: {covered}/{expected}",
+            )
+
+
 def run_auxiliary_only(start: str, end: str) -> dict:
     """Refresh auxiliary datasets and register their complete production facts."""
     warehouse = Warehouse()
@@ -414,6 +435,7 @@ def run_auxiliary_only(start: str, end: str) -> dict:
         "valuation_capture": (valuation_run, result["auxiliary"]["valuation_capture"]),
         "money_flow_capture": (money_flow_run, result["auxiliary"]["money_flow_capture"]),
     })
+    _update_auxiliary_health(center, result["auxiliary"])
     return result
 
 

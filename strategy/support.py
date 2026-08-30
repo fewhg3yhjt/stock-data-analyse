@@ -36,9 +36,9 @@ class MaSource:
         self.window = int(window)
 
     def compute(self, ctx: Any, row: Optional[pd.Series] = None) -> float:
-        # 老算法读 row 的 ma_{window}（compute_all 已 round(2)），保持回测口径一致
-        if row is not None and f"ma_{self.window}" in row.index:
-            v = row.get(f"ma_{self.window}")
+        # 老算法读 row 的 ma{window}（compute_all 已 round(2)），保持回测口径一致
+        if row is not None and f"ma{self.window}" in row.index:
+            v = row.get(f"ma{self.window}")
         else:
             try:
                 v = ctx.ma(self.window)
@@ -114,13 +114,18 @@ def get_support_levels(
     return (weak, strong, extreme)
 
 
-# ── 老 yaml 字段名 → 来源策略（兼容层）────────────────────
+# ── yaml 字段名 → 来源策略（兼容层：新老命名均可解析）────────────
 
 SUPPORT_SOURCE_FACTORY: dict[str, Any] = {
+    "ma60": lambda: MaSource(60),
+    "ma20": lambda: MaSource(20),
+    "ma120": lambda: MaSource(120),
+    "ma240": lambda: MaSource(240),
+    # 老命名（下划线）兼容
     "ma_60": lambda: MaSource(60),
     "ma_20": lambda: MaSource(20),
     "ma_120": lambda: MaSource(120),
-    "ma_250": lambda: MaSource(250),
+    "ma_250": lambda: MaSource(240),
     "low_3m": lambda: RollingLowSource(63),
     "year_low": lambda: RollingLowSource(None),
 }
@@ -134,7 +139,7 @@ def build_sources(support_sources: list[str]) -> tuple[list[Any], Optional[float
       - 其余：若命中 SUPPORT_SOURCE_FACTORY 走兼容映射，否则按指标表达式处理。
 
     Args:
-        support_sources: 老写法如 ["dividend_anchor","ma_60","low_3m","year_low"]，
+        support_sources: 老写法如 ["dividend_anchor","ma60","low_3m","year_low"]，
                          新写法如 ["MA60", "MIN(MA20,MA240)"]。
     """
     sources: list[Any] = []
@@ -155,7 +160,7 @@ def build_sources(support_sources: list[str]) -> tuple[list[Any], Optional[float
 class RowContext:
     """轻量上下文：仅基于一行 K 线，供只有 row 的调用方（如 MultiBuyStrategy）。
 
-    MaSource/RollingLowSource 会优先读 row 的预计算列（ma_60/low_3m/year_low），
+    MaSource/RollingLowSource 会优先读 row 的预计算列（ma60/low_3m/year_low），
     基本不依赖本上下文。IndicatorExprSource 需要表达式求值，本类尽力从 row 列取
     原始值（close/high/low）+ 基础退算，无法求复合表达式时返回 0。
     """
@@ -164,7 +169,7 @@ class RowContext:
         self.row = row
 
     def ma(self, window: int) -> float:
-        key = f"ma_{window}"
+        key = f"ma{window}"
         if key in self.row.index and not pd.isna(self.row.get(key)):
             return float(self.row.get(key))
         return 0.0

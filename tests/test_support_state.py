@@ -39,26 +39,27 @@ class TestSupport:
 
     def test_expr_source_from_indicator(self, kline):
         ctx = IndicatorContext(kline)
-        src = IndicatorExprSource("0.95*MA20")
+        src = IndicatorExprSource("0.95*ma20")
         v = src.compute(ctx, kline.iloc[-1])
         assert v > 0
 
     def test_source_factory_compat_mapping(self, kline):
         ctx = IndicatorContext(kline)
-        sources, anchor = build_sources(["ma_60", "low_3m", "year_low"])
+        sources, anchor = build_sources(["ma60", "low_3m", "year_low"])
         assert len(sources) == 3
         weak, strong, extreme = get_support_levels(sources, ctx, kline.iloc[-1])
         assert strong <= weak
 
     def test_source_factory_expression(self, kline):
         ctx = IndicatorContext(kline)
-        sources, _ = build_sources(["MA60", "MIN(MA20,MA240)"])
+        sources, _ = build_sources(["ma60", "MIN(ma20,ma240)"])
         assert len(sources) == 2
-        assert all(isinstance(s, IndicatorExprSource) for s in sources)
+        assert isinstance(sources[0], MaSource)
+        assert isinstance(sources[1], IndicatorExprSource)
 
     def test_dividend_anchor_not_in_candidates(self, kline):
         # dividend_anchor 只作 extreme，不进强/弱候选
-        sources, anchor = build_sources(["ma_60", "dividend_anchor"])
+        sources, anchor = build_sources(["ma60", "dividend_anchor"])
         assert len(sources) == 1
         assert isinstance(sources[0], MaSource)
 

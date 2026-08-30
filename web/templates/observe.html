@@ -105,8 +105,8 @@ tr:last-child td{border-bottom:none;}
             {% set cls = 'green' if r.market_state=='强多' else ('blue' if r.market_state=='弱多' else ('orange' if r.market_state=='震荡' else ('red' if r.market_state=='空头' else 'gray'))) %}
             <span class="tag {{ cls }}">{{ r.market_state }}</span>
           </td>
-          <td>{{ r.ma_20 if r.ma_20 is not none else '—' }}</td>
-          <td>{{ r.ma_60 if r.ma_60 is not none else '—' }}</td>
+          <td>{{ r.ma20 if r.ma20 is not none else '—' }}</td>
+          <td>{{ r.ma60 if r.ma60 is not none else '—' }}</td>
           <td>{{ r.weak_support if r.weak_support is not none else '—' }}</td>
           <td>{{ r.strong_support if r.strong_support is not none else '—' }}</td>
           <td>{{ r.year_high if r.year_high is not none else '—' }}</td>

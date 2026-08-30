@@ -10,6 +10,7 @@
 - [股票研究、模拟、策略、持仓与通知后台设计 V1.0](BACKEND_RESEARCH_SIMULATION_STRATEGY_V1.md)：统一特征、规则、股票集合、模拟、策略版本、真实交易账本、持仓运行状态、通知和复盘的后台领域设计。
 - [任务与数据术语](TASK_DATA_GLOSSARY.md)：任务阶段、任务类型、数据产物、状态和数据中心分类的统一用户用词。
 - [任务与数据中心前端设计](TASK_DATA_CENTER_DESIGN.md)：任务中心、数据中心的用户信息架构、操作和 API 契约。
+- [数据链路与产品状态流转收口实施任务书](DATA_PIPELINE_STATEFLOW_REMEDIATION_PLAN.md)：针对当前双轨数据链路、任务状态、质量门禁和下游消费断点的分阶段实施计划、测试矩阵与验收标准。
 
 ## 需求与现状
 

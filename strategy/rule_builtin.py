@@ -125,7 +125,7 @@ def _execute_hard_stop(ctx: RuleContext, params: dict) -> RuleResult:
 def _execute_technical_stop(ctx: RuleContext, params: dict) -> RuleResult:
     """technical_stop：技术止损（放量跌破强支撑）。"""
     surge_th = float(params.get("volume_surge_ratio", 1.8))
-    vol_ma = ctx.row.get("volume_ma_5", 0) if ctx.row is not None else 0
+    vol_ma = ctx.row.get("vol_ma5", 0) if ctx.row is not None else 0
     vol = ctx.row.get("volume", 0) if ctx.row is not None else 0
     vol_surge = (vol_ma > 0 and vol > vol_ma * surge_th)
     strong = ctx.extra.get("strong_support", 0) or 0

@@ -751,7 +751,7 @@ class PortfolioManager:
             "trend": ctx.trend,
             "weak_support": _r(ctx.weak_support),
             "strong_support": _r(ctx.strong_support),
-            "ma_20": _r(ctx.ma_20),
+            "ma20": _r(ctx.ma20),
             "year_high": _r(yh),
             "hard_stop": _r(current * (1 - rate)) if current else None,
             "left_side_zone": [_r(yh * 0.9), _r(yh)] if yh else None,

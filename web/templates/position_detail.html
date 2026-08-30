@@ -143,11 +143,11 @@ table.mini td.v{color:var(--text);font-weight:500;}
         {% set ctx_items = [
           ('当前价', ctx.get('current_price')), ('综合弱支撑', ctx.get('weak_support')),
           ('综合强支撑', ctx.get('strong_support')), ('极端低估锚', ctx.get('extreme_anchor')),
-          ('MA20', ctx.get('ma_20')), ('MA60', ctx.get('ma_60')),
+          ('MA20', ctx.get('ma20')), ('MA60', ctx.get('ma60')),
           ('近1月最低价', ctx.get('recent_low')), ('年高', ctx.get('year_high')),
           ('趋势', ctx.get('trend')), ('市场状态', ctx.get('market_state')),
           ('自低点反弹', ctx.get('rebound_from_month_low')),
-          ('5日均量', ctx.get('volume_ma_5')),
+          ('5日均量', ctx.get('vol_ma5')),
         ] %}
         {% for label, val in ctx_items %}
         <div class="ctx-cell">
@@ -228,7 +228,7 @@ table.mini td.v{color:var(--text);font-weight:500;}
                 {% for label, val in [
                   ('当前价', a_ctx.get('current_price')), ('综合弱支撑', a_ctx.get('weak_support')),
                   ('综合强支撑', a_ctx.get('strong_support')), ('极端低估锚', a_ctx.get('extreme_anchor')),
-                  ('MA20', a_ctx.get('ma_20')), ('MA60', a_ctx.get('ma_60')),
+                  ('MA20', a_ctx.get('ma20')), ('MA60', a_ctx.get('ma60')),
                   ('趋势', a_ctx.get('trend')), ('市场状态', a_ctx.get('market_state')),
                 ] %}
                 <div class="ctx-cell">

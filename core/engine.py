@@ -189,7 +189,7 @@ class AnalysisEngine:
             "trend": trend,
             "volatility": vol,
         }
-        for col in ("ma_20", "ma_60", "ma_120"):
+        for col in ("ma20", "ma60", "ma120"):
             technical[col] = round(float(last.get(col, 0)), 2) if col in kline.columns else None
         return technical, sr
 
@@ -201,8 +201,8 @@ class AnalysisEngine:
         """估值分析，返回 (valuation, cross_support, dividend_anchor)"""
         pe_info = ValuationHelper.pe_percentile(kline)
         anchor = ValuationHelper.triple_anchor(dividends, technical["current_price"])
-        if "ma_60" not in technical:
-            technical["ma_60"] = 0
+        if "ma60" not in technical:
+            technical["ma60"] = 0
         cross = ValuationHelper.cross_validation(technical, anchor)
         valuation = {"pe": pe_info, "triple_anchor": anchor}
 

@@ -5,7 +5,7 @@ task:
   type: INDICATOR_BUILD
   input_datasets: [stock_daily]
   output_datasets: [indicators]
-  producer_metrics: [ma5, ma20, rsi14, macd, volatility20]
+  producer_metrics: [ma5, ma10, ma20, ma60, ma120, ma240, ma17, ma63, rsi14, macd, volatility_20, take_profit_reference, dual_ma_low, amplitude_abs, custom_example]
 scope:
   asset_types: [stock, etf]
   universe: active

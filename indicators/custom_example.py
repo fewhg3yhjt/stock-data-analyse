@@ -3,7 +3,7 @@
 
 函数签名约定: fn(df: pd.DataFrame, env: dict) -> pd.Series
   - df: 原始行情（date/open/high/low/close/volume）
-  - env: 已计算的指标环境（可用 env["MA20"] 等引用其他指标）
+  - env: 已计算的指标环境（可用 env["ma20"] 等引用其他指标）
   - 返回: 与 df 对齐的 Series
 """
 

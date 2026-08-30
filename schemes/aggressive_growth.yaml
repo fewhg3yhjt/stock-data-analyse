@@ -20,7 +20,7 @@ buy_rules:
     params:
       support_sources:
         - "dividend_anchor"
-        - "ma_60"
+        - "ma60"
         - "low_3m"
         - "year_low"
       sort_direction: "asc"

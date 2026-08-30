@@ -14,7 +14,20 @@ fields:
   - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
   - {name: close, display_name: 收盘价, data_type: float, nullable: true}
   - {name: ma5, display_name: 五日均线, data_type: float, nullable: true}
+  - {name: ma10, display_name: 十日均线, data_type: float, nullable: true}
   - {name: ma20, display_name: 二十日均线, data_type: float, nullable: true}
+  - {name: ma60, display_name: 六十日均线, data_type: float, nullable: true}
+  - {name: ma120, display_name: 一百二十日均线, data_type: float, nullable: true}
+  - {name: ma240, display_name: 二百四十日均线, data_type: float, nullable: true}
+  - {name: ma17, display_name: 十七日均线, data_type: float, nullable: true}
+  - {name: ma63, display_name: 六十三日均线, data_type: float, nullable: true}
+  - {name: rsi14, display_name: RSI14, data_type: float, nullable: true}
+  - {name: macd, display_name: MACD, data_type: float, nullable: true}
+  - {name: volatility_20, display_name: 二十日波动率, data_type: float, nullable: true}
+  - {name: take_profit_reference, display_name: 止盈参考线, data_type: float, nullable: true}
+  - {name: dual_ma_low, display_name: 双均线低点, data_type: float, nullable: true}
+  - {name: amplitude_abs, display_name: 日内振幅绝对值, data_type: float, nullable: true}
+  - {name: custom_example, display_name: 自定义示例, data_type: float, nullable: true}
 sources:
   - {name: stock_daily, role: input, priority: 1, field_mapping: {date: date, code: code, close: close}, unit_conversions: {}}
 consumers:

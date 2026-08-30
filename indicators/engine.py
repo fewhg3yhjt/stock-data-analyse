@@ -114,20 +114,20 @@ class IndicatorRegistry:
 
     def _load_config(self):
         """从 indicators.yaml 加载指标定义（含内置基础指标）。"""
-        # 内置基础指标（原子，始终可用）
+        # Built-ins use the canonical metric key as both name and output column.
         builtin = {
-            "MA5": IndicatorDef("MA5", "base", "MA(close,5)", description="5日均线"),
-            "MA10": IndicatorDef("MA10", "base", "MA(close,10)", description="10日均线"),
-            "MA20": IndicatorDef("MA20", "base", "MA(close,20)", description="20日均线"),
-            "MA60": IndicatorDef("MA60", "base", "MA(close,60)", description="60日均线"),
-            "MA120": IndicatorDef("MA120", "base", "MA(close,120)", description="120日均线"),
-            "MA240": IndicatorDef("MA240", "base", "MA(close,240)", description="240日均线"),
+            "ma5": IndicatorDef("ma5", "base", "MA(close,5)", description="5日均线"),
+            "ma10": IndicatorDef("ma10", "base", "MA(close,10)", description="10日均线"),
+            "ma20": IndicatorDef("ma20", "base", "MA(close,20)", description="20日均线"),
+            "ma60": IndicatorDef("ma60", "base", "MA(close,60)", description="60日均线"),
+            "ma120": IndicatorDef("ma120", "base", "MA(close,120)", description="120日均线"),
+            "ma240": IndicatorDef("ma240", "base", "MA(close,240)", description="240日均线"),
         }
         self._bases.update(builtin)
         self._code.update({
             "rsi14": IndicatorDef("rsi14", "code", fn=lambda df, env: _rsi(df["close"], 14), description="14日相对强弱指标"),
             "macd": IndicatorDef("macd", "code", fn=lambda df, env: _macd(df["close"]), description="MACD线"),
-            "volatility20": IndicatorDef("volatility20", "code", fn=lambda df, env: _volatility(df["close"], 20), description="20日年化波动率"),
+            "volatility_20": IndicatorDef("volatility_20", "code", fn=lambda df, env: _volatility(df["close"], 20), description="20日年化波动率"),
         })
 
         # 从 YAML 加载自定义指标
@@ -145,6 +145,7 @@ class IndicatorRegistry:
         for item in data.get("bases", []) or []:
             name = item.get("name", "")
             if name:
+                name = name.lower()
                 self._bases[name] = IndicatorDef(
                     name, "base", item.get("expr", ""),
                     description=item.get("description", ""),
@@ -153,6 +154,7 @@ class IndicatorRegistry:
         for item in data.get("composite", []) or []:
             name = item.get("name", "")
             if name:
+                name = name.lower()
                 self._composites[name] = IndicatorDef(
                     name, "composite", item.get("expr", ""),
                     description=item.get("description", ""),
@@ -167,6 +169,7 @@ class IndicatorRegistry:
                     import importlib
                     mod = importlib.import_module(module)
                     fn = getattr(mod, fn_name)
+                    name = name.lower()
                     self._code[name] = IndicatorDef(
                         name, "code", fn=fn,
                         description=item.get("description", ""),
@@ -174,15 +177,16 @@ class IndicatorRegistry:
                 except Exception as e:
                     logger.warning("代码指标加载失败 %s: %s", name, e)
 
-        # 用户指标单独存储，且停用项不进入运行时注册表。
+        # 用户指标必须使用 canonical snake_case 名称。
         try:
             from StockInvestmentTool.indicators.store import list_indicators
             for item in list_indicators():
                 if not item.get("enabled", True) or not item.get("name"):
                     continue
                 target = self._bases if item.get("kind") == "base" else self._composites
-                target[item["name"]] = IndicatorDef(
-                    item["name"], item.get("kind", "composite"), item.get("expr", ""),
+                name = item["name"]
+                target[name] = IndicatorDef(
+                    name, item.get("kind", "composite"), item.get("expr", ""),
                     description=item.get("description", ""),
                     applies_to=item.get("applies_to", ["stock", "etf"]),
                 )
@@ -193,6 +197,8 @@ class IndicatorRegistry:
 
     def register_code(self, name: str, fn: Callable, description: str = ""):
         """代码注册一个指标函数（可作其他指标输入）。"""
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+            raise ValueError("指标名称必须使用小写 snake_case")
         self._code[name] = IndicatorDef(name, "code", fn=fn, description=description)
 
     def all_names(self) -> list[str]:

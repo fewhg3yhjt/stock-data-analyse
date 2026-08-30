@@ -53,7 +53,7 @@ class Config:
     # 修改策略请编辑 schemes/default_value.yaml，勿改这里。
     INITIAL_CASH = 100_000
     BUY_RATIOS = [0.3, 0.4, 0.3]
-    SUPPORT_MA = ["ma_20", "ma_60", "ma_120"]
+    SUPPORT_MA = ["ma20", "ma60", "ma120"]
     STOP_LOSS_RATE = 0.15  # 硬止损扣减率（止损价 = 均价 × (1-0.15)）
     DRAWDOWN_STOP = 0.08
     MIN_PROFIT_FOR_DD = 0.06

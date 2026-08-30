@@ -141,7 +141,7 @@ class IndicatorsBuilder:
             out = pd.DataFrame({"date": df["date"], "code": code})
             for name, s in ind_series.items():
                 if s is not None:
-                    out[name] = s.values
+                    out[name.lower()] = s.values
             for ym, grp in out.groupby(out["date"].dt.strftime("%Y-%m")):
                 if output_months is not None and ym not in output_months:
                     continue

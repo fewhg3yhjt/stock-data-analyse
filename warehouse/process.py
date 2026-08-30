@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # 完整宽表标准列
 WIDE_COLUMNS = [
     "date", "code", "open", "high", "low", "close",
-    "volume", "amount", "turn", "peTTM", "pbMRQ", "tradestatus",
+    "volume", "amount", "turn", "pe_ttm", "pb_mrq", "tradestatus",
 ]
 
 # 各源提供的字段（用于合并时判断覆盖）
@@ -39,7 +39,7 @@ SOURCE_FIELDS = {
     "tencent": ["date", "code", "open", "high", "low", "close",
                 "volume", "amount", "turn"],
     "baostock": ["date", "code", "open", "high", "low", "close",
-                 "volume", "amount", "turn", "peTTM", "pbMRQ", "tradestatus"],
+                  "volume", "amount", "turn", "pe_ttm", "pb_mrq", "tradestatus"],
 }
 
 

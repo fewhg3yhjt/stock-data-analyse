@@ -83,8 +83,8 @@ class ReportGenerator:
         lines.append("")
         lines.append("| 均线 | 数值(元) |")
         lines.append("|---|---|")
-        for col, label in [("ma_5", "MA5"), ("ma_20", "MA20"),
-                           ("ma_60", "MA60"), ("ma_120", "MA120")]:
+        for col, label in [("ma5", "MA5"), ("ma20", "MA20"),
+                           ("ma60", "MA60"), ("ma120", "MA120")]:
             val = kline_df[col].iloc[-1] if col in kline_df.columns else None
             if val is not None:
                 rel = "⬆ 上方" if kline_df["close"].iloc[-1] > val else "⬇ 下方"
