@@ -193,8 +193,13 @@ def build_snapshot_chart(kline, stock_name: str, code: str,
 
     df = kline.copy()
     df = df.sort_values("date")
-    df["ma20"] = df["close"].rolling(20).mean()
-    df["ma60"] = df["close"].rolling(60).mean()
+    # 统一指标层已提供 ma20/ma60 则直接复用；缺失时引擎现算（保证口径一致）
+    missing = [c for c in ("ma20", "ma60") if c not in df.columns]
+    if missing:
+        from StockInvestmentTool.indicators.engine import IndicatorRegistry
+        computed = IndicatorRegistry().compute(df, missing)
+        for c in missing:
+            df[c] = computed.get(c, pd.Series(index=df.index, dtype=float))
     df = df.tail(120)
 
     import matplotlib
