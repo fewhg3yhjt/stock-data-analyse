@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """全量指标批量生成 — 用指标体系计算全市场指标宽表，落 indicators/ 分区
 
-设计（与 factors.py 相同的内存模式）:
-  - 每个 daily 分区只读一次，按 code 分组
+设计（按标的批次流式，控制内存）:
+  - 目标标的按批处理（batch_size），每批只把「该批标的全史」载入内存
+  - 每个 daily 分区用 pyarrow filters 下推只读命中标的的行
   - 逐标的用 IndicatorRegistry 计算可配置/组合指标
   - 按月累积落盘到 warehouse/indicators/YYYY-MM.parquet
-  - 内存峰值 = 全量日线一份（2C2G 可承受，作为离线任务）
+  - 内存峰值 = 单批标的全史一份（batch_size=500 约 40MB，1GiB 容器可承受）
 
 衔接: 由 run_warehouse_daily（收盘后采集）自动触发，
       源头 daily 更新后，下游 indicators 自动重建。
@@ -13,13 +14,16 @@
 
 from __future__ import annotations
 
+import gc
 import logging
 import time
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 
 from StockInvestmentTool.indicators.engine import IndicatorRegistry
+from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
 from StockInvestmentTool.warehouse.storage import Warehouse
 
 logger = logging.getLogger(__name__)
@@ -34,20 +38,97 @@ class IndicatorsBuilder:
         self.registry = registry or IndicatorRegistry()
         self.allow_legacy = allow_legacy
 
+    # ── 分区解析（一次校验，流式复用）──────────────────
+
+    def _resolve_partitions(self, months: list[str],
+                            partition_versions: Optional[dict[str, str]] = None) -> dict[str, dict]:
+        """解析 daily 各月份分区的发布信息（路径/版本），并做一次质量+checksum 校验。
+
+        Returns:
+            {ym: {"path": Path | None, "version_id": str | None}}
+            无 Published 且 allow_legacy 时 path=None（后续走 read_daily 直读）。
+        """
+        access = DatasetAccess(self.warehouse)
+        versions = access.get_current_version("stock_daily")
+        if partition_versions:
+            versions = {m: {"version_id": vid} for m, vid in partition_versions.items()}
+        resolved: dict[str, dict] = {}
+        if not versions:
+            if not self.allow_legacy:
+                raise DatasetAccessError("没有 Published Dataset: stock_daily")
+            return {ym: {"path": None, "version_id": None} for ym in months}
+        for ym in months:
+            current = versions.get(ym)
+            if not current:
+                if not self.allow_legacy:
+                    raise DatasetAccessError(f"分区没有正式版本: stock_daily/{ym}")
+                resolved[ym] = {"path": None, "version_id": None}
+                continue
+            version, quality = access._version_context(current["version_id"])
+            if not access._quality_allowed(quality, "WARNING"):
+                raise DatasetAccessError(f"正式版本质量不满足要求: stock_daily/{ym}")
+            path = Path(version["published_path"] or "")
+            if not path.exists():
+                raise DatasetAccessError(f"正式文件不存在: {path}")
+            import hashlib
+            if hashlib.sha256(path.read_bytes()).hexdigest() != version["checksum"]:
+                raise DatasetAccessError(f"正式文件 checksum 不匹配: {path}")
+            resolved[ym] = {"path": path, "version_id": current["version_id"]}
+        return resolved
+
+    def _all_symbols(self, months: list[str]) -> list[str]:
+        """从 daily 分区收集全部 code（只读 code 列，不载入全表）。"""
+        import pyarrow.parquet as pq
+        codes: set[str] = set()
+        for ym in months:
+            path = self.warehouse.daily_partition(ym)
+            if not path.exists():
+                continue
+            codes.update(str(c) for c in pq.read_table(str(path), columns=["code"])["code"].to_pylist())
+        return sorted(codes)
+
+    def _load_batch(self, months: list[str], batch: list[str],
+                    partitions: dict[str, dict]) -> dict[str, list[pd.DataFrame]]:
+        """载入「单批标的全史」到内存（pyarrow filters 下推，只解压命中行）。"""
+        batch_set = {str(code) for code in batch}
+        per_code: dict[str, list[pd.DataFrame]] = {}
+        for ym in months:
+            info = partitions.get(ym)
+            if info is None:
+                continue
+            path = info["path"]
+            if path is None:
+                df = self.warehouse.read_daily(ym)
+                if df is not None and not df.empty:
+                    df = df[df["code"].astype(str).isin(batch_set)]
+            else:
+                try:
+                    df = pd.read_parquet(path, filters=[("code", "in", list(batch_set))])
+                except Exception as e:
+                    logger.warning("读取分区 %s 失败: %s", ym, e)
+                    continue
+            if df is None or df.empty or "code" not in df.columns:
+                continue
+            for code, grp in df.groupby("code"):
+                per_code.setdefault(str(code), []).append(grp)
+        return per_code
+
     def build_all(self, symbols: Optional[list[str]] = None,
                   max_symbols: Optional[int] = None,
                   metrics: Optional[list[str]] = None,
                   flush_every: int = 500,
+                  batch_size: int = 500,
                    progress_callback=None, changed_start: Optional[str] = None,
                    changed_end: Optional[str] = None, asset_types: Optional[list[str]] = None,
                    months: Optional[list[str]] = None,
                    partition_versions: Optional[dict[str, str]] = None) -> dict:
-        """全市场指标宽表生成（分组一次遍历 + 分批落盘）。
+        """全市场指标宽表生成（按标的批次流式，控制内存）。
 
         需仓库已有 daily 分区（先跑 sync_daily）。
 
         Args:
             flush_every: 每处理 N 个标的落盘一次，防止中断丢失全部内存成果。
+            batch_size: 每批同时载入内存的标的数量（控制内存峰值）。
 
         Returns:
             dict: 标的数 / 覆盖月份 / 耗时
@@ -59,47 +140,36 @@ class IndicatorsBuilder:
                     "elapsed_sec": 0, "input_dataset": "stock_daily", "input_versions": {},
                     "input_fallback_used": False, "output_versions": {}}
 
-        # ① 每个分区只读一次，按 code 分组，累积各标的全史
-        logger.info("指标计算: 载入 %d 个月分区...", len(months))
-        per_code: dict[str, list[pd.DataFrame]] = {}
-        input_versions = {}
-        for ym in months:
-            try:
-                from StockInvestmentTool.warehouse.datasets import load_dataset
-                month_start = pd.Timestamp(f"{ym}-01")
-                month_end = month_start + pd.offsets.MonthEnd(1)
-                loaded = load_dataset(self.warehouse, "stock_daily", str(month_start.date()), str(month_end.date()),
-                                      allow_legacy=self.allow_legacy,
-                                      partition_versions=partition_versions)
-                df = loaded.data
-                input_versions.update(loaded.context.get("partition_versions", {}))
-            except Exception:
-                if not self.allow_legacy:
-                    raise
-                df = self.warehouse.read_daily(ym)
-            if df is None or df.empty or "code" not in df.columns:
-                continue
-            for code, grp in df.groupby("code"):
-                per_code.setdefault(code, []).append(grp)
-
+        # ① 解析分区（一次质量/checksum 校验），并确定标的全集
+        logger.info("指标计算: 解析 %d 个月分区版本...", len(months))
+        partitions = self._resolve_partitions(months, partition_versions)
+        input_versions = {ym: info["version_id"] for ym, info in partitions.items() if info["version_id"]}
         if symbols is None:
-            symbols = list(per_code.keys())
+            symbols = self._all_symbols(months)
         from StockInvestmentTool.warehouse.asset_profiles import select_symbols
         symbols, asset_type_counts = select_symbols(
             symbols, asset_types=asset_types, known_types=self.warehouse.instrument_types()
         )
         if max_symbols:
             symbols = symbols[:max_symbols]
-        logger.info("指标计算: %d 标的", len(symbols))
+        logger.info("指标计算: %d 标的，分批 %d", len(symbols), batch_size)
+        if not symbols:
+            return {"symbols": 0, "months": 0, "rows": 0, "failed": [], "skipped": True,
+                    "elapsed_sec": 0, "input_dataset": "stock_daily", "input_versions": input_versions,
+                    "input_fallback_used": not bool(input_versions), "output_versions": {},
+                    "asset_type_counts": asset_type_counts}
 
-        # ② 逐标的算指标，按月份累积；每 flush_every 个标的落盘一次并清空，
-        #    避免中断丢失全部成果（2C2G 下内存也有界）。
+        batches = [symbols[i:i + batch_size] for i in range(0, len(symbols), batch_size)]
+        total = len(symbols)
+
+        # ② 分批流式：每批载入 → 逐标的算 → 落盘 → 清空，内存有界
         month_bufs: dict[str, pd.DataFrame] = {}
         done = 0
         failed: list[str] = []
         output_rows = 0
         t0 = time.time()
         written_months: set[str] = set()
+        processed = 0
         output_months = None
         if changed_start and changed_end:
             from StockInvestmentTool.warehouse.incremental import affected_partitions
@@ -118,45 +188,58 @@ class IndicatorsBuilder:
                 # stale rows from an older schema cannot mask fresh values.
                 df = df.drop_duplicates(subset=["date", "code"], keep="last")
                 df = df.sort_values(["date", "code"])
+                # 丢弃全空列：重建产生的旧列空壳（concat existing 带入）不落盘，
+                # 保证指标分区只含本版实际有值的列。
+                if "code" in df.columns and len(df):
+                    df = df.dropna(axis=1, how="all")
                 self.warehouse.write_indicator_partition(ym, df)
                 written_months.add(ym)
             month_bufs.clear()
 
-        for i, code in enumerate(symbols, 1):
-            if progress_callback:
-                progress_callback(i - 1, len(symbols), code, "计算指标")
-            frames = per_code.get(code)
-            if not frames:
-                continue
-            df = pd.concat(frames, ignore_index=True).sort_values("date")
-            try:
-                ind_series = self.registry.compute(df, metrics)
-            except Exception as e:
-                logger.warning("指标计算 %s 失败: %s", code, e)
-                failed.append(str(code))
-                continue
-            if not ind_series:
-                continue
-            # 组装指标宽表（date/code + 各指标列）
-            out = pd.DataFrame({"date": df["date"], "code": code})
-            for name, s in ind_series.items():
-                if s is not None:
-                    out[name.lower()] = s.values
-            for ym, grp in out.groupby(out["date"].dt.strftime("%Y-%m")):
-                if output_months is not None and ym not in output_months:
+        for batch in batches:
+            per_code = self._load_batch(months, batch, partitions)
+            for code in batch:
+                if progress_callback:
+                    progress_callback(processed, total, code, "计算指标")
+                frames = per_code.get(code)
+                if not frames:
+                    processed += 1
                     continue
-                cur = month_bufs.get(ym)
-                if cur is not None and len(cur):
-                    month_bufs[ym] = pd.concat([cur, grp], ignore_index=True)
-                else:
-                    month_bufs[ym] = grp.copy()
-            done += 1
-            output_rows += len(out)
-            if progress_callback:
-                progress_callback(i, len(symbols), code, "指标已计算")
-            if i % flush_every == 0 or i == len(symbols):
-                _flush()
-                logger.info("指标进度 %d/%d，完成 %d 只（已落盘）", i, len(symbols), done)
+                df = pd.concat(frames, ignore_index=True).sort_values("date")
+                try:
+                    ind_series = self.registry.compute(df, metrics)
+                except Exception as e:
+                    logger.warning("指标计算 %s 失败: %s", code, e)
+                    failed.append(str(code))
+                    processed += 1
+                    continue
+                if not ind_series:
+                    processed += 1
+                    continue
+                # 组装指标宽表（date/code + 各指标列）
+                out = pd.DataFrame({"date": df["date"], "code": code})
+                for name, s in ind_series.items():
+                    if s is not None:
+                        out[name.lower()] = s.values
+                for ym, grp in out.groupby(out["date"].dt.strftime("%Y-%m")):
+                    if output_months is not None and ym not in output_months:
+                        continue
+                    cur = month_bufs.get(ym)
+                    if cur is not None and len(cur):
+                        month_bufs[ym] = pd.concat([cur, grp], ignore_index=True)
+                    else:
+                        month_bufs[ym] = grp.copy()
+                done += 1
+                output_rows += len(out)
+                processed += 1
+                if progress_callback:
+                    progress_callback(processed, total, code, "指标已计算")
+                if processed % flush_every == 0 or processed == total:
+                    _flush()
+                    logger.info("指标进度 %d/%d，完成 %d 只（已落盘）", processed, total, done)
+            # 释放本批内存，进入下一批
+            per_code.clear()
+            gc.collect()
 
         # 兜底落盘
         if month_bufs:
