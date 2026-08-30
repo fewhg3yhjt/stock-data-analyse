@@ -72,7 +72,7 @@ output/data/job_runs.db
 - SQLite 元数据和任务台账；
 - DuckDB 跨分区读取；
 - APScheduler 自动任务；
-- 日线、技术指标、研究因子任务；
+- 日线和技术指标任务；研究因子已归入指标任务；
 - 任务阶段、进度、部分成功、失败和跳过状态；
 - 数据新鲜度和数据中心页面。
 
@@ -600,22 +600,22 @@ failed
 
 不得用任务日期代替行情日期。
 
-### 8.6 Phase 2 双写要求
+### 8.6 Phase 2 历史验证记录
 
-Phase 2 采用：
+历史 Phase 2 曾采用：
 
 ```text
 腾讯采集
   -> 写 Raw Batch
   -> 记录 source_batches
-  -> 继续执行现有 daily 写入
+  -> 与当时 daily 结果对账
 ```
 
 Raw 写入或元数据写入失败时：
 
 - 任务应记录告警；
-- 是否阻断旧 daily 写入由配置决定；
-- 第一阶段默认不阻断旧生产链路；
+- 旧 daily 仅作为历史对账对象；
+- 新数据平台不要求与旧 daily 双写；
 - 必须在结果中明确 `raw_capture_failed=true`，不得静默忽略。
 
 ---
@@ -1329,7 +1329,7 @@ error_summary
 - 记录 schema、行数、证券数、日期范围；
 - 检查主键重复；
 - 记录典型业务查询结果；
-- 记录日线、指标、因子任务耗时和内存；
+- 记录日线和指标任务耗时和内存；
 - 形成机器可读和 Markdown 基线报告。
 
 #### 建议新增
@@ -1637,16 +1637,12 @@ API 内部值保持英文，界面负责中文映射。
 
 ## 20. 配置建议
 
-建议新增独立配置文件：
-
-```text
-config/data_quality.yaml
-```
+质量阈值不使用独立的 `config/data_quality.yaml`。当前实现将质量配置放在各数据集 YAML 的 `quality:` 段，由数据集配置加载器读取。新增数据集时，应在对应的 `config/datasets/<dataset>.yaml` 中维护自己的质量阈值。
 
 示例：
 
 ```yaml
-stock_daily:
+quality:
   publish_warning: true
   coverage:
     pass_min: 0.995
@@ -1976,11 +1972,11 @@ OHLC 和成交数据是否异常？
 
 ---
 
-## 29. 统一数据平台、业务输入与能力边界
+## 28. 统一数据平台、业务输入与能力边界
 
 本节统一承载数据平台、业务输入契约和业务能力矩阵内容，本文是数据模块唯一设计真源。
 
-### 29.1 数据平面边界
+### 28.1 数据平面边界
 
 数据平台统一链路：
 
@@ -2008,7 +2004,7 @@ Source
 
 业务平面不得选择数据源、处理外部字段别名、读取 Raw、通过文件名推断代码或自行决定 Published 状态。
 
-### 29.2 真实统一读取接口
+### 28.2 真实统一读取接口
 
 当前正式接口：
 
@@ -2055,7 +2051,7 @@ generated_at
 
 业务服务必须从过滤后的 DataFrame 重新计算 `returned_start/returned_end`，不能把过滤前的 `max_date` 当作返回范围。
 
-### 29.3 正式数据集与当前限制
+### 28.3 正式数据集与当前限制
 
 | 数据集 | 当前状态 | 业务可依赖内容 | 限制 |
 |---|---|---|---|
@@ -2067,7 +2063,32 @@ generated_at
 | `money_flow_security_daily` | 受限 | 有部分证券资金流 snapshot | 路径、周期、单位和覆盖契约未完全统一 |
 | `money_flow_industry_daily` | 未完成 | 无稳定正式输入 | 证券/行业记录未完全拆分 |
 
-### 29.4 数据集标准结构
+当前专用读取接口和保守字段边界：
+
+```text
+indicators:
+  warehouse.read_indicator_code(code, days)
+  可依赖：date/code/close、已实际生成的 ma/rsi/macd/atr、动量和量比列
+
+fundamentals:
+  warehouse.read_fundamentals(code)
+  当前保守依赖：stat_date、roe、gross_margin
+  code、debt_ratio、asset_liability_ratio、net_profit、revenue 等必须按实际 schema 校验
+
+industry:
+  warehouse.get_industry(code)
+  只能作为基础库读取事实；不能把 instruments.industry 冒充正式 industry_membership
+
+valuation_daily:
+  正式目标字段：pe_ttm、pb_mrq
+  当前实际历史文件仍可能是 peTTM、pbMRQ，必须先完成数据层归一
+
+money_flow:
+  当前只有部分 snapshot/Raw 事实可读
+  在路径、周期、单位和证券/行业类型统一前，不得作为正式策略必要输入
+```
+
+### 28.4 数据集标准结构
 
 不同数据集可以使用不同粒度和物理分区，但都必须定义：
 
@@ -2099,7 +2120,7 @@ data_as_of
 
 `fundamentals` 历史查询必须满足 `announcement_date <= as_of`；行业查询必须满足有效期；资金流正式字段使用 `trading_date`，不使用含义不明的 `period`。
 
-### 29.5 指标架构
+### 28.5 指标架构
 
 指标生产和消费统一为：
 
@@ -2133,7 +2154,7 @@ status
 
 每个 `indicators` Dataset Version 必须记录使用的指标版本集合和输入 `stock_daily` 版本。
 
-### 29.6 Universe
+### 28.6 Universe
 
 Universe 必须保存成员明细：
 
@@ -2167,7 +2188,74 @@ is_active
 
 不同数据集覆盖范围不同，不得用一个数据集的 `expected_symbols` 作为另一个数据集的完整覆盖基准。
 
-### 29.7 数据依赖与业务能力状态
+### 28.7 业务模块读取链路与失败语义
+
+业务模块必须使用数据模块真实返回的：
+
+```text
+DatasetResult.data
+DatasetResult.context
+```
+
+正式读取链路：
+
+```text
+选股：
+DatasetAccess(stock_daily/indicators)
+→ Screen Compiler
+→ RuleRegistry 精确评估
+→ ScreenCandidate
+
+研究：
+DatasetResult.data/context
+→ IndicatorContext(data)
+→ MarketRegimeService
+→ RuleRegistry
+→ ResearchRun / StrategyDecision
+
+回测/模拟：
+固定日期范围的 DatasetResult(stock_daily/indicators)
+→ 按 as_of 计算指标
+→ StrategyContext
+→ SimulationRun
+
+持仓估值：
+Published stock_daily DatasetResult
+→ PositionValuationService
+→ PositionSnapshot
+
+正式策略：
+Published Dataset
+→ 必需字段和质量门禁
+→ StrategyContext
+→ StrategyDecision
+```
+
+失败语义必须明确：
+
+1. 缺少 Published Dataset：正式业务失败，不得静默读取旧文件或在线源。
+2. 缺少必需字段：正式业务失败；可选字段缺失时只能返回明确 warning/partial。
+3. 数据质量不满足消费者要求：阻断正式策略、建仓和正式选股。
+4. 单个证券数据缺失：批量任务可以继续，但必须记录该证券、字段、日期和 `partial_success`。
+5. 指标窗口不足：保留空值并标记 `missing_data`，不得转换为 `0`。
+6. 估值不可适用与估值采集失败必须区分。
+7. 基本面报告尚未到公告日：不得进入历史研究或回测。
+8. 研究页面允许 fallback 时，必须在 context 中标记 `fallback_used=true`；正式策略不得使用。
+
+业务模块不得直接访问：
+
+```text
+warehouse/raw/
+warehouse/daily/*.parquet
+warehouse/indicators/*.parquet
+instruments.industry
+旧 fundamentals 文件
+在线数据源
+```
+
+个股指标专用读取接口只能由数据访问服务封装后提供版本、质量和日期上下文，不能绕过 Published 校验。
+
+### 28.8 数据依赖与业务能力状态
 
 数据状态定义：
 
@@ -2224,7 +2312,7 @@ stock_daily
 
 数据状态为“未完成”的能力不得在产品总览中标记为 healthy/complete；降级能力必须返回限制原因、日期和覆盖范围。
 
-## 30. 文档维护
+## 29. 文档维护
 
 每个 Phase 完成后，开发者或 AI 必须更新：
 
@@ -2237,7 +2325,7 @@ stock_daily
 
 不得仅通过提交记录判断完成度。实现状态以代码、测试和本文档三者一致为准。
 
-### 28.1 当前实施记录
+### 29.1 当前实施记录
 
 截至 2026-08-30，历史数据已完成接管：生产容器权限下完成全量审计、旧文件适配、隔离 Candidate、候选质量检查和元数据对账；`stock_daily` 37 个分区、`fundamentals` 4574 个文件、`valuation_daily` 37 个分区、现有 `indicators`/`factors`/`industry`/`money_flow_daily` 均已建立版本、质量、current、产物和血缘事实。接管保留源文件和旧版本；重复 fundamentals current 已纠正为 canonical 文件。后续仍需清理已隔离的临时文件、完善辅助数据长期 Builder/Access 和全量性能基线。
 
@@ -2249,16 +2337,16 @@ stock_daily
 - Phase 1 已完成：新增数据集、字段、来源、消费者和分区索引元数据，保留现有 manifest 和 daily 读取路径。
 - 元数据定义已迁移到 `config/datasets/stock_daily.yaml`：YAML 管理数据集、字段、来源、消费者和质量配置；SQLite 只保存可查询的运行时投影和实际运行事实；Raw 原始数据继续保存为不可覆盖的文件。
 - Phase 2 历史验证已完成：腾讯日线采集曾新增不可覆盖 Raw Batch，记录 Source Batch 和 Job Run 关联；该记录不构成新业务运行时双写要求。
-- 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与旧 daily 均可追溯。
-- 全量回归：194 个测试通过。
+ - 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与历史基线均可追溯。
+- 全量回归：257 个测试通过（以当前工作树实际测试统计为准）。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
 - Phase 3-6 已在验证目录完成基础闭环：Raw Batch -> Candidate Builder -> Dataset Version -> Quality -> Publish；生产下游仍未切换。
 - 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和生产小范围验证记录；历史快照已按真实日期统一建立 current。
 - 辅助源任务是否参与调度由对应 `config/tasks/*_capture.yaml` 的任务配置决定，不再使用独立环境变量旁路控制。
 - 持久化验证目录 `output/validation/data_pipeline/` 已包含 `stock_daily` Raw、Candidate、版本/质量/current 台账及四类辅助源 Raw；该目录仅用于后续流程验证，不作为生产数据。
 - Phase 7 已完成验证：`warehouse/datasets.py` 只读取 `dataset_current` 指向的 Published 文件，校验 checksum 并返回版本、质量、来源上下文；没有 current 时必须显式开启 legacy 兼容模式。
-- Phase 8 已完成小量接入验证：指标和因子 Builder 通过 Unified Data Access 读取 Published `stock_daily`，返回 `input_versions`，验证数据输出成功且未使用旧路径回退。
-- 数据、指标、因子阶段已完成验证收口：指标和因子输出均登记为 Published 派生数据集，具有输出版本、质量状态和 `stock_daily` 输入版本血缘；默认生产入口禁止 legacy daily 回退。
+- Phase 8 已完成小量接入验证：IndicatorsBuilder 通过 Unified Data Access 读取 Published `stock_daily`，返回 `input_versions`，验证数据输出成功且未使用旧路径回退。
+- 数据和指标阶段已完成基础验证收口：指标输出登记为 Published 派生数据集，具有输出版本、质量状态和 `stock_daily` 输入版本血缘；默认生产入口禁止 legacy daily 回退。
 - Phase 9 已完成基础有界窗口规划：增量计算按最大 lookback 计算受影响月份，支持只重写受影响输出分区；完整历史增量性能基线仍待生产规模数据验证。
 - 数据构建层已完成验证收口：`stock_daily` 支持按 Source Batch 自动选取、YAML 来源优先级和单位转换、Candidate 幂等、新旧差异报告、完整基础质量检查、Publish 状态和回滚；辅助数据集具备通用 YAML Builder/Publish 骨架，尚未切换生产正式消费。
 - 已新增 `scripts/convert_legacy_daily.py`，旧 daily 只能只读转换到隔离迁移目录并标记为 `legacy_daily`，不得伪装成原始 Raw 或直接进入正式 current。
