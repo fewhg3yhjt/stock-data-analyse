@@ -22,7 +22,7 @@
 - 修改真实持仓和现金；
 - 直接发送邮件。
 
-它消费 `ScreenCandidate`、`StrategyDecision` 和 `SimulationRun`，并向持仓模块提供建仓上下文。
+它消费 `ScreenCandidate`、`StrategyDecision` 和 `SimulationRun`；行情和指标只通过 `DATA_INPUT_CONTRACTS.md` 定义的真实数据对象进入，并向持仓模块提供建仓上下文。
 
 ## 2. 必须先区分的三个概念
 

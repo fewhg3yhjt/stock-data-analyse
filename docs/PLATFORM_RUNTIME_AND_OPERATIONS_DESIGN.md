@@ -16,7 +16,7 @@ API/UI 平台边界
 
 它不定义选股、策略、交易和收益的业务规则，只提供统一运行能力。
 
-本文定义新平台运行模型。新任务中心、运行器和管理库按本文直接实现；旧 `ops/` 仅用于一次性历史运行核验，完成切换后下线。
+本文定义新业务平台运行模型。数据平面的现有任务载体和 `management.db` 继续负责 capture/build/quality/publish/indicators 等数据任务；本平台只负责业务任务、业务运行库和业务调度，不替换数据平面。
 
 ## 2. 第一版目标
 
@@ -33,10 +33,10 @@ API/UI 平台边界
 ## 3. 任务运行模型
 
 ```text
-TaskDefinition
+BusinessTaskDefinition
 → ActiveConfig
-→ ExecutionRequest
-→ JobRun
+→ BusinessExecutionRequest
+→ BusinessJobRun
 → Worker
 → Artifact / Event
 → Terminal Result
@@ -129,12 +129,12 @@ stock_daily_pipeline
 3. Worker 不依赖 daemon thread 状态。
 4. Web 重启后可以恢复、回收或重新接管任务。
 
-Worker 可以先与 Web 同进程运行，但必须遵守新任务接口；不得复用旧任务状态和旧运行入口。
+Worker 可以先与 Web 同进程运行，但必须遵守新业务任务接口；不得复用旧业务任务状态和旧业务运行入口。数据任务继续使用数据平面自己的执行入口。
 
 业务任务接入统一提供：
 
 ```text
-task_key
+business_task_key
 input_schema
 config_version
 run(input)
@@ -156,7 +156,7 @@ notification.outbox_delivery
 health.reconcile
 ```
 
-长任务必须创建 Request/Run；轻量维护任务也必须写运行记录；真实交易不进入后台任务框架。
+长任务必须创建 BusinessRequest/BusinessJobRun；轻量维护任务也必须写业务运行记录；真实交易不进入后台任务框架。
 
 ## 5. 重启恢复
 
@@ -372,17 +372,17 @@ Route
 - 自己决定是否允许高风险操作；
 - 用前端按钮代替服务端门禁。
 
-迁移期间可以保留下线提示，但最终导航和 API 只保留新系统正式入口；旧入口在切换完成后删除。
+迁移期间可以保留下线提示，但最终导航和 API 只保留新业务系统正式入口；数据平面入口由数据模块继续负责，旧业务入口在切换完成后删除。
 
 ## 12. 当前能力映射
 
 | 当前能力 | 目标归属 |
 |---|---|
-| `TaskCenter` | Task Definition / Request service |
-| `TaskRunner` | Worker runtime |
-| `JobRunStore` | Run repository |
-| 新 `Scheduler` | Scheduler runtime |
-| `management.db` | Platform fact store |
+| 新 `BusinessTaskCenter` | Business Task Definition / Request service |
+| 新 `BusinessTaskRunner` | Business Worker runtime |
+| 新 `BusinessJobRunRepository` | Business Run repository |
+| 新 `BusinessScheduler` | Business Scheduler runtime |
+| 数据模块 `management.db` | Dataset fact store，仅由数据平面维护 |
 | 新 `HealthService` | Health/Readiness |
 | `runtime/memory.py` | Resource probe |
 | 新 `BackupService` | Backup and restore |

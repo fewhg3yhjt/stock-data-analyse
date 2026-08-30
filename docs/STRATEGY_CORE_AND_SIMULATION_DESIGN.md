@@ -12,7 +12,7 @@
 - 邮件发送；
 - 持仓最终展示。
 
-本模块使用新定义的 `IndicatorContext`、`RuleRegistry`、`SchemeConfig` 和 `StrategyContext` 作为唯一执行基础。不得保留旧规则、旧信号或旧回测协议。
+本模块使用数据模块真实返回的 `DatasetResult.data/context`，再由新 `IndicatorContext`、`RuleRegistry`、`SchemeConfig` 和 `StrategyContext` 执行。不得在策略模块中重复实现数据读取、版本判断或旧回测协议。
 
 ## 2. 设计原则
 
@@ -52,7 +52,7 @@ version
 value_type
 ```
 
-指标名称由新指标目录和新 `IndicatorContext` 定义。本模块不自行注册第二套指标名。
+指标名称由数据模块实际可用字段和新指标目录定义；新 `IndicatorContext` 只在注入的 DataFrame 上计算。本模块不自行注册第二套指标名。
 
 运行时关系：
 
@@ -393,6 +393,7 @@ ParameterSearchRun
 → 初始化虚拟账户
 → 按交易日读取行情
 → 计算指标
+→ 读取统一 MarketRegime
 → 生成 StrategyDecision
 → 根据 ExecutionRule 生成虚拟成交
 → 更新现金和虚拟持仓
@@ -429,7 +430,7 @@ missing_period
 affected_symbol
 ```
 
-运行整体状态按策略配置决定是 `partial_success` 还是 `failed`。
+运行整体状态按策略配置决定是 `partial_success` 还是 `failed`。对于统一数据输入，先读取 `DatasetResult.data/context`，再构造 `StrategyContext`；不得直接读取数据文件。
 
 ## 8. 与现有能力的关系
 

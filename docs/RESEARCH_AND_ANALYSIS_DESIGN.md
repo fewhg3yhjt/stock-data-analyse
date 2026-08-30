@@ -2,7 +2,7 @@
 
 ## 1. 模块定位
 
-本模块负责对单只股票或 Observation 进行结构化研究，形成可复现、可追溯、可供策略和复盘使用的研究结果。
+本模块负责对单只股票或 Observation 进行结构化研究。输入必须来自 `DatasetResult.data/context`，形成可复现、可追溯、可供策略和复盘使用的研究结果。
 
 ```text
 ScreenCandidate / Observation
@@ -128,7 +128,7 @@ risk
 → 技术评估
 → 基本面评估
 → 估值评估
-→ 市场状态评估
+→ MarketRegimeService 读取/生成统一市场状态
 → RuleRegistry 评估策略条件
 → 生成 StrategyDecision
 → 保存 ResearchEvidence

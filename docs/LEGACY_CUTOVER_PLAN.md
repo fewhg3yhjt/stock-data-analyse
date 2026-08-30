@@ -18,7 +18,7 @@
 旧模型继续产生策略决策
 旧成对交易继续作为模拟输出
 旧持仓表继续作为现金或持仓事实
-旧 RuleContext/旧状态机继续参与正式计算
+旧 RuleContext/旧状态机继续参与正式计算（禁止）
 ```
 
 ## 3. 切换前
@@ -55,7 +55,7 @@
 目标表只由迁移程序写入，旧表只读。
 
 ```text
-旧成对 SimulationTrade
+旧成对 SimulationTrade（仅用于一次性迁移）
 → 单边 SimulationFill BUY/SELL
 → 新 Lot 配对和收益重算
 ```

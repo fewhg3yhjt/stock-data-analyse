@@ -6,6 +6,7 @@
 
 - [投资分析工具产品总纲](PRODUCT_BLUEPRINT.md)：产品目标、用户主流程、业务模块边界、统一实体和第一版范围。
 - [投资产品领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md)：新旧体系真源、旧骨架迁移、统一实体、状态和平台任务接入边界。
+- [业务数据输入契约](DATA_INPUT_CONTRACTS.md)：基于当前数据模块真实实现定义 DatasetResult、DatasetAccess、指标、Universe 及辅助数据集输入边界。
 - [旧体系下线与新体系切换计划](LEGACY_CUTOVER_PLAN.md)：禁止兼容并行、一次性迁移、切换步骤和下线验收。
 - [新系统持久层设计](NEW_SYSTEM_STORAGE_DESIGN.md)：新业务库、实体落表、键和索引、账户初始化、迁移和对账。
 - [架构设计总纲](DESIGN.md)：项目分层、模块职责和总体数据流。

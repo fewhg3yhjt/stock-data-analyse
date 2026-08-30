@@ -39,9 +39,11 @@
 output/data/business.db
 ```
 
-新库只保存业务事实、业务运行记录、推导结果索引和审计数据。不得把新业务表继续写入旧 `portfolio.db`、旧 `job_runs.db`、旧 `warehouse/meta.db` 或旧 `management.db`。
+新库只保存业务事实、业务运行记录、推导结果索引和审计数据。不得把新业务表继续写入旧 `portfolio.db`、旧 `job_runs.db`、旧 `warehouse/meta.db`。
 
-数据平面的 Published Dataset 元数据由数据模块维护；业务库通过不可变引用保存：
+数据模块的 `management.db` 属于数据平面，不是旧业务库；它继续承载 Dataset Registry、Published Version、Quality、Current、Source Batch 等数据事实。业务库不复制这些表，只保存不可变的 dataset reference。
+
+数据平面的 Published Dataset 元数据由数据模块维护；业务库通过不可变引用保存。业务模块实际读取必须遵循 [业务数据输入契约](DATA_INPUT_CONTRACTS.md)，不能假设所有配置数据集已经具备统一读取实现：
 
 ```text
 dataset_name
@@ -60,6 +62,7 @@ quality_status
 | StrategyVersion | `strategy_versions` |
 | StrategyValidation | `strategy_validations` |
 | Indicator/Rule 使用引用 | `strategy_dependencies` |
+| MarketRegime | `market_regimes` |
 
 ### 4.2 选股与研究
 
@@ -80,7 +83,7 @@ quality_status
 |---|---|
 | SimulationPlan | `simulation_plans` |
 | SimulationRun | `simulation_runs` |
-| SimulationExecution | `simulation_executions` |
+| SimulationFill | `simulation_fills` |
 | SimulationEvent | `simulation_events` |
 | SimulationPosition/Lot | `simulation_positions` / `simulation_lots` |
 | SimulationResult | `simulation_results` |
@@ -119,16 +122,16 @@ quality_status
 | PositionCycleReview | `position_cycle_reviews` |
 | ReviewEvidence | `review_evidence` |
 
-### 4.6 任务与审计
+### 4.6 业务任务与审计
 
 | 实体 | 表 |
 |---|---|
-| TaskDefinition | `task_definitions` |
-| TaskConfigVersion | `task_config_versions` |
-| ExecutionRequest | `execution_requests` |
-| JobRun | `job_runs` |
-| JobEvent | `job_events` |
-| TaskLock | `task_locks` |
+| BusinessTaskDefinition | `business_task_definitions` |
+| BusinessTaskConfigVersion | `business_task_config_versions` |
+| BusinessExecutionRequest | `business_execution_requests` |
+| BusinessJobRun | `business_job_runs` |
+| BusinessJobEvent | `business_job_events` |
+| BusinessTaskLock | `business_task_locks` |
 | Artifact | `artifacts` |
 | Lineage | `artifact_lineage` |
 | AuditEvent | `audit_events` |
@@ -267,12 +270,12 @@ suppressed_rules
 final_action
 ```
 
-### 6.6 simulation_executions
+### 6.6 simulation_fills
 
 统一使用单边模拟成交：
 
 ```text
-simulation_execution_id PRIMARY KEY
+simulation_fill_id PRIMARY KEY
 simulation_run_id NOT NULL
 symbol NOT NULL
 side NOT NULL                 # BUY / SELL
@@ -406,7 +409,8 @@ Account(real)
 
 ## 9. 验收
 
-1. 新业务只连接 `business.db`。
+1. 新业务事实和业务运行记录只连接 `business.db`。
+2. 数据模块继续维护 `management.db`，业务侧只通过 `DatasetAccess` 读取数据。
 2. 所有公共实体都有明确落表。
 3. 所有外键和唯一约束经过测试。
 4. StrategyDecision、ResearchRun、SimulationRun、Observation、PositionCycle 可以完整关联。

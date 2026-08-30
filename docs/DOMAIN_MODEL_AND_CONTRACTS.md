@@ -11,7 +11,7 @@
 
 旧体系不得进入新运行时，不得作为 fallback、双写目标、业务查询来源或第二套协议。历史数据如需保留，只能通过一次性迁移或只读归档处理。
 
-数据模块的 Raw、Candidate、Quality、Published、Current、DataContext 实现和口径视为已完成。业务模块只消费其已发布结果，不再引入新的数据生产设计。
+数据模块的 Raw、Candidate、Quality、Published、Current 视为既有数据平面能力；业务模块必须按 [业务数据输入契约](DATA_INPUT_CONTRACTS.md) 消费其真实输出，不得假设尚未实现的统一数据集接口。
 
 ## 2. 旧体系下线规则
 
@@ -60,7 +60,7 @@ PerformanceSnapshot / ReviewEvidence / PositionCycleReview
 ## 4. 指标、规则与策略的唯一关系
 
 ```text
-Published Dataset
+DatasetResult.data/context
 → IndicatorContext
 → RuleRegistry
 → SchemeConfig
@@ -70,7 +70,7 @@ Published Dataset
 
 ### 4.1 IndicatorContext
 
-`IndicatorContext` 是新系统唯一指标取值上下文，负责指标值、序列、时间边界、依赖、缺失值、版本和来源；不负责买卖动作。
+`IndicatorContext` 是新系统唯一指标取值上下文，负责在已读取的行情 DataFrame 上计算指标值和序列；数据版本、质量和来源来自 `DatasetResult.context`，不在 IndicatorContext 内重复定义。
 
 ### 4.2 RuleRegistry
 
@@ -163,6 +163,17 @@ strong_bear
 ```
 
 策略通过 `StrategyRegimePolicy` 决定如何使用该事实。
+
+MarketRegime 由业务平面的 `MarketRegimeService` 生产，不由数据采集任务生产，也不由每个研究请求各自私算一套。其输入是数据模块提供的 `DatasetResult.data/context`，默认基于已发布 `stock_daily`/`indicators` 数据计算，结果写入业务库 `market_regimes`；实际数据读取入口和字段边界以 `DATA_INPUT_CONTRACTS.md` 为准。
+
+```text
+DatasetResult(stock_daily/indicators)
+→ MarketRegimeService
+→ business.db.market_regimes
+→ StrategyContext.market_regime
+```
+
+研究、选股、Simulation 和 LiveAdvice 使用同一 `MarketRegime` 记录；如果指定历史 `as_of` 没有对应记录，先按同一算法版本计算并持久化，不能由调用方临时采用另一套状态口径。
 
 ## 6. 公共实体
 
@@ -277,7 +288,7 @@ planned → cancelled
 
 ## 9. 任务框架接入边界
 
-以下长任务必须走新平台的 `TaskDefinition → Request → JobRun`：
+以下业务长任务必须走新平台的 `BusinessTaskDefinition → BusinessRequest → BusinessJobRun`：
 
 ```text
 screen.run
@@ -287,7 +298,7 @@ parameter_search.run
 report.daily_generate
 ```
 
-以下轻量维护任务也必须写运行记录：
+以下业务轻量维护任务也必须写业务运行记录：
 
 ```text
 observation.expiry_reconcile
@@ -332,4 +343,4 @@ ScreenCandidate
 → Performance / Review
 ```
 
-每个推导结果都能追溯到策略版本、数据上下文、输入快照和规则评估轨迹。
+每个推导结果都能追溯到策略版本、数据上下文、输入快照和规则评估轨迹。真实输入契约以 `DATA_INPUT_CONTRACTS.md` 为准。

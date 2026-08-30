@@ -22,7 +22,7 @@
 - 修改真实持仓；
 - 发送通知。
 
-本模块消费数据模块提供的 Published Dataset，消费策略核心提供的条件评估协议，并向观察池、个股研究和回测/模拟模块输出标准结果。
+本模块消费数据模块真实返回的 `DatasetResult.data/context`，通过 `DatasetAccess.load_dataset()` 获取 Published `stock_daily`/`indicators`，再消费策略核心的条件评估协议，向观察池、个股研究和回测/模拟模块输出标准结果。
 
 条件配置使用新定义的 `ConditionSpec`，实际执行必须通过新 `RuleRegistry`；走势图必须通过 `DatasetAccess` 读取 Published Dataset，不由本模块自行选择 DataSource 或在线回退。
 
@@ -328,7 +328,7 @@ watchlist_symbols
 → 固化 Universe
 → 固化 Dataset/Indicator Version
 → 批量加载行情和指标
-→ 按 symbol/as_of 构建 StrategyContext
+→ 按 symbol/as_of 构建 StrategyContext，并读取统一 MarketRegime
 → 评估条件树
 → 保存每个条件结果
 → 生成 ScreenCandidate
