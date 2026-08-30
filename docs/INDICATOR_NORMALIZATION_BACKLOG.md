@@ -74,3 +74,12 @@ V6 市场状态/年线熔断/止盈硬上限已全部改读 `ma240`（240 交易
 
 舍入口径统一为 float64 全精度（不 round）后，`backtest/engine_v6.py` 及
 V4.5 回测结果需重录基线并比对（SRD 验收标准要求逐字段一致）。
+
+## 8. 已完成的收尾项（2026-08-30）
+
+- `analysis/returns.py::build_snapshot_chart`（邮件内嵌快照图）原先自算
+  ma20/ma60，已改为复用统一指标层（`compute_all` 已产出，缺失时引擎现算）。
+  至此全仓 MA 类技术指标自算已清零，其余自算点均为高低点/绩效/策略中间量
+  （year_high/low_6m/回测绩效），不属于指标层。
+- 冒烟验证：临时仓库真实链路（daily + indicators 分区 → 合并读取），
+  引擎与 indicators 分区结果逐位一致（float64 口径），`pe_ttm/pb_mrq` 读取正常。
