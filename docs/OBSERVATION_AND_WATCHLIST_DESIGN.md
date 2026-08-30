@@ -510,7 +510,7 @@ POST /api/watch-subscriptions
 
 ```json
 {
-  "symbol": "000001.SZ",
+  "symbol": "sz000001",
   "purpose": "research",
   "target_amount": 10000,
   "notes": "关注趋势回踩机会"

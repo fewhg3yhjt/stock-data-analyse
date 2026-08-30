@@ -41,7 +41,7 @@ output/data/business.db
 
 新库只保存业务事实、业务运行记录、推导结果索引和审计数据。不得把新业务表继续写入旧 `portfolio.db`、旧 `job_runs.db`、旧 `warehouse/meta.db`。
 
-数据模块的 `management.db` 属于数据平面，不是旧业务库；它继续承载 Dataset Registry、Published Version、Quality、Current、Source Batch 等数据事实。业务库不复制这些表，只保存不可变的 dataset reference。
+数据模块的 `management.db` 属于数据平面，不是旧业务库；它继续承载 Dataset Registry、Published Version、Quality、Current、Source Batch 等数据事实。业务库不复制这些表，只保存不可变的 dataset reference。数据集路径字段保存相对于 `Warehouse Root` 的路径，例如 `daily/2026-08.parquet`，禁止保存 `/opt/...` 或 `/app/...` 等运行环境绝对路径。
 
 数据平面的 Published Dataset 元数据由数据模块维护；业务库通过不可变引用保存。业务模块实际读取必须遵循 [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md)，不能假设所有配置数据集已经具备统一读取实现：
 
@@ -50,6 +50,7 @@ dataset_name
 dataset_version
 data_as_of
 quality_status
+relative_path
 ```
 
 ## 4. 表与实体映射

@@ -167,6 +167,37 @@ money_flow 证券/行业拆分收敛
 
 ## 4. 设计原则
 
+### 4.0 证券代码与运行环境规范
+
+业务、存储、API 和数据集统一使用 canonical code：
+
+```text
+sh600908
+sz000823
+bj920982
+```
+
+规则：小写、交易所前缀、6 位数字、无点号。裸 6 位代码只允许作为外部输入，进入系统后必须补齐交易所前缀；Baostock 的 `sh.600908` 只允许存在于 Source Adapter 调用边界，返回后立即转换为 `sh600908`。后缀式 `000300.SH` 只允许作为外部输入解析，不得落库。
+
+`candidate_path`、`published_path` 和 `rollback_path` 只保存相对于 `Warehouse Root` 的路径，例如：
+
+```text
+daily/2026-08.parquet
+indicators/2026-08.parquet
+raw/valuation/2026-08.parquet
+```
+
+读取、发布、回滚和恢复检查时由当前运行环境解析为绝对路径。禁止把 `/opt/stock_data_analyse/...` 或 `/app/StockInvestmentTool/...` 写入版本元数据。
+
+验证边界：
+
+```text
+纯函数、配置和临时仓库测试：可在宿主机运行
+Published Dataset、management.db、发布/回滚/恢复、生产验证：必须在生产容器 Python 环境执行
+```
+
+宿主机测试通过不等价于生产容器验收通过；生产镜像 Python 3.11，宿主机环境可能不同。
+
 ### 4.1 数据生命周期原则
 
 1. Raw 不直接服务正式策略；
@@ -2057,6 +2088,7 @@ generated_at
 |---|---|---|---|
 | `stock_daily` | 可用 | OHLCV、amount、turn、trade status、date/code | `pre_close` 和估值字段不能无条件依赖 |
 | `indicators` | 可用 | 已实际生成的 MA、RSI、MACD、ATR、动量和量比列 | 部分配置指标不一定生成，定义版本绑定需补齐 |
+| `index_daily` | 未完成 | 当前无正式沪深 300 指数发布数据 | 完成独立指数 Universe、采集、质量和发布前不可作为正式基准 |
 | `valuation_daily` | 受限 | 有 PE/PB 产物 | 外部字段仍有 `peTTM/pbMRQ`，覆盖不足 |
 | `fundamentals` | 未完成 | 部分财务字段可读 | schema、代码、公告日和报告期不统一 |
 | `industry_membership` | 未完成 | 有基础行业字段和少量 snapshot | 正式覆盖严重不足，分类有效期未定义 |
@@ -2276,6 +2308,7 @@ instruments.industry
 | 业务能力 | 依赖数据集 | 数据状态 | 第一版状态 |
 |---|---|---|---|
 | 基础行情、K 线和基础指标 | `stock_daily` + `indicators` | 可用 | 可用 |
+| 沪深300基准收益 | `index_daily` | 未完成 | 延期；未完成前 `comparison_status=unavailable` |
 | MA/ATR/动量选股 | `stock_daily` + `indicators` | 可用 | 可用 |
 | 全市场量价筛选 | `stock_daily` + `indicators` | 可用 | 可用 |
 | 行业筛选 | `industry_membership` | 未完成 | 延期 |

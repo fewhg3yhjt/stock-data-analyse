@@ -406,4 +406,4 @@ phase: accumulating → holding
 → 查看完整复盘链路
 ```
 
-任何核心结果都能追溯到策略版本、数据版本、数据截止日和实际输入参数。
+任何核心结果都能追溯到策略版本、数据版本、数据截止日、实际输入参数和 canonical security code。正式基准统一使用 `index_daily/sh000300`；该数据集完成前比较结果必须标记 unavailable。

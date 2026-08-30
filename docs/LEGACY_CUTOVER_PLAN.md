@@ -109,6 +109,9 @@ ScreenRun
 6. 旧系统停止后核心产品仍可运行。
 7. 历史迁移差异都有明确处理结论。
 8. 关键策略收益已完成旧结果对账，或明确标记为重新建立基线。
+9. 迁移后的所有业务代码均使用 canonical code `sh600908` 形式。
+10. `published_path`、`candidate_path` 和 `rollback_path` 均为相对 Warehouse Root 的路径。
+11. `index_daily/sh000300` 已发布；未完成前所有比较结果为 unavailable/partial。
 
 ## 8. 回测基线处理
 

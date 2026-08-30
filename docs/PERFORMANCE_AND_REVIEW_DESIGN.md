@@ -36,7 +36,7 @@
 
 ### 2.3 基准收益
 
-第一版支持一个组合基准，例如沪深 300。后续可扩展行业指数和买入持有。
+第一版正式基准使用数据平台的 `index_daily/sh000300`。在 `index_daily` 完成发布前，基准比较只能以 `comparison_status=unavailable` 运行，不得用 ETF、个股买入持有或未记录来源的在线数据冒充沪深 300。
 
 三条收益线必须使用相同估值时点，并显示各自数据来源和日期。
 
@@ -212,8 +212,8 @@ data_as_of
 第一版默认：
 
 ```text
-benchmark_dataset = published stock_daily
-benchmark_symbol = 000300.SH
+benchmark_dataset = index_daily
+benchmark_symbol = sh000300
 benchmark_price_field = close
 ```
 
