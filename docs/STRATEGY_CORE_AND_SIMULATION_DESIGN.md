@@ -185,7 +185,6 @@ quantity_ratio
 price
 stop_price
 target_price
-triggered_rules
 input_dependencies
 input_snapshot
 decision_trace
@@ -204,7 +203,7 @@ valid_until
 
 同一时点同一标的最终只输出一个主动作，同时保留完整规则评估轨迹。
 
-`decision_trace` 的最小结构为：
+`decision_trace` 是 `StrategyDecision` 唯一的规则评估轨迹，最小结构为：
 
 ```text
 evaluated_rules

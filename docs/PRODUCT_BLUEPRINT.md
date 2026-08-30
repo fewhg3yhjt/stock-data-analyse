@@ -306,6 +306,7 @@ status
 ### 策略版本
 
 ```text
+draft → validated → published → enabled
                               └→ disabled → archived
 ```
 
@@ -321,20 +322,26 @@ requested → running → success
 ### 观察对象
 
 ```text
+discovered → observing → ready_for_entry → promoted
                   ├→ paused
                   ├→ expired
-                  └→ removed
+                  └→ abandoned → archived
 ```
 
 ### 真实持仓
 
 ```text
-planned → accumulating → holding
-                         ├→ left_take_profit
-                         ├→ right_trailing
-                         ├→ stopped
-                         └→ closed → reviewed
+status: planned → open → closed
+        planned → cancelled
+
+phase: accumulating → holding
+       holding → left_take_profit / right_trailing / stopped
+       left_take_profit → right_trailing / stopped
+       right_trailing → stopped
+       open phase → closed
 ```
+
+`status` 与 `phase` 是两条独立状态轴，正式转换规则以 `DOMAIN_MODEL_AND_CONTRACTS.md` 和账户持仓设计为准。
 
 ## 8. 第一版范围
 
@@ -365,15 +372,19 @@ planned → accumulating → holding
 推荐顺序：
 
 0. [旧体系下线与新体系切换](LEGACY_CUTOVER_PLAN.md)
-1. [新系统持久层](NEW_SYSTEM_STORAGE_DESIGN.md)
-2. [策略核心与回测模拟](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)
-3. [选股与行情分析](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)
-4. [个股研究与分析](RESEARCH_AND_ANALYSIS_DESIGN.md)
-5. [观察池与关注列表](OBSERVATION_AND_WATCHLIST_DESIGN.md)
-6. [账户、持仓与交易](ACCOUNT_PORTFOLIO_AND_TRADING_DESIGN.md)
-7. [收益分析与复盘](PERFORMANCE_AND_REVIEW_DESIGN.md)
-8. [建议与消息通知](ADVICE_AND_NOTIFICATION_DESIGN.md)
-9. [平台支撑与运行治理](PLATFORM_RUNTIME_AND_OPERATIONS_DESIGN.md)
+0. [旧体系下线与新体系切换](LEGACY_CUTOVER_PLAN.md)
+1. [数据平台统一设计](DATA_PLATFORM_DESIGN.md)
+2. [业务数据输入契约](DATA_INPUT_CONTRACTS.md)
+3. [数据依赖与业务能力可用性矩阵](DATA_DEPENDENCY_CAPABILITY_MATRIX.md)
+4. [新系统持久层](NEW_SYSTEM_STORAGE_DESIGN.md)
+5. [策略核心与回测模拟](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)
+6. [选股与行情分析](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)
+7. [个股研究与分析](RESEARCH_AND_ANALYSIS_DESIGN.md)
+8. [观察池与关注列表](OBSERVATION_AND_WATCHLIST_DESIGN.md)
+9. [账户、持仓与交易](ACCOUNT_PORTFOLIO_AND_TRADING_DESIGN.md)
+10. [收益分析与复盘](PERFORMANCE_AND_REVIEW_DESIGN.md)
+11. [建议与消息通知](ADVICE_AND_NOTIFICATION_DESIGN.md)
+12. [平台支撑与运行治理](PLATFORM_RUNTIME_AND_OPERATIONS_DESIGN.md)
 
 第一份子模块文档优先定义 `StrategyDecision`、`ResearchRun` 和 `SimulationRun`，因为其他业务模块都依赖它们。
 
