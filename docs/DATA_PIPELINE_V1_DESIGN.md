@@ -1994,7 +1994,7 @@ OHLC 和成交数据是否异常？
 
 ### 28.1 当前实施记录
 
-截至 2026-08-30，历史迁移准备阶段已完成只读生产审计、旧文件适配、隔离 Candidate 生成和元数据级对账：`stock_daily` 37 个分区、`fundamentals` 4574 个文件、`valuation_daily` 37 个分区共 4648 个候选全部通过文件可读性、主键和日期初检，源文件与候选文件行数/每文件证券数对账无差异。该阶段未登记生产 Dataset Version、未更新 Dataset Current、未覆盖正式文件；生产指标/因子和其他辅助数据仍需后续按统一版本事实接管。
+截至 2026-08-30，历史数据已完成接管：生产容器权限下完成全量审计、旧文件适配、隔离 Candidate、候选质量检查和元数据对账；`stock_daily` 37 个分区、`fundamentals` 4574 个文件、`valuation_daily` 37 个分区、现有 `indicators`/`factors`/`industry`/`money_flow_daily` 均已建立版本、质量、current、产物和血缘事实。接管保留源文件和旧版本；重复 fundamentals current 已纠正为 canonical 文件。后续仍需清理已隔离的临时文件、完善辅助数据长期 Builder/Access 和全量性能基线。
 
 截至 2026-08-28：
 

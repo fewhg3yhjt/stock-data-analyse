@@ -12,7 +12,9 @@ import pandas as pd
 
 
 KEYS = {"stock_daily": ["date", "code"], "fundamentals": ["code", "stat_date"],
-        "valuation_daily": ["date", "code"]}
+        "valuation_daily": ["date", "code"], "indicators": ["date", "code"],
+        "factors": ["date", "code"], "industry": ["code"],
+        "money_flow_daily": ["period", "code"]}
 
 
 def audit(root: Path) -> dict:

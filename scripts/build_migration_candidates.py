@@ -18,6 +18,10 @@ LAYOUTS = {
     "stock_daily": "daily",
     "fundamentals": "fundamentals",
     "valuation_daily": "raw/valuation",
+    "indicators": "indicators",
+    "factors": "factors",
+    "industry": "raw/baostock/industry",
+    "money_flow_daily": "raw/ths/money_flow_daily",
 }
 
 
@@ -28,7 +32,11 @@ def build_candidates(warehouse: Path, output: Path, datasets: list[str] | None =
     records = []
     for dataset in selected:
         directory = warehouse / LAYOUTS[dataset]
-        files = sorted(directory.glob("*.parquet"))
+        files = sorted(directory.rglob("*.parquet")) if directory.exists() else []
+        # Never treat prior migration output or legacy-named fundamentals as
+        # a new source on a repeatable run.
+        if dataset == "fundamentals":
+            files = [path for path in files if not path.name.startswith("legacy_")]
         for source in files:
             if dataset == "fundamentals":
                 target_name = source.stem
@@ -37,7 +45,10 @@ def build_candidates(warehouse: Path, output: Path, datasets: list[str] | None =
             record = {"dataset": dataset, "source_path": str(source),
                       "source_checksum": hashlib.sha256(source.read_bytes()).hexdigest()}
             try:
-                frame = adapt_legacy_file(dataset, source)
+                if dataset in {"stock_daily", "fundamentals", "valuation_daily"}:
+                    frame = adapt_legacy_file(dataset, source)
+                else:
+                    frame = pd.read_parquet(source)
                 target = output / dataset / target_name / f"legacy_{target_name}_{record['source_checksum'][:12]}.parquet"
                 target.parent.mkdir(parents=True, exist_ok=True)
                 frame.to_parquet(target, index=False, engine="pyarrow", compression="zstd")
