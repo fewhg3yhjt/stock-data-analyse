@@ -105,6 +105,32 @@ lessons
 status
 ```
 
+### 3.5 ReviewEvidence
+
+```text
+evidence_id
+review_id
+evidence_type
+source_type
+source_id
+summary
+snapshot
+created_at
+```
+
+`source_type`：
+
+```text
+screen_run
+research_run
+simulation_run
+strategy_decision
+advice
+execution
+position_snapshot
+benchmark
+```
+
 状态：
 
 ```text
@@ -115,6 +141,38 @@ archived
 ```
 
 ## 4. 收益口径
+
+### 4.0 逐日权益曲线重算
+
+对每个交易日 `T`：
+
+```text
+读取 T 日之前已生效的 Execution
+→ 应用 T 日之前的公司行为
+→ 计算 T 日 Cash Balance
+→ 聚合剩余 PositionLot 数量
+→ 使用 T 日收盘价估值
+→ 得到 T 日 Equity
+```
+
+```text
+equity(T) = cash_balance(T) + Σ quantity_i(T) × close_price_i(T)
+```
+
+每个点至少保存：
+
+```text
+date
+cash
+market_value
+equity
+external_cash_flow
+realized_pnl
+unrealized_pnl
+fees
+dividend_income
+data_context
+```
 
 ### 4.1 账户收益
 
@@ -148,6 +206,18 @@ assumed_entry_price
 assumed_quantity / amount
 data_as_of
 ```
+
+### 4.4 基准数据契约
+
+第一版默认：
+
+```text
+benchmark_dataset = published stock_daily
+benchmark_symbol = 000300.SH
+benchmark_price_field = close
+```
+
+基准缺失时，实际收益仍可计算，`benchmark_return` 和 `excess_return` 为空，比较状态为 `unavailable`，整体查询标记为 `partial`。禁止临时调用未记录来源的在线基准。
 
 ## 5. 指标
 

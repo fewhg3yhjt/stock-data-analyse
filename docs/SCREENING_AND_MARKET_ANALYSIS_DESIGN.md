@@ -24,6 +24,8 @@
 
 本模块消费数据模块提供的 Published Dataset，消费策略核心提供的条件评估协议，并向观察池、个股研究和回测/模拟模块输出标准结果。
 
+条件配置复用策略核心的 `ConditionSpec`，实际执行必须通过现有 `RuleRegistry`；走势图必须通过 `DatasetAccess` 读取 Published Dataset，不由本模块自行选择 DataSource 或在线回退。
+
 ## 2. 在产品主流程中的位置
 
 ```text
@@ -335,6 +337,32 @@ watchlist_symbols
 → 返回结果和 DataContext
 ```
 
+### 7.0 执行引擎
+
+全市场筛选不得逐股调用 Python 解释器。采用混合执行：
+
+```text
+ConditionSpec
+→ Screen Compiler
+    ├── SQL-capable → DuckDB SQL
+    ├── vectorizable → batch/vectorized evaluation
+    └── unsupported → bounded Python fallback
+```
+
+第一版条件执行能力：
+
+| 条件 | 执行方式 |
+|---|---|
+| 字段/指标比较 | DuckDB SQL |
+| 指标交叉 | SQL window/LAG |
+| 连续 N 日 | SQL window |
+| N 日计数 | SQL aggregation/window |
+| 行业过滤 | SQL join |
+| 复杂登记表达式 | 向量化 |
+| 任意 Python | 禁止 |
+
+先用 SQL 批量缩小候选，再对命中候选补充详细解释。
+
 ### 7.1 排序规则
 
 排序必须显式配置：
@@ -409,6 +437,14 @@ fallback_used
 returned_date >= start_date
 returned_date <= end_date
 ```
+
+ChartService 的唯一数据提供者是：
+
+```text
+ChartService → DatasetAccess → Published Dataset
+```
+
+研究模式的显式 fallback 必须在 DataContext 标记，正式选股和历史图表禁止静默在线回退。
 
 即使底层缓存或文件包含更长日期范围，也不得把范围外数据返回给调用方。
 

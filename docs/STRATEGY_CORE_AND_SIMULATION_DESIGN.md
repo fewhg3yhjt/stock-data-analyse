@@ -12,7 +12,7 @@
 - 邮件发送；
 - 持仓最终展示。
 
-本模块必须提供稳定的领域接口，供选股、个股研究、回测/模拟、持仓建议和通知调用。
+本模块必须复用现有 `IndicatorContext`、`RuleRegistry` 和 `SchemeConfig`，提供稳定的领域接口，供选股、个股研究、回测/模拟、持仓建议和通知调用。
 
 ## 2. 设计原则
 
@@ -52,11 +52,20 @@ version
 value_type
 ```
 
-指标名称由统一指标目录定义。本模块不自行注册第二套指标名。
+指标名称由统一指标目录和现有 `IndicatorContext` 定义。本模块不自行注册第二套指标名。
+
+运行时关系：
+
+```text
+IndicatorContext = 指标取值和序列上下文
+RuleRegistry = 条件/规则校验与执行注册中心
+SchemeConfig = 策略版本配置载体
+CompiledStrategy = SchemeConfig 解析后的内存运行对象
+```
 
 ### 3.2 ConditionSpec
 
-条件支持第一版以下类型：
+`ConditionSpec` 是传给 `RuleRegistry` 的结构化配置，不是新的执行引擎。条件支持第一版以下类型：
 
 ```text
 comparison
@@ -176,6 +185,9 @@ stop_price
 target_price
 triggered_rules
 input_indicators
+input_dependencies
+input_snapshot
+decision_trace
 reason
 valid_until
 ```
@@ -190,6 +202,15 @@ valid_until
 6. 持有和等待。
 
 同一时点同一标的最终只输出一个主动作，同时保留全部被评估规则。
+
+`decision_trace` 的最小结构为：
+
+```text
+evaluated_rules
+triggered_rules
+suppressed_rules
+final_action
+```
 
 ## 4. 策略校验
 
@@ -331,6 +352,7 @@ DATA_GAP
 run_id
 initial_cash
 final_equity
+total_return
 benchmark_return
 excess_return
 max_drawdown
@@ -341,7 +363,22 @@ average_holding_days
 fees
 slippage
 equity_curve
+comparison_status
 ```
+
+策略收益和基准收益分开计算。基准数据不可用时，策略结果仍可保存，`benchmark_return` 和 `excess_return` 为空，`comparison_status=unavailable`，运行整体为 `partial_success`；不能把基准缺失误报为策略失败。
+
+### 6.7 ParameterSearchRun
+
+参数搜索属于模拟之上的研究层，不属于模拟内核：
+
+```text
+ParameterSearchRun
+    → SimulationRun 1..N
+    → ParameterSearchResult
+```
+
+每组参数必须产生独立的策略配置 hash 或不可变策略版本。现有 `TakeProfitOptimizer` 迁移为 Parameter Search adapter，不能直接修改同一个 SimulationRun。
 
 ## 7. 统一模拟执行流程
 
@@ -415,12 +452,13 @@ affected_symbol
 实现并测试：
 
 
-1. `ConditionSpec`。
-2. `RuleSpec`。
-3. `StrategySpec`。
-4. `StrategyDecision`。
-5. `StrategyValidator`。
-6. `EvaluationContext`。
+1. `ConditionSpec` 配置解析并接入 `RuleRegistry`。
+2. `RuleSpec` 配置解析并接入 `RuleRegistry`。
+3. `SchemeConfig` 版本校验，不新增平行 `StrategySpec` 存储。
+4. `CompiledStrategy`。
+5. `StrategyDecision`。
+6. `StrategyValidator`。
+7. `EvaluationContext`。
 
 使用一个最小趋势回踩策略作为示例，不要先改所有页面。
 
@@ -463,6 +501,8 @@ next open execution
 - 滑点；
 - 权益曲线；
 - 一个基准指数。
+
+SimulationExecutor 只负责执行一组确定参数。网格搜索由 ParameterSearchRunner 负责生成多组 SimulationRun 并汇总比较。
 
 ### Step 5：迁移现有回测入口
 

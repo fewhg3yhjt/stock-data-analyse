@@ -16,6 +16,8 @@ API/UI 平台边界
 
 它不定义选股、策略、交易和收益的业务规则，只提供统一运行能力。
 
+本文中的平台能力以现有 `ops/` 为实现基础，不创建第二套任务中心或运行器。重点是对现有 `task_center.py`、`task_execution.py`、`task_runner.py`、`job_runs.py` 和 `management_db.py` 做逐项对账和补齐。
+
 ## 2. 第一版目标
 
 1. Web、Scheduler 和任务执行使用清晰的边界。
@@ -128,6 +130,30 @@ stock_daily_pipeline
 4. Web 重启后可以恢复、回收或重新接管任务。
 
 后续可将 Worker 拆为独立进程，不改变业务任务接口。
+
+业务任务接入统一提供：
+
+```text
+task_key
+input_schema
+config_version
+run(input)
+result_schema
+artifacts
+```
+
+接入任务包括：
+
+```text
+screen.run
+research.run
+simulation.run
+parameter_search.run
+report.daily_generate
+observation.expiry_reconcile
+```
+
+长任务必须创建 Request/Run；轻量维护任务也必须写运行记录；真实交易不进入后台任务框架。
 
 ## 5. 重启恢复
 

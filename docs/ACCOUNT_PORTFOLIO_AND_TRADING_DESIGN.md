@@ -172,10 +172,29 @@ created_at
 ```text
 BUY
 SELL
-DIVIDEND
+CASH_DIVIDEND
 FEE
 CASH_ADJUSTMENT
 CORRECTION
+BONUS_SHARE
+STOCK_SPLIT
+RIGHTS_ISSUE
+COST_ADJUSTMENT
+```
+
+公司行为不能只作为普通现金流水。`BONUS_SHARE`、`STOCK_SPLIT` 和 `RIGHTS_ISSUE` 必须通过 Lot 数量/价格调整事件处理。
+
+建议增加：
+
+```text
+PositionLotAdjustment
+adjustment_id
+lot_id
+event_type
+quantity_delta
+price_factor
+event_time
+reason
 ```
 
 ### 3.6 CashLedgerEntry
@@ -260,6 +279,8 @@ data_context
 4. 未实现收益按剩余批次计算。
 5. 手续费和税费进入收益核算。
 6. 分红进入现金收益，不改变股票成本，除非显式录入成本调整。
+
+一次卖出跨多个 Lot 时，手续费和税费按各 Lot 卖出毛金额比例分摊，并在每个 Lot 结果中保存分摊金额和 realized_pnl。
 
 ## 5. 状态流转
 
@@ -364,6 +385,8 @@ operator
 ```
 
 ## 8. 收益和资产总览
+
+持仓估值只能由 `PositionValuationService` 计算。持仓页、工作台、晨报、收益、复盘、导出和通知不得各自计算收益；缓存只是优化，过期时必须可重算。
 
 组合总资产：
 

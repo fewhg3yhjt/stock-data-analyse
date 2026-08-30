@@ -2,7 +2,7 @@
 
 ## 1. 文档定位
 
-本文是产品总纲，不描述具体算法实现，也不替代各子模块设计文档。
+本文是产品总纲，不描述具体算法实现，也不替代各子模块设计文档。所有子模块必须遵守 [领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md)。
 
 本文只回答：
 
@@ -14,6 +14,8 @@
 6. 哪些能力属于第一版必须跑通的范围。
 
 数据采集、清洗、版本、质量和发布模块视为已完成的基础设施。业务模块统一通过数据访问层消费已发布数据，不在各模块中重复实现数据来源和数据质量判断。
+
+领域对象、公共术语、状态转换和跨模块接口以 [领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md) 为准；历史文档中与本文冲突的同名对象以本文为准。
 
 ## 2. 产品目标
 
@@ -32,7 +34,7 @@
 → 复盘决策与执行
 ```
 
-第一版不追求自动交易，而是确保用户可以用同一套策略完成研究、模拟、持仓判断和复盘。
+第一版不追求自动交易，而是确保用户可以用同一套策略完成研究、模拟、持仓判断和复盘。现有 `BACKEND_RESEARCH_SIMULATION_STRATEGY_V1.md` 以及 `domain/`、`services/`、`repositories/backend_domain.py` 作为迁移来源，不再与本总纲形成第二套产品协议。
 
 ## 3. 核心原则
 
@@ -404,7 +406,7 @@ planned → accumulating → holding
 6. [建议与消息通知](ADVICE_AND_NOTIFICATION_DESIGN.md)
 7. [平台支撑与运行治理](PLATFORM_RUNTIME_AND_OPERATIONS_DESIGN.md)
 
-第一份子模块文档优先定义 `StrategyDecision` 和 `SimulationRun`，因为其他业务模块都依赖它们。
+第一份子模块文档优先定义 `StrategyDecision`、`ResearchRun` 和 `SimulationRun`，因为其他业务模块都依赖它们。
 
 ## 10. 全局验收
 

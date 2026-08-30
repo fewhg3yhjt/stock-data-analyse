@@ -1,0 +1,193 @@
+# 个股研究与分析子模块设计 V1
+
+## 1. 模块定位
+
+本模块负责对单只股票或 Observation 进行结构化研究，形成可复现、可追溯、可供策略和复盘使用的研究结果。
+
+```text
+ScreenCandidate / Observation
+→ ResearchRun
+→ ResearchEvidence
+→ StrategyDecision
+→ Simulation / Advice / Review
+```
+
+研究不是一次性页面拼装，也不是回测本身。研究负责形成判断和计划，回测/模拟负责验证策略在历史交易过程中的表现。
+
+## 2. 第一版范围
+
+必须支持：
+
+1. 从股票代码、筛选候选或 Observation 发起研究。
+2. 锁定数据版本、指标版本、策略版本和 `data_as_of`。
+3. 读取技术、估值、基本面和市场上下文。
+4. 使用 `IndicatorContext` 读取指标。
+5. 使用 `RuleRegistry` 评估规则。
+6. 生成结构化研究结论。
+7. 生成标准 `StrategyDecision`。
+8. 保存研究证据和值快照。
+9. 生成可选 Markdown/HTML 报告。
+10. 支持后续创建 SimulationPlan、ObservationSnapshot 和 Advice。
+
+## 3. ResearchRun
+
+### 3.1 输入
+
+```text
+research_run_id
+subject_type
+symbol / symbols
+source_screen_run_id
+source_candidate_id
+observation_id
+strategy_id
+strategy_version
+data_context
+indicator_versions
+requested_start
+requested_as_of
+research_config
+```
+
+第一版 `subject_type`：
+
+```text
+single_symbol
+observation
+```
+
+### 3.2 输出
+
+```text
+research_run_id
+status
+technical_assessment
+valuation_assessment
+fundamental_assessment
+market_assessment
+entry_plan
+exit_plan
+strategy_decision_ids
+evidence_ids
+report_id
+warnings
+error
+started_at
+finished_at
+```
+
+### 3.3 状态
+
+```text
+requested
+→ running
+→ success
+→ partial_success
+→ failed
+→ cancelled
+```
+
+`partial_success` 表示核心研究部分完成但某一非核心能力不可用，例如基本面缺失或 LLM 报告失败。
+
+## 4. ResearchEvidence
+
+### 4.1 字段
+
+```text
+evidence_id
+research_run_id
+evidence_type
+source
+metric_name
+actual_value
+threshold_value
+assessment
+explanation
+data_as_of
+input_snapshot
+```
+
+### 4.2 类型
+
+```text
+technical
+fundamental
+valuation
+market
+strategy_rule
+risk
+```
+
+## 5. 研究执行流程
+
+```text
+创建 ResearchRun
+→ 固化 DataContext
+→ 读取已发布行情/基本面/指标
+→ 构建 EvaluationContext
+→ 技术评估
+→ 基本面评估
+→ 估值评估
+→ 市场状态评估
+→ RuleRegistry 评估策略条件
+→ 生成 StrategyDecision
+→ 保存 ResearchEvidence
+→ 生成报告
+→ 完成 ResearchRun
+```
+
+LLM 只属于报告生成阶段：
+
+```text
+核心研究成功 + LLM 失败 = partial_success
+```
+
+LLM 不得重新计算或覆盖结构化决策。
+
+## 6. 与现有实现的关系
+
+| 当前能力 | 目标归属 |
+|---|---|
+| `core/engine.py` | Research application service adapter |
+| `AnalysisResult` | 拆分为 ResearchRun 输出和 Evidence |
+| `datasource` | 仅通过统一 DataContext 使用 |
+| `IndicatorContext` | 指标读取和表达式上下文 |
+| `RuleRegistry` | 条件和规则评估 |
+| `analysis/screener_v6.py` | FundamentalAssessment adapter |
+| `analysis/market_state_v6.py` | MarketAssessment adapter |
+| `prompt/` | 报告生成 adapter |
+
+`AnalysisEngine` 不得自行读取文件、网络或实现第二套规则执行。
+
+## 7. API 目标
+
+```text
+POST /api/research-runs
+GET  /api/research-runs/{run_id}
+GET  /api/research-runs/{run_id}/evidence
+GET  /api/research-runs/{run_id}/decision
+GET  /api/research-runs/{run_id}/report
+POST /api/research-runs/{run_id}/simulation-plan
+POST /api/research-runs/{run_id}/observation-snapshot
+```
+
+创建研究时必须支持：
+
+```text
+screen_run_id
+candidate_id
+observation_id
+```
+
+## 8. 验收标准
+
+给定一个候选股票，系统必须能够：
+
+1. 保存可查询的 ResearchRun。
+2. 显示技术、估值、基本面和市场判断。
+3. 显示每个判断使用的实际值和数据日期。
+4. 显示策略版本和最终 StrategyDecision。
+5. 从研究结果创建模拟计划。
+6. 从研究结果保存观察快照。
+7. LLM 失败不影响核心结构化研究。
+8. 历史研究结果不因再次研究而被覆盖。

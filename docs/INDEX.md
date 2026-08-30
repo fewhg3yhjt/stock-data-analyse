@@ -5,6 +5,7 @@
 ## 核心设计
 
 - [投资分析工具产品总纲](PRODUCT_BLUEPRINT.md)：产品目标、用户主流程、业务模块边界、统一实体和第一版范围。
+- [投资产品领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md)：新旧体系真源、旧骨架迁移、统一实体、状态和平台任务接入边界。
 - [架构设计总纲](DESIGN.md)：项目分层、模块职责和总体数据流。
 - [概要设计说明书](HLD.md)：核心能力抽象与目标架构。
 - [可信数据链路设计与实施规范 V1.1](DATA_PIPELINE_V1_DESIGN.md)：`stock_daily` 从元数据、采集、Raw Batch、构建、质量、发布到下游消费的专项设计、实施阶段和验收基准。
@@ -25,6 +26,7 @@
 
 - [策略核心与回测模拟子模块设计](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)：指标条件、策略编排、统一决策协议和回测/模拟执行模型。
 - [选股与行情分析子模块设计](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)：筛选方案、筛选运行、候选追溯、走势图查询及观察池/模拟衔接。
+- [个股研究与分析子模块设计](RESEARCH_AND_ANALYSIS_DESIGN.md)：ResearchRun、研究证据、结构化研究结果与策略决策衔接。
 - [观察池与关注列表子模块设计](OBSERVATION_AND_WATCHLIST_DESIGN.md)：区分筛选候选、用户关注和观察周期，定义模拟及真实建仓衔接。
 - [账户、持仓与交易子模块设计](ACCOUNT_PORTFOLIO_AND_TRADING_DESIGN.md)：账户、持仓周期、实际成交、现金流水、成本核算和状态流转。
 - [收益分析与复盘子模块设计](PERFORMANCE_AND_REVIEW_DESIGN.md)：实际收益、策略模拟、基准对比、执行偏差和交易周期复盘。

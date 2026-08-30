@@ -292,8 +292,6 @@ ARCHIVED
 ```text
 discovered
 observing
-simulating
-simulated
 ready_for_entry
 promoted
 paused
@@ -311,20 +309,7 @@ discovered
     → expired
 
 observing
-    → simulating
-    → paused
-    → expired
-    → abandoned
-
-simulating
-    → simulated
-    → observing
-    → abandoned
-
-simulated
     → ready_for_entry
-    → observing
-    → simulating
     → paused
     → expired
     → abandoned
@@ -351,7 +336,28 @@ promoted
     → archived         # 持仓模块接管后，观察记录只读
 ```
 
+Simulation 的执行状态属于 `SimulationRun`，Observation 不重复维护 `simulating` 和 `simulated` 状态。Observation 通过 `latest_simulation_run_id` 和派生的 `simulation_status` 展示模拟进度。
+
 状态转换必须由服务层统一执行，不允许页面直接修改状态字段。
+
+### 6.4 Expiry 推进机制
+
+增加轻量维护任务：
+
+```text
+observation.expiry_reconcile
+```
+
+职责：
+
+```text
+查询 active Observation
+→ 检查 expires_at
+→ observing/ready_for_entry → expired
+→ 写 ObservationEvent
+```
+
+普通 GET 查询只返回 `effective_status=expired` 提示，不直接写数据库。维护任务是唯一持久化推进者。
 
 ### 6.3 状态语义
 
@@ -359,8 +365,6 @@ promoted
 |---|---|---:|---:|
 | `discovered` | 刚被发现，尚未确认关注 | 是 | 否 |
 | `observing` | 用户正在关注和研究 | 是 | 否 |
-| `simulating` | 已提交模拟运行 | 否 | 否 |
-| `simulated` | 有模拟结果，但尚未判断 | 是 | 否 |
 | `ready_for_entry` | 用户确认可以作为建仓参考 | 是 | 是 |
 | `promoted` | 已转入真实持仓流程 | 否 | 否 |
 | `paused` | 暂停观察 | 否 | 否 |
@@ -399,8 +403,7 @@ imported
 ```text
 discovered      → review
 observing       → research_or_simulate
-simulating      → wait_simulation
-simulated       → evaluate_result
+observing       → evaluate_simulation_result
 ready_for_entry → confirm_entry
 promoted        → manage_position
 paused          → resume_or_archive
@@ -429,10 +432,10 @@ data_context
 ```text
 Observation.observing
     → 创建 SimulationPlan
-    → Observation.simulating
+    → 由 SimulationRun 记录 requested/running
     → SimulationRun 完成
     → 保存 ObservationSnapshot
-    → SimulationRun.success ? simulated : observing/paused
+    → SimulationRun.success ? 保持 observing 并更新 simulation_status : observing/paused
 ```
 
 模拟完成后不能自动把 Observation 标记为 `ready_for_entry`，必须满足：
@@ -597,6 +600,19 @@ ENTRY_CONFIRMATION_REQUIRED
 | `next_action` | 状态派生字段 | 由服务层统一计算 |
 | 持仓自动同步自选 | holding source link | 不覆盖人工关注关系 |
 
+### 13.1 存量迁移
+
+旧 `watchlist` 迁移为：
+
+```text
+watchlist row → WatchSubscription
+strategy/money_flow source → Observation + DiscoveryLink
+sim_entry → ObservationSnapshot
+existing holding → holding source link + promoted reference
+```
+
+迁移必须增加 `legacy_entity_map`，记录旧类型、旧 ID、新类型、新 ID、迁移版本和时间。迁移幂等、不删除旧记录、不覆盖人工备注；无法判断来源的记录标记为 `manual_imported`。
+
 ## 14. 实施步骤
 
 ### Step 1：明确兼容映射
@@ -674,7 +690,7 @@ simulation snapshot → ObservationSnapshot
 ### 状态机
 
 1. 非法转换被拒绝。
-2. `simulating` 不能重复启动同一运行。
+2. 同一 Observation 不能重复启动相同的 SimulationRun。
 3. Simulation 失败不能进入 `ready_for_entry`。
 4. 未确认不能晋级建仓。
 5. 已 `promoted` 的 Observation 只读。

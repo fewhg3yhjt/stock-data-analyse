@@ -17,6 +17,18 @@ StrategyDecision / SystemAlert / DailyReport
 
 通知模块不重新计算买卖策略。策略判断由策略核心产生，通知模块只负责编排、去重、投递和记录。
 
+Advice 的产生链路固定为：
+
+```text
+PositionSnapshot + StrategyVersion
+→ LiveAdviceEvaluator
+→ StrategyDecision
+→ Advice
+→ NotificationEvent
+```
+
+现有 `portfolio/advisor.py` 迁移为 `LiveAdviceEvaluator` 适配器，只能复用算法，不能绕过 `StrategyDecision`。
+
 ## 2. 第一版范围
 
 ### 必须支持
@@ -177,6 +189,23 @@ action
 
 不要仅通过扫描最近 N 条消息去重。
 
+信号去重和建议更新分开处理：
+
+```text
+BusinessSignalKey = portfolio/cycle/symbol/strategy/version/signal_type
+SignalOccurrenceKey = BusinessSignalKey + data_as_of + trigger_fingerprint
+```
+
+同一有效信号的价格或数量变化只更新 Advice revision，不重复发送；原 Advice 过期、执行或出现新的 trigger fingerprint 后才产生新通知。
+
+建议增加：
+
+```text
+advice_revision
+trigger_fingerprint
+last_notified_revision
+```
+
 ## 5. Outbox 投递流程
 
 ```text
@@ -336,6 +365,8 @@ POST /api/system/alerts/{id}/acknowledge
 | `portfolio/reporter.py` | DailyReport builder | 先生成结构化报告 |
 | `system_alerts.py` | SystemAlert service | 增加生命周期和故障码 |
 | `channels.py` | Channel adapter | 第一版以 Email 为主 |
+
+Email 是第一版完整验收渠道；Feishu 和 WeCom 不删除，继续作为同一 Channel Adapter 接口的可用实现，不能各自维护独立业务通知逻辑。
 
 ## 12. 实施步骤
 
