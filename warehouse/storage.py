@@ -75,7 +75,11 @@ class Warehouse:
         self.fundamental_dir = self.base_dir / "fundamentals"
         self.online_dir = self.base_dir / "online"
         self.minute_dir = self.base_dir / "minute"
-        self.meta_db_path = self.base_dir / "meta.db"
+        # 生产统一使用 management.db 作为元数据库（含 dataset_current/versions/instruments）；
+        # 未设置 MANAGEMENT_DB_PATH 时（本地/测试）回退到旧 meta.db。
+        import os as _os
+        _mgmt = _os.getenv("MANAGEMENT_DB_PATH")
+        self.meta_db_path = Path(_mgmt) if _mgmt else self.base_dir / "meta.db"
         for d in (self.daily_dir, self.indicator_dir,
                   self.fundamental_dir, self.online_dir, self.minute_dir):
             d.mkdir(parents=True, exist_ok=True)

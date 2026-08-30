@@ -197,13 +197,6 @@ def execute_task(db_path: Path, task_key: str, payload: dict) -> dict:
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='instruments'"
             ).fetchone()
             rows = conn.execute("SELECT code,type FROM instruments ORDER BY code").fetchall() if has_instruments else []
-        from StockInvestmentTool.ops.task_center import management_db_path
-        if not rows and Path(db_path).resolve() == Path(management_db_path()).resolve():
-            from StockInvestmentTool.config import Config
-            legacy_db = Config.DATA_DIR / "warehouse" / "meta.db"
-            if legacy_db.exists():
-                with sqlite3.connect(legacy_db) as conn:
-                    rows = conn.execute("SELECT code,type FROM instruments ORDER BY code").fetchall()
         symbols = [code for code, kind in rows if not asset_types or kind in asset_types]
     if not symbols:
         raise ValueError(f"任务 {task_key} 没有可执行的证券范围")

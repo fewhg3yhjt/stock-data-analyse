@@ -497,9 +497,7 @@ def _task_center_service():
     from StockInvestmentTool.ops.task_center import TaskCenter
     from StockInvestmentTool.ops.task_center import management_db_path
     path = management_db_path()
-    if path.name == "management.db":
-        return TaskCenter(path, path)
-    return TaskCenter(path, Config.DATA_DIR / "warehouse" / "meta.db")
+    return TaskCenter(path, path)
 
 
 @web_app.route("/api/data-center/overview", methods=["GET"])
