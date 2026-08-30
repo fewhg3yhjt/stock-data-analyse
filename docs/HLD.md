@@ -302,9 +302,12 @@ def get_support_levels(sources: list[SupportSource], ctx: IndicatorContext,
     extreme = dividend_anchor or strong
     return weak, strong, extreme
 
-# 工厂：老 yaml 字段名 → 来源策略（兼容层）
+# 工厂：yaml 字段名 → 来源策略
 SUPPORT_SOURCE_FACTORY = {
-    "ma_60":       lambda: MaSource(60),
+    "ma60":       lambda: MaSource(60),
+    "ma20":       lambda: MaSource(20),
+    "ma120":      lambda: MaSource(120),
+    "ma240":      lambda: MaSource(240),
     "low_3m":      lambda: RollingLowSource(63),
     "year_low":    lambda: RollingLowSource(None),
     # "dividend_anchor" 特殊处理：不进候选，仅作 extreme
@@ -385,7 +388,7 @@ buy_rules:
         - {label: 极端低估, threshold: "0.95*MA20", ratio: 0.3}
 ```
 
-**兼容层**：老写法（`ma_60`/`low_3m`/`year_low`/`dividend_anchor`）经 `SUPPORT_SOURCE_FACTORY` 映射，存量 yaml 不迁移即可运行。
+**来源映射**：`ma60`/`ma20`/`ma120`/`ma240`/`low_3m`/`year_low` 经 `SUPPORT_SOURCE_FACTORY` 映射到来源策略；任意表达式（如 `MIN(MA20,MA240)`）走 `IndicatorExprSource`。
 
 **改动点**：
 - 新建 `indicators/context.py`（IndicatorContext）；
@@ -406,7 +409,7 @@ buy_rules:
 class DataSource(Protocol):
     """统一数据源契约。关键：只返回【原始行情】，不含指标列。"""
     def fetch_kline(self, code, start, end) -> pd.DataFrame: ...
-        # 返回列固定: date/open/high/low/close/volume/amount/peTTM/pbMRQ/turn
+        # 返回列固定: date/open/high/low/close/volume/amount/pe_ttm/pb_mrq/turn
     def fetch_daily_series(self, code, days) -> dict: ...   # 个股图表专用
     def fetch_snapshot(self, code) -> dict: ...
 
@@ -587,9 +590,9 @@ RENDERER_FACTORY = {"email": HtmlRenderer, "feishu": CardRenderer, "wecom": Mark
 
 ## 9. 部署与兼容
 
-- **老 YAML 兼容**：`ma_60`/`low_3m`/`year_low`/`dividend_anchor` 经 `SUPPORT_SOURCE_FACTORY` 映射后继续可用，无需迁移。
+- **支撑源命名**：`ma60`/`ma20`/`ma120`/`ma240`/`low_3m`/`year_low` 经 `SUPPORT_SOURCE_FACTORY` 映射；表达式（如 `MIN(MA20,MA240)`）走 `IndicatorExprSource`。
 - **老通知配置兼容**：`rules.yaml`/`notify_settings.yaml` 在迁移到新触发器模型前仍可读；新模型保存后优先新结构。
-- **回测结果回归**：FR-1.1/1.2/1.3 完成后，3 个内置方案回测结果须与改造前逐字段一致（SRD 验收标准）。
+- **回测结果回归**：指标舍入口径统一为 float64 全精度（不 round）后，3 个内置方案回测结果须重录基线并逐字段比对（SRD 验收标准）。
 - **部署**：沿用 `stock-deploy`（代码挂载 + `docker compose restart stock-web`），无需 rebuild（本方案不改 `requirements.txt`）。
 
 ---

@@ -326,7 +326,7 @@ factors    <- stock_daily
 | `turn` | 换手率 | float | % | 可空 | 来源缺失时允许为空 |
 | `tradestatus` | 交易状态 | string/int | - | 可空 | 用于停牌与缺口判断 |
 
-现有 `peTTM`、`pbMRQ` 暂时兼容，但目标上迁移到独立 `valuation_daily`，不继续扩大 `stock_daily`。
+现有 `stock_daily` 采用标准估值字段 `pe_ttm`、`pb_mrq`（对外部源 baostock 的 `peTTM`/`pbMRQ` 做映射）；目标上估值可迁移到独立 `valuation_daily`，不继续扩大 `stock_daily`。
 
 ### 6.4 Dataset Registry
 
@@ -1995,6 +1995,8 @@ OHLC 和成交数据是否异常？
 ### 28.1 当前实施记录
 
 截至 2026-08-30，历史数据已完成接管：生产容器权限下完成全量审计、旧文件适配、隔离 Candidate、候选质量检查和元数据对账；`stock_daily` 37 个分区、`fundamentals` 4574 个文件、`valuation_daily` 37 个分区、现有 `indicators`/`factors`/`industry`/`money_flow_daily` 均已建立版本、质量、current、产物和血缘事实。接管保留源文件和旧版本；重复 fundamentals current 已纠正为 canonical 文件。后续仍需清理已隔离的临时文件、完善辅助数据长期 Builder/Access 和全量性能基线。
+
+指标口径归一（同日）：`ma_*` 去下划线统一为 `ma5/ma10/ma20/ma60/ma120/ma240`，年线统一为 `ma240`（240 交易日）；`TechnicalIndicators.calc_ma` 复用 `IndicatorRegistry` 消除双实现；`factors` 不再落 MA 列（`bias_ratio` 基于 `ma240` 内部算）；数据源契约 `KLINE_COLUMNS` 统一 `pe_ttm/pb_mrq`（OnlineSource 对外部源列做映射）；`operation_points` 零自算（`ma5/ma20/ma60/atr14` 从 indicators 分区读取，`atr14` 已入 catalog）；`stock_chart_series` 与 `stock_dual_view` 统一消费 indicators 分区并按列回退；前端指标 key 统一小写。舍入口径统一 float64 全精度（不 round），回测基线待重录。遗留边界项见 `docs/INDICATOR_NORMALIZATION_BACKLOG.md`。
 
 截至 2026-08-28：
 
