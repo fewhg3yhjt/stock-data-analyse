@@ -300,7 +300,7 @@ async function loadStockChart(btn){
   const fd = new FormData();
   fd.append('code', code); fd.append('period', period);
   if (cost) fd.append('cost_price', cost);
-  fd.append('metrics', 'MA20,MA60');
+  fd.append('metrics', 'ma20,ma60');
   try {
     const res = await fetch('/api/chart/stock', { method: 'POST', body: fd });
     const d = await res.json();
@@ -310,7 +310,7 @@ async function loadStockChart(btn){
     const series = [{ name:'收盘', type:'line', data:d.closes, showSymbol:false, lineStyle:{width:1.6,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'} }];
     (d.metrics||[]).forEach(m => {
       series.push({ name:m.name, type:'line', data:m.data, showSymbol:false,
-        lineStyle:{width:1.0,color:m.name==='MA20'?'#e67e22':'#27ae60'}, itemStyle:{color:m.name==='MA20'?'#e67e22':'#27ae60'} });
+        lineStyle:{width:1.0,color:m.name==='ma20'?'#e67e22':'#27ae60'}, itemStyle:{color:m.name==='ma20'?'#e67e22':'#27ae60'} });
     });
     chart.setOption({
       tooltip:{trigger:'axis'}, legend:{top:0, type:'scroll'},

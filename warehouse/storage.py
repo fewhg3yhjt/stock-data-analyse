@@ -44,10 +44,10 @@ def _atomic_parquet_write(df, path: Path) -> None:
     finally:
         temp.unlink(missing_ok=True)
 
-# 日线标准列（baostock query_history_k_data_plus 常用字段）
+# 日线标准列（统一标准命名 pe_ttm/pb_mrq）
 DAILY_COLUMNS = [
     "date", "code", "open", "high", "low", "close",
-    "volume", "amount", "peTTM", "pbMRQ", "turn", "tradestatus",
+    "volume", "amount", "pe_ttm", "pb_mrq", "turn", "tradestatus",
 ]
 
 # 因子宽表前缀列（后续按需叠加）

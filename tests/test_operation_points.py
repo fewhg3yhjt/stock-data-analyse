@@ -3,16 +3,27 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from StockInvestmentTool.indicators.engine import IndicatorRegistry
 from StockInvestmentTool.strategy.operation_points import OperationPointConfig, add_indicators, calculate
+
+
+def _with_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """为日线帧附上统一指标列（ma5/ma20/ma60/atr14），模拟 indicators 分区输出。"""
+    reg = IndicatorRegistry()
+    computed = reg.compute(df, ["ma5", "ma20", "ma60", "atr14"])
+    out = df.copy()
+    for name, s in computed.items():
+        out[name] = s.values
+    return out
 
 
 def _frame(n=140):
     dates = pd.date_range("2025-01-01", periods=n, freq="B")
     close = [20 + ((i % 12) - 6) * 0.15 for i in range(n)]
-    return pd.DataFrame({"date": dates, "open": close, "high": [x + .4 for x in close],
+    return _with_indicators(pd.DataFrame({"date": dates, "open": close, "high": [x + .4 for x in close],
                          "low": [x - .4 for x in close], "close": close,
                          "volume": [1000 + i for i in range(n)],
-                         "amount": [100000 + i for i in range(n)]})
+                         "amount": [100000 + i for i in range(n)]}))
 
 
 def test_operation_point_config_is_adjustable_and_validated():

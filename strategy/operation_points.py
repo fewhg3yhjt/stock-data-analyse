@@ -115,7 +115,11 @@ STATES = {
 
 
 def add_indicators(frame: pd.DataFrame, config: OperationPointConfig) -> pd.DataFrame:
-    """Return a copy with the V1 daily indicators."""
+    """Return a copy with the V1 daily indicators.
+
+    统一指标（ma5/ma20/ma60/atr14）由上游指标层提供（indicators 分区），
+    本函数仅计算策略私有衍生量（斜率/中枢/交叉/量比等）。
+    """
     required = {"date", "open", "high", "low", "close", "volume", "amount"}
     missing = required - set(frame.columns)
     if missing:
@@ -123,16 +127,9 @@ def add_indicators(frame: pd.DataFrame, config: OperationPointConfig) -> pd.Data
     df = frame.copy().sort_values("date").reset_index(drop=True)
     for col in ("open", "high", "low", "close", "volume", "amount"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
-    df["ma5"] = df["close"].rolling(5, min_periods=5).mean()
-    df["ma20"] = df["close"].rolling(20, min_periods=20).mean()
-    df["ma60"] = df["close"].rolling(60, min_periods=60).mean()
-    previous_close = df["close"].shift(1)
-    true_range = pd.concat([
-        df["high"] - df["low"],
-        (df["high"] - previous_close).abs(),
-        (df["low"] - previous_close).abs(),
-    ], axis=1).max(axis=1)
-    df["atr14"] = true_range.rolling(14, min_periods=14).mean()
+    for col in ("ma5", "ma20", "ma60", "atr14"):
+        if col not in df.columns:
+            raise ValueError(f"日线缺少统一指标列: {col}（请先经指标层计算）")
     df["h20"] = df["high"].rolling(config.lookback_days, min_periods=config.lookback_days).max()
     df["l20"] = df["low"].rolling(config.lookback_days, min_periods=config.lookback_days).min()
     df["center20"] = (df["h20"] + df["l20"]) / 2

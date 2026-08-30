@@ -455,7 +455,7 @@ class DashboardService:
                 closes_s = _pd.to_numeric(hdf["close"], errors="coerce")
 
                 # 复用 indicators 分区里已预计算的均线（与 daily 同源、按日期对齐），
-                # 指标是离线批处理算好落盘的，不在此重复现算；缺失时回退本地现算。
+                # 指标是离线批处理算好落盘的，不在此重复现算；单指标缺失时按列现算补上。
                 mas = {}
                 try:
                     _tmp = Warehouse()
@@ -476,11 +476,13 @@ class DashboardService:
                 except Exception as e:
                     logger.warning("指标分区读取失败 %s: %s", code, e)
 
-                # 指标分区缺失该标的时，回退为本地按收盘价现算（保证 MA 可用）。
-                if not mas:
-                    for n in (5, 10, 20, 60):
-                        ma = closes_s.rolling(n).mean()
-                        mas[f"ma{n}"] = [round(float(x), 2) if x == x else None for x in ma]
+                # 缺失的均线按列回退本地现算（保证 MA 可用）
+                for n in (5, 10, 20, 60):
+                    key = f"ma{n}"
+                    if key in mas:
+                        continue
+                    ma = closes_s.rolling(n).mean()
+                    mas[key] = [round(float(x), 2) if x == x else None for x in ma]
 
                 result["daily_history"] = {
                     "dates": [str(d)[:10] for d in hdf["date"]],
@@ -594,7 +596,7 @@ class DashboardService:
         """
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
         from StockInvestmentTool.datasource.base import WarehouseSource
-        from StockInvestmentTool.indicators.engine import IndicatorRegistry
+        from StockInvestmentTool.warehouse.storage import Warehouse
 
         norm = StockDataFetcher.normalize_code(code)
         code_nodot = norm.replace(".", "")
@@ -612,10 +614,23 @@ class DashboardService:
                     "metrics": [], "ret_cost": [], "ret_price": [],
                     "avg_cost": cost_price}
 
-        # 计算指标（指标体系，日线）
+        # 指标统一从 indicators 分区读取（与个股详情同源），缺失时回退现算
         import pandas as pd
-        reg = IndicatorRegistry()
-        ind_series = reg.compute(kline, metrics)
+        ind_series = {}
+        try:
+            ind_orig = Warehouse().read_indicator_code(code_nodot, days=days * 2)
+            if ind_orig is not None and not ind_orig.empty:
+                ind_orig = ind_orig.sort_values("date").reset_index(drop=True)
+                merged = pd.merge(kline[["date"]], ind_orig, on="date", how="left")
+                for name in metrics:
+                    if name in merged.columns:
+                        ind_series[name] = pd.to_numeric(merged[name], errors="coerce")
+        except Exception as e:
+            logger.warning("指标分区读取失败 %s: %s", code, e)
+        missing = [name for name in metrics if name not in ind_series]
+        if missing:
+            from StockInvestmentTool.indicators.engine import IndicatorRegistry
+            ind_series.update(IndicatorRegistry().compute(kline, missing))
 
         # 重采样（日/周/月）
         if period == "week":

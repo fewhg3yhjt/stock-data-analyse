@@ -78,6 +78,19 @@ def _volatility(series, n: int = 20) -> pd.Series:
     return returns.rolling(int(n), min_periods=int(n)).std() * (252 ** 0.5) * 100
 
 
+def _atr(df: pd.DataFrame, n: int = 14) -> pd.Series:
+    """Average True Range（简单 N 期 TR 均值，与 V1 操作点策略同口径）。"""
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    previous_close = df["close"].astype(float).shift(1)
+    true_range = pd.concat([
+        high - low,
+        (high - previous_close).abs(),
+        (low - previous_close).abs(),
+    ], axis=1).max(axis=1)
+    return true_range.rolling(int(n), min_periods=int(n)).mean()
+
+
 # 安全函数白名单（表达式可调用）
 SAFE_FUNCS: dict[str, Callable] = {
     "MA": _ma,
@@ -128,6 +141,7 @@ class IndicatorRegistry:
             "rsi14": IndicatorDef("rsi14", "code", fn=lambda df, env: _rsi(df["close"], 14), description="14日相对强弱指标"),
             "macd": IndicatorDef("macd", "code", fn=lambda df, env: _macd(df["close"]), description="MACD线"),
             "volatility_20": IndicatorDef("volatility_20", "code", fn=lambda df, env: _volatility(df["close"], 20), description="20日年化波动率"),
+            "atr14": IndicatorDef("atr14", "code", fn=lambda df, env: _atr(df, 14), description="14日平均真实波幅"),
         })
 
         # 从 YAML 加载自定义指标

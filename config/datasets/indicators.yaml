@@ -23,6 +23,7 @@ fields:
   - {name: ma63, display_name: 六十三日均线, data_type: float, nullable: true}
   - {name: rsi14, display_name: RSI14, data_type: float, nullable: true}
   - {name: macd, display_name: MACD, data_type: float, nullable: true}
+  - {name: atr14, display_name: 十四日平均真实波幅, data_type: float, nullable: true}
   - {name: volatility_20, display_name: 二十日波动率, data_type: float, nullable: true}
   - {name: take_profit_reference, display_name: 止盈参考线, data_type: float, nullable: true}
   - {name: dual_ma_low, display_name: 双均线低点, data_type: float, nullable: true}

@@ -26,8 +26,7 @@ logger = logging.getLogger(__name__)
 # 默认因子列（前缀列来自日线，新增为计算列）
 FACTOR_COLUMNS = [
     "date", "code", "close", "volume", "amount",
-    "ma5", "ma10", "ma20", "ma60", "ma120",
-    "bias_ratio",          # 乖离率 (close - MA250)/MA250
+    "bias_ratio",          # 乖离率 (close - ma240)/ma240
     "vol_ratio",           # 量比 = volume / 5日均量
     "pct_chg",             # 单日涨跌幅 %
     "volatility_20_factor", # 20日年化波动率 %
@@ -54,12 +53,9 @@ class FactorEngine:
             raise ValueError("stock_daily 必须使用标准估值字段 pe_ttm/pb_mrq")
         close = df["close"]
 
-        # 均线
-        for w in (5, 10, 20, 60, 120, 250):
-            df[f"ma{w}"] = close.rolling(w).mean()
-
-        # 乖离率 (close - MA250)/MA250
-        df["bias_ratio"] = (close - df["ma250"]) / df["ma250"] * 100
+        # 乖离率 (close - ma240)/ma240（ma240 仅作内部计算，不落盘）
+        ma240 = close.rolling(240).mean()
+        df["bias_ratio"] = (close - ma240) / ma240 * 100
 
         # 量比 = 当日量 / 5日均量
         vol_ma5 = df["volume"].rolling(5).mean()

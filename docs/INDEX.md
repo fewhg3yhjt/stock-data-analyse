@@ -11,6 +11,7 @@
 - [任务与数据术语](TASK_DATA_GLOSSARY.md)：任务阶段、任务类型、数据产物、状态和数据中心分类的统一用户用词。
 - [任务与数据中心前端设计](TASK_DATA_CENTER_DESIGN.md)：任务中心、数据中心的用户信息架构、操作和 API 契约。
 - [数据链路与产品状态流转收口实施任务书](DATA_PIPELINE_STATEFLOW_REMEDIATION_PLAN.md)：针对当前双轨数据链路、任务状态、质量门禁和下游消费断点的分阶段实施计划、测试矩阵与验收标准。
+- [指标归一后续改造清单](INDICATOR_NORMALIZATION_BACKLOG.md)：指标口径归一改造中识别出的遗留边界项（数据源契约、数据接管、回测基线重录等）。
 
 ## 需求与现状
 

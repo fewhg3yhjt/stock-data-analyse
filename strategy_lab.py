@@ -190,7 +190,7 @@ def get_series(code: str, as_of: str = "", days: int = 120,
         if select_ma:
             extra_sql = ", " + select_ma
         sql = f"""
-        SELECT date, close, volume, amount, turn, peTTM, pbMRQ
+        SELECT date, close, volume, amount, turn, pe_ttm, pb_mrq
                {extra_sql},
                volume / NULLIF(AVG(volume) OVER (ORDER BY date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW),0) AS vol_ratio
         FROM read_parquet({fl})

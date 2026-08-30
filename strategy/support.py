@@ -6,8 +6,8 @@
   - 沿「骨架 vs 来源」切分，而不是合并成一个固定函数：
       * 骨架 `get_support_levels()` 唯一实现；
       * 来源用 `SupportSource` 策略体系（MaSource / RollingLowSource / IndicatorExprSource）；
-      * `SUPPORT_SOURCE_FACTORY` 做老 yaml 字段名 → 来源策略的兼容映射；
-  - 未来 `support_sources: ["MIN(MA20,MA240)"]` 直接走 `IndicatorExprSource`，
+      * `SUPPORT_SOURCE_FACTORY` 做 yaml 字段名 → 来源策略的映射；
+  - 任意 `support_sources: ["MIN(MA20,MA240)"]` 直接走 `IndicatorExprSource`，
     来源退化为「指标求值」。
 
 口径约定（与回测 year_high 一致）：候选均要求 > 0；股息锚不作为强/弱候选，
@@ -30,13 +30,12 @@ class SupportSource(Protocol):
 
 
 class MaSource:
-    """均线来源：优先用 row 预计算列（保持 compute_all 舍入口径），否则 ctx.ma(window)。"""
+    """均线来源：优先用 row 预计算列（compute_all 已含 ma{window}），否则 ctx.ma(window)。"""
 
     def __init__(self, window: int):
         self.window = int(window)
 
     def compute(self, ctx: Any, row: Optional[pd.Series] = None) -> float:
-        # 老算法读 row 的 ma{window}（compute_all 已 round(2)），保持回测口径一致
         if row is not None and f"ma{self.window}" in row.index:
             v = row.get(f"ma{self.window}")
         else:
@@ -114,18 +113,13 @@ def get_support_levels(
     return (weak, strong, extreme)
 
 
-# ── yaml 字段名 → 来源策略（兼容层：新老命名均可解析）────────────
+# ── yaml 字段名 → 来源策略 ─────────────────────────────
 
 SUPPORT_SOURCE_FACTORY: dict[str, Any] = {
     "ma60": lambda: MaSource(60),
     "ma20": lambda: MaSource(20),
     "ma120": lambda: MaSource(120),
     "ma240": lambda: MaSource(240),
-    # 老命名（下划线）兼容
-    "ma_60": lambda: MaSource(60),
-    "ma_20": lambda: MaSource(20),
-    "ma_120": lambda: MaSource(120),
-    "ma_250": lambda: MaSource(240),
     "low_3m": lambda: RollingLowSource(63),
     "year_low": lambda: RollingLowSource(None),
 }
@@ -136,11 +130,11 @@ def build_sources(support_sources: list[str]) -> tuple[list[Any], Optional[float
 
     返回值: (sources, dividend_anchor)
       - "dividend_anchor" 特殊处理：不进强/弱候选，仅作 extreme（见骨架）；
-      - 其余：若命中 SUPPORT_SOURCE_FACTORY 走兼容映射，否则按指标表达式处理。
+      - 其余：若命中 SUPPORT_SOURCE_FACTORY 走来源映射，否则按指标表达式处理。
 
     Args:
-        support_sources: 老写法如 ["dividend_anchor","ma60","low_3m","year_low"]，
-                         新写法如 ["MA60", "MIN(MA20,MA240)"]。
+        support_sources: 如 ["dividend_anchor","ma60","low_3m","year_low"]，
+                         或 ["MA60", "MIN(MA20,MA240)"]。
     """
     sources: list[Any] = []
     anchor: Optional[float] = None

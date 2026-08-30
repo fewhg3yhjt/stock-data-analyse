@@ -8,7 +8,7 @@
   - 扩展点 = 实现 `DataSource`，新增数据源只加实现，不碰业务层。
 
 固定返回列（fetch_kline）：
-    date / open / high / low / close / volume / amount / peTTM / pbMRQ / turn
+    date / open / high / low / close / volume / amount / pe_ttm / pb_mrq / turn
 """
 
 from __future__ import annotations
@@ -24,10 +24,10 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 _CODE_RE = re.compile(r"^(?:sh|sz|bj)\d{6}$")
 
-# 数据源固定输出列（原始行情）
+# 数据源固定输出列（原始行情，统一标准命名 pe_ttm/pb_mrq）
 KLINE_COLUMNS = [
     "date", "open", "high", "low", "close",
-    "volume", "amount", "peTTM", "pbMRQ", "turn",
+    "volume", "amount", "pe_ttm", "pb_mrq", "turn",
 ]
 
 
@@ -116,7 +116,7 @@ class WarehouseSource:
         try:
             file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
             df = self._query(
-                f"""SELECT date, open, high, low, close, volume, amount, turn, peTTM, pbMRQ
+                f"""SELECT date, open, high, low, close, volume, amount, turn, pe_ttm, pb_mrq
                     FROM read_parquet({file_list})
                     WHERE code = '{code_nodot}'
                       AND date >= DATE '{start}' AND date <= DATE '{end}'
@@ -139,7 +139,7 @@ class WarehouseSource:
         try:
             file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
             df = self._query(
-                f"""SELECT date, open, high, low, close, volume, amount, turn, peTTM, pbMRQ
+                f"""SELECT date, open, high, low, close, volume, amount, turn, pe_ttm, pb_mrq
                     FROM read_parquet({file_list})
                     WHERE code = '{code_nodot}'
                     ORDER BY date DESC
@@ -167,7 +167,7 @@ class WarehouseSource:
         if df is None or df.empty:
             return pd.DataFrame()
         for c in ("open", "high", "low", "close", "volume", "amount",
-                  "peTTM", "pbMRQ", "turn"):
+                  "pe_ttm", "pb_mrq", "turn"):
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
         df["date"] = pd.to_datetime(df["date"])
@@ -218,8 +218,12 @@ class OnlineSource:
         import pandas as pd
         if df is None or df.empty:
             return pd.DataFrame()
-        cols = [c for c in KLINE_COLUMNS if c in df.columns]
-        out = df[cols].copy() if cols else df.copy()
+        out = df.copy()
+        # 在线源返回 baostock 原始列名，统一映射为标准命名
+        rename = {"peTTM": "pe_ttm", "pbMRQ": "pb_mrq"}
+        out = out.rename(columns={k: v for k, v in rename.items() if k in out.columns})
+        cols = [c for c in KLINE_COLUMNS if c in out.columns]
+        out = out[cols].copy() if cols else out.copy()
         out["date"] = pd.to_datetime(out["date"])
         return out.drop_duplicates("date").sort_values("date").reset_index(drop=True)
 
@@ -282,9 +286,13 @@ class FallbackDataSource:
     def _normalize(df: pd.DataFrame) -> pd.DataFrame:
         if df is None or df.empty:
             return df
+        out = df.copy()
+        # 统一标准命名（兼容 baostock 原始列）
+        rename = {"peTTM": "pe_ttm", "pbMRQ": "pb_mrq"}
+        out = out.rename(columns={k: v for k, v in rename.items() if k in out.columns})
         # 无指标列：保证只含原始列（即使底层多带了也剔除）
-        cols = [c for c in KLINE_COLUMNS if c in df.columns]
-        return df[cols].copy() if cols else df
+        cols = [c for c in KLINE_COLUMNS if c in out.columns]
+        return out[cols].copy() if cols else out
 
 
 def get_default_datasource():

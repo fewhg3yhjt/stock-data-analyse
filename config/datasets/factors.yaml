@@ -15,12 +15,7 @@ fields:
   - {name: close, display_name: 收盘价, data_type: float, nullable: true}
   - {name: volume, display_name: 成交量, data_type: float, nullable: true}
   - {name: amount, display_name: 成交额, data_type: float, nullable: true}
-  - {name: ma5, display_name: 五日均线, data_type: float, nullable: true}
-  - {name: ma10, display_name: 十日均线, data_type: float, nullable: true}
-  - {name: ma20, display_name: 二十日均线, data_type: float, nullable: true}
-  - {name: ma60, display_name: 六十日均线, data_type: float, nullable: true}
-  - {name: ma120, display_name: 一百二十日均线, data_type: float, nullable: true}
-  - {name: bias_ratio, display_name: MA250乖离率, data_type: float, nullable: true}
+  - {name: bias_ratio, display_name: MA240乖离率, data_type: float, nullable: true}
   - {name: vol_ratio, display_name: 量比, data_type: float, nullable: true}
   - {name: pct_chg, display_name: 日涨跌幅, data_type: float, nullable: true}
   - {name: volatility_20_factor, display_name: 二十日波动率, data_type: float, nullable: true}

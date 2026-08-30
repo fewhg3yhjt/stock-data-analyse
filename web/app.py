@@ -2004,19 +2004,21 @@ def api_operation_points_configs():
 @web_app.route("/api/operation-points/analyze", methods=["POST"])
 def api_operation_points_analyze():
     try:
-        from StockInvestmentTool.market_discovery.service import stock_series
+        from StockInvestmentTool.market_discovery.service import stock_frame_with_indicators, stock_series
         from StockInvestmentTool.strategy.operation_points import OperationPointConfig, calculate
         from StockInvestmentTool.warehouse.storage import Warehouse
         payload = flask.request.get_json(force=True, silent=True) or {}
         code = (payload.get("code") or "").strip().lower().replace(".", "")
         config = OperationPointConfig.from_dict(payload.get("config"))
         warehouse = Warehouse()
-        series = stock_series(code, days=750, warehouse=warehouse)
-        frame = pd.DataFrame({"date": series["dates"], "open": series["open"], "close": series["close"], "high": series["high"], "low": series["low"], "volume": series["volume"], "amount": series["amount"]})
+        frame = stock_frame_with_indicators(code, days=750, warehouse=warehouse)
+        if frame is None or frame.empty:
+            return flask.jsonify({"status": "error", "error": "无可用数据"}), 400
         result = calculate(frame, config)
         from StockInvestmentTool.strategy.operation_points_store import OperationPointStore
         OperationPointStore().record_run(name=config.name, version=config.version, code=code,
                                          data_as_of=result.calculation_as_of, result=result.to_dict())
+        series = stock_series(code, days=750, warehouse=warehouse)
         return flask.jsonify({"status": "success", "result": result.to_dict(), "series": series})
     except (TypeError, ValueError) as exc:
         return flask.jsonify({"status": "error", "error": str(exc)}), 400
@@ -2029,16 +2031,19 @@ def api_operation_points_analyze():
 def api_operation_points_backtest():
     try:
         from StockInvestmentTool.strategy.operation_points import OperationPointConfig, run_backtest
-        from StockInvestmentTool.market_discovery.service import stock_series
+        from StockInvestmentTool.market_discovery.service import stock_frame_with_indicators
+        from StockInvestmentTool.warehouse.storage import Warehouse
         payload = flask.request.get_json(force=True, silent=True) or {}
         code = (payload.get("code") or "").strip().lower().replace(".", "")
         config = OperationPointConfig.from_dict(payload.get("config"))
-        series = stock_series(code, days=750)
-        frame = pd.DataFrame({"date": series["dates"], "open": series["open"], "close": series["close"], "high": series["high"], "low": series["low"], "volume": series["volume"], "amount": series["amount"]})
+        frame = stock_frame_with_indicators(code, days=750, warehouse=Warehouse())
+        if frame is None or frame.empty:
+            return flask.jsonify({"status": "error", "error": "无可用数据"}), 400
         result = run_backtest(frame, config)
         from StockInvestmentTool.strategy.operation_points_store import OperationPointStore
+        last_date = str(frame["date"].iloc[-1])[:10] if len(frame) else None
         OperationPointStore().record_run(name=config.name, version=config.version, code=code,
-                                         data_as_of=series["dates"][-1] if series["dates"] else None,
+                                         data_as_of=last_date,
                                          result=result)
         return flask.jsonify({"status": "success", "result": result})
     except (TypeError, ValueError) as exc:

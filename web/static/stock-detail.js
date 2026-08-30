@@ -217,7 +217,7 @@ window.StockDetail = (function(){
       const idx = charts.indexOf(prev);
       if (idx >= 0) charts.splice(idx, 1);
     }
-    const maColors = { MA5:'#8e44ad', MA10:'#2980b9', MA20:'#e67e22', MA60:'#27ae60' };
+    const maColors = { ma5:'#8e44ad', ma10:'#2980b9', ma20:'#e67e22', ma60:'#27ae60' };
     // K线 + 成交量 合并为同一个实例：两个 grid，共享 dataZoom，一个滑块联动两张图
     function renderKlineVolume(){
       if (!window.echarts) return false;
@@ -252,10 +252,11 @@ window.StockDetail = (function(){
         series.push({ name:'收盘', type:'line', xAxisIndex:0, yAxisIndex:0, data:kCloses, showSymbol:false,
           lineStyle:{width:1.5,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'} });
       }
-      ['MA5','MA10','MA20','MA60'].forEach(function(n){
+      const maLabels = { ma5:'MA5', ma10:'MA10', ma20:'MA20', ma60:'MA60' };
+      ['ma5','ma10','ma20','ma60'].forEach(function(n){
         const data = kMas[n];
         if (data && data.some(v => v !== null && v !== undefined)){
-          series.push({ name:n, type:'line', xAxisIndex:0, yAxisIndex:0, data:data, showSymbol:false,
+          series.push({ name:maLabels[n], type:'line', xAxisIndex:0, yAxisIndex:0, data:data, showSymbol:false,
             lineStyle:{width:1, color:maColors[n]}, itemStyle:{color:maColors[n]} });
         }
       });

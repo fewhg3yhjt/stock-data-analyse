@@ -89,7 +89,7 @@ class PriceMonitor:
                 file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
                 kline = con.execute(
                     f"""SELECT date, open, high, low, close, volume, amount, turn,
-                               peTTM, pbMRQ
+                               pe_ttm, pb_mrq
                         FROM read_parquet({file_list})
                         WHERE code = '{code_nodot}'
                           AND date >= DATE '{start_date}'

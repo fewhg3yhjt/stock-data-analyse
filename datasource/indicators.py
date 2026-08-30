@@ -34,15 +34,19 @@ class TechnicalIndicators:
     @staticmethod
     def calc_ma(df: pd.DataFrame, windows: Optional[list[int]] = None,
                 price_col: str = "close") -> pd.DataFrame:
-        """移动平均线
+        """移动平均线（复用 IndicatorRegistry，与 indicators 分区同口径）
 
         windows 默认含 ma240（年线，V6.0 市场状态/止盈硬上限需要）。
         ma240 滚动窗口 240 天，前 239 行为 NaN（正常，计算方需容忍）。
         """
         windows = windows or [5, 10, 20, 60, 120, 240]
         df = df.copy()
-        for w in windows:
-            df[f"ma{w}"] = df[price_col].rolling(window=w).mean().round(2)
+        from StockInvestmentTool.indicators.engine import IndicatorRegistry
+        reg = IndicatorRegistry()
+        needed = [w for w in windows if f"ma{w}" not in df.columns]
+        computed = reg.compute(df, [f"ma{w}" for w in needed])
+        for w in needed:
+            df[f"ma{w}"] = computed.get(f"ma{w}", pd.Series(index=df.index, dtype=float))
         return df
 
     @staticmethod
@@ -157,7 +161,10 @@ class ValuationHelper:
     @staticmethod
     def pe_percentile(df: pd.DataFrame) -> dict:
         """计算 PE 及其历史百分位"""
-        pe = df["peTTM"].dropna()
+        pe_col = "pe_ttm" if "pe_ttm" in df.columns else ("peTTM" if "peTTM" in df.columns else None)
+        if pe_col is None:
+            return {}
+        pe = df[pe_col].dropna()
         if len(pe) < 20:
             return {}
         current = pe.iloc[-1]

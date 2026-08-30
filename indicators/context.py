@@ -6,8 +6,8 @@
   - 支撑位来源（MaSource/RollingLowSource/IndicatorExprSource）、规则 executor 的
     RuleContext、advisor 都从同一口井打水；
   - 既支持「整表计算」（compute_all），也支持「按指标名/表达式单点取值」；
-  - 老 yaml 写死字段名（ma60 / low_3m / year_low / dividend_anchor）由
-    `strategy/support.py` 的 `SUPPORT_SOURCE_FACTORY` 兼容映射，存量方案零迁移。
+  - yaml 字段名（ma60 / low_3m / year_low / dividend_anchor）由
+    `strategy/support.py` 的 `SUPPORT_SOURCE_FACTORY` 映射到来源策略。
 
 数据边界（HLD ADR-6）：IndicatorContext 只读**原始行情**列 + 已配置指标，
 不引入数据源差异。行情列由上游（DataSource 返回的原始列）提供。

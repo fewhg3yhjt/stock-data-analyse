@@ -24,7 +24,7 @@ def temp_warehouse(tmp_path):
     df = pd.DataFrame({
         "date": dates, "code": "sh600900",
         "open": 20, "high": 21, "low": 19, "close": 20.5,
-        "volume": 1000, "amount": 1e6, "peTTM": 11, "pbMRQ": 1.1, "turn": 0.5,
+        "volume": 1000, "amount": 1e6, "pe_ttm": 11, "pb_mrq": 1.1, "turn": 0.5,
     })
     w.write_daily_partition("2024-01", df)
     w.write_daily_partition("2024-02", df)  # 覆盖两月分区

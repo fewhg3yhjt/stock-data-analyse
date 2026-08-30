@@ -280,8 +280,8 @@ class ManagementDB:
         root = Path(warehouse_dir)
         results = {}
         for directory, metric_keys in (("daily", ("close", "volume", "amount")),
-                                        ("indicators", ("ma5", "ma20", "rsi14", "macd", "volatility20")),
-                                        ("factors", ("ret5d", "ret20d", "vol_ratio", "high20d", "low20d"))):
+                                        ("indicators", ("ma5", "ma20", "rsi14", "macd", "volatility_20")),
+                                        ("factors", ("ret_5d", "ret_20d", "vol_ratio", "high_20d", "low_20d"))):
             paths = sorted((root / directory).glob("*.parquet"))
             if not paths:
                 continue

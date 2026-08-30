@@ -59,6 +59,15 @@ def _files(warehouse: Warehouse) -> str:
     return "[" + ",".join("'" + path.replace("'", "''") + "'" for path in paths) + "]"
 
 
+def _has_column(con, files: str, column: str) -> bool:
+    """探测 daily 分区是否含指定列（列缺失时容错，避免查询报错）。"""
+    try:
+        con.execute(f"SELECT {column} FROM read_parquet({files}) LIMIT 1")
+        return True
+    except Exception:
+        return False
+
+
 def _number(value, name: str, *, minimum=None, maximum=None) -> Optional[float]:
     if value in (None, ""):
         return None
@@ -117,9 +126,12 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
     lookback = c["lookback_days"]
     con = duckdb.connect()
     try:
+        has_pe = _has_column(con, files, "pe_ttm")
+        pe_sql = ", pe_ttm, pb_mrq" if has_pe else ""
         query = f"""
         WITH base AS (
-          SELECT code, CAST(date AS DATE) AS date, close, high, low, volume, amount,
+          SELECT code, CAST(date AS DATE) AS date, close, high, low, volume, amount
+                 {pe_sql},
                  LAG(close, 1) OVER (PARTITION BY code ORDER BY date) AS prev_close,
                  LAG(close, {lookback}) OVER (PARTITION BY code ORDER BY date) AS old_close,
                  LAG(volume, {lookback}) OVER (PARTITION BY code ORDER BY date) AS old_volume,
@@ -143,6 +155,7 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
         )
         SELECT code, date, close, high, low, volume, amount, prev_close, old_close,
                old_volume, avg_volume_5, avg_volume_20, avg_volume_prev_n, history_count, rn
+               {pe_sql}
         FROM latest WHERE rn <= ? AND history_count >= ?
         """
         params = ([as_of, lookback + 1, c["min_history"]] if as_of else [lookback + 1, c["min_history"]])
@@ -245,7 +258,7 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                         "up_down_volume": _round(up_down_volume),
                         "volume_change_pct": _round(volume_change),
                         "amount": _round(row.get("amount")), "amount_avg_yi": _round((sum(valid_amounts) / len(valid_amounts) / 1e8) if valid_amounts else None), "turnover": _round(row.get("turn")),
-                        "pe_ttm": _round(row.get("peTTM")), "pb": _round(row.get("pbMRQ")),
+                        "pe_ttm": _round(row.get("pe_ttm")), "pb": _round(row.get("pb_mrq")),
                         "signal_tags": tags,
                         "explanations": explanations})
     _attach_names(results, warehouse)
@@ -321,6 +334,42 @@ def stock_series(code: str, *, days: int = 120, as_of: str = "",
             "low": [_round(x) for x in frame.get("low", [])],
             "volume": [_round(x) for x in frame.get("volume", [])],
             "amount": [_round(x) for x in frame.get("amount", [])]}
+
+
+def stock_frame_with_indicators(code: str, *, days: int = 750,
+                                as_of: str = "",
+                                warehouse: Optional[Warehouse] = None,
+                                indicator_columns: Optional[list[str]] = None) -> pd.DataFrame:
+    """取某标的原始 OHLCV + 统一指标列（indicators 分区），按日期对齐。
+
+    供策略层（operation_points 等）消费统一指标层，避免自算。
+    """
+    import pandas as _pd
+    warehouse = warehouse or Warehouse()
+    code_nodot = str(code).lower().replace(".", "")
+    files = _files(warehouse)
+    days = max(20, min(int(days), 750))
+    con = duckdb.connect()
+    try:
+        query = (f"SELECT CAST(date AS DATE) AS date, open, close, high, low, volume, amount "
+                 f"FROM read_parquet({files}) WHERE code=? ")
+        params = [code_nodot]
+        if as_of:
+            query += "AND date <= ? "
+            params.append(as_of)
+        query += "ORDER BY date DESC LIMIT ?"
+        params.append(days)
+        frame = con.execute(query, params).fetchdf().sort_values("date")
+    finally:
+        con.close()
+    ind = warehouse.read_indicator_code(code_nodot, days=days)
+    if ind is not None and not ind.empty:
+        ind = ind.sort_values("date").reset_index(drop=True)
+        want = [c for c in (indicator_columns or ["ma5", "ma20", "ma60", "atr14"])
+                if c in ind.columns]
+        if want:
+            frame = frame.merge(ind[["date"] + want], on="date", how="left")
+    return frame
 
 
 def _attach_names(items: list[dict], warehouse: Warehouse) -> None:
