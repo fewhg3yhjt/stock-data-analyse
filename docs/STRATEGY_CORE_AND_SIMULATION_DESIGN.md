@@ -599,3 +599,51 @@ close > ma60
 ```
 
 任何新业务模块如果需要重新实现买卖条件，应视为设计违规，必须先扩展策略核心协议。
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P0 核心完成（进行中，P1-P3 待开发）
+
+### 已完成交付物（biz/ 包）
+
+| 文件 | 能力 | 测试 |
+|---|---|---|
+| `biz/code.py` | canonical code 规范：normalize/validate（裸码、`sh.600908`、`000300.SH` → `sh600908`） | `tests/test_biz_code.py`（9） |
+| `biz/models.py` | DataContext / StrategyContext / StrategyDecision / ConditionSpec 校验 / SimulationPlan/Run/Fill/Result | 内嵌于各模块测试 |
+| `biz/rules.py` | RuleRegistry 八类条件执行器（comparison/cross/between/consecutive/count/and/or/not）+ 解释 + 依赖收集 | `tests/test_biz_rules.py`（17） |
+| `biz/strategy.py` | CompiledStrategy + StrategyValidator + evaluate → StrategyDecision（decision_trace: evaluated/triggered/suppressed/final_action） | `tests/test_biz_strategy.py`（13） |
+| `biz/simulation.py` | SimulationExecutor：单边 SimulationFill + 虚拟账户 + 手续费/滑点 + 每日权益曲线 + 基准 unavailable | `tests/test_biz_simulation.py`（5） |
+| `biz/screen.py` | ScreenExecutor + ConditionCompiler：精确评估 + SQL 超集约束标记（保守超集） | `tests/test_biz_screen.py`（7） |
+| `biz/research.py` | ResearchService：技术/市场可用、估值降级、基本面 deferred、生成 StrategyDecision/Evidence | `tests/test_biz_research.py`（5） |
+| `biz/regime.py` | MarketRegimeService：六态市场状态统一计算 | `tests/test_biz_regime.py`（6） |
+| `biz/db.py` + `biz/repo.py` | business.db 37 表 schema + BusinessRepository 持久化 | `tests/test_biz_repo.py`（7） |
+| `scripts/biz_p0_smoke.py` | P0 集成冒烟（容器内真实数据） | 冒烟 PASS |
+
+### P0 集成冒烟结果（容器内真实 stock_daily/indicators）
+
+```text
+Screen: 命中 3091 只（close > 11.5）
+Regime: weak_bull
+Research: status=success，生成 StrategyDecision
+Simulation: 3 笔成交，收益 +0.11%，comparison_status=unavailable（index_daily 未发布）
+P0-Smoke: PASS
+```
+
+### 开发中遇到的问题与决策
+
+1. **SimulationResult.run_id 归属**：初版 `_result()` 使用 plan_id 而非 run_id，导致 get_simulation_result(run_id) 取不到。决策：SimulationExecutor 显式接收 run_id，fill/event/result 统一使用该 run_id。
+2. **MarketRegime.to_dict 位置**：初版误放 MarketRegimeService，应为 MarketRegime dataclass 方法。已修正。
+3. **ScreenExecutor 行定位**：历史 as_of 需按 symbol 历史定位目标日期行，不能直接用 reset 索引；日期比较统一取前 10 位避免 Timestamp 格式差异。已修正。
+4. **StrategyContext 缺 position_state_avg_cost**：硬止损需要持仓成本，已在 StrategyContext 补充字段。
+
+### 后续待开发
+
+- P1：观察池（Observation 状态机）、账户持仓（PositionCycle/Execution/CashLedger FIFO）、PositionValuationService
+- P2：Performance（权益曲线/三线对比/Review）、Advice/Notification（Outbox/Email）
+- P3：业务任务框架、Health、Backup
+
+### 已知遗留问题（非阻塞）
+
+- 既有未提交改动 `config/tasks/*.yaml`（enabled false→true）导致 `test_task_run_semantics.py` 失败，与 biz 无关，属数据平面启用配置，待数据平面确认。

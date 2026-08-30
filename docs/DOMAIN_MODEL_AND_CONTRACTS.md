@@ -344,3 +344,30 @@ ScreenCandidate
 ```
 
 每个推导结果都能追溯到策略版本、数据上下文、输入快照和规则评估轨迹。真实输入契约以 `DATA_PIPELINE_V1_DESIGN.md` 为准。
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P0 核心完成（统一契约落地 biz/ 包）
+
+### 已完成交付物
+
+- `biz/code.py`：canonical code 规范（§4.0 落地）
+- `biz/models.py`：StrategyContext/StrategyDecision/ConditionSpec/SimulationPlan/Run/Fill/Result（§4/§6 落地）
+- `biz/rules.py`：RuleRegistry 唯一条件执行入口（§4.2 落地）
+- `biz/strategy.py`：CompiledStrategy/Validator（§4.3/§4.4 落地，StrategyContext 统一）
+- `biz/simulation.py`：SimulationExecutor 单边成交内核（§6 落地）
+- `biz/screen.py` / `biz/research.py` / `biz/regime.py`：选股/研究/市场状态（§4.5 落地）
+- `biz/db.py` + `biz/repo.py`：business.db 持久层（§10 迁移规则对应）
+
+### 关键决策
+
+- 统一公共类型名：策略/选股/研究/模拟统一使用 `StrategyContext`（不再出现 RuleContext/EvaluationContext 平行类型）。
+- 决策轨迹：`decision_trace` 含 evaluated/triggered/suppressed/final_action（§7 决策解释轨迹落地）。
+- MarketRegime 由业务平面 `MarketRegimeService` 生产（§4.5 落地）。
+
+### 后续待开发
+
+- Observation/PositionCycle/Execution/Advice 等 P1/P2 实体落地
+- 任务框架接入（§9 任务清单）

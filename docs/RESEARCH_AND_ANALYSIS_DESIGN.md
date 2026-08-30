@@ -202,3 +202,33 @@ observation_id
 8. 历史研究结果不因再次研究而被覆盖。
 
 第一版不以完整基本面研究作为通过条件；不得用旧文件、未公告数据或在线 fallback 伪造基本面完成。估值能力按降级标准验收。
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P0 核心完成（ResearchService）
+
+### 已完成交付物
+
+| 文件 | 能力 | 测试 |
+|---|---|---|
+| `biz/research.py` | ResearchService：ResearchRun/ResearchEvidence/ResearchResult + 技术/市场/估值/基本面四类评估 + 策略决策生成 + 证据收集 | `tests/test_biz_research.py`（5） |
+
+### 实现要点
+
+1. **数据来源**：ResearchService 接收已通过 `load_dataset` 得到的 `df + context`，不自行读数据文件。
+2. **能力状态与数据契约对齐**：技术研究=可用；估值=降级（`valuation_daily` 受限，有 pe_ttm/pb_mrq 列才评估，否则 unavailable）；基本面=deferred（`fundamentals` 契约未完成，第一版延期）。
+3. **LLM 边界**：LLM 仅属报告生成阶段，本服务不含 LLM 调用，结构化决策不依赖 LLM。
+4. **决策输出**：result.decisions 保存 StrategyDecision 对象引用，供调用方持久化。
+
+### 开发中遇到的问题与决策
+
+1. **决策对象与 id 分离**：初版 result 只存 strategy_decision_ids，无法直接落库决策。决策：增加 `decisions` 对象列表字段，repository 由调用方 save_decision。
+2. **空数据降级**：空 DataFrame 返回 technical=unavailable，不抛异常。
+
+### 后续待开发
+
+- ResearchReport 生成（Markdown/HTML）
+- 基本面评估接入（`fundamentals` 契约完成后）
+- ResearchRun 持久化关联 Observation/SimulationPlan

@@ -790,3 +790,32 @@ close > ma60
 ```
 
 任何新筛选功能必须优先扩展 `ConditionSpec` 或注册新指标，不得新增一个只服务于某个页面的独立 SQL 条件系统。
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P0 核心完成（ScreenExecutor + ConditionCompiler）
+
+### 已完成交付物
+
+| 文件 | 能力 | 测试 |
+|---|---|---|
+| `biz/screen.py` | ScreenDefinition/ScreenCandidate/ScreenRun dataclass + ConditionCompiler（compile_mode 标记）+ ScreenExecutor（精确评估 + as_of 历史筛选 + 排序 + 候选解释） | `tests/test_biz_screen.py`（7） |
+
+### 实现要点
+
+1. **执行引擎**：第一阶段采用精确评估（RuleRegistry 单行/历史序列评估），`compile_mode` 输出 `conservative_sql`/`fully_equivalent_sql`/`exact_only` 标记；SQL 超集约束（`RuleRegistry exact ⊆ SQL candidate`）已定义，SQL 优化引擎接入时校验。
+2. **数据来源**：ScreenExecutor 接收调用方已通过 `load_dataset` 加载的合并宽表（stock_daily+indicators），不自行读数据文件。
+3. **as_of 历史筛选**：目标日取 `<= as_of` 的最后一个交易日，逐 symbol 历史定位评估，防未来数据。
+
+### 开发中遇到的问题与决策
+
+1. **行定位 bug**：`_evaluate_row` 初版用 reset 后 idx 直接定位 symbol 历史，导致跨 symbol 错位。决策：以 `code` 匹配历史 + 日期前 10 位对齐目标行。
+2. **日期格式**：Timestamp `str()` 含时间部分，统一 `str[:10]`。
+
+### 后续待开发
+
+- SQL 批量缩小阶段（DuckDB）与保守超集等价性测试
+- ChartService（走势图查询，依赖 DatasetAccess）
+- 行业筛选（`industry_membership` 契约完成后启用）、PE/PB 降级筛选

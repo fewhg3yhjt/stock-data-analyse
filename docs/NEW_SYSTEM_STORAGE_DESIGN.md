@@ -419,3 +419,33 @@ Account(real)
 6. 真实 Execution 可以重算现金和持仓。
 7. 重复请求不会产生重复成交或重复扣款。
 8. 新系统删除旧库连接后仍可启动和完成核心冒烟流程。
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P0 核心完成（business.db schema + 核心 repository）
+
+### 已完成交付物
+
+| 文件 | 能力 |
+|---|---|
+| `biz/db.py` | business.db 全表 schema（37 张）+ BusinessDB 连接/upsert/update/事务/JSON 工具 + `BUSINESS_DB_PATH` 路径隔离 |
+| `biz/repo.py` | BusinessRepository：策略版本/决策/市场状态/筛选(version/run/candidate/universe)/研究(run/evidence)/模拟(run/fill/result) 持久化 |
+
+### 实现要点
+
+1. **路径隔离**：`business_db_path()` 支持 `BUSINESS_DB_PATH` 环境变量覆盖，测试用临时路径，默认 `output/data/business.db`。
+2. **不写旧库**：所有业务事实只写 business.db，不碰 portfolio.db / meta.db / management.db 业务表。
+3. **外键顺序**：父表（strategies/screens/accounts 等）先 upsert 再写子表，避免 FK 约束失败。
+4. **时间**：统一 UTC 时间戳；业务日期独立 YYYY-MM-DD 字符串。
+
+### 开发中遇到的问题与决策
+
+1. `db.update` 初版不支持 where 参数绑定，导致 SQL bind 数不匹配。决策：update 增加 where_params。
+2. 父表 FK 顺序问题导致 IntegrityError。决策：调整写入顺序。
+
+### 后续待开发
+
+- P1/P2 表 repository：observation/execution/cash_ledger/position_lot/advice/notification/performance/review
+- business_task_* 任务表 repository
