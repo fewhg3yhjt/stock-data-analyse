@@ -53,16 +53,16 @@ class FactorEngine:
             raise ValueError("stock_daily 必须使用标准估值字段 pe_ttm/pb_mrq")
         close = df["close"]
 
-        # 乖离率 (close - ma240)/ma240（ma240 仅作内部计算，不落盘）
-        ma240 = close.rolling(240).mean()
-        df["bias_ratio"] = (close - ma240) / ma240 * 100
+        # 共享指标（bias_ratio/pct_chg）统一从 IndicatorRegistry 取，与 indicators 分区同口径
+        from StockInvestmentTool.indicators.engine import IndicatorRegistry
+        reg = IndicatorRegistry()
+        shared = reg.compute(df, ["bias_ratio", "pct_chg"])
+        df["bias_ratio"] = shared["bias_ratio"].values
+        df["pct_chg"] = shared["pct_chg"].values
 
         # 量比 = 当日量 / 5日均量
         vol_ma5 = df["volume"].rolling(5).mean()
         df["vol_ratio"] = df["volume"] / vol_ma5
-
-        # 单日涨跌幅
-        df["pct_chg"] = close.pct_change() * 100
 
         # 20日年化波动率（对数收益率）
         log_ret = (close / close.shift(1)).apply(lambda x: __import__("math").log(x))

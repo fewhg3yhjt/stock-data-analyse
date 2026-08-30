@@ -104,3 +104,16 @@ IndicatorRegistry**：
 
 **消费兼容**：`compute_all` 产出列名不变（`change_pct` = 引擎 `pct_chg` 别名，
 `vol_ma5/low_3m/year_low/bias_ratio` 同名），advisor/market_state/回测零改动。
+
+## 10. factors 共享指标统一走引擎（2026-08-30）
+
+`FactorEngine.compute_factor_row` 原先自己实现 `bias_ratio`（`(close-ma240)/ma240`）
+和 `pct_chg`（`close.pct_change()`）。现改为统一调 `IndicatorRegistry`：
+
+- `bias_ratio` / `pct_chg` 从引擎取，与 indicators 分区、compute_all **同口径、逐位一致**
+- factors 独有因子（vol_ratio/ret_5d/ret_20d/high_20d/low_20d/volatility_20_factor）
+  保留在 FactorEngine（研究因子，不入引擎）
+- 至此**三个执行路径全部收口到一个计算引擎**：
+  indicators 分区（indicators_build）/ 运行时（compute_all）/ 因子分区（factors_build）
+- 判定辅助函数（trend_judgment/ma_slope/support_resistance/annualized_volatility）
+  保持策略函数，消费统一引擎产出的指标列
