@@ -346,7 +346,7 @@ ConditionSpec
 → Screen Compiler
     ├── SQL-capable → DuckDB SQL
     ├── vectorizable → batch/vectorized evaluation
-    └── unsupported → bounded Python fallback
+    └── unsupported → bounded exact evaluation
 ```
 
 第一版条件执行能力：
@@ -361,7 +361,13 @@ ConditionSpec
 | 复杂登记表达式 | 向量化 |
 | 任意 Python | 禁止 |
 
-先用 SQL 批量缩小候选，再对命中候选补充详细解释。
+SQL 阶段只能产生精确命中集的保守超集：
+
+```text
+RuleRegistry exact result ⊆ SQL candidate set
+```
+
+最终命中只能由 RuleRegistry 精确评估决定。每个条件声明 `compile_mode`：`conservative_sql`、`fully_equivalent_sql` 或 `exact_only`；不满足保守超集约束的条件不得进入 SQL 缩小阶段。测试必须验证固定样本上的集合关系，声明等价的条件还必须验证两者完全相等。
 
 ### 7.1 排序规则
 

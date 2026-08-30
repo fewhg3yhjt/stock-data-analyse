@@ -251,13 +251,9 @@ StrategyVersion
 
 ## 6. 统一核心实体
 
-### StrategyVersion
+### StrategyVersion / StrategyDecision
 
-不可变的策略配置快照，正式字段和语义以 [领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md) 为准，本总纲不重复维护字段列表。
-
-### StrategyDecision
-
-一次策略评估的不可变结果，正式字段、输入值快照和解释轨迹以 [领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md) 为准。
+正式字段、输入值快照和解释轨迹只在 [领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md) 中定义。本总纲只引用，不重复定义字段。
 
 动作至少包括：
 
@@ -368,13 +364,16 @@ planned → accumulating → holding
 
 推荐顺序：
 
-1. [策略核心与回测模拟](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)
-2. [选股与行情分析](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)
-3. [观察池与关注列表](OBSERVATION_AND_WATCHLIST_DESIGN.md)
-4. [账户、持仓与交易](ACCOUNT_PORTFOLIO_AND_TRADING_DESIGN.md)
-5. [收益分析与复盘](PERFORMANCE_AND_REVIEW_DESIGN.md)
-6. [建议与消息通知](ADVICE_AND_NOTIFICATION_DESIGN.md)
-7. [平台支撑与运行治理](PLATFORM_RUNTIME_AND_OPERATIONS_DESIGN.md)
+0. [旧体系下线与新体系切换](LEGACY_CUTOVER_PLAN.md)
+1. [新系统持久层](NEW_SYSTEM_STORAGE_DESIGN.md)
+2. [策略核心与回测模拟](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)
+3. [选股与行情分析](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)
+4. [个股研究与分析](RESEARCH_AND_ANALYSIS_DESIGN.md)
+5. [观察池与关注列表](OBSERVATION_AND_WATCHLIST_DESIGN.md)
+6. [账户、持仓与交易](ACCOUNT_PORTFOLIO_AND_TRADING_DESIGN.md)
+7. [收益分析与复盘](PERFORMANCE_AND_REVIEW_DESIGN.md)
+8. [建议与消息通知](ADVICE_AND_NOTIFICATION_DESIGN.md)
+9. [平台支撑与运行治理](PLATFORM_RUNTIME_AND_OPERATIONS_DESIGN.md)
 
 第一份子模块文档优先定义 `StrategyDecision`、`ResearchRun` 和 `SimulationRun`，因为其他业务模块都依赖它们。
 

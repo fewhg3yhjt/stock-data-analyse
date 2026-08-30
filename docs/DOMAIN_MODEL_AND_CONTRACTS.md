@@ -47,7 +47,7 @@ Condition / Rule / Strategy / StrategyVersion
 StrategyContext / StrategyDecision
 Screen / ScreenRun / ScreenCandidate
 ResearchRun / ResearchEvidence / ResearchReport
-SimulationPlan / SimulationRun / SimulationExecution / SimulationEvent
+SimulationPlan / SimulationRun / SimulationFill / SimulationEvent
 Observation / WatchSubscription / ObservationSnapshot
 Account / Portfolio / PositionCycle / PositionLot
 Execution / CashLedgerEntry / PositionSnapshot

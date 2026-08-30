@@ -314,10 +314,10 @@ total_fees
 total_slippage
 ```
 
-### 6.4 SimulationExecution
+### 6.4 SimulationFill
 
 ```text
-execution_id
+fill_id
 run_id
 symbol
 side
@@ -333,6 +333,8 @@ slippage
 decision_id
 reason
 ```
+
+`side` 只能是 `BUY` 或 `SELL`。一笔买入和一笔卖出是两条独立记录；持有周期、实现收益和收益率由 `SimulationFill` 与虚拟 Lot 聚合计算，不作为单边成交事实写入。真实交易实体仍命名为 `Execution`，不得混用。
 
 ### 6.5 SimulationEvent
 
@@ -394,7 +396,7 @@ ParameterSearchRun
 → 生成 StrategyDecision
 → 根据 ExecutionRule 生成虚拟成交
 → 更新现金和虚拟持仓
-→ 记录 SimulationExecution/Event
+→ 记录 SimulationFill/Event
 → 计算每日权益
 → 计算基准和绩效
 → 保存 SimulationResult
@@ -443,7 +445,7 @@ affected_symbol
 | 新 `SimulationExecutor` | 唯一回测/模拟内核 |
 | 新 `MarketRegime` | 统一市场状态事实 |
 
-旧算法不进入运行时。需要的业务能力按新协议直接重写，统一输出 `StrategyDecision`、`SimulationExecution` 和 `SimulationResult`。
+旧算法不进入运行时。需要的业务能力按新协议直接重写，统一输出 `StrategyDecision`、`SimulationFill` 和 `SimulationResult`。
 
 ## 9. 第一版实现顺序
 
