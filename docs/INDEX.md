@@ -6,14 +6,11 @@
 
 - [投资分析工具产品总纲](PRODUCT_BLUEPRINT.md)：产品目标、用户主流程、业务模块边界、统一实体和第一版范围。
 - [投资产品领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md)：新旧体系真源、旧骨架迁移、统一实体、状态和平台任务接入边界。
-- [业务数据输入契约](DATA_INPUT_CONTRACTS.md)：基于当前数据模块真实实现定义 DatasetResult、DatasetAccess、指标、Universe 及辅助数据集输入边界。
-- [数据平台统一设计](DATA_PLATFORM_DESIGN.md)：数据集生命周期、标准化、Universe、质量、版本、发布和正式业务访问边界。
-- [数据依赖与业务能力可用性矩阵](DATA_DEPENDENCY_CAPABILITY_MATRIX.md)：逐项说明业务能力依赖的数据集状态，以及第一版可用、降级或延期范围。
+- [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md)：数据集生命周期、真实输入契约、指标架构、Universe、质量、版本、发布和业务能力可用性矩阵。
 - [旧体系下线与新体系切换计划](LEGACY_CUTOVER_PLAN.md)：禁止兼容并行、一次性迁移、切换步骤和下线验收。
 - [新系统持久层设计](NEW_SYSTEM_STORAGE_DESIGN.md)：新业务库、实体落表、键和索引、账户初始化、迁移和对账。
 - [架构设计总纲](DESIGN.md)：项目分层、模块职责和总体数据流。
 - [概要设计说明书](HLD.md)：核心能力抽象与目标架构。
-- [可信数据链路设计与实施规范 V1.1](DATA_PIPELINE_V1_DESIGN.md)：`stock_daily` 从元数据、采集、Raw Batch、构建、质量、发布到下游消费的专项设计、实施阶段和验收基准。
 - [废弃：旧后台领域设计 V1.0](BACKEND_RESEARCH_SIMULATION_STRATEGY_V1.md)：仅供历史数据评估和一次性迁移，禁止用于新功能和运行时实现。
 - [任务与数据术语](TASK_DATA_GLOSSARY.md)：任务阶段、任务类型、数据产物、状态和数据中心分类的统一用户用词。
 - [任务与数据中心前端设计](TASK_DATA_CENTER_DESIGN.md)：任务中心、数据中心的用户信息架构、操作和 API 契约。

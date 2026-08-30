@@ -11,7 +11,7 @@
 
 旧体系不得进入新运行时，不得作为 fallback、双写目标、业务查询来源或第二套协议。历史数据如需保留，只能通过一次性迁移或只读归档处理。
 
-数据模块的 Raw、Candidate、Quality、Published、Current 视为既有数据平面能力；业务模块必须按 [业务数据输入契约](DATA_INPUT_CONTRACTS.md) 消费其真实输出，不得假设尚未实现的统一数据集接口。
+数据模块的 Raw、Candidate、Quality、Published、Current 视为既有数据平面能力；业务模块必须按 [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md) 消费其真实输出，不得假设尚未实现的统一数据集接口。
 
 ## 2. 旧体系下线规则
 
@@ -164,7 +164,7 @@ strong_bear
 
 策略通过 `StrategyRegimePolicy` 决定如何使用该事实。
 
-MarketRegime 由业务平面的 `MarketRegimeService` 生产，不由数据采集任务生产，也不由每个研究请求各自私算一套。其输入是数据模块提供的 `DatasetResult.data/context`，默认基于已发布 `stock_daily`/`indicators` 数据计算，结果写入业务库 `market_regimes`；实际数据读取入口和字段边界以 `DATA_INPUT_CONTRACTS.md` 为准。
+MarketRegime 由业务平面的 `MarketRegimeService` 生产，不由数据采集任务生产，也不由每个研究请求各自私算一套。其输入是数据模块提供的 `DatasetResult.data/context`，默认基于已发布 `stock_daily`/`indicators` 数据计算，结果写入业务库 `market_regimes`；实际数据读取入口和字段边界以 `DATA_PIPELINE_V1_DESIGN.md` 为准。
 
 ```text
 DatasetResult(stock_daily/indicators)
@@ -343,4 +343,4 @@ ScreenCandidate
 → Performance / Review
 ```
 
-每个推导结果都能追溯到策略版本、数据上下文、输入快照和规则评估轨迹。真实输入契约以 `DATA_INPUT_CONTRACTS.md` 为准。
+每个推导结果都能追溯到策略版本、数据上下文、输入快照和规则评估轨迹。真实输入契约以 `DATA_PIPELINE_V1_DESIGN.md` 为准。

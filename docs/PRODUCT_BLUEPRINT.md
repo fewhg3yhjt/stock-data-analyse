@@ -13,7 +13,7 @@
 5. 哪些对象是事实，哪些对象是计算结果。
 6. 哪些能力属于第一版必须跑通的范围。
 
-数据采集、清洗、版本、质量和发布模块视为数据平面基础设施。业务模块必须使用 [业务数据输入契约](DATA_INPUT_CONTRACTS.md) 中已经存在的真实读取对象，不得另造数据读取接口。
+数据采集、清洗、版本、质量和发布模块视为数据平面基础设施。业务模块必须使用 [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md) 中已经存在的真实读取对象，不得另造数据读取接口。
 
 领域对象、公共术语、状态转换和跨模块接口以 [领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md) 为准；历史文档中与本文冲突的同名对象以本文为准。
 
@@ -372,19 +372,16 @@ phase: accumulating → holding
 推荐顺序：
 
 0. [旧体系下线与新体系切换](LEGACY_CUTOVER_PLAN.md)
-0. [旧体系下线与新体系切换](LEGACY_CUTOVER_PLAN.md)
-1. [数据平台统一设计](DATA_PLATFORM_DESIGN.md)
-2. [业务数据输入契约](DATA_INPUT_CONTRACTS.md)
-3. [数据依赖与业务能力可用性矩阵](DATA_DEPENDENCY_CAPABILITY_MATRIX.md)
-4. [新系统持久层](NEW_SYSTEM_STORAGE_DESIGN.md)
-5. [策略核心与回测模拟](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)
-6. [选股与行情分析](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)
-7. [个股研究与分析](RESEARCH_AND_ANALYSIS_DESIGN.md)
-8. [观察池与关注列表](OBSERVATION_AND_WATCHLIST_DESIGN.md)
-9. [账户、持仓与交易](ACCOUNT_PORTFOLIO_AND_TRADING_DESIGN.md)
-10. [收益分析与复盘](PERFORMANCE_AND_REVIEW_DESIGN.md)
-11. [建议与消息通知](ADVICE_AND_NOTIFICATION_DESIGN.md)
-12. [平台支撑与运行治理](PLATFORM_RUNTIME_AND_OPERATIONS_DESIGN.md)
+1. [数据平台与可信数据链路](DATA_PIPELINE_V1_DESIGN.md)
+2. [新系统持久层](NEW_SYSTEM_STORAGE_DESIGN.md)
+3. [策略核心与回测模拟](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)
+4. [选股与行情分析](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)
+5. [个股研究与分析](RESEARCH_AND_ANALYSIS_DESIGN.md)
+6. [观察池与关注列表](OBSERVATION_AND_WATCHLIST_DESIGN.md)
+7. [账户、持仓与交易](ACCOUNT_PORTFOLIO_AND_TRADING_DESIGN.md)
+8. [收益分析与复盘](PERFORMANCE_AND_REVIEW_DESIGN.md)
+9. [建议与消息通知](ADVICE_AND_NOTIFICATION_DESIGN.md)
+10. [平台支撑与运行治理](PLATFORM_RUNTIME_AND_OPERATIONS_DESIGN.md)
 
 第一份子模块文档优先定义 `StrategyDecision`、`ResearchRun` 和 `SimulationRun`，因为其他业务模块都依赖它们。
 

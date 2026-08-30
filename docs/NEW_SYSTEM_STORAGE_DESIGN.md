@@ -43,7 +43,7 @@ output/data/business.db
 
 数据模块的 `management.db` 属于数据平面，不是旧业务库；它继续承载 Dataset Registry、Published Version、Quality、Current、Source Batch 等数据事实。业务库不复制这些表，只保存不可变的 dataset reference。
 
-数据平面的 Published Dataset 元数据由数据模块维护；业务库通过不可变引用保存。业务模块实际读取必须遵循 [业务数据输入契约](DATA_INPUT_CONTRACTS.md)，不能假设所有配置数据集已经具备统一读取实现：
+数据平面的 Published Dataset 元数据由数据模块维护；业务库通过不可变引用保存。业务模块实际读取必须遵循 [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md)，不能假设所有配置数据集已经具备统一读取实现：
 
 ```text
 dataset_name

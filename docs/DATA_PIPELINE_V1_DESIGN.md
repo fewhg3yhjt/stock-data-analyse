@@ -1,4 +1,4 @@
-# StockInvestmentTool 可信数据链路设计与实施规范 V1.1
+# StockInvestmentTool 数据平台与可信数据链路设计 V2
 
 > 文档性质：项目内部专项设计、实施计划与验收基准。
 >
@@ -8,7 +8,7 @@
 >
 > 保密说明：本文包含真实项目目录和内部模块信息，仅限项目内部使用，勿对外传播。
 >
-> 状态：基础采集、数据构建、质量、发布、统一访问、指标/因子验证和任务管理后端基础已完成；前端管理信息架构、任务中心完整接管和生产正式切流仍待实施。文档中明确标注为“目标”的内容不得描述成“已经完成”。
+> 状态：本文统一记录数据平台设计、当前真实输入契约、指标归一关系、数据集收敛方案和业务能力边界。当前代码事实与目标设计必须分开阅读，未完成项不得标记为“已完成”。
 >
 > 关联文档：[架构总纲](DESIGN.md) · [概要设计](HLD.md) · [执行指南](IMPLEMENTATION_GUIDE.md) · [现状盘点](STATUS.md)
 
@@ -16,7 +16,7 @@
 
 ## 1. 文档目的
 
-本文是数据链路改造的唯一专项设计真源，解决三个问题：
+本文是数据平台和可信数据链路的唯一设计真源，解决三个问题：
 
 1. 让产品负责人能够理解每个阶段具体做什么、为什么做；
 2. 让没有当前会话上下文的后续 AI 能按阶段开发，不擅自扩大范围；
@@ -59,7 +59,6 @@
 warehouse/raw/
 warehouse/daily/
 warehouse/indicators/
-warehouse/factors/
 warehouse/fundamentals/
 warehouse/minute/
 warehouse/online/
@@ -77,7 +76,7 @@ output/data/job_runs.db
 - 任务阶段、进度、部分成功、失败和跳过状态；
 - 数据新鲜度和数据中心页面。
 
-本轮不推翻这些基础。
+本文保留数据模块现有可用能力，但不再把旧 `factors` 目录、旧业务读取路径或未完成辅助数据集视为正式输入能力；研究因子统一归入 `indicators`。
 
 ### 2.2 当前实际主链路
 
@@ -113,42 +112,38 @@ stock_daily 从采集到正式消费可追溯、可检查、可发布、可回�
 
 ## 3. 范围与非范围
 
-### 3.1 本轮范围
+### 3.1 本文范围
 
-第一条完整改造的数据集只有：
+数据平台统一设计覆盖以下正式数据集：
 
 ```text
 stock_daily
-```
-
-中文名称：日线数据。
-
-业务定义：股票和 ETF 等纳入证券范围的证券，每个交易日一条价格及成交事实记录。
-
-第一轮开发仅实施：
-
-```text
-Phase 0 基线盘点
-Phase 1 元数据基础
-Phase 2 腾讯 Raw Batch 双写
-```
-
-第一轮不得切换现有正式日线消费路径。
-
-### 3.2 后续复用的数据集
-
-`stock_daily` 稳定后，再复用相同机制接入：
-
-```text
-industry_daily
-valuation_daily
-money_flow_daily
-fundamentals
 indicators
-factors
+valuation_daily
+fundamentals
+industry_membership
+money_flow_security_daily
+money_flow_industry_daily
 ```
 
-不得在 `stock_daily` 第一阶段同时实施这些数据集。
+数据集的中文名称、粒度和业务定义分别在各数据集章节中定义。
+
+数据集收敛按以下顺序实施：
+
+```text
+stock_daily / indicators 基础链路
+valuation_daily 字段和路径收敛
+fundamentals 报告期和公告日收敛
+industry_membership 正式快照收敛
+money_flow 证券/行业拆分收敛
+统一 DatasetAccess 和业务能力矩阵
+```
+
+每个数据集在自身验收通过后切换；受限或未完成的数据集不得被业务模块伪装为完整能力。
+
+### 3.2 数据集说明
+
+不同数据集可以有不同粒度和分区方式，但必须共享 DatasetDefinition、DatasetResult、Universe、质量、版本和 Published Access 契约。
 
 ### 3.3 明确不做
 
@@ -164,7 +159,7 @@ factors
 - 按证券拆分大量文件；
 - 一次性改造全部数据集；
 - 一次性迁移所有下游页面；
-- 自动删除现有 daily、指标、因子或投资账本数据；
+- 自动删除现有 daily、指标或投资账本数据；
 - 全量重算所有历史数据；
 - 修改股票策略、回测规则和交易规则。
 
@@ -197,14 +192,14 @@ factors
 - 原子替换；
 - 不长期复制完整历史版本。
 
-### 4.3 兼容原则
+### 4.3 新数据平台原则
 
-1. 第一阶段保留现有 `warehouse/daily/YYYY-MM.parquet` 路径；
-2. 新 Raw 和元数据能力先双写、对账，不立即切流；
-3. 现有 API 字段和数据库状态值保持英文，界面显示中文；
-4. 旧读取路径在迁移期保留，只能逐模块切换；
-5. 每次切换必须有回退开关或旧路径可恢复；
-6. 不删除历史文件和运行记录来“修复”兼容问题。
+1. 正式业务只读取 Published Dataset；
+2. 外部字段别名只存在于 Source Normalizer；
+3. 研究因子统一归入 `indicators`，不再建立 `factors` 数据集；
+4. 数据迁移只允许一次性读取旧数据，不能双写或运行时 fallback；
+5. 数据集切换必须经过质量、版本、路径和业务冒烟验收；
+6. 历史文件保留在归档区，不进入新业务读取路径。
 
 ---
 
@@ -268,18 +263,22 @@ Dataset Current
 
 ```text
 indicators <- stock_daily
-factors    <- stock_daily
+valuation_daily <- external valuation source
+fundamentals <- external financial source
+industry_membership <- external industry source
+money_flow_security_daily <- external money-flow source
+money_flow_industry_daily <- external money-flow source
 ```
 
 当前执行顺序可以是：
 
 ```text
-更新日线数据
-  -> 更新技术指标
-  -> 更新研究因子
+更新 stock_daily
+  -> 更新 indicators
+  -> 更新依赖这些数据的业务快照
 ```
 
-执行顺序不代表研究因子读取技术指标。
+研究因子属于 indicators 分类，具体指标依赖由指标定义版本声明。
 
 ---
 
@@ -1078,7 +1077,7 @@ DatasetResult(
 
 ---
 
-## 14. 技术指标与研究因子接入
+## 14. 技术指标接入
 
 ### 14.1 第一阶段目标
 
@@ -1088,7 +1087,6 @@ DatasetResult(
 
 ```text
 IndicatorsBuilder
-FactorEngine
 ```
 
 从：
@@ -1115,8 +1113,7 @@ input_versions={"2026-07":"v101", "2026-08":"v102"}
 数据中心必须能判断：
 
 ```text
-技术指标是否基于当前正式日线版本
-研究因子是否基于当前正式日线版本
+指标是否基于当前正式日线版本
 ```
 
 ### 14.3 计算范围与存储分区
@@ -1389,11 +1386,11 @@ stock_daily 是什么？
 当前有哪些分区？
 ```
 
-### Phase 2：腾讯 Raw Batch 双写
+### Phase 2：腾讯 Raw Batch 历史验证
 
 #### 目标
 
-让现有采集留下可追溯的 Raw 证据，但不切换正式 daily。
+让采集留下可追溯的 Raw 证据。该阶段属于历史验证记录，不代表当前新数据平台允许双写运行。
 
 #### 建议新增/修改
 
@@ -1414,7 +1411,7 @@ tests/test_raw_atomic.py
 - 记录请求上下文；
 - 记录 universe 和证券统计；
 - 保存失败证券摘要；
-- 继续执行旧 daily 写入；
+- 旧 daily 结果仅用于历史对账，不作为新业务输入；
 - 任务结果包含 Raw Batch 状态。
 
 #### 验收
@@ -1425,11 +1422,11 @@ tests/test_raw_atomic.py
 - 批次统计与采集结果一致；
 - 旧生产功能保持不变。
 
-### Phase 3：Daily Builder 双轨
+### Phase 3：Daily Builder 历史对账
 
 #### 目标
 
-从 Raw 生成候选 daily，并与旧 daily 对账。
+从 Raw 生成候选 daily，并与固定历史基线对账。
 
 #### 建议新增
 
@@ -1447,7 +1444,7 @@ tests/test_daily_builder_idempotency.py
 - 冲突记录；
 - 月分区 Merge/Upsert；
 - 候选文件生成；
-- 与旧 daily 自动对比。
+- 与固定历史基线自动对比。
 
 #### 验收
 
@@ -1533,7 +1530,7 @@ tests/test_daily_builder_idempotency.py
 - 返回 DatasetResult；
 - 定义质量门槛；
 - 定义在线回退；
-- 提供旧路径兼容适配器。
+- 旧路径只作为一次性迁移输入，不提供运行时兼容适配器。
 
 #### 验收
 
@@ -1543,16 +1540,16 @@ tests/test_daily_builder_idempotency.py
 - 日期和证券过滤正确；
 - 上下文包含版本和来源。
 
-### Phase 8：技术指标和研究因子接入
+### Phase 8：技术指标接入
 
 #### 目标
 
-指标和因子使用正式日线并记录输入版本。
+指标使用正式日线并记录输入版本；研究因子归入 indicators，不再单独生产。
 
 #### 工作内容
 
 - IndicatorsBuilder 改用 Data Access；
-- FactorEngine 改用 Data Access；
+- IndicatorsBuilder 改用 Data Access；
 - 记录输入版本；
 - 数据中心展示输入版本差异；
 - 暂不同时重写增量算法。
@@ -1562,7 +1559,7 @@ tests/test_daily_builder_idempotency.py
 - 不再直接 glob daily；
 - 输出能追溯到输入日线版本；
 - 输入版本落后可被检测；
-- 结果与旧实现对账。
+- 结果与固定历史基线对账。
 
 ### Phase 9：增量计算
 
@@ -1743,8 +1740,8 @@ stock_daily:
 
 ### 21.8 下游对账测试
 
-- IndicatorsBuilder 新旧结果一致；
-- FactorEngine 新旧结果一致；
+ - IndicatorsBuilder 结果与固定历史基线一致；
+ - 研究因子作为 indicators 指标结果可读取；
 - Market Discovery 典型筛选一致；
 - 个股分析典型 K 线一致；
 - 数据版本和上下文可见。
@@ -1762,13 +1759,13 @@ stock_daily:
 5. `python -m compileall` 通过；
 6. `git diff --check` 通过；
 7. 未修改生产 Parquet 或投资账本，除非该阶段明确批准；
-8. 旧生产路径保持可用；
-9. 有明确的回退方式；
+8. 旧生产路径不再作为新业务输入；
+9. 有明确的失败和归档处理方式；
 10. 文档状态同步更新。
 
 涉及生产切流、发布、回滚或历史重建的 Phase，必须额外完成：
 
-- 候选和旧链路双读对账；
+- 候选与固定历史基线对账；
 - 文件与元数据一致性验证；
 - 服务健康检查；
 - 失败注入验证；
@@ -1941,15 +1938,15 @@ OHLC 和成交数据是否异常？
 
 | 风险 | 应对 |
 |---|---|
-| Raw 双写增加磁盘 | 只保留 Raw 批次，正式版本仅保留当前和最近回滚文件；后续制定留存策略 |
-| 新旧 daily 结果不同 | Daily Builder 先双轨对账，不立即切流 |
+| Raw 增加磁盘 | 只保留 Raw 批次，正式版本仅保留当前和最近回滚文件；后续制定留存策略 |
+| 新 daily 结果不同 | 与固定历史基线对账，差异必须有明确结论 |
 | 文件与 SQLite 不一致 | Publish 恢复检查、checksum、阻止继续发布 |
 | 元数据设计过度复杂 | V1 固定服务 `stock_daily`，不做动态数据平台 UI |
 | 多来源冲突过多 | 腾讯主源，Baostock 只校验/补缺；冲突进入质量报告 |
 | 证券范围误判 | 保存 universe_id 和范围定义，区分采集覆盖率与交易日覆盖率 |
 | 质量阈值错误阻断 | 阈值配置化，先报告再调整，不在代码中写死 |
 | 线上回退掩盖正式数据问题 | 正式消费禁止静默回退，研究页面显式标记 |
-| 迁移影响现有业务 | 分 Phase、双写、双读对账、逐模块切换 |
+| 迁移影响现有业务 | 独立环境验证、一次性切换、逐模块验收 |
 | 指标/因子仍然很慢 | 先保证版本可信，后续独立实施窗口增量计算 |
 
 ---
@@ -1970,8 +1967,8 @@ OHLC 和成交数据是否异常？
 10. 正式消费禁止静默在线回退；
 11. WARNING 默认允许发布，但必须标记风险并可配置；
 12. FAIL 禁止发布；
-13. 第一轮只做基线、元数据、Raw Batch 双写；
-14. 第一轮不改变现有正式 daily 消费路径；
+13. 历史第一轮曾做基线、元数据和 Raw Batch 验证；
+14. 新平台切换前必须完成独立环境验证；
 15. 技术指标和研究因子后续都直接依赖 Published stock_daily；
 16. 元数据管理覆盖字段、来源、加工、质量、版本和消费者，不只覆盖采集。
 
@@ -1979,7 +1976,255 @@ OHLC 和成交数据是否异常？
 
 ---
 
-## 28. 文档维护
+## 29. 统一数据平台、业务输入与能力边界
+
+本节统一承载数据平台、业务输入契约和业务能力矩阵内容，本文是数据模块唯一设计真源。
+
+### 29.1 数据平面边界
+
+数据平台统一链路：
+
+```text
+Source
+→ Raw Batch
+→ Normalized Dataset
+→ Quality Result
+→ Published Dataset
+→ DatasetAccess
+→ DatasetResult(data, context)
+```
+
+数据平面负责：
+
+1. 外部来源访问和限流；
+2. 原始批次和失败记录；
+3. 字段、代码、日期和单位归一；
+4. 主键去重和分区写入；
+5. 数据集质量检查；
+6. Dataset Version、Current 和 checksum；
+7. Universe Snapshot 和覆盖范围；
+8. `DatasetAccess.load_dataset()`；
+9. 返回 `DatasetResult.data/context`。
+
+业务平面不得选择数据源、处理外部字段别名、读取 Raw、通过文件名推断代码或自行决定 Published 状态。
+
+### 29.2 真实统一读取接口
+
+当前正式接口：
+
+```python
+result = load_dataset(
+    warehouse,
+    dataset_name,
+    start_date=None,
+    end_date=None,
+    symbols=None,
+    required_quality="WARNING",
+    allow_legacy=False,
+)
+```
+
+返回：
+
+```text
+DatasetResult
+├── data: pandas.DataFrame
+└── context: dict
+```
+
+当前真实 `context` 包含：
+
+```text
+dataset
+partition_versions
+partitions
+max_date
+quality_status
+fallback_used
+```
+
+分区上下文包含：
+
+```text
+version_id
+quality_status
+sources
+input_versions
+generated_at
+```
+
+业务服务必须从过滤后的 DataFrame 重新计算 `returned_start/returned_end`，不能把过滤前的 `max_date` 当作返回范围。
+
+### 29.3 正式数据集与当前限制
+
+| 数据集 | 当前状态 | 业务可依赖内容 | 限制 |
+|---|---|---|---|
+| `stock_daily` | 可用 | OHLCV、amount、turn、trade status、date/code | `pre_close` 和估值字段不能无条件依赖 |
+| `indicators` | 可用 | 已实际生成的 MA、RSI、MACD、ATR、动量和量比列 | 部分配置指标不一定生成，定义版本绑定需补齐 |
+| `valuation_daily` | 受限 | 有 PE/PB 产物 | 外部字段仍有 `peTTM/pbMRQ`，覆盖不足 |
+| `fundamentals` | 未完成 | 部分财务字段可读 | schema、代码、公告日和报告期不统一 |
+| `industry_membership` | 未完成 | 有基础行业字段和少量 snapshot | 正式覆盖严重不足，分类有效期未定义 |
+| `money_flow_security_daily` | 受限 | 有部分证券资金流 snapshot | 路径、周期、单位和覆盖契约未完全统一 |
+| `money_flow_industry_daily` | 未完成 | 无稳定正式输入 | 证券/行业记录未完全拆分 |
+
+### 29.4 数据集标准结构
+
+不同数据集可以使用不同粒度和物理分区，但都必须定义：
+
+```text
+dataset_name
+schema_version
+primary_key
+partition_strategy
+storage_path
+field_definitions
+date_semantics
+universe_definition
+source_definition
+quality_policy
+consumer_policy
+```
+
+标准日期语义：
+
+```text
+trading_date
+report_period
+announcement_date
+effective_from
+effective_to
+snapshot_time
+data_as_of
+```
+
+`fundamentals` 历史查询必须满足 `announcement_date <= as_of`；行业查询必须满足有效期；资金流正式字段使用 `trading_date`，不使用含义不明的 `period`。
+
+### 29.5 指标架构
+
+指标生产和消费统一为：
+
+```text
+DatasetAccess(stock_daily)
+→ IndicatorsBuilder
+→ IndicatorRegistry.compute(df)
+→ indicators/YYYY-MM.parquet
+→ DatasetAccess("indicators")
+→ IndicatorContext(result.data)
+```
+
+研究因子属于指标目录分类，不再建立独立 `factors` 数据集。
+
+`IndicatorContext` 只负责在已读取 DataFrame 上求值；不负责数据源、版本、质量和 fallback。业务必须先通过 `DatasetAccess` 获取 `DatasetResult`，再注入 DataFrame。
+
+指标定义版本必须记录：
+
+```text
+indicator_id
+version
+canonical_name
+definition
+dependencies
+formula_or_code_hash
+schema_version
+min_history
+applies_to
+status
+```
+
+每个 `indicators` Dataset Version 必须记录使用的指标版本集合和输入 `stock_daily` 版本。
+
+### 29.6 Universe
+
+Universe 必须保存成员明细：
+
+```text
+universe_definitions
+universe_snapshots
+universe_members
+```
+
+快照至少包含：
+
+```text
+universe_snapshot_id
+universe_type
+as_of
+asset_types
+member_count
+fingerprint
+```
+
+成员至少包含：
+
+```text
+universe_snapshot_id
+symbol
+asset_type
+status
+listed_date
+is_active
+```
+
+不同数据集覆盖范围不同，不得用一个数据集的 `expected_symbols` 作为另一个数据集的完整覆盖基准。
+
+### 29.7 数据依赖与业务能力状态
+
+数据状态定义：
+
+```text
+可用 = 已有正式输入契约，可进入第一版
+受限 = 有真实数据但字段/覆盖/质量有限，只能降级使用
+未完成 = 不能作为第一版正式业务输入
+```
+
+业务状态定义：
+
+```text
+可用 = 第一版可以正式验收
+降级 = 可以展示或研究，但必须显式标记限制
+延期 = 等数据契约完成后再验收
+```
+
+| 业务能力 | 依赖数据集 | 数据状态 | 第一版状态 |
+|---|---|---|---|
+| 基础行情、K 线和基础指标 | `stock_daily` + `indicators` | 可用 | 可用 |
+| MA/ATR/动量选股 | `stock_daily` + `indicators` | 可用 | 可用 |
+| 全市场量价筛选 | `stock_daily` + `indicators` | 可用 | 可用 |
+| 行业筛选 | `industry_membership` | 未完成 | 延期 |
+| PE/PB 筛选和估值研究 | `valuation_daily` | 受限 | 降级 |
+| 单股技术研究 | `stock_daily` + `indicators` | 可用 | 可用 |
+| 单股基本面研究 | `fundamentals` | 未完成 | 延期 |
+| 市场状态 | `stock_daily` + `indicators` | 可用 | 可用 |
+| 不依赖基本面的策略判断 | `stock_daily` + `indicators` + `MarketRegime` | 可用 | 可用 |
+| 单股回测/模拟 | `stock_daily` + `indicators` | 可用 | 可用 |
+| 含估值回测 | `valuation_daily` | 受限 | 降级 |
+| 含基本面回测 | `fundamentals` | 未完成 | 延期 |
+| 观察池和模拟到建仓参考 | `ScreenCandidate` + `SimulationResult` | 可用 | 可用 |
+| 持仓估值和实际收益 | `stock_daily` + `Execution` + `CashLedger` | 可用 | 可用 |
+| 策略/基准对比 | `SimulationResult` + benchmark `stock_daily` | 可用 | 可用 |
+| 资金流辅助选股 | `money_flow_security_daily` | 受限 | 降级 |
+| 行业轮动 | 行业资金流 + 行业分类 | 未完成 | 延期 |
+| 买卖邮件通知 | `StrategyDecision` + `Advice` + Email | 可用 | 可用 |
+
+第一版完整闭环为：
+
+```text
+stock_daily
+→ indicators
+→ 指标条件筛选
+→ 查看走势
+→ 配置不依赖未完成数据的策略
+→ 回测/模拟
+→ 观察池
+→ 真实成交录入
+→ 持仓估值和收益
+→ 策略/基准对比
+→ 买卖邮件通知
+```
+
+数据状态为“未完成”的能力不得在产品总览中标记为 healthy/complete；降级能力必须返回限制原因、日期和覆盖范围。
+
+## 30. 文档维护
 
 每个 Phase 完成后，开发者或 AI 必须更新：
 
@@ -2003,7 +2248,7 @@ OHLC 和成交数据是否异常？
 - Phase 0 已完成：新增只读 `stock_daily` 基线审计脚本，支持按月份抽样和 JSON 报告。
 - Phase 1 已完成：新增数据集、字段、来源、消费者和分区索引元数据，保留现有 manifest 和 daily 读取路径。
 - 元数据定义已迁移到 `config/datasets/stock_daily.yaml`：YAML 管理数据集、字段、来源、消费者和质量配置；SQLite 只保存可查询的运行时投影和实际运行事实；Raw 原始数据继续保存为不可覆盖的文件。
-- Phase 2 已完成：腾讯日线采集新增不可覆盖 Raw Batch 双写，记录 Source Batch 和 Job Run 关联，旧 daily 写入继续保留。
+- Phase 2 历史验证已完成：腾讯日线采集曾新增不可覆盖 Raw Batch，记录 Source Batch 和 Job Run 关联；该记录不构成新业务运行时双写要求。
 - 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与旧 daily 均可追溯。
 - 全量回归：194 个测试通过。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
