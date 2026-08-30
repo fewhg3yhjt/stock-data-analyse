@@ -112,11 +112,11 @@ IndicatorRegistry**：
 
 - `bias_ratio` / `pct_chg` 从引擎取，与 indicators 分区、compute_all **同口径、逐位一致**
 - factors 独有因子（vol_ratio/ret_5d/ret_20d/high_20d/low_20d/volatility_20_factor）
-  保留在 FactorEngine（研究因子，不入引擎）
-- 至此**三个执行路径全部收口到一个计算引擎**：
-  indicators 分区（indicators_build）/ 运行时（compute_all）/ 因子分区（factors_build）
+  后续已全部并入引擎（见 §11），factors 分区废弃
+- 至此**所有执行路径全部收口到一个计算引擎**：indicators 分区（indicators_build）/
+  运行时（compute_all）/ 因子分区（已并入 indicators）
 - 判定辅助函数（trend_judgment/ma_slope/support_resistance/annualized_volatility）
-  保持策略函数，消费统一引擎产出的指标列
+  保持策略函数，消费统一引擎产出的指标列（§12 已内部收口到引擎补列）
 
 ## 11. 「研究因子」并入「技术指标」，废弃 factors 分区 + scanner（2026-08-30）
 
@@ -139,3 +139,23 @@ stock_daily 的衍生序列，无严格区分，是历史拆分的冗余。本�
 **存量影响**：`factors/*.parquet` 分区不再更新；历史数据保留，但新指标统一从
 `indicators/*.parquet` 消费。市场扫描（原 scanner）已无活跃调用方，如需扫描改读
 indicators 分区（CLI `scan` 已改指向 indicators）。
+
+## 12. 判定辅助函数内部收口到引擎（2026-08-30）
+
+`trend_judgment` / `ma_slope` 原先直接读 df 的 ma 列（要求调用方先 compute_all）。
+现新增 `_ensure_ma`：判定所需 ma 列缺失时统一用 `IndicatorRegistry` 补齐，
+不再依赖调用方预先计算。判定函数仍保持"策略判定"定位（输出分类字符串，
+非指标序列），但**指标输入统一走引擎**。
+
+## 13. 后续改造项（待办）
+
+- **market_discovery 选股信号**（`market_discovery/service.py`）：SQL 现算
+  动态窗口指标（lookback 可变的涨跌天数/连涨/放量/量比），是**页面选股信号逻辑**，
+  非固定窗口指标，不适合入指标引擎。后续如需统一，应把基础量价指标
+  （ma/vol_ratio/ret_5d/amplitude）改从 indicators 分区取，信号组合逻辑保留。
+- **strategy_lab.scan 选股**（`strategy_lab.py`）：全市场策略扫描，SQL 现算
+  MA20/MA60/涨停/偏离。后续改造为**基于指标固定策略的选股能力**——从 indicators
+  分区消费指标，策略规则（股价>MA60、偏离MA20、涨停次数）配置化。
+- **每日增量触发**：`indicators_build`/`factors` 的 `changed_start/end` 增量
+  机制已存在但调度未启用（`months` 仍全量读取）。按 DATA_PIPELINE §14.4/Phase 9
+  补 `affected_window` 读取窗口 + 调度传参，首次全量后每日增量。

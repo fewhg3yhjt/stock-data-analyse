@@ -44,6 +44,21 @@ class TechnicalIndicators:
         return df
 
     @staticmethod
+    def _ensure_ma(df: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
+        """确保 df 含指定 ma 列（缺失时用统一引擎补齐，口径与 indicators 分区一致）。"""
+        missing = [w for w in windows if f"ma{w}" not in df.columns]
+        if not missing:
+            return df
+        from StockInvestmentTool.indicators.engine import IndicatorRegistry
+        out = df.copy()
+        computed = IndicatorRegistry().compute(out, [f"ma{w}" for w in missing])
+        for w in missing:
+            s = computed.get(f"ma{w}")
+            if s is not None:
+                out[f"ma{w}"] = s.values
+        return out
+
+    @staticmethod
     def ma_slope(df: pd.DataFrame, ma_col: str = "ma60",
                  compare_days: int = 5, tolerance: float = 0.005) -> str:
         """MA 方向量化判定（V6.0: MA60 方向对支撑位的影响）
@@ -52,9 +67,12 @@ class TechnicalIndicators:
         - 走平: 今日 MA 在 5 日前 MA 的 ±0.5% 范围内 → 支撑中性，维持原值
         - 向下: 今日 MA < 5 个交易日前 MA → 支撑减弱，阵地需下修 -3%
 
+        判定所需的 ma 列缺失时用统一引擎补齐（不依赖调用方先 compute_all）。
+
         Returns:
             "向上" / "走平" / "向下" / "数据不足"
         """
+        df = TechnicalIndicators._ensure_ma(df, [20, 60, 240])
         if ma_col not in df.columns or len(df) < compare_days + 1:
             return "数据不足"
         today = df[ma_col].iloc[-1]
@@ -71,7 +89,10 @@ class TechnicalIndicators:
 
     @staticmethod
     def trend_judgment(df: pd.DataFrame) -> str:
-        """判定均线排列: 多头 / 空头 / 震荡"""
+        """判定均线排列: 多头 / 空头 / 震荡（ma 列缺失时统一引擎补齐）。"""
+        df = TechnicalIndicators._ensure_ma(df, [5, 20, 60])
+        if any(c not in df.columns for c in ("ma5", "ma20", "ma60")):
+            return "数据不足"
         last = df.iloc[-1]
         try:
             if last["ma5"] > last["ma20"] > last["ma60"]:
