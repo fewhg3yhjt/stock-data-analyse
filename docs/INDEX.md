@@ -4,6 +4,7 @@
 
 ## 核心设计
 
+- [投资分析工具产品总纲](PRODUCT_BLUEPRINT.md)：产品目标、用户主流程、业务模块边界、统一实体和第一版范围。
 - [架构设计总纲](DESIGN.md)：项目分层、模块职责和总体数据流。
 - [概要设计说明书](HLD.md)：核心能力抽象与目标架构。
 - [可信数据链路设计与实施规范 V1.1](DATA_PIPELINE_V1_DESIGN.md)：`stock_daily` 从元数据、采集、Raw Batch、构建、质量、发布到下游消费的专项设计、实施阶段和验收基准。
@@ -22,6 +23,7 @@
 
 ## 专项设计与实施
 
+- [策略核心与回测模拟子模块设计](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)：指标条件、策略编排、统一决策协议和回测/模拟执行模型。
 - [Phase 4 设计](PHASE4_DESIGN.md)
 - [Phase 4 实施记录](PHASE4_IMPLEMENTATION.md)
 - [市场发现待办](MARKET_DISCOVERY_TODO.md)
