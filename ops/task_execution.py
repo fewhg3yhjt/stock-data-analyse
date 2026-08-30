@@ -14,7 +14,6 @@ from StockInvestmentTool.ops.task_center import TaskCenter
 from StockInvestmentTool.warehouse.backfill import ValuationBackfill
 from StockInvestmentTool.warehouse.collector import MarketCollector
 from StockInvestmentTool.warehouse.daily_build import DailyBuilder
-from StockInvestmentTool.warehouse.factors import FactorEngine
 from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
 from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
 from StockInvestmentTool.warehouse.pipeline_state import PipelineState
@@ -177,10 +176,6 @@ def worker(task_key: str, warehouse: Warehouse, request: dict, run_id: int) -> d
         return _publish(warehouse, request)
     if task_key == "indicators_build":
         return IndicatorsBuilder(warehouse, allow_legacy=False).build_all(
-            symbols=_symbols(request), asset_types=["stock", "etf"], months=_months(request.get("period_start"), request.get("period_end")),
-            partition_versions=request.get("input_versions") or None)
-    if task_key == "factors_build":
-        return FactorEngine(warehouse, allow_legacy=False).build_factors(
             symbols=_symbols(request), asset_types=["stock", "etf"], months=_months(request.get("period_start"), request.get("period_end")),
             partition_versions=request.get("input_versions") or None)
     if task_key in {"industry_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture"}:

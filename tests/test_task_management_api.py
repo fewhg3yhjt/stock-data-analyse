@@ -24,10 +24,10 @@ def test_task_config_validation_and_activation(tmp_path):
 def test_task_config_rejects_wrong_timezone(tmp_path):
     center = TaskCenter(tmp_path / "management.db")
     center.sync_definitions()
-    config = json.loads(center.task("factors_build")["config_versions"][0]["config"])
+    config = json.loads(center.task("indicators_build")["config_versions"][0]["config"])
     config["schedule"]["timezone"] = "UTC"
     with pytest.raises(ValueError, match="北京时间"):
-        center.save_task_config("factors_build", config)
+        center.save_task_config("indicators_build", config)
 
 
 def test_task_service_can_toggle_enabled(tmp_path):

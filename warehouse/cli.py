@@ -52,20 +52,42 @@ def cmd_sync(args):
 
 
 def cmd_factors(args):
-    """计算全市场因子宽表。"""
-    from StockInvestmentTool.warehouse.factors import FactorEngine
-    fe = FactorEngine(allow_legacy=False)
-    res = fe.build_factors(max_symbols=args.max_symbols)
-    print(f"✅ 因子计算: {res['symbols']} 标的, {res['months']} 个月, 耗时 {res['elapsed_sec']}s")
+    """计算全市场技术指标宽表（研究因子已并入 indicators）。"""
+    from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
+    res = IndicatorsBuilder(allow_legacy=False).build_all(max_symbols=args.max_symbols)
+    print(f"✅ 指标计算: {res['symbols']} 标的, {res['months']} 个月, 耗时 {res['elapsed_sec']}s")
 
 
 def cmd_scan(args):
-    """全市场因子扫描。"""
-    from StockInvestmentTool.warehouse.scanner import MarketScanner
-    s = MarketScanner()
-    hits = s.scan(start=args.start, end=args.end,
-                  where=args.where or "", order_by=args.order_by,
-                  limit=args.limit, columns=args.columns)
+    """全市场指标扫描（读取 indicators 分区）。"""
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
+    w = Warehouse()
+    months = w.available_months("indicator")
+    if not months:
+        print("⚠️ 无指标分区（先运行 indicators）")
+        return
+    import duckdb
+    files = [str(w.indicator_dir / f"{m}.parquet") for m in months]
+    fl = "[" + ",".join("'" + f.replace("'", "''") + "'" for f in files) + "]"
+    sql = f"""
+        WITH latest AS (
+            SELECT * FROM read_parquet({fl})
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) = 1
+        )
+        SELECT * FROM latest
+        WHERE date BETWEEN ? AND ?
+        {('AND (' + args.where + ')') if args.where else ''}
+        ORDER BY {args.order_by}
+        LIMIT {int(args.limit)}
+    """
+    con = duckdb.connect()
+    try:
+        rows = con.execute(sql, [args.start, args.end]).fetchall()
+        cols = [d[0] for d in con.description]
+        hits = [dict(zip(cols, r)) for r in rows]
+    finally:
+        con.close()
     if not hits:
         print("⚠️ 无结果（检查日期区间是否有数据、where 条件是否正确）")
         return
@@ -157,9 +179,9 @@ def cmd_status(args):
     print(f"仓库目录: {w.base_dir}")
     print(f"标的数:   {len(w.all_codes())}")
     daily = w.available_months("daily")
-    factor = w.available_months("factor")
+    ind = w.available_months("indicator")
     print(f"日线分区: {len(daily)} 个月  {daily[:3]}{'...' if len(daily)>3 else ''}")
-    print(f"因子分区: {len(factor)} 个月  {factor[:3]}{'...' if len(factor)>3 else ''}")
+    print(f"指标分区: {len(ind)} 个月  {ind[:3]}{'...' if len(ind)>3 else ''}")
     if daily:
         last = w.read_daily(daily[-1])
         if last is not None and len(last):
@@ -195,10 +217,10 @@ def main(argv: list[str] | None = None):
     p_sync.add_argument("--target", default="daily",
                         help="写入目标: daily(加工层,默认)/raw:tencent(贴源层)")
 
-    p_factors = sub.add_parser("factors", help="计算因子宽表")
+    p_factors = sub.add_parser("factors", help="计算技术指标宽表（研究因子已并入 indicators）")
     p_factors.add_argument("--max-symbols", type=int, default=None)
 
-    p_scan = sub.add_parser("scan", help="全市场因子扫描")
+    p_scan = sub.add_parser("scan", help="全市场指标扫描（indicators 分区）")
     p_scan.add_argument("--start", required=True)
     p_scan.add_argument("--end", required=True)
     p_scan.add_argument("--where", default="", help="SQL 过滤条件")

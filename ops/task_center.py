@@ -585,7 +585,6 @@ class TaskCenter:
                     "stock_daily_quality": ["stock_daily_quality"],
                     "stock_daily_publish": ["stock_daily_publish"],
                     "indicators_build": ["indicators_build", "rebuild_indicators"],
-                    "factors_build": ["factors_build", "rebuild_factors"],
                 }
                 runtime_names = aliases.get(item["task_key"], [item["task_key"]])
                 marks = ",".join("?" for _ in runtime_names)

@@ -117,3 +117,25 @@ IndicatorRegistry**：
   indicators 分区（indicators_build）/ 运行时（compute_all）/ 因子分区（factors_build）
 - 判定辅助函数（trend_judgment/ma_slope/support_resistance/annualized_volatility）
   保持策略函数，消费统一引擎产出的指标列
+
+## 11. 「研究因子」并入「技术指标」，废弃 factors 分区 + scanner（2026-08-30）
+
+「研究因子」（factors 分区）与「技术指标」（indicators 分区）本质都是
+stock_daily 的衍生序列，无严格区分，是历史拆分的冗余。本次合并：
+
+- 引擎新增注册 `vol_ratio/ret_5d/ret_20d/high_20d/low_20d`（按原 FactorEngine 公式）
+- `volatility_20_factor` 废弃，统一用 `volatility_20`（引擎简单收益口径）
+- catalog 中 8 个「研究因子」全部改为 `category: 技术指标`、`dataset: indicators`、
+  `producer_task: indicators_build`；`volatility_20_factor` 删除
+- `config/datasets/factors.yaml` / `config/tasks/factors_build.yaml` 删除
+- `warehouse/factors.py` / `warehouse/scanner.py` 删除（scanner 无活跃调用方）
+- `warehouse/storage.py` 移除 factor_dir / read_factor / write_factor_partition /
+  factor_manifest / reset 的 factor 分支
+- 调度/任务/数据中心清理：`rebuild_factors` 任务、`factors_build` 分支、
+  rebuild-factors 接口、freshness 因子检查、data_center factors key 全部移除
+- `indicators_build` producer_metrics 补齐合并指标
+- 测试全部改为 indicators 口径
+
+**存量影响**：`factors/*.parquet` 分区不再更新；历史数据保留，但新指标统一从
+`indicators/*.parquet` 消费。市场扫描（原 scanner）已无活跃调用方，如需扫描改读
+indicators 分区（CLI `scan` 已改指向 indicators）。

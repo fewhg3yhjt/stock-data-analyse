@@ -16,7 +16,6 @@ from StockInvestmentTool.ops.task_center import TaskCenter
 from StockInvestmentTool.ops.task_runner import TaskRunner
 from StockInvestmentTool.warehouse.asset_profiles import select_symbols
 from StockInvestmentTool.warehouse.daily_build import DailyBuilder
-from StockInvestmentTool.warehouse.factors import FactorEngine
 from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
 from StockInvestmentTool.warehouse.pipeline_state import PipelineState
 from StockInvestmentTool.warehouse.publish import Publisher
@@ -144,17 +143,11 @@ def run_shadow(root: Path, symbols: list[str], start_date: str, end_date: str,
                 symbols=symbols, flush_every=10, asset_types=asset_types),
             input_dataset="stock_daily", output_dataset="indicators",
         )
-        factors = execute_stage(
-            "factors_build",
-            lambda run_id, request: FactorEngine(warehouse, allow_legacy=False).build_factors(
-                symbols=symbols, asset_types=asset_types),
-            input_dataset="stock_daily", output_dataset="factors",
-        )
         artifacts, lineage = _register_outputs(center, result, warehouse, batch_id, versions,
-                                                indicators, factors, months, result["stages"])
+                                                indicators, months, result["stages"])
         result.update({"status": "success", "capture": captured, "build": built,
                        "quality": quality, "publish": published, "indicators": indicators,
-                       "factors": factors, "artifacts": artifacts, "lineage": lineage})
+                       "artifacts": artifacts, "lineage": lineage})
         return result
     except Exception as exc:
         result.update({"status": "failed", "error": str(exc)})
@@ -289,7 +282,7 @@ def _publish_versions(warehouse, versions):
     return {"rows": len(published), "months": len(published), "published": published}
 
 
-def _register_outputs(center, result, warehouse, batch_id, versions, indicators, factors, months, stages):
+def _register_outputs(center, result, warehouse, batch_id, versions, indicators, months, stages):
     stage_runs = {item["request_id"]: item["run_id"] for item in stages}
     task_runs = {item["request_id"]: item["run_id"] for item in stages}
     run_by_task = {}
@@ -299,7 +292,7 @@ def _register_outputs(center, result, warehouse, batch_id, versions, indicators,
     run_ids = [item["run_id"] for item in stages]
     capture_run = run_ids[0]
     build_run = run_ids[1]
-    derived_runs = run_ids[-2:]
+    derived_runs = run_ids[-1:]
     artifacts = {}
     raw_path = Path(_batch_path(warehouse, batch_id))
     artifacts["raw"] = center.register_artifact(run_id=capture_run, dataset_name="stock_daily",
@@ -315,9 +308,6 @@ def _register_outputs(center, result, warehouse, batch_id, versions, indicators,
     artifacts["indicators"] = center.register_artifact(
         run_id=derived_runs[0], dataset_name="indicators", artifact_type="indicator_output",
         partition_key=months[-1], file_path=warehouse.indicator_dir / f"{months[-1]}.parquet")
-    artifacts["factors"] = center.register_artifact(
-        run_id=derived_runs[1], dataset_name="factors", artifact_type="factor_output",
-        partition_key=months[-1], file_path=warehouse.factor_dir / f"{months[-1]}.parquet")
     lineage = []
     for month in versions:
         center.link_lineage(artifacts["raw"], artifacts[f"candidate:{month}"], "raw_input")
@@ -325,9 +315,7 @@ def _register_outputs(center, result, warehouse, batch_id, versions, indicators,
         lineage.extend([(artifacts["raw"], artifacts[f"candidate:{month}"]),
                         (artifacts[f"candidate:{month}"], artifacts[f"published:{month}"])])
     center.link_lineage(artifacts[f"published:{months[-1]}"], artifacts["indicators"], "published_input")
-    center.link_lineage(artifacts[f"published:{months[-1]}"], artifacts["factors"], "published_input")
-    lineage.extend([(artifacts[f"published:{months[-1]}"], artifacts["indicators"]),
-                    (artifacts[f"published:{months[-1]}"], artifacts["factors"])])
+    lineage.extend([(artifacts[f"published:{months[-1]}"], artifacts["indicators"])])
     return artifacts, lineage
 
 

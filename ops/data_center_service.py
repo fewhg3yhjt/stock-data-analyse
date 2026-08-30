@@ -12,7 +12,7 @@ from StockInvestmentTool.warehouse.asset_profiles import applicability
 
 
 class DataCenterService:
-    CORE_KEYS = ("stock_daily", "close", "indicators", "ma20", "factors", "pe_ttm", "roe", "money_flow_net")
+    CORE_KEYS = ("stock_daily", "close", "indicators", "ma20", "pe_ttm", "roe", "money_flow_net")
 
     def __init__(self, db_path: Path | str):
         self.db_path = Path(db_path)
@@ -31,7 +31,7 @@ class DataCenterService:
             elif status == "critical": counts["critical"] += 1
             else: counts["unknown"] += 1
         task_items = self.tasks.tasks()
-        pipeline_keys = ("stock_daily_capture", "stock_daily_build", "stock_daily_quality", "stock_daily_publish", "indicators_build", "factors_build", "industry_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture")
+        pipeline_keys = ("stock_daily_capture", "stock_daily_build", "stock_daily_quality", "stock_daily_publish", "indicators_build", "industry_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture")
         task_summary = self.tasks.overview()
         return {"counts": counts, "core_assets": core, "attention": attention,
                 "task_summary": task_summary,
@@ -68,8 +68,6 @@ class DataCenterService:
         task = row[0] if row else ""
         if task == "indicators_build":
             return "indicators"
-        if task == "factors_build":
-            return "factors"
         return "stock_daily"
 
     def _metric_inputs(self, metric_key: str, producer_task: str | None) -> list[dict]:
@@ -93,7 +91,7 @@ class DataCenterService:
             impacts.append({"consumer": "关联任务下游", "purpose": "依赖该指标",
                             "blocked_actions": "指标结果过期时暂停相关业务"})
         if not impacts and dataset_name == "stock_daily":
-            impacts.append({"consumer": "技术指标、研究因子", "purpose": "生成派生结果",
+            impacts.append({"consumer": "技术指标", "purpose": "生成派生结果",
                             "blocked_actions": "输入滞后时结果标记过期"})
         return impacts
 

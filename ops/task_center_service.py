@@ -127,7 +127,6 @@ class TaskCenterService:
         return {
             "stock_daily_capture": ["stock_daily_capture", "daily_sync"],
             "indicators_build": ["indicators_build", "rebuild_indicators"],
-            "factors_build": ["factors_build", "rebuild_factors"],
         }.get(task_key, [task_key])
 
     @staticmethod

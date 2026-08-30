@@ -11,7 +11,7 @@ def test_management_db_has_unified_schema_and_legacy_origin(tmp_path):
     db = ManagementDB(tmp_path / "management.db")
     result = db.migrate_from(job_db=legacy)
     assert result["job_runs"]["tables"]["task_definitions"] == 1
-    assert db.counts()["task_definitions"] == 11
+    assert db.counts()["task_definitions"] == 10
     with db.connect() as conn:
         assert conn.execute("SELECT value FROM management_meta WHERE key='schema_version'").fetchone()[0] == MANAGEMENT_SCHEMA_VERSION
         assert conn.execute("SELECT display_name FROM task_definitions WHERE task_key='old_task'").fetchone()[0] == "旧任务"
@@ -45,9 +45,9 @@ def test_management_db_seeds_yaml_definitions(tmp_path):
     seeded = db.seed_definitions()
     assert seeded["tasks"] >= 6
     assert seeded["metrics"] >= 10
-    assert seeded["datasets"] == 7
+    assert seeded["datasets"] == 6
     with db.connect() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM dataset_registry").fetchone()[0] == 7
+        assert conn.execute("SELECT COUNT(*) FROM dataset_registry").fetchone()[0] == 6
         assert conn.execute("SELECT COUNT(*) FROM task_definitions").fetchone()[0] >= 6
         assert conn.execute("SELECT COUNT(*) FROM metric_definitions").fetchone()[0] >= 10
 

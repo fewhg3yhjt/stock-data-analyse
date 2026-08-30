@@ -17,7 +17,6 @@ from StockInvestmentTool.ops.task_runner import TaskRunner
 from StockInvestmentTool.warehouse.backfill import ValuationBackfill
 from StockInvestmentTool.warehouse.collector import MarketCollector
 from StockInvestmentTool.warehouse.daily_build import DailyBuilder
-from StockInvestmentTool.warehouse.factors import FactorEngine
 from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
 from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
 from StockInvestmentTool.warehouse.pipeline_state import PipelineState
@@ -169,15 +168,8 @@ def run_validation(start: str, end: str, resume: bool = False) -> dict:
             symbols=symbols, flush_every=1, asset_types=["stock", "etf"], months=partitions),
         "stock_daily", "indicators",
     )
-    factors, factor_run = stage(
-        "factors_build",
-        lambda run_id, request: FactorEngine(warehouse, allow_legacy=False).build_factors(
-            symbols=symbols, asset_types=["stock", "etf"], months=partitions),
-        "stock_daily", "factors",
-    )
     result.update({"status": "success", "capture": capture, "build": built,
-                   "quality": quality, "publish": published, "indicators": indicators,
-                   "factors": factors})
+                   "quality": quality, "publish": published, "indicators": indicators})
 
     auxiliary = {}
     auxiliary["industry_capture"], industry_run = stage(
@@ -205,7 +197,6 @@ def run_validation(start: str, end: str, resume: bool = False) -> dict:
         "stock_daily_quality": (quality_run, quality),
         "stock_daily_publish": (publish_run, published),
         "indicators_build": (indicator_run, indicators),
-        "factors_build": (factor_run, factors),
     })
     return result
 

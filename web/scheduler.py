@@ -185,7 +185,6 @@ def run_warehouse_daily() -> dict:
     import os as _os
     years = int(_os.getenv("WAREHOUSE_YEARS", "3"))
     from StockInvestmentTool.warehouse.collector import MarketCollector
-    from StockInvestmentTool.warehouse.factors import FactorEngine
 
     result = {}
     c = MarketCollector()
@@ -197,14 +196,6 @@ def run_warehouse_daily() -> dict:
         source="tencent",
     )
     result["sync"] = sync_res
-
-    # 因子计算（增量后全量重算因子宽表）
-    try:
-        factor_res = FactorEngine().build_factors()
-        result["factors"] = factor_res
-    except Exception as e:
-        logger.error("因子计算失败: %s", e)
-        result["factors"] = f"error: {e}"
 
     # 指标批量生成（采集后自动重建 indicators/ 分区，下游消费最新指标）
     try:
@@ -251,7 +242,6 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
     result = {}
     try:
         from StockInvestmentTool.warehouse.collector import MarketCollector
-        from StockInvestmentTool.warehouse.factors import FactorEngine
         from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
 
         def progress(processed, total, current, phase):
@@ -278,35 +268,19 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
         if daily_status == "failed":
             raise RuntimeError("日线同步未产生有效产出")
         store.update_progress(run_id, phase="日线完成，开始重建指标", progress=33,
-                              processed=1, total=3)
+                              processed=1, total=2)
         indicator_id = store.start("rebuild_indicators", display_name="指标重建",
                                    input_dataset="daily", output_dataset="indicators",
                                    parent_run_id=run_id)
         store.link_plan_run(run_date, "rebuild_indicators", indicator_id)
         try:
-            result["indicators"] = IndicatorsBuilder(allow_legacy=False).build_all(progress_callback=lambda p, t, c, s: (store.update_progress(indicator_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建指标", progress=33 + round((p / t * 100) * 0.33) if t else 33, processed=p, total=t, current_item=c)))
+            result["indicators"] = IndicatorsBuilder(allow_legacy=False).build_all(progress_callback=lambda p, t, c, s: (store.update_progress(indicator_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建指标", progress=33 + round((p / t * 100) * 0.67) if t else 33, processed=p, total=t, current_item=c)))
             indicator_status = store.result_status(result["indicators"])
             child_statuses.append(indicator_status)
             store.finish(indicator_id, indicator_status, result["indicators"])
         except Exception as exc:
             if store.get(indicator_id).get("status") == "running":
                 store.finish(indicator_id, "failed", error=str(exc))
-            child_statuses.append("failed")
-            raise
-        store.update_progress(run_id, phase="指标完成，开始重建因子", progress=66,
-                              processed=2, total=3)
-        factor_id = store.start("rebuild_factors", display_name="因子重建",
-                                input_dataset="daily", output_dataset="factors",
-                                parent_run_id=run_id)
-        store.link_plan_run(run_date, "rebuild_factors", factor_id)
-        try:
-            result["factors"] = FactorEngine(allow_legacy=False).build_factors(progress_callback=lambda p, t, c, s: (store.update_progress(factor_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建因子", progress=66 + round((p / t * 100) * 0.34) if t else 66, processed=p, total=t, current_item=c)))
-            factor_status = store.result_status(result["factors"])
-            child_statuses.append(factor_status)
-            store.finish(factor_id, factor_status, result["factors"])
-        except Exception as exc:
-            if store.get(factor_id).get("status") == "running":
-                store.finish(factor_id, "failed", error=str(exc))
             child_statuses.append("failed")
             raise
         parent_status = ("failed" if "failed" in child_statuses else
@@ -509,7 +483,7 @@ def _schedule_configured_data_tasks(scheduler) -> None:
         if task_key == "stock_daily_capture":
             configured_keys = {item.get("task", {}).get("key"): item for item in load_task_definitions()}
             chain = [key for key in ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
-                                     "stock_daily_publish", "indicators_build", "factors_build")
+                                     "stock_daily_publish", "indicators_build")
                      if (configured_keys.get(key, {}).get("schedule") or {}).get("enabled")]
             return execute_pipeline(management_db_path(), chain or [task_key], payload)
         return execute_task(management_db_path(), task_key, payload)

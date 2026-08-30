@@ -6,17 +6,17 @@ from ops.freshness import data_status
 from ops.job_runs import JobRunStore
 
 
-def test_plan_factors_reads_daily_and_depends_on_daily(tmp_path):
+def test_plan_indicators_reads_daily_and_depends_on_daily(tmp_path):
     plan = {x["task_key"]: x for x in JobRunStore(tmp_path / "runs.db").ensure_daily_plan("2026-08-28")}
-    assert plan["rebuild_factors"]["input_dataset"] == "daily"
-    assert plan["rebuild_factors"]["blocked_by"] == "daily_sync"
+    assert plan["rebuild_indicators"]["input_dataset"] == "daily"
+    assert plan["rebuild_indicators"]["blocked_by"] == "daily_sync"
 
 
 def test_reclaim_data_running_respects_startup_boundary(tmp_path):
     store = JobRunStore(tmp_path / "runs.db")
     old = store.start("daily_sync")
     child = store.start("rebuild_indicators", parent_run_id=old)
-    new = store.start("rebuild_factors")
+    new = store.start("minute_snapshot")
     notify = store.start("notification_outbox")
     with store._connect() as conn:
         conn.execute("UPDATE job_runs SET started_at=? WHERE id IN (?,?)", ("2020-01-01T00:00:00", old, child))
@@ -46,11 +46,9 @@ def test_result_status_categories():
 def test_daily_plan_keeps_long_running_data_jobs_visible(tmp_path):
     store = JobRunStore(tmp_path / "runs.db")
     daily_id = store.start("daily_sync", run_date="2026-08-28")
-    store.update_progress(daily_id, phase="重建因子", progress=94, processed=5649, total=6868)
+    store.update_progress(daily_id, phase="重建指标", progress=94, processed=5649, total=6868)
     indicator_id = store.start("rebuild_indicators", run_date="2026-08-28", parent_run_id=daily_id)
-    store.finish(indicator_id, "success", {"symbols": 6868, "months": 37})
-    factor_id = store.start("rebuild_factors", run_date="2026-08-28", parent_run_id=daily_id)
-    store.update_progress(factor_id, phase="计算因子", progress=82, processed=5649, total=6868)
+    store.update_progress(indicator_id, phase="计算指标", progress=82, processed=5649, total=6868)
 
     for _ in range(250):
         notification_id = store.start("notification_outbox", run_date="2026-08-28")
@@ -59,5 +57,5 @@ def test_daily_plan_keeps_long_running_data_jobs_visible(tmp_path):
     plans = {plan["task_key"]: plan for plan in store.ensure_daily_plan("2026-08-28")}
     assert plans["daily_sync"]["status"] == "running"
     assert plans["daily_sync"]["run_id"] == daily_id
-    assert plans["rebuild_factors"]["status"] == "running"
-    assert plans["rebuild_factors"]["run_id"] == factor_id
+    assert plans["rebuild_indicators"]["status"] == "running"
+    assert plans["rebuild_indicators"]["run_id"] == indicator_id

@@ -662,7 +662,7 @@ def api_task_center_task_execute(task_key):
         return flask.jsonify({"status": "error", "error": "任务不存在"}), 404
     if not task_key:
         return flask.jsonify({"status": "error", "error": "任务不能为空"}), 400
-    if task_key in {"stock_daily_build", "stock_daily_quality", "stock_daily_publish", "indicators_build", "factors_build"} and not payload.get("period_start"):
+    if task_key in {"stock_daily_build", "stock_daily_quality", "stock_daily_publish", "indicators_build"} and not payload.get("period_start"):
         latest = task.get("latest_run") or {}
         payload["period_start"] = latest.get("period_start") or (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
         payload["period_end"] = payload.get("period_end") or latest.get("period_end") or (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -689,8 +689,7 @@ def api_task_center_run_retry(run_id):
         return flask.jsonify({"status": "error", "error": "任务运行记录不存在"}), 404
     if item.get("status") not in {"failed", "partial_success"}:
         return flask.jsonify({"status": "error", "error": "只有失败或部分完成的任务可以重试"}), 400
-    task_key = {"daily_sync": "stock_daily_capture", "rebuild_indicators": "indicators_build",
-                "rebuild_factors": "factors_build"}.get(item.get("job_name"), item.get("job_name"))
+    task_key = {"daily_sync": "stock_daily_capture", "rebuild_indicators": "indicators_build"}.get(item.get("job_name"), item.get("job_name"))
     if TaskCenterService(management_db_path()).task(task_key) is None:
         return flask.jsonify({"status": "error", "error": "对应的新任务不存在"}), 404
     from StockInvestmentTool.ops.task_execution import execute_task
@@ -775,16 +774,16 @@ def _start_data_job(job_name, worker):
     if active:
         return flask.jsonify({"status": "error", "error": "同一任务正在运行",
                               "run_id": active["id"]}), 409
-    conflict_group = {"daily_sync", "rebuild_indicators", "rebuild_factors"}
+    conflict_group = {"daily_sync", "rebuild_indicators"}
     if job_name in conflict_group:
         active, _ = store.query(category="data", status="running", limit=200)
         if any(item["job_name"] in conflict_group and item.get("parent_run_id") is None for item in active):
             return flask.jsonify({"status": "error", "error": "离线数据任务正在运行"}), 409
     run_id = store.start(job_name, display_name={
         "daily_sync": "日线增量同步", "minute_snapshot": "观察池分钟采集",
-        "rebuild_indicators": "指标重建", "rebuild_factors": "因子重建",
+        "rebuild_indicators": "指标重建",
     }.get(job_name, job_name))
-    if job_name in {"daily_sync", "rebuild_indicators", "rebuild_factors"}:
+    if job_name in {"daily_sync", "rebuild_indicators"}:
         store.ensure_daily_plan()
         store.link_plan_run(datetime.now().strftime("%Y-%m-%d"), job_name, run_id)
 
@@ -821,12 +820,6 @@ def api_data_minute_snapshot():
 def api_data_rebuild_indicators():
     from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
     return _start_data_job("rebuild_indicators", lambda _run_id: IndicatorsBuilder(allow_legacy=False).build_all())
-
-
-@web_app.route("/api/data/jobs/rebuild-factors", methods=["POST"])
-def api_data_rebuild_factors():
-    from StockInvestmentTool.warehouse.factors import FactorEngine
-    return _start_data_job("rebuild_factors", lambda _run_id: FactorEngine(allow_legacy=False).build_factors())
 
 
 @web_app.route("/data-center", methods=["GET"])

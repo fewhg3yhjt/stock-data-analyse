@@ -75,8 +75,7 @@ def _latest_parquet(warehouse, kind: str, date_column: str = "date") -> tuple[Op
     symbols: set[str] = set()
     for month in months:
         frame = (warehouse.read_daily(month) if kind == "daily" else
-                 warehouse.read_indicator(month) if kind == "indicator" else
-                 warehouse.read_factor(month))
+                 warehouse.read_indicator(month))
         if frame is None or frame.empty:
             continue
         rows += len(frame)
@@ -230,7 +229,7 @@ def dataset_statuses(*, warehouse=None, job_runs=None, now: Optional[datetime] =
             limit=1000,
             job_names={
                 "daily_sync", "daily_tasks", "rebuild_indicators",
-                "rebuild_factors", "minute_snapshot", "online_snapshot",
+                "minute_snapshot", "online_snapshot",
             },
         )
     result: list[DatasetStatus] = []
@@ -238,7 +237,6 @@ def dataset_statuses(*, warehouse=None, job_runs=None, now: Optional[datetime] =
     specs = [
         ("daily", "daily", "daily_sync", "全市场日线 Parquet", "WAREHOUSE_DAILY_SYNC"),
         ("indicators", "indicator", "rebuild_indicators", "指标 Parquet", None),
-        ("factors", "factor", "rebuild_factors", "因子 Parquet", None),
     ]
     values: dict[str, DatasetStatus] = {}
     for name, kind, job_name, source, switch in specs:
@@ -265,7 +263,7 @@ def dataset_statuses(*, warehouse=None, job_runs=None, now: Optional[datetime] =
         result.append(item)
 
     daily_date = _date_value(values["daily"].latest_value)
-    for name in ("indicators", "factors"):
+    for name in ("indicators",):
         item = values[name]
         item.latest_trade_date = item.latest_value
         if daily_date and _date_value(item.latest_value) and _date_value(item.latest_value) > daily_date:

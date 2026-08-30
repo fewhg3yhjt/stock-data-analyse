@@ -257,7 +257,7 @@ class ManagementDB:
         metric_count = task_center.sync_metrics()
         metadata = MetadataStore(self.db_path)
         dataset_names = ("stock_daily", "industry", "fundamentals", "valuation_daily",
-                         "money_flow_daily", "indicators", "factors")
+                         "money_flow_daily", "indicators")
         for name in dataset_names:
             metadata.register_dataset(name)
         return {"tasks": task_count, "metrics": metric_count, "datasets": len(dataset_names)}

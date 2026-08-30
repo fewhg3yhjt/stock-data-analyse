@@ -7,5 +7,5 @@ def test_task_overview_separates_configured_and_registered(tmp_path):
     db = ManagementDB(path)
     db.seed_definitions()
     overview = TaskCenterService(path).overview()
-    assert overview["configured"] == overview["task_definition_count"] == 10
+    assert overview["configured"] == overview["task_definition_count"] == 9
     assert overview["registered"] == 0

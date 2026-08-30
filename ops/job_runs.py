@@ -10,7 +10,7 @@ from typing import Optional
 
 
 class JobRunStore:
-    DATA_JOBS = {"daily_sync", "rebuild_indicators", "rebuild_factors", "minute_snapshot", "online_snapshot"}
+    DATA_JOBS = {"daily_sync", "rebuild_indicators", "minute_snapshot", "online_snapshot"}
     CATEGORIES = {"data", "notification", "business", "all"}
 
     @staticmethod
@@ -270,7 +270,6 @@ class JobRunStore:
         tasks = [
             ("daily_sync", "日线增量同步", daily_time, "数据源", "daily", ""),
             ("rebuild_indicators", "指标重建", "日线完成后", "daily", "indicators", "daily_sync"),
-            ("rebuild_factors", "因子重建", "指标完成后（串行顺序）", "daily", "factors", "daily_sync"),
             ("minute_snapshot", "观察池分钟采集", "09:30-11:30 / 13:00-15:00", "观察池", "minute", ""),
             ("online_snapshot", "在线快照兜底", "分钟采集未启用时", "观察池", "online", "minute_snapshot"),
         ]

@@ -128,6 +128,32 @@ def _bias_ratio(df, env=None) -> pd.Series:
     return (close - ma240) / ma240 * 100
 
 
+def _vol_ratio(df, env=None) -> pd.Series:
+    """量比 = 当日成交量 / 5日均量。"""
+    volume = df["volume"].astype(float)
+    return volume / volume.rolling(5).mean()
+
+
+def _ret_5d(df, env=None) -> pd.Series:
+    """5 日动量 % = 收盘价五日变化百分比。"""
+    return df["close"].astype(float).pct_change(5) * 100
+
+
+def _ret_20d(df, env=None) -> pd.Series:
+    """20 日动量 % = 收盘价二十日变化百分比。"""
+    return df["close"].astype(float).pct_change(20) * 100
+
+
+def _high_20d(df, env=None) -> pd.Series:
+    """20 日滚动最高价。"""
+    return df["high"].astype(float).rolling(20).max()
+
+
+def _low_20d(df, env=None) -> pd.Series:
+    """20 日滚动最低价。"""
+    return df["low"].astype(float).rolling(20).min()
+
+
 # 安全函数白名单（表达式可调用）
 SAFE_FUNCS: dict[str, Callable] = {
     "MA": _ma,
@@ -186,6 +212,11 @@ class IndicatorRegistry:
             "low_3m": IndicatorDef("low_3m", "code", fn=_low_3m, description="近3月低点"),
             "year_low": IndicatorDef("year_low", "code", fn=_year_low, description="年内低点"),
             "bias_ratio": IndicatorDef("bias_ratio", "code", fn=_bias_ratio, description="MA240乖离率"),
+            "vol_ratio": IndicatorDef("vol_ratio", "code", fn=_vol_ratio, description="量比"),
+            "ret_5d": IndicatorDef("ret_5d", "code", fn=_ret_5d, description="5日动量"),
+            "ret_20d": IndicatorDef("ret_20d", "code", fn=_ret_20d, description="20日动量"),
+            "high_20d": IndicatorDef("high_20d", "code", fn=_high_20d, description="20日高点"),
+            "low_20d": IndicatorDef("low_20d", "code", fn=_low_20d, description="20日低点"),
         })
 
         # 从 YAML 加载自定义指标

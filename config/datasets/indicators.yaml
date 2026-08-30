@@ -30,6 +30,13 @@ fields:
   - {name: low_3m, display_name: 近3月低点, data_type: float, nullable: true}
   - {name: year_low, display_name: 年内低点, data_type: float, nullable: true}
   - {name: volatility_20, display_name: 二十日波动率, data_type: float, nullable: true}
+  - {name: pct_chg, display_name: 日涨跌幅, data_type: float, nullable: true}
+  - {name: vol_ratio, display_name: 量比, data_type: float, nullable: true}
+  - {name: ret_5d, display_name: 五日动量, data_type: float, nullable: true}
+  - {name: ret_20d, display_name: 二十日动量, data_type: float, nullable: true}
+  - {name: high_20d, display_name: 二十日高点, data_type: float, nullable: true}
+  - {name: low_20d, display_name: 二十日低点, data_type: float, nullable: true}
+  - {name: bias_ratio, display_name: MA240乖离率, data_type: float, nullable: true}
   - {name: take_profit_reference, display_name: 止盈参考线, data_type: float, nullable: true}
   - {name: dual_ma_low, display_name: 双均线低点, data_type: float, nullable: true}
   - {name: amplitude_abs, display_name: 日内振幅绝对值, data_type: float, nullable: true}
@@ -38,4 +45,5 @@ sources:
   - {name: stock_daily, role: input, priority: 1, field_mapping: {date: date, code: code, close: close}, unit_conversions: {}}
 consumers:
   - {name: strategy, type: business, purpose: 策略分析, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式决策}
+  - {name: market_discovery, type: business, purpose: 全市场筛选, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式扫描}
 quality: {publish_warning: false, coverage: {pass_min: 1.0, warning_min: 0.98}}

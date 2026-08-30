@@ -24,7 +24,6 @@ DATASETS = {
     "valuation_daily": "valuation_daily",
     "fundamentals": "fundamentals",
     "indicators": "indicators",
-    "factors": "factors",
     "industry": "industry",
     "money_flow_daily": "money_flow_daily",
 }
@@ -35,8 +34,6 @@ def _target_path(warehouse: Warehouse, dataset: str, partition: str) -> Path:
         return warehouse.daily_partition(partition)
     if dataset == "indicators":
         return warehouse.indicator_dir / f"{partition}.parquet"
-    if dataset == "factors":
-        return warehouse.factor_dir / f"{partition}.parquet"
     if dataset == "fundamentals":
         return warehouse.fundamental_path(partition)
     if dataset == "valuation_daily":

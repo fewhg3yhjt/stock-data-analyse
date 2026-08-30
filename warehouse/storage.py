@@ -10,9 +10,9 @@
 布局:
   output/data/warehouse/
   ├── daily/YYYY-MM.parquet      # 全市场日线（每行 = 一标的一日）
-  ├── factors/YYYY-MM.parquet    # 全市场因子宽表
+  ├── indicators/YYYY-MM.parquet # 技术指标宽表
   ├── online/YYYY-MM-DD/         # 观察池盘中快照（按日）
-  └── meta.db                    # SQLite: instruments / daily_manifest / factor_manifest
+  └── meta.db                    # SQLite: instruments / daily_manifest
 """
 
 from __future__ import annotations
@@ -71,13 +71,12 @@ class Warehouse:
 
         self.base_dir = Path(base_dir) if base_dir else Config.DATA_DIR / "warehouse"
         self.daily_dir = self.base_dir / "daily"
-        self.factor_dir = self.base_dir / "factors"
         self.indicator_dir = self.base_dir / "indicators"
         self.fundamental_dir = self.base_dir / "fundamentals"
         self.online_dir = self.base_dir / "online"
         self.minute_dir = self.base_dir / "minute"
         self.meta_db_path = self.base_dir / "meta.db"
-        for d in (self.daily_dir, self.factor_dir, self.indicator_dir,
+        for d in (self.daily_dir, self.indicator_dir,
                   self.fundamental_dir, self.online_dir, self.minute_dir):
             d.mkdir(parents=True, exist_ok=True)
         self._init_meta()
@@ -122,15 +121,6 @@ class Warehouse:
                     rows INTEGER,
                     symbols INTEGER,
                     last_date TEXT,
-                    updated_at TEXT
-                )
-            """)
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS factor_manifest (
-                    month TEXT PRIMARY KEY,
-                    rows INTEGER,
-                    symbols INTEGER,
-                    factor_list TEXT,
                     updated_at TEXT
                 )
             """)
@@ -209,33 +199,6 @@ class Warehouse:
     def read_daily(self, month: str):
         """读取某月日线分区（返回 DataFrame 或 None）"""
         return self._read_partition(self.daily_dir, month)
-
-    def read_factor(self, month: str):
-        """读取某月因子分区（返回 DataFrame 或 None）"""
-        return self._read_partition(self.factor_dir, month)
-
-    def write_factor_partition(self, month: str, df, factor_list: Optional[list] = None) -> int:
-        """把某月因子分区整体覆写。返回写入行数。"""
-        path = self.factor_dir / f"{month}.parquet"
-        try:
-            _atomic_parquet_write(df, path)
-        except Exception as e:
-            logger.error("写因子分区 %s 失败: %s", path, e)
-            raise
-        symbols = int(df["code"].nunique()) if "code" in df.columns else 0
-        with self._conn() as c:
-            c.execute(
-                """INSERT INTO factor_manifest(month,rows,symbols,factor_list,updated_at)
-                   VALUES(?,?,?,?,?)
-                   ON CONFLICT(month) DO UPDATE SET
-                     rows=excluded.rows, symbols=excluded.symbols,
-                     factor_list=excluded.factor_list, updated_at=excluded.updated_at""",
-                (month, int(len(df)), symbols,
-                 ",".join(factor_list) if factor_list else "",
-                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-            )
-        logger.info("因子分区已写入: %s (%d 行 / %d 标的)", path.name, len(df), symbols)
-        return len(df)
 
     def write_indicator_partition(self, month: str, df) -> int:
         """把某月指标分区整体覆写。返回写入行数。"""
@@ -349,9 +312,7 @@ class Warehouse:
 
     def available_months(self, kind: str = "daily") -> list[str]:
         """已落盘的分区月份列表（升序）"""
-        if kind == "factor":
-            directory = self.factor_dir
-        elif kind == "indicator":
+        if kind == "indicator":
             directory = self.indicator_dir
         else:
             directory = self.daily_dir
@@ -362,15 +323,15 @@ class Warehouse:
         """清空指定分区的数据与 manifest（破坏性操作，供 CLI reset 使用）。
 
         Args:
-            kinds: ["daily","factor","online"] 之一或多个；None=全部
+            kinds: ["daily","online"] 之一或多个；None=全部
 
         Returns:
             dict: 各类型清理的文件数
         """
-        kinds = kinds or ["daily", "factor", "online"]
+        kinds = kinds or ["daily", "online"]
         result = {}
-        table_map = {"daily": "daily_manifest", "factor": "factor_manifest"}
-        dir_map = {"daily": self.daily_dir, "factor": self.factor_dir}
+        table_map = {"daily": "daily_manifest"}
+        dir_map = {"daily": self.daily_dir}
         for k in kinds:
             removed = 0
             if k in dir_map:
