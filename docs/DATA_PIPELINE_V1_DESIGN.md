@@ -2006,7 +2006,7 @@ OHLC 和成交数据是否异常？
 - 全量回归：194 个测试通过。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
 - Phase 3-6 已在验证目录完成基础闭环：Raw Batch -> Candidate Builder -> Dataset Version -> Quality -> Publish；生产下游仍未切换。
-- 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和持久化模拟样例；现有生产正式落盘路径保持兼容。
+- 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和生产小范围验证记录；历史快照已按真实日期统一建立 current。
 - 辅助源任务是否参与调度由对应 `config/tasks/*_capture.yaml` 的任务配置决定，不再使用独立环境变量旁路控制。
 - 持久化验证目录 `output/validation/data_pipeline/` 已包含 `stock_daily` Raw、Candidate、版本/质量/current 台账及四类辅助源 Raw；该目录仅用于后续流程验证，不作为生产数据。
 - Phase 7 已完成验证：`warehouse/datasets.py` 只读取 `dataset_current` 指向的 Published 文件，校验 checksum 并返回版本、质量、来源上下文；没有 current 时必须显式开启 legacy 兼容模式。
