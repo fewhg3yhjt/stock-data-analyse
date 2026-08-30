@@ -399,10 +399,10 @@ planned → accumulating → holding
 1. [策略核心与回测模拟](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)
 2. [选股与行情分析](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)
 3. [观察池与关注列表](OBSERVATION_AND_WATCHLIST_DESIGN.md)
-4. 真实账户、持仓与交易
-5. 收益分析与复盘
-6. 建议与消息通知
-7. 平台支撑模块收口
+4. [账户、持仓与交易](ACCOUNT_PORTFOLIO_AND_TRADING_DESIGN.md)
+5. [收益分析与复盘](PERFORMANCE_AND_REVIEW_DESIGN.md)
+6. [建议与消息通知](ADVICE_AND_NOTIFICATION_DESIGN.md)
+7. [平台支撑与运行治理](PLATFORM_RUNTIME_AND_OPERATIONS_DESIGN.md)
 
 第一份子模块文档优先定义 `StrategyDecision` 和 `SimulationRun`，因为其他业务模块都依赖它们。
 

@@ -26,6 +26,10 @@
 - [策略核心与回测模拟子模块设计](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)：指标条件、策略编排、统一决策协议和回测/模拟执行模型。
 - [选股与行情分析子模块设计](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)：筛选方案、筛选运行、候选追溯、走势图查询及观察池/模拟衔接。
 - [观察池与关注列表子模块设计](OBSERVATION_AND_WATCHLIST_DESIGN.md)：区分筛选候选、用户关注和观察周期，定义模拟及真实建仓衔接。
+- [账户、持仓与交易子模块设计](ACCOUNT_PORTFOLIO_AND_TRADING_DESIGN.md)：账户、持仓周期、实际成交、现金流水、成本核算和状态流转。
+- [收益分析与复盘子模块设计](PERFORMANCE_AND_REVIEW_DESIGN.md)：实际收益、策略模拟、基准对比、执行偏差和交易周期复盘。
+- [建议与消息通知子模块设计](ADVICE_AND_NOTIFICATION_DESIGN.md)：建议生命周期、通知事件、邮件投递、去重、重试和系统告警。
+- [平台支撑与运行治理子模块设计](PLATFORM_RUNTIME_AND_OPERATIONS_DESIGN.md)：任务运行、调度恢复、健康检查、权限、备份和 API 平台规范。
 - [Phase 4 设计](PHASE4_DESIGN.md)
 - [Phase 4 实施记录](PHASE4_IMPLEMENTATION.md)
 - [市场发现待办](MARKET_DISCOVERY_TODO.md)
