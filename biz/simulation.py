@@ -52,8 +52,10 @@ class SimulationExecutor:
         df: pd.DataFrame,            # 已按 symbol 过滤的行情 DataFrame（含 date/ohlcv）
         registry: Any = None,
         strategy=None,               # CompiledStrategy
+        run_id: str | None = None,
     ):
         self.plan = plan
+        self.run_id = run_id or plan.plan_id
         self.df = df.reset_index(drop=True)
         self.registry = registry
         self.strategy = strategy
@@ -69,7 +71,7 @@ class SimulationExecutor:
             raise ValueError("SimulationExecutor 需要 CompiledStrategy")
         if self.df.empty:
             self.events.append(SimulationEvent(
-                event_id=new_id("se"), simulation_run_id=self.plan.plan_id,
+                event_id=new_id("se"), simulation_run_id=self.run_id,
                 event_type="DATA_GAP", payload={"reason": "无行情数据"}))
             return self._result()
 
@@ -95,7 +97,7 @@ class SimulationExecutor:
             self._record_equity(i, close.iloc[i], dates.iloc[i])
 
         self.events.append(SimulationEvent(
-            event_id=new_id("se"), simulation_run_id=self.plan.plan_id,
+            event_id=new_id("se"), simulation_run_id=self.run_id,
             event_type="END_OF_PERIOD", payload={"end_date": str(dates.iloc[-1])}))
         return self._result()
 
@@ -156,7 +158,7 @@ class SimulationExecutor:
             qty = self._round_lot(max_buy)
             if qty <= 0:
                 self.events.append(SimulationEvent(
-                    event_id=new_id("se"), simulation_run_id=self.plan.plan_id,
+                    event_id=new_id("se"), simulation_run_id=self.run_id,
                     event_type="ORDER_REJECTED", symbol=self._symbol(),
                     payload={"reason": "现金不足" if self.account.cash < exec_price else "数量为0",
                              "exec_price": exec_price}))
@@ -177,7 +179,7 @@ class SimulationExecutor:
             pos["qty"] = new_qty
             self.account.total_fees += fee
             fill = SimulationFill(
-                fill_id=new_id("fill"), simulation_run_id=self.plan.plan_id,
+                fill_id=new_id("fill"), simulation_run_id=self.run_id,
                 symbol=self._symbol(), side="BUY",
                 signal_time=signal_date, execution_time=exec_date,
                 signal_price=signal_price, execution_price=exec_price,
@@ -185,7 +187,7 @@ class SimulationExecutor:
                 decision_id=decision.decision_id, reason=decision.reason)
             self.fills.append(fill)
             self.events.append(SimulationEvent(
-                event_id=new_id("se"), simulation_run_id=self.plan.plan_id,
+                event_id=new_id("se"), simulation_run_id=self.run_id,
                 event_type="FILLED", symbol=self._symbol(),
                 payload={"side": "BUY", "qty": qty, "price": exec_price}))
 
@@ -201,7 +203,7 @@ class SimulationExecutor:
             self.account.total_fees += fee
             pos["qty"] = 0.0
             fill = SimulationFill(
-                fill_id=new_id("fill"), simulation_run_id=self.plan.plan_id,
+                fill_id=new_id("fill"), simulation_run_id=self.run_id,
                 symbol=self._symbol(), side="SELL",
                 signal_time=signal_date, execution_time=exec_date,
                 signal_price=signal_price, execution_price=exec_price,
@@ -209,7 +211,7 @@ class SimulationExecutor:
                 decision_id=decision.decision_id, reason=decision.reason)
             self.fills.append(fill)
             self.events.append(SimulationEvent(
-                event_id=new_id("se"), simulation_run_id=self.plan.plan_id,
+                event_id=new_id("se"), simulation_run_id=self.run_id,
                 event_type="FILLED", symbol=self._symbol(),
                 payload={"side": "SELL", "qty": qty, "price": exec_price, "pnl": pnl}))
 
@@ -227,7 +229,7 @@ class SimulationExecutor:
             self.account.total_fees += fee
             pos["qty"] -= qty
             fill = SimulationFill(
-                fill_id=new_id("fill"), simulation_run_id=self.plan.plan_id,
+                fill_id=new_id("fill"), simulation_run_id=self.run_id,
                 symbol=self._symbol(), side="SELL",
                 signal_time=signal_date, execution_time=exec_date,
                 signal_price=signal_price, execution_price=exec_price,
@@ -264,7 +266,7 @@ class SimulationExecutor:
         profit_factor = self._profit_factor()
 
         return SimulationResult(
-            run_id=self.plan.plan_id,
+            run_id=self.run_id,
             initial_cash=initial,
             final_equity=final_equity,
             total_return=total_return,
@@ -327,7 +329,7 @@ def execute_simulation(plan: SimulationPlan, df: pd.DataFrame, strategy=None,
                        registry=None) -> tuple[SimulationRun, SimulationResult, list, list]:
     """便捷执行入口：返回 (run, result, fills, events)。"""
     run = SimulationRun(run_id=new_id("run"), plan_id=plan.plan_id, status="running")
-    executor = SimulationExecutor(plan, df, registry=registry, strategy=strategy)
+    executor = SimulationExecutor(plan, df, registry=registry, strategy=strategy, run_id=run.run_id)
     result = executor.run()
     run.status = "success"
     run.finished_at = now_utc()

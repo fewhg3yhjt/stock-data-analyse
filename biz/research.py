@@ -54,6 +54,7 @@ class ResearchResult:
     entry_plan: dict = field(default_factory=dict)
     exit_plan: dict = field(default_factory=dict)
     strategy_decision_ids: list = field(default_factory=list)
+    decisions: list = field(default_factory=list)   # StrategyDecision 对象引用
     evidence_ids: list = field(default_factory=list)
     report_id: str | None = None
     warnings: list = field(default_factory=list)
@@ -107,6 +108,7 @@ class ResearchService:
         if self.strategy is not None:
             decision = self._evaluate_strategy(symbol)
             result.strategy_decision_ids = [decision.decision_id] if decision else []
+            result.decisions = [decision] if decision else []
             result.entry_plan = self._entry_plan(decision)
             result.exit_plan = self._exit_plan(decision)
             self._add_evidence("strategy_rule", {"action": decision.action, "reason": decision.reason}, symbol)

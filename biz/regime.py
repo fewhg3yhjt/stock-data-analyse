@@ -38,6 +38,18 @@ class MarketRegime:
     data_context: dict = field(default_factory=dict)
     created_at: str = field(default_factory=now_utc)
 
+    def to_dict(self) -> dict:
+        return {
+            "regime_id": self.regime_id,
+            "regime": self.regime,
+            "as_of": self.as_of,
+            "confidence": self.confidence,
+            "algorithm_version": self.algorithm_version,
+            "input_snapshot": self.input_snapshot,
+            "explanation": self.explanation,
+            "data_context": self.data_context,
+        }
+
 
 class MarketRegimeService:
     """基于已发布指数/全市场数据计算市场状态。"""
