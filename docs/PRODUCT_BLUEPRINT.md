@@ -34,7 +34,7 @@
 → 复盘决策与执行
 ```
 
-第一版不追求自动交易，而是确保用户可以用同一套策略完成研究、模拟、持仓判断和复盘。现有 `BACKEND_RESEARCH_SIMULATION_STRATEGY_V1.md` 以及 `domain/`、`services/`、`repositories/backend_domain.py` 作为迁移来源，不再与本总纲形成第二套产品协议。
+第一版不追求自动交易，而是确保用户可以用同一套策略完成研究、模拟、持仓判断和复盘。现有 `BACKEND_RESEARCH_SIMULATION_STRATEGY_V1.md`、`domain/`、`services/`、`repositories/backend_domain.py` 不属于新系统运行时，只用于一次性历史数据评估；迁移完成后下线。
 
 ## 3. 核心原则
 
@@ -73,7 +73,7 @@
 
 ### 3.3 一个策略，一个决策协议
 
-V4.5、V6、操作点位等现有算法可以作为实现来源，但不能继续作为彼此独立的产品协议。最终所有策略实现都要输出统一的 `StrategyDecision`。
+V4.5、V6、操作点位等旧算法不进入新系统运行时。需要的能力按新协议直接重写，最终所有策略实现都输出统一的 `StrategyDecision`。
 
 ### 3.4 回测和模拟使用同一交易模拟内核
 
@@ -253,41 +253,11 @@ StrategyVersion
 
 ### StrategyVersion
 
-不可变的策略配置快照，至少包含：
-
-```text
-strategy_id
-version
-config_hash
-entry_rules
-exit_rules
-risk_rules
-position_sizing
-execution_rules
-status
-```
+不可变的策略配置快照，正式字段和语义以 [领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md) 为准，本总纲不重复维护字段列表。
 
 ### StrategyDecision
 
-一次策略评估的标准结果：
-
-```text
-decision_id
-strategy_id
-strategy_version
-symbol
-decision_time
-data_as_of
-action
-quantity_ratio
-price
-stop_price
-target_price
-triggered_rules
-input_indicators
-reason
-valid_until
-```
+一次策略评估的不可变结果，正式字段、输入值快照和解释轨迹以 [领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md) 为准。
 
 动作至少包括：
 

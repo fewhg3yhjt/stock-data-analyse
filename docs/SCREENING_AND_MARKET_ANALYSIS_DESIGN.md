@@ -24,7 +24,7 @@
 
 本模块消费数据模块提供的 Published Dataset，消费策略核心提供的条件评估协议，并向观察池、个股研究和回测/模拟模块输出标准结果。
 
-条件配置复用策略核心的 `ConditionSpec`，实际执行必须通过现有 `RuleRegistry`；走势图必须通过 `DatasetAccess` 读取 Published Dataset，不由本模块自行选择 DataSource 或在线回退。
+条件配置使用新定义的 `ConditionSpec`，实际执行必须通过新 `RuleRegistry`；走势图必须通过 `DatasetAccess` 读取 Published Dataset，不由本模块自行选择 DataSource 或在线回退。
 
 ## 2. 在产品主流程中的位置
 
@@ -328,7 +328,7 @@ watchlist_symbols
 → 固化 Universe
 → 固化 Dataset/Indicator Version
 → 批量加载行情和指标
-→ 按 symbol/as_of 构建 EvaluationContext
+→ 按 symbol/as_of 构建 StrategyContext
 → 评估条件树
 → 保存每个条件结果
 → 生成 ScreenCandidate
@@ -526,10 +526,8 @@ data_as_of
 
 | 当前能力 | 目标归属 | 处理方式 |
 |---|---|---|
-| `market_discovery/service.py` | Screen Executor | 迁移为条件执行器适配层 |
-| `market_discovery/storage.py` | ScreenRun Store | 扩展为运行和候选明细存储 |
-| `strategy_lab.py` 扫描 | SignalStudy/Screen Adapter | 不再作为第二套条件语法 |
-| `screener/` | Condition/Rule Adapter | 仅保留可复用规则实现 |
+| 新 `ScreenExecutor` | ScreenRun Store | 直接实现统一筛选执行 |
+| 新 `ConditionCompiler` | RuleRegistry | 直接编译统一条件 |
 | `DatasetAccess` | Published Data Access | 所有正式筛选必须经过 |
 | `IndicatorContext` | Evaluation Context | 统一指标读取 |
 | `market.html` | Market View | 展示市场和板块上下文 |
@@ -705,7 +703,7 @@ SCREEN_RUN_FAILED
 
 1. 让 `market_discovery` 调用统一 Screen Executor。
 2. 将 `strategy_lab` 的固定条件包装为预置 ScreenDefinition。
-3. 将旧 API 标记兼容路径并逐步下线。
+3. 旧 API 直接下线，不保留兼容路径。
 
 ## 16. 测试要求
 

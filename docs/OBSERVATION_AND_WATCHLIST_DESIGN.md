@@ -402,8 +402,7 @@ imported
 
 ```text
 discovered      → review
-observing       → research_or_simulate
-observing       → evaluate_simulation_result
+observing       → research_or_simulate / evaluate_simulation_result
 ready_for_entry → confirm_entry
 promoted        → manage_position
 paused          → resume_or_archive
@@ -591,7 +590,7 @@ ENTRY_CONFIRMATION_REQUIRED
 
 | 当前能力 | 目标归属 | 处理方式 |
 |---|---|---|
-| `watchlist` | WatchSubscription 兼容存储 | 先保留，逐步拆出 Observation |
+| 旧 `watchlist` | WatchSubscription | 一次性迁移后旧表下线 |
 | `source` 字段 | DiscoveryLink / Source relation | 不再只保存单个来源字符串 |
 | `sim_entry` | ObservationSnapshot / EntryPlan | 不再作为唯一模拟事实 |
 | `portfolio.simulations` | 建仓分析快照 | 明确命名，避免与 SimulationRun 混淆 |
@@ -611,13 +610,13 @@ sim_entry → ObservationSnapshot
 existing holding → holding source link + promoted reference
 ```
 
-迁移必须增加 `legacy_entity_map`，记录旧类型、旧 ID、新类型、新 ID、迁移版本和时间。迁移幂等、不删除旧记录、不覆盖人工备注；无法判断来源的记录标记为 `manual_imported`。
+迁移程序可以使用临时日志记录旧记录与新记录的对应关系，但该日志不属于新业务模型，也不被业务服务读取。迁移幂等，不覆盖人工备注；无法判断来源的记录标记为 `manual_imported`。迁移完成后旧表和旧入口下线。
 
 ## 14. 实施步骤
 
-### Step 1：明确兼容映射
+### Step 1：冻结并迁移旧数据
 
-在不改变页面行为的前提下，建立概念映射：
+冻结旧入口，执行一次性数据迁移：
 
 ```text
 watchlist row → WatchSubscription
@@ -625,7 +624,7 @@ strategy candidate → DiscoveryLink
 simulation snapshot → ObservationSnapshot
 ```
 
-先不删除旧表或旧字段。
+迁移校验完成后删除旧表、旧字段和旧入口，不建立运行时兼容层。
 
 ### Step 2：增加观察实体和事件
 

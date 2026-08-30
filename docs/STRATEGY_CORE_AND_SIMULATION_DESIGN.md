@@ -12,7 +12,7 @@
 - 邮件发送；
 - 持仓最终展示。
 
-本模块必须复用现有 `IndicatorContext`、`RuleRegistry` 和 `SchemeConfig`，提供稳定的领域接口，供选股、个股研究、回测/模拟、持仓建议和通知调用。
+本模块使用新定义的 `IndicatorContext`、`RuleRegistry`、`SchemeConfig` 和 `StrategyContext` 作为唯一执行基础。不得保留旧规则、旧信号或旧回测协议。
 
 ## 2. 设计原则
 
@@ -52,20 +52,20 @@ version
 value_type
 ```
 
-指标名称由统一指标目录和现有 `IndicatorContext` 定义。本模块不自行注册第二套指标名。
+指标名称由新指标目录和新 `IndicatorContext` 定义。本模块不自行注册第二套指标名。
 
 运行时关系：
 
 ```text
-IndicatorContext = 指标取值和序列上下文
-RuleRegistry = 条件/规则校验与执行注册中心
-SchemeConfig = 策略版本配置载体
-CompiledStrategy = SchemeConfig 解析后的内存运行对象
+IndicatorContext = 新指标取值和序列上下文
+RuleRegistry = 新条件/规则校验与执行注册中心
+SchemeConfig = 新策略版本配置载体
+CompiledStrategy = 新 SchemeConfig 解析后的内存运行对象
 ```
 
 ### 3.2 ConditionSpec
 
-`ConditionSpec` 是传给 `RuleRegistry` 的结构化配置，不是新的执行引擎。条件支持第一版以下类型：
+`ConditionSpec` 是传给新 `RuleRegistry` 的结构化配置，不是独立执行引擎。条件支持第一版以下类型：
 
 ```text
 comparison
@@ -146,6 +146,8 @@ NO_ACTION
 
 ### 3.4 StrategySpec
 
+`StrategySpec` 仅作为文档中的配置结构示例。新系统实际持久化只使用不可变的 `SchemeConfig` 策略版本，不新增另一套存储模型。
+
 ```json
 {
   "strategy_id": "trend_pullback",
@@ -184,7 +186,6 @@ price
 stop_price
 target_price
 triggered_rules
-input_indicators
 input_dependencies
 input_snapshot
 decision_trace
@@ -201,7 +202,7 @@ valid_until
 5. 首次买入；
 6. 持有和等待。
 
-同一时点同一标的最终只输出一个主动作，同时保留全部被评估规则。
+同一时点同一标的最终只输出一个主动作，同时保留完整规则评估轨迹。
 
 `decision_trace` 的最小结构为：
 
@@ -260,7 +261,7 @@ cash_state
 previous_decisions
 ```
 
-策略执行不得自行读取文件、数据库或网络。所有输入由执行器注入。
+策略执行不得自行读取文件、数据库或网络。所有输入由新 `StrategyContext` 注入。
 
 ## 6. 回测/模拟统一模型
 
@@ -313,10 +314,10 @@ total_fees
 total_slippage
 ```
 
-### 6.4 SimulationTrade
+### 6.4 SimulationExecution
 
 ```text
-trade_id
+execution_id
 run_id
 symbol
 side
@@ -325,7 +326,9 @@ execution_time
 signal_price
 execution_price
 quantity
+gross_amount
 fee
+tax
 slippage
 decision_id
 reason
@@ -378,7 +381,7 @@ ParameterSearchRun
     → ParameterSearchResult
 ```
 
-每组参数必须产生独立的策略配置 hash 或不可变策略版本。现有 `TakeProfitOptimizer` 迁移为 Parameter Search adapter，不能直接修改同一个 SimulationRun。
+每组参数必须产生独立的策略配置 hash 或不可变策略版本。参数搜索直接由 `ParameterSearchRunner` 实现，不能直接修改同一个 SimulationRun。
 
 ## 7. 统一模拟执行流程
 
@@ -391,7 +394,7 @@ ParameterSearchRun
 → 生成 StrategyDecision
 → 根据 ExecutionRule 生成虚拟成交
 → 更新现金和虚拟持仓
-→ 记录 Trade/Event
+→ 记录 SimulationExecution/Event
 → 计算每日权益
 → 计算基准和绩效
 → 保存 SimulationResult
@@ -428,26 +431,23 @@ affected_symbol
 
 ## 8. 与现有能力的关系
 
-现有模块可按以下方式接入：
+新系统模块边界如下；旧实现不进入运行时：
 
 | 当前能力 | 目标归属 |
 |---|---|
-| `IndicatorRegistry` | Indicator provider |
-| `IndicatorContext` | Evaluation context |
-| `RuleRegistry` | Rule catalog and validator |
-| `MultiBuyStrategy` | Entry rule adapter |
-| `TakeProfitOptimizer` | Exit/parameter research adapter |
-| `BacktestEngine` | Simulation executor adapter |
-| `BacktestEngineV6` | V6 strategy adapter，暂不作为第二套产品协议 |
-| `strategy_lab.py` | Screen/SignalStudy adapter |
-| `portfolio.advisor` | LiveAdvice evaluator |
-| `operation_points.py` | EntryPlan adapter |
+| 新指标目录 | Indicator provider |
+| 新 `IndicatorContext` | StrategyContext 的指标输入 |
+| 新 `RuleRegistry` | Rule catalog and validator |
+| 新策略评估器 | Entry/Exit rule execution |
+| 新参数搜索器 | ParameterSearchRunner |
+| 新 `SimulationExecutor` | 唯一回测/模拟内核 |
+| 新 `MarketRegime` | 统一市场状态事实 |
 
-迁移时保留成熟算法，但所有算法最后必须转换为统一的 `StrategyDecision`、`SimulationTrade` 和 `SimulationResult`。
+旧算法不进入运行时。需要的业务能力按新协议直接重写，统一输出 `StrategyDecision`、`SimulationExecution` 和 `SimulationResult`。
 
 ## 9. 第一版实现顺序
 
-### Step 1：定义协议，不迁移全部算法
+### Step 1：定义新协议
 
 实现并测试：
 
@@ -458,7 +458,7 @@ affected_symbol
 4. `CompiledStrategy`。
 5. `StrategyDecision`。
 6. `StrategyValidator`。
-7. `EvaluationContext`。
+7. `StrategyContext`。
 
 使用一个最小趋势回踩策略作为示例，不要先改所有页面。
 
@@ -506,7 +506,7 @@ SimulationExecutor 只负责执行一组确定参数。网格搜索由 Parameter
 
 ### Step 5：迁移现有回测入口
 
-先让策略实验室和一个正式回测入口调用新执行器。V4.5/V6 原逻辑暂时保留为 adapter 或历史兼容路径，但不能再产生无法解释的第二套结果。
+先实现一个正式策略入口并调用新执行器；旧 V4.5、V6 和操作点位入口直接下线，不再进入新系统。
 
 ### Step 6：提供业务调用接口
 

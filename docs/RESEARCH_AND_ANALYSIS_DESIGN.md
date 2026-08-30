@@ -124,7 +124,7 @@ risk
 创建 ResearchRun
 → 固化 DataContext
 → 读取已发布行情/基本面/指标
-→ 构建 EvaluationContext
+→ 构建 StrategyContext
 → 技术评估
 → 基本面评估
 → 估值评估
@@ -144,20 +144,20 @@ LLM 只属于报告生成阶段：
 
 LLM 不得重新计算或覆盖结构化决策。
 
-## 6. 与现有实现的关系
+## 6. 新系统组件职责
 
 | 当前能力 | 目标归属 |
 |---|---|
-| `core/engine.py` | Research application service adapter |
-| `AnalysisResult` | 拆分为 ResearchRun 输出和 Evidence |
+| `ResearchService` | Research application service |
+| `ResearchResult` | ResearchRun 输出和 Evidence |
 | `datasource` | 仅通过统一 DataContext 使用 |
 | `IndicatorContext` | 指标读取和表达式上下文 |
 | `RuleRegistry` | 条件和规则评估 |
-| `analysis/screener_v6.py` | FundamentalAssessment adapter |
-| `analysis/market_state_v6.py` | MarketAssessment adapter |
-| `prompt/` | 报告生成 adapter |
+| `FundamentalAssessment` | 基本面评估 |
+| `MarketAssessment` | 唯一市场状态评估 |
+| `ResearchReportBuilder` | 报告生成 |
 
-`AnalysisEngine` 不得自行读取文件、网络或实现第二套规则执行。
+`ResearchService` 不得自行读取文件、网络或实现第二套规则执行。
 
 ## 7. API 目标
 

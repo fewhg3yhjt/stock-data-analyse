@@ -16,7 +16,7 @@ API/UI 平台边界
 
 它不定义选股、策略、交易和收益的业务规则，只提供统一运行能力。
 
-本文中的平台能力以现有 `ops/` 为实现基础，不创建第二套任务中心或运行器。重点是对现有 `task_center.py`、`task_execution.py`、`task_runner.py`、`job_runs.py` 和 `management_db.py` 做逐项对账和补齐。
+本文定义新平台运行模型。新任务中心、运行器和管理库按本文直接实现；旧 `ops/` 仅用于一次性历史运行核验，完成切换后下线。
 
 ## 2. 第一版目标
 
@@ -129,7 +129,7 @@ stock_daily_pipeline
 3. Worker 不依赖 daemon thread 状态。
 4. Web 重启后可以恢复、回收或重新接管任务。
 
-后续可将 Worker 拆为独立进程，不改变业务任务接口。
+Worker 可以先与 Web 同进程运行，但必须遵守新任务接口；不得复用旧任务状态和旧运行入口。
 
 业务任务接入统一提供：
 
@@ -151,6 +151,9 @@ simulation.run
 parameter_search.run
 report.daily_generate
 observation.expiry_reconcile
+advice.refresh
+notification.outbox_delivery
+health.reconcile
 ```
 
 长任务必须创建 Request/Run；轻量维护任务也必须写运行记录；真实交易不进入后台任务框架。
@@ -369,7 +372,7 @@ Route
 - 自己决定是否允许高风险操作；
 - 用前端按钮代替服务端门禁。
 
-导航和 API 应明确区分正式入口与 Legacy 兼容入口。
+迁移期间可以保留下线提示，但最终导航和 API 只保留新系统正式入口；旧入口在切换完成后删除。
 
 ## 12. 当前能力映射
 
@@ -378,11 +381,11 @@ Route
 | `TaskCenter` | Task Definition / Request service |
 | `TaskRunner` | Worker runtime |
 | `JobRunStore` | Run repository |
-| `web/scheduler.py` | Scheduler adapter |
+| 新 `Scheduler` | Scheduler runtime |
 | `management.db` | Platform fact store |
-| `freshness.py` | Health/Readiness adapter |
+| 新 `HealthService` | Health/Readiness |
 | `runtime/memory.py` | Resource probe |
-| `backup_data.py` | Backup adapter |
+| 新 `BackupService` | Backup and restore |
 | `web/app.py` | Route and composition root |
 
 ## 13. 实施步骤

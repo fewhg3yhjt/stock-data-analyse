@@ -27,7 +27,7 @@ PositionSnapshot + StrategyVersion
 → NotificationEvent
 ```
 
-现有 `portfolio/advisor.py` 迁移为 `LiveAdviceEvaluator` 适配器，只能复用算法，不能绕过 `StrategyDecision`。
+新系统直接实现 `LiveAdviceEvaluator`。旧 `portfolio/advisor.py` 不进入运行时；需要的规则按新协议重写，不能绕过 `StrategyDecision`。
 
 ## 2. 第一版范围
 
@@ -358,13 +358,13 @@ POST /api/system/alerts/{id}/acknowledge
 
 | 当前能力 | 目标归属 | 迁移方式 |
 |---|---|---|
-| `ActionAdvice` | Advice | 增加状态、版本和有效期 |
-| `notifier/triggers.py` | NotificationRule | 保留条件解析，统一事件输出 |
-| `notifier/outbox.py` | NotificationDelivery/Outbox | 增加 claim/lease/dedupe |
-| `notifier/notify.py` | Template and compatibility adapter | 逐步收敛旧规则 |
-| `portfolio/reporter.py` | DailyReport builder | 先生成结构化报告 |
-| `system_alerts.py` | SystemAlert service | 增加生命周期和故障码 |
-| `channels.py` | Channel adapter | 第一版以 Email 为主 |
+| 新 Advice | Advice | 新系统唯一建议实体 |
+| 新 NotificationRule | NotificationRule | 新系统唯一规则实体 |
+| 新 NotificationDelivery | NotificationDelivery/Outbox | 新系统唯一投递实体 |
+| 新通知服务 | Template and event service | 统一事件和模板 |
+| 新 DailyReportBuilder | DailyReport builder | 先生成结构化报告 |
+| 新 SystemAlertService | SystemAlert service | 统一生命周期和故障码 |
+| 新 ChannelService | Channel service | Email 为第一版验收渠道 |
 
 Email 是第一版完整验收渠道；Feishu 和 WeCom 不删除，继续作为同一 Channel Adapter 接口的可用实现，不能各自维护独立业务通知逻辑。
 

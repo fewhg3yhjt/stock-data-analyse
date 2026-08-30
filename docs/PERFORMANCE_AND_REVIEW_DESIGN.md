@@ -361,11 +361,11 @@ assumptions
 
 | 当前能力 | 目标归属 |
 |---|---|
-| `analysis/returns.py` | Performance service adapter |
+| 新 `PerformanceService` | Performance service |
 | `portfolio/trade_metrics.py` | Metrics calculator |
 | `portfolio/dashboard.py` | Performance read model |
 | `review.html` | Review UI |
-| `portfolio/export.py` | Export adapter |
+| 新 `PerformanceExportService` | Export service |
 | `transactions` | Execution source |
 | `SimulationResult` | Simulation comparison source |
 

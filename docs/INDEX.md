@@ -6,10 +6,11 @@
 
 - [投资分析工具产品总纲](PRODUCT_BLUEPRINT.md)：产品目标、用户主流程、业务模块边界、统一实体和第一版范围。
 - [投资产品领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md)：新旧体系真源、旧骨架迁移、统一实体、状态和平台任务接入边界。
+- [旧体系下线与新体系切换计划](LEGACY_CUTOVER_PLAN.md)：禁止兼容并行、一次性迁移、切换步骤和下线验收。
 - [架构设计总纲](DESIGN.md)：项目分层、模块职责和总体数据流。
 - [概要设计说明书](HLD.md)：核心能力抽象与目标架构。
 - [可信数据链路设计与实施规范 V1.1](DATA_PIPELINE_V1_DESIGN.md)：`stock_daily` 从元数据、采集、Raw Batch、构建、质量、发布到下游消费的专项设计、实施阶段和验收基准。
-- [股票研究、模拟、策略、持仓与通知后台设计 V1.0](BACKEND_RESEARCH_SIMULATION_STRATEGY_V1.md)：统一特征、规则、股票集合、模拟、策略版本、真实交易账本、持仓运行状态、通知和复盘的后台领域设计。
+- [废弃：旧后台领域设计 V1.0](BACKEND_RESEARCH_SIMULATION_STRATEGY_V1.md)：仅供历史数据评估和一次性迁移，禁止用于新功能和运行时实现。
 - [任务与数据术语](TASK_DATA_GLOSSARY.md)：任务阶段、任务类型、数据产物、状态和数据中心分类的统一用户用词。
 - [任务与数据中心前端设计](TASK_DATA_CENTER_DESIGN.md)：任务中心、数据中心的用户信息架构、操作和 API 契约。
 - [数据链路与产品状态流转收口实施任务书](DATA_PIPELINE_STATEFLOW_REMEDIATION_PLAN.md)：针对当前双轨数据链路、任务状态、质量门禁和下游消费断点的分阶段实施计划、测试矩阵与验收标准。

@@ -99,7 +99,7 @@ status
 phase
 opened_at
 closed_at
-initial_plan
+ entry_plan_snapshot
 scheme_snapshot
 created_at
 updated_at
@@ -326,7 +326,7 @@ strategy_decision_id
 
 ```text
 Observation.ready_for_entry
-→ 生成 EntryContext
+→ 生成 EntryPlan
 → 用户填写实际成交信息
 → 校验策略/观察/数据上下文
 → 创建 PositionCycle
@@ -444,22 +444,22 @@ idempotent_replay
 
 | 当前能力 | 目标归属 | 迁移方式 |
 |---|---|---|
-| `Position` | PositionSnapshot + PositionCycle 兼容层 | 保留旧读取，新增周期字段 |
+| 旧 `Position` | PositionCycle + PositionSnapshot | 一次性迁移后旧模型下线 |
 | `Transaction` | Execution | 增加统一事件类型和关联字段 |
-| `Portfolio.cash_available` | CashLedger 聚合结果 | 先保留缓存，再增加校验 |
+| 新 `CashLedgerEntry` | CashLedger 聚合结果 | 余额只由流水计算 |
 | `ActionAdvice` | Advice reference | 交易录入时可关联 advice |
 | `portfolio.manager` | Portfolio application service | 移除直接改状态的散落逻辑 |
 | `position_state.py` | Phase state machine | 所有状态变化统一调用 |
 
 ## 11. 实施步骤
 
-1. 为现有表增加不可变的交易关联和幂等字段。
-2. 增加 CashLedgerEntry，并为旧交易生成可审计流水。
-3. 增加 PositionCycle 和 PositionEvent。
+1. 新建目标表，不在旧表上继续堆叠字段。
+2. 运行一次性迁移，将可确定的历史交易转换为新 Execution 和 CashLedgerEntry。
+3. 增加 PositionCycle、PositionLot 和 PositionEvent。
 4. 将建仓、买入、卖出、分红、现金调整统一经服务层处理。
 5. 实现 FIFO 核算服务，并让持仓、复盘和收益共用。
-6. 迁移页面到新 API，保留兼容字段。
-7. 最后禁止页面直接更新持仓状态和现金余额。
+6. 页面直接切换到新 API，不保留旧业务字段。
+7. 对账通过后下线旧表和旧 API，禁止页面直接更新持仓状态和现金余额。
 
 ## 12. 测试与验收
 
