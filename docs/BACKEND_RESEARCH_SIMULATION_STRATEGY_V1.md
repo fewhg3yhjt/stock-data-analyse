@@ -68,7 +68,30 @@ Dataset / Published Version
 
 ## 4. 特征/指标体系
 
-用户层仍可称“指标”，后台统一按 Feature（特征）管理。MA5、MA10、ATR、板块回流、RS 改善、距离压力区、买入后最高价都属于可供规则引用的特征，但其数据上下文不同。
+用户层仍可称“指标”，业务后台统一按 Feature（特征）引用，但不再建立第二套指标字段标准。指标字段的唯一标准来源是项目现有的 `config/metrics/catalog.yaml`；后台 Feature 只引用其中的 `key`，并补充业务上下文和用途约束。
+
+### 4.1 指标标准边界
+
+`config/metrics/catalog.yaml` 是指标字段目录和生产元数据的权威来源，至少包含：
+
+- `key`：稳定的机器字段名，规则和业务对象只引用此字段。
+- `name`：展示名称。
+- `category`：基础行情、估值、基本面、技术指标、研究因子或业务指标。
+- `definition`：统一口径说明。
+- `unit`：数值单位。
+- `dataset` / `output_column`：派生指标的来源数据集和产出列。
+- `min_history`：计算所需最小历史窗口。
+- `applies_to`：适用证券类型。
+- `producer_task`：生产该指标的任务。
+- `builtin` / `editable`：是否内置及是否允许编辑。
+
+本后台不修改 `indicators/`、`warehouse/indicators_build.py`、指标配置或指标构建任务，也不复制这些字段定义。新增 Feature 时必须先检查 catalog 中是否已有对应 `key`：
+
+1. 已有标准字段：直接引用 `key`，不得另起同义字段。
+2. 尚无标准字段：先由指标统一收口项目增加 catalog 定义和生产实现；后台只在标准字段可消费后接入。
+3. 持仓上下文特征：只有在 catalog 已登记或由本后台明确登记为业务指标后，才能进入规则引用。
+
+因此，后台 Feature Definition 是“业务可用性投影”，不是指标生产定义。它负责声明 `required_context`、`supported_usages` 和版本快照，不负责重新定义指标公式。
 
 | 类型 | 例子 | 生成范围 |
 |---|---|---|
@@ -76,9 +99,10 @@ Dataset / Published Version
 | 板块/市场特征 | 板块排名、回流、驻留度、市场风格 | 行业/市场 |
 | 持仓上下文特征 | 持仓收益、买入后最高价、高点回撤、持仓天数 | 仅对持有中的持仓计算 |
 
-### 4.1 feature_definitions
+### 4.2 feature_definitions
 
 - `feature_id`
+- `metric_key`：对应 `config/metrics/catalog.yaml` 的稳定 `key`；持仓上下文特征也必须有明确稳定键
 - `name`
 - `category`: `TECHNICAL` / `MARKET` / `INDUSTRY` / `POSITION` / `FUNDAMENTAL`
 - `value_type`: `NUMBER` / `BOOLEAN` / `STRING`
@@ -92,14 +116,14 @@ Dataset / Published Version
 - `enabled`
 - `created_at` / `updated_at`
 
-适用范围必须由后台元数据控制。例如“买入后最高价”要求 `POSITION` 上下文，且只支持 `SELL` / `NOTIFY`，因此买入规则即使绕过前端直接调用接口，也必须被后端校验拒绝。
+`feature_id` 是后台业务对象标识，`metric_key` 是指标标准字段标识，两者不混用。适用范围必须由后台元数据控制。例如“持仓后高”引用 catalog 的 `position_peak_price`，要求 `POSITION` 上下文，且只支持 `SELL` / `NOTIFY`，因此买入规则即使绕过前端直接调用接口，也必须被后端校验拒绝。
 
-### 4.2 统一计算范式
+### 4.3 统一计算范式
 
-1. 每个新增特征先注册定义，再实现统一计算器，不允许页面或策略自己临时计算同名指标。
+1. 每个新增业务特征先关联标准 `metric_key`，再登记后台可用性，不允许页面或策略自己临时计算同名指标。
 2. 日频证券特征统一生成 Feature View，所有条件选股和启用策略共享。
 3. 持仓上下文特征按持有中的 Position 增量维护，不为全市场生成。
-4. 特征定义修改必须增加版本；回测/策略运行保存使用的特征版本快照。
+4. 指标 catalog 负责生产口径版本；后台 Feature Definition 负责业务用途版本。回测/策略运行同时保存两者的版本快照。
 
 ## 5. 条件与规则引擎
 
