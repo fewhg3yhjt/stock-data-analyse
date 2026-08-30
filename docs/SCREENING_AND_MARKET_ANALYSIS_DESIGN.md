@@ -55,7 +55,7 @@ Screen Candidate
 1. 选择一个已保存的筛选方案。
 2. 使用指定历史或最新交易日执行筛选。
 3. 支持单个条件和 `AND/OR/NOT` 条件组合。
-4. 支持行情字段、指标字段、行业和证券基础属性筛选。
+4. 支持行情字段、指标字段和证券基础属性筛选；行业筛选依赖 `industry_membership`，当前数据契约未完成，第一版延期。
 5. 返回命中股票、命中值、条件解释和数据日期。
 6. 查看单只股票日线走势。
 7. 在走势图上显示指标线和命中信号点。
@@ -63,6 +63,15 @@ Screen Candidate
 9. 从结果创建回测/模拟计划。
 10. 保存筛选运行和候选结果，支持历史查看。
 11. 结果明确显示数据版本、质量状态和是否陈旧。
+
+能力状态以 `DATA_PIPELINE_V1_DESIGN.md` 的数据依赖矩阵为准：
+
+```text
+行情/指标筛选：可用，第一版正式验收
+行业筛选：延期，industry_membership 正式覆盖完成后验收
+PE/PB 筛选：降级，仅对有 valuation_daily 数据的标的展示和筛选
+资金流筛选：降级，仅作为显式可选条件，不作为完整选股链路的必要依赖
+```
 
 ### 3.2 暂不支持
 
@@ -242,7 +251,8 @@ not
 
 ```text
 行情字段：open/high/low/close/pre_close/volume/amount/turn
-基础属性：symbol/name/industry/asset_type
+基础属性：symbol/name/asset_type
+行业属性：仅在 `industry_membership` 达到正式覆盖契约后可引用 `industry`
 指标：已注册且已发布的指标
 衍生统计：N 日收益、N 日涨停次数、距指标偏离率、历史长度
 ```
@@ -357,7 +367,7 @@ ConditionSpec
 | 指标交叉 | SQL window/LAG |
 | 连续 N 日 | SQL window |
 | N 日计数 | SQL aggregation/window |
-| 行业过滤 | SQL join |
+| 行业过滤 | SQL join，延期至 `industry_membership` 可用 |
 | 复杂登记表达式 | 向量化 |
 | 任意 Python | 禁止 |
 

@@ -20,7 +20,7 @@ ScreenCandidate / Observation
 
 1. 从股票代码、筛选候选或 Observation 发起研究。
 2. 锁定数据版本、指标版本、策略版本和 `data_as_of`。
-3. 读取技术、估值、基本面和市场上下文。
+3. 读取技术数据和市场上下文；估值数据以降级方式读取；基本面研究依赖 `fundamentals` 契约完成后再正式启用。
 4. 使用 `IndicatorContext` 读取指标。
 5. 使用 `RuleRegistry` 评估规则。
 6. 生成结构化研究结论。
@@ -28,6 +28,15 @@ ScreenCandidate / Observation
 8. 保存研究证据和值快照。
 9. 生成可选 Markdown/HTML 报告。
 10. 支持后续创建 SimulationPlan、ObservationSnapshot 和 Advice。
+
+能力状态以 `DATA_PIPELINE_V1_DESIGN.md` 的数据依赖矩阵为准：
+
+```text
+技术研究：可用，第一版正式验收
+估值研究：降级，字段或标的缺失必须明确展示
+基本面研究：延期，fundamentals schema、报告期和公告日契约完成后验收
+市场状态：可用，基于 stock_daily/indicators 生成统一 MarketRegime
+```
 
 ## 3. ResearchRun
 
@@ -126,8 +135,8 @@ risk
 → 读取已发布行情/基本面/指标
 → 构建 StrategyContext
 → 技术评估
-→ 基本面评估
-→ 估值评估
+→ 基本面评估（数据契约完成后启用，否则记录 deferred）
+→ 估值评估（受限数据，记录 unavailable/partial）
 → MarketRegimeService 读取/生成统一市场状态
 → RuleRegistry 评估策略条件
 → 生成 StrategyDecision
@@ -184,10 +193,12 @@ observation_id
 给定一个候选股票，系统必须能够：
 
 1. 保存可查询的 ResearchRun。
-2. 显示技术、估值、基本面和市场判断。
+2. 显示技术和市场判断；估值按降级标准展示；基本面在数据契约完成前显示延期状态。
 3. 显示每个判断使用的实际值和数据日期。
 4. 显示策略版本和最终 StrategyDecision。
 5. 从研究结果创建模拟计划。
 6. 从研究结果保存观察快照。
 7. LLM 失败不影响核心结构化研究。
 8. 历史研究结果不因再次研究而被覆盖。
+
+第一版不以完整基本面研究作为通过条件；不得用旧文件、未公告数据或在线 fallback 伪造基本面完成。估值能力按降级标准验收。
