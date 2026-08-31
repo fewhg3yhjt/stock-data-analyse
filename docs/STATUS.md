@@ -3,7 +3,9 @@
 > 本文档为项目现状盘点：架构分层、模块实现、数据流、以及**已确认的问题清单**（架构层面 + 产品/用户视角）。
 > 用途：作为后续「怎么做」改造讨论的工作底稿。定稿后可与 DESIGN.md 合并。
 
-更新日期：2026-08-26（持续落地 SRD FR-1 ~ FR-5；真实完成度以 `docs/IMPLEMENTATION_GUIDE.md` 为准）
+更新日期：2026-08-31（持续落地 SRD FR-1 ~ FR-5；真实完成度以本文审计结论和 `docs/IMPLEMENTATION_GUIDE.md` 为准）
+
+文档性质：当前实现盘点，不定义目标契约。文中“已完成”仅表示代码或测试已存在，不等于已接入生产或已完成切换验收。
 
 ---
 
@@ -25,7 +27,7 @@
 ## 二、架构分层
 
 ```
-┌ 应用层    web/            Flask 蓝图(单文件 1613 行) + APScheduler 定时任务 + 16 个 Jinja 模板 + ECharts
+┌ 应用层    web/            Flask 蓝图(单文件约 3k 行) + APScheduler 定时任务 + Jinja 模板 + ECharts
 ├ 编排层    core/engine.py  统一分析管线（CLI 与 Web 共用），7 步流水线
 │           core/registry.py 方案注册中心（YAML 扫描/加载/缓存/热更新）
 │           core/scheme.py   YAML → SchemeConfig 数据模型
@@ -34,7 +36,7 @@
 │           backtest/       回测引擎（v4.5 委托 TakeProfitOptimizer；V6.0 机械状态机）
 │           notifier/ fundflow/ screener/  独立子工具
 ├ 指标层    indicators/      表达式引擎（基础/组合/代码指标）
-├ 数据层    warehouse/       Parquet 月分区 + SQLite meta.db + DuckDB 扫描
+├ 数据层    warehouse/       Parquet 月分区 + management.db（生产）/meta.db（旧回退）+ DuckDB 扫描
 │           datasource/      baostock(长连接+自愈) / AkShare / 腾讯行情
 └ 前端      web/static/      3 个 ECharts JS + 16 个模板
 ```
@@ -57,7 +59,7 @@
 | 模块 | 文件 | 行数 | 职责 |
 |------|------|------|------|
 | 入口 | `main.py` | 458 | CLI 统一入口（分析/对比/持仓/自选/晨报） |
-| Web | `web/app.py` | 1613 | **单文件** Flask 蓝图，全部路由平铺 |
+| Web | `web/app.py` | 约 3097 | **单文件** Flask 入口，路由和部分应用编排仍高度集中 |
 | 编排 | `core/engine.py` | 421 | 7 步分析管线（CLI/Web 共用） |
 | 方案 | `core/scheme.py` + `registry.py` | 212+174 | YAML → SchemeConfig，注册中心 |
 | 数据 | `datasource/fetcher.py` | 980 | baostock/AkShare 拉取 + 连接自愈 |
@@ -70,7 +72,7 @@
 | 看板 | `portfolio/dashboard.py` | 1026 | 三页看板数据聚合 |
 | 存储 | `portfolio/storage.py` | 596 | SQLite 单文件 + 轻量迁移 |
 | 指标 | `indicators/engine.py` | 254 | 表达式引擎（基础/组合/代码指标） |
-| 仓库 | `warehouse/storage.py` | 375 | Parquet 月分区 + meta.db |
+| 仓库 | `warehouse/storage.py` | 约 390 | Parquet 月分区 + 生产 management.db / 旧 meta.db 回退 |
 | 通知 | `notifier/notify.py` + `web/scheduler.py` | 391+469 | 消息构造 + 定时调度 |
 | 前端 | `web/static/*.js` | 3 文件 | echarts.min.js(1MB) + stock-chart + stock-detail |
 
@@ -94,7 +96,7 @@
 |---|------|------|------|
 | A1 | **两代策略引擎「假并行」，实际两套不互通分叉** | v4.5 规则硬编码在 `multi_buy.py`/`take_profit.py` 靠 `find_buy_rule("support_level")` 写死 type 名读取；仅 V6.0 用 `v6_dispatch.py` 注册表 | 「配置驱动」只对已知 6-7 个 type 成立，**新增 rule type 仍要改代码**，与 README「新增方案无需改代码」不符 |
 | A2 | **支撑位算法三处复制粘贴** | `multi_buy.py:109`、`take_profit.py:451`、`engine_v6.py:135` | 靠注释保证「同口径」，人肉维护，改一处漏两处=隐性回测偏差 |
-| A3 | **`web/app.py` 1613 行单文件** | `web/app.py` | 路由平铺，`thread.join(300)` 伪异步占用 worker 5 分钟，难维护 |
+| A3 | **`web/app.py` 约 3k 行单文件** | `web/app.py` | 路由平铺，部分旧入口仍同步执行或自行编排，难维护 |
 | A4 | **数据源无统一抽象** | `monitor.py`/`engine.py`/`app.py` 散落 if-else | 无法整体切换/测试，DESIGN.md 待办自述「全面梳理数据源统一走数据层」 |
 | A5 | **指标层「半接入」** | `indicators/engine.py` 只在 `advisor.py:127` 被 `latest()` 调用一次 | 表达式引擎建好但未被策略消费，与 `datasource/indicators.py` 功能重叠 |
 | A6 | **持仓状态机跨模块隐式推进** | `manager.py`/`advisor.py`/`take_profit.py`/`engine_v6.py` 各自推进 `position_phase` | 回测与实盘两套独立状态机，靠注释对齐 |
@@ -109,7 +111,14 @@
 | P3 | **观察池每次打开拉腾讯实时** | `dashboard.py:140 _refresh_prices` | 即使有当日 online 快照也实时拉取 |
 | P4 | **持仓页每只持仓可能走 AkShare 网络** | `dashboard.py:866 _fundamental_snapshot` | 财务史无缓存时实时拉取 |
 
-### 6.3 产品 / 配置与扩展性（用户视角核心痛点）
+### 6.3 数据引擎切换残留
+
+| # | 问题 | 当前事实 | 影响 |
+|---|---|---|---|
+| M1 | **旧 `warehouse/meta.db` 尚未下线** | 生产环境通过 `MANAGEMENT_DB_PATH` 已将 Warehouse 元数据路径指向 `management.db`；但默认回退、行业/标的旧读取、测试和迁移脚本仍引用 `meta.db` | 现在直接删除会破坏本地/测试/迁移路径，也无法证明所有生产入口已切换 |
+| M2 | **管理库事实仍存在多口径** | `management.db`、`job_runs.db`、`meta.db` 均能在不同路径承载部分管理或运行表 | 数据中心、任务中心和恢复逻辑可能读取不同事实 |
+
+### 6.4 产品 / 配置与扩展性（用户视角核心痛点）
 
 | # | 问题 | 现状 | 用户期望 |
 |---|------|------|------|
@@ -138,13 +147,13 @@
 4. **通知配置产品化**：时间/渠道/条件的可视化配置 + 免重启生效（U3）。
 5. **前端重构**：统一 base template + 设计系统，收敛页面与导航（U4/U5）。
 6. 拆 `web/app.py` + 异步化（A3）。
+7. 新数据引擎切换收口：完成 `meta.db` 全量引用清理、管理库对账和生产只读观察后，将 `meta.db` 降为不可运行的归档，并在人工确认后再执行删除。
 
 ---
 
-## 九、SRD FR-1~FR-5 落地情况（2026-08-26，持续更新）
+## 九、SRD FR-1~FR-5 落地情况（2026-08-31，持续更新）
 
-> 依据 `docs/SRD.md` / `docs/HLD.md` 完成能力层收敛 + 两个编排器 + 前端基座 + 性能优化。
-> 全部改动见 git log；当前完整回归为 116 个测试通过，真实完成度以 `docs/IMPLEMENTATION_GUIDE.md` 为准。
+> 依据 `docs/SRD.md` / `docs/HLD.md` 持续完成能力层收敛、两个编排器、前端基座和性能优化。下表区分代码落地与生产切换，不将模块存在或单元测试通过视为生产完成。
 
 | 需求 | 落地 | 关键模块 | 备注 |
 |------|------|----------|------|
@@ -157,4 +166,4 @@
 | FR-3 通知编排器 | 部分 | `notifier/core.py` `triggers.py` `notifier/outbox.py` | action/price/indicator + AND/OR、发送后去重、持久化 outbox、重试、死信、投递台账和每日 Digest 已完成；历史兼容管线仍待清理 |
 | FR-4 UI 统一 | ✅ | `web/static/base.css` `base.html` `_nav.html` | 19 个业务模板全部继承 base.html；导航、组件和移动端基座统一 |
 | FR-5 性能 | 部分 | `datasource/base.py` | 个股图表 DuckDB 单查询和分钟分区已完成；未建立 P95 基准，ECharts 尚未拆包 |
-| 回归 | ✅ | `tests/`（116 例）| 新增指标、策略、通知、事务、安全、数据边界、备份、健康接口、outbox、状态机、回测参数、指标查询、调度锁、性能基线和上传边界回归；完整测试 116 例通过 |
+| 回归 | 待重新核验 | `tests/` | 历史文档中的 116 例统计已过时；以当前实际测试结果为准 |

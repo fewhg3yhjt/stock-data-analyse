@@ -1,5 +1,7 @@
 # 新系统持久层设计 V1
 
+文档等级：业务持久层目标设计。表结构或 repository 已存在，不等于所有业务能力已经生产接入。
+
 ## 1. 定位
 
 本文定义新业务系统的持久化承重层：使用哪个库、有哪些表、公共实体如何落表、主键和索引如何设计、哪些字段用于版本和审计。
@@ -39,7 +41,7 @@
 output/data/business.db
 ```
 
-新库只保存业务事实、业务运行记录、推导结果索引和审计数据。不得把新业务表继续写入旧 `portfolio.db`、旧 `job_runs.db`、旧 `warehouse/meta.db`。
+新库只保存业务事实、业务运行记录、推导结果索引和审计数据。不得把新业务表继续写入旧 `portfolio.db`、旧 `job_runs.db`、旧 `warehouse/meta.db`。`management.db` 是数据平面管理事实库，不属于业务库；其与 `business.db` 并存是设计上的平面边界，不是业务事实双写。
 
 数据模块的 `management.db` 属于数据平面，不是旧业务库；它继续承载 Dataset Registry、Published Version、Quality、Current、Source Batch 等数据事实。业务库不复制这些表，只保存不可变的 dataset reference。数据集路径字段保存相对于 `Warehouse Root` 的路径，例如 `daily/2026-08.parquet`，禁止保存 `/opt/...` 或 `/app/...` 等运行环境绝对路径。
 
@@ -424,13 +426,13 @@ Account(real)
 
 ## 实现状态与记录
 
-### 实现状态：P0 核心完成（business.db schema + 核心 repository）
+### 实现状态：P0 核心 schema 与部分 repository 已实现，业务能力和生产切换未完成
 
 ### 已完成交付物
 
 | 文件 | 能力 |
 |---|---|
-| `biz/db.py` | business.db 全表 schema（37 张）+ BusinessDB 连接/upsert/update/事务/JSON 工具 + `BUSINESS_DB_PATH` 路径隔离 |
+| `biz/db.py` | business.db schema（当前实际 57 张业务表，以运行时 schema 统计为准）+ BusinessDB 连接/upsert/update/事务/JSON 工具 + `BUSINESS_DB_PATH` 路径隔离 |
 | `biz/repo.py` | BusinessRepository：策略版本/决策/市场状态/筛选(version/run/candidate/universe)/研究(run/evidence)/模拟(run/fill/result) 持久化 |
 
 ### 实现要点
@@ -439,6 +441,8 @@ Account(real)
 2. **不写旧库**：所有业务事实只写 business.db，不碰 portfolio.db / meta.db / management.db 业务表。
 3. **外键顺序**：父表（strategies/screens/accounts 等）先 upsert 再写子表，避免 FK 约束失败。
 4. **时间**：统一 UTC 时间戳；业务日期独立 YYYY-MM-DD 字符串。
+
+5. **旧数据引擎状态**：`warehouse/meta.db` 不属于新业务库，但当前仍作为 Warehouse 的本地/测试默认回退和部分迁移输入。待管理库切换完成后，应通过显式迁移和引用清理将其降为只读归档，删除必须单独确认。
 
 ### 开发中遇到的问题与决策
 

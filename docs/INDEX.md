@@ -2,6 +2,8 @@
 
 > 项目内部文档门户。涉及生产环境、真实路径和内部实现，仅限项目内部使用。
 
+文档阅读顺序和规范等级：`DOMAIN_MODEL_AND_CONTRACTS.md` 定义公共契约；`DATA_PIPELINE_V1_DESIGN.md` 定义数据平面；各专项设计定义模块契约；`HLD.md` 只做架构总览；`STATUS.md` 只描述当前实现；`DATA_PIPELINE_STATEFLOW_REMEDIATION_PLAN.md` 只描述待办和验收，不代表完成。
+
 ## 核心设计
 
 - [投资分析工具产品总纲](PRODUCT_BLUEPRINT.md)：产品目标、用户主流程、业务模块边界、统一实体和第一版范围。

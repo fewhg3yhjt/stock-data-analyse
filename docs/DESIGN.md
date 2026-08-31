@@ -32,7 +32,7 @@
 │  ├─ indicators/     指标层（动态可配，单股分析/决策用）        │
 │  ├─ fundamentals/   基本面层（完整财务史：ROE/毛利率/扣非/负债率）│
 │  ├─ online/         盘中快照                                │
-│  └─ meta.db         标的清单(含行业)/分区清单                 │
+│  └─ management.db   生产数据管理事实；meta.db 为待下线旧回退 │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -88,7 +88,7 @@ Parquet/CSV 保存原始数据、标准数据和计算结果
 |------|------|
 | `indicators/` | 指标体系（基础/组合/代码指标，表达式引擎）|
 | `warehouse/indicators_build.py` | 全市场指标批量生成（采集后自动触发）|
-| `warehouse/fundamentals_collect.py` | 行业(meta.db)+财务史(fundamentals分区)采集 |
+| `warehouse/fundamentals_collect.py` | 行业（生产应写 management.db）+财务史(fundamentals分区)采集；meta.db 仅为待清理旧路径 |
 | `warehouse/indicators/` | 指标宽表分区（37月，6435只）|
 | `warehouse/fundamentals/` | 财务史分区（4551只）|
 | `strategy_lab.py` | 策略实验室（扫描+回测+ECharts交互）|

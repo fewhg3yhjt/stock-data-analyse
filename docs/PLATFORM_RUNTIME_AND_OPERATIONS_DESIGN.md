@@ -18,6 +18,8 @@ API/UI 平台边界
 
 本文定义新业务平台运行模型。数据平面的现有任务载体和 `management.db` 继续负责 capture/build/quality/publish/indicators 等数据任务；本平台只负责业务任务、业务运行库和业务调度，不替换数据平面。
 
+文档状态：目标运行模型 + 当前接入状态。当前生产仍处于迁移过渡期：`management.db` 已作为生产数据管理库使用，但旧 `meta.db`、`job_runs.db` 和部分旧入口尚未完成下线。业务 Worker 已有代码和测试，尚未作为生产常驻消费者接入。
+
 ## 2. 第一版目标
 
 1. Web、Scheduler 和任务执行使用清晰的边界。
@@ -129,7 +131,7 @@ stock_daily_pipeline
 3. Worker 不依赖 daemon thread 状态。
 4. Web 重启后可以恢复、回收或重新接管任务。
 
-Worker 可以先与 Web 同进程运行，但必须遵守新业务任务接口；不得复用旧业务任务状态和旧业务运行入口。数据任务继续使用数据平面自己的执行入口。
+Worker 可以先与 Web 同进程运行，也可以部署为独立 `business-worker` 容器；无论采用哪种方式，必须遵守新业务任务接口，不得复用旧业务任务状态和旧业务运行入口。当前两种方式均未完成生产接入，不能把“Worker 代码存在”视为“业务任务自动消费可用”。
 
 业务任务接入统一提供：
 
@@ -157,6 +159,8 @@ health.reconcile
 ```
 
 长任务必须创建 BusinessRequest/BusinessJobRun；轻量维护任务也必须写业务运行记录；真实交易不进入后台任务框架。
+
+当前生产部署的 `docker-compose.yml` 仍固定设置 `STOCK_DISABLE_AUTH=1`，与本节“生产默认启用认证”的目标不一致；在安全配置收口前，平台就绪状态不得宣称满足生产安全验收。
 
 ## 5. 重启恢复
 
@@ -417,7 +421,7 @@ Route
 
 ## 实现状态与记录
 
-### 实现状态：P3-1/P3-2 基础能力完成，业务 API 已接入基础入口
+### 实现状态：P3-1/P3-2 基础能力已实现，业务 API 已接入基础入口；生产 Worker 和正式切换未完成
 
 ### 已完成交付物
 
@@ -443,6 +447,7 @@ Route
 - BusinessScheduler 与 Web 路由接入。
 - 统一业务任务结果 DTO、HTTP 202 和持久化队列。
 - 启动恢复检查、任务影响确认、生产级 ready 依赖检查。
+- 业务 Worker 生产接入，以及 `meta.db` / `job_runs.db` 旧运行路径下线。
 
 ### 跨模块验证
 
@@ -464,4 +469,5 @@ Route
 - `screen.run`、`research.run`、`simulation.run` 正式 API 已改为只创建 BusinessRequest/JobRun 并返回 202；Worker 执行后通过 BusinessRun/领域结果查询接口获取结果。
 - 新业务正式 API 当前已在容器内注册并通过路由契约检查；现有业务页面和生产 Scheduler 尚未完成主链路切换。
 - 当前容器内正式 API 路由检查通过，业务过渡 API 路由 49 个；业务 Worker 仍未作为生产常驻进程挂载。
+- 生产 `Warehouse` 已通过 `MANAGEMENT_DB_PATH` 使用 `management.db`；`warehouse/meta.db` 仍被默认回退、行业/标的旧读取、测试和迁移脚本引用，只有完成全量引用清理、数据对账、生产只读观察和回归验证后，才允许将其降为归档并在人工确认后删除。
 - 当前业务专项/页面测试为 `171 passed`，全量测试为 `428 passed`；未修改数据模块。

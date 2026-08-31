@@ -17,12 +17,14 @@
 
 ### 1.2 全局设计语言（先建立心智模型）
 
+本文是架构总览，不覆盖公共实体和状态的细节定义。公共契约以 `DOMAIN_MODEL_AND_CONTRACTS.md` 为准；数据访问、版本和质量以 `DATA_PIPELINE_V1_DESIGN.md` 为准；本文中的“目标设计”不代表当前生产已经接入。
+
 整个项目只使用**一套设计语言**，所有模块的抽象都遵循它。开发者掌握了这套语言，加任何功能都是「注册 + 填 schema」，而非新开 if-else：
 
 | 手法 | 解决什么 | 在哪些模块使用 |
 |------|----------|----------------|
 | **模板方法**：提取稳定骨架，可变步骤下沉 | 「算法流程不变，细节可变」 | 支撑位计算、通知处理流水线 |
-| **统一上下文对象**（RuleContext / IndicatorContext） | 「参数不固定」——差异用上下文 + params 消化，签名不变 | 规则 executor、指标求值、支撑位 |
+| **统一上下文对象**（StrategyContext / IndicatorContext） | 「参数不固定」——差异用上下文 + params 消化，签名不变 | 规则 executor、指标求值、支撑位 |
 | **注册表 + 策略**（type → 策略/executor） | 「类型多样」——新增类型不改旧逻辑 | 规则派发、支撑位来源、渠道、渲染器 |
 | **schema 元数据**（参数字段/指标定义） | 「让 UI 和运行时都能动态适配」 | 策略编排器动态表单、通知编排器 |
 
@@ -63,7 +65,7 @@
 flowchart TB
     subgraph 应用层
         CLI[main.py CLI]
-        WEB[web/app.py 单文件1613行]
+        WEB[web/app.py 单文件约3k行]
     end
     subgraph 业务层
         ENG[core/engine.py 分析管线]
@@ -121,7 +123,7 @@ flowchart TB
         IC[IndicatorContext<br>统一指标求值入口]
     end
     subgraph 数据层
-        WH[Warehouse parquet+meta.db]
+        WH[Warehouse parquet+management.db（生产）/meta.db（旧回退）]
         OL[Online baostock/akshare/腾讯]
     end
     PMGR --> SC --> RR
@@ -211,7 +213,7 @@ class ParamField:
 class RuleExecutor:
     kind: str                 # "buy" | "sell"
     type: str                 # 规则 type
-    fn: Callable              # fn(ctx: RuleContext, params: dict) -> RuleResult
+    fn: Callable              # fn(ctx: StrategyContext, params: dict) -> RuleResult
     schema: list[ParamField]  # 参数元数据，供前端动态渲染表单
 
 class RuleRegistry:
@@ -225,10 +227,10 @@ class RuleRegistry:
 
 ```python
 # strategy/context.py（新）
-class RuleContext:
+class StrategyContext:
     """规则执行时所有可能用到的输入的超集。"""
     row: pd.Series            # 当前 K 线行
-    indicators: IndicatorContext   # 指标求值入口（见 3.3）
+    indicator_context: IndicatorContext   # 指标求值入口（见 3.3）
     current_price: float
     avg_cost: float
     position_phase: str
@@ -248,7 +250,7 @@ class RuleContext:
 - `MultiBuyStrategy`/`TakeProfitOptimizer`/`BacktestEngineV6` 改为 `registry.get(kind, type)` 派发，删除 `find_buy_rule("xxx")` 字面量；
 - `core/scheme.py` 不变（YAML 模型不动）。
 
-**设计意图**：注册表 + 策略 + 统一上下文 + schema。扩展点 = `register(RuleExecutor)`。参数差异用 `RuleContext`（超集）+ `params`（透传）消化，签名统一；类型差异用注册表消化；UI 适配用 schema 消化。
+**设计意图**：注册表 + 策略 + 统一上下文 + schema。扩展点 = `register(RuleExecutor)`。参数差异用 `StrategyContext`（超集）+ `params`（透传）消化，签名统一；类型差异用注册表消化；UI 适配用 schema 消化。
 
 **派发流程（前后对比）**：
 
@@ -372,7 +374,7 @@ class IndicatorContext:
 ```
 
 - 支撑位的 `MaSource`/`RollingLowSource`/`IndicatorExprSource` 都基于它；
-- 规则 executor 的 `RuleContext.indicators` 指向它；
+- 规则 executor 的 `StrategyContext.indicator_context` 指向它；
 - advisor 的 `compute_context` 改为构建 `IndicatorContext`，替代 `AdvisorContext`。
 
 **YAML 目标形态**：
@@ -548,8 +550,8 @@ RENDERER_FACTORY = {"email": HtmlRenderer, "feishu": CardRenderer, "wecom": Mark
 |------|------|------|
 | 规则注册表 + schema | 内存（代码内） | `type → RuleExecutor(fn, schema)` |
 | 支撑位来源工厂 | 内存（代码内） | `字段名 → SupportSource` |
-| 统一上下文 | 运行时内存 | `RuleContext` / `IndicatorContext` |
-| 方案版本/启停 | 新表 `scheme_versions`（meta.db） | `name, version, yaml, enabled, created_at` |
+| 统一上下文 | 运行时内存 | `StrategyContext` / `IndicatorContext` |
+| 方案版本/启停 | 新业务库/配置版本表 | 具体落表以 `DOMAIN_MODEL_AND_CONTRACTS.md` 和 `NEW_SYSTEM_STORAGE_DESIGN.md` 为准 |
 | 通知触发规则 | 新表/文件 `notify_rules` | `id, name, conditions(json), schedule(json), channel, enabled` |
 | 通知聚合批次 | 运行时内存 | `topic → fragments`，不落库 |
 | 邮件配置 | .env（沿用） | `EMAIL_TO` 等补全 |
@@ -602,7 +604,7 @@ RENDERER_FACTORY = {"email": HtmlRenderer, "feishu": CardRenderer, "wecom": Mark
 | 风险 | 影响 | 缓解 |
 |------|------|------|
 | 规则派发迁移破坏回测语义 | 回测结果漂移 | 先建回归基线，逐项迁移并比对 |
-| 上下文对象成为「大杂烩」 | 难维护 | RuleContext 只放「规则可能用到的输入」超集，随需扩展，不放行为 |
+| 上下文对象成为「大杂烩」 | 难维护 | `StrategyContext` 只放「规则可能用到的输入」超集，随需扩展，不放行为 |
 | 通知聚合影响盘中即时性 | 提醒延迟 | priority 区分即时/批次，即时不走聚合 |
 | 老 YAML 兼容层遗漏 | 存量方案报错 | 兼容层枚举全部老字段名 + 单测覆盖 |
 | 指标表达式求值性能 | 回测变慢 | 求值缓存 + 仅对变化指标增量计算 |

@@ -62,8 +62,9 @@ warehouse/indicators/
 warehouse/fundamentals/
 warehouse/minute/
 warehouse/online/
-warehouse/meta.db
-output/data/job_runs.db
+warehouse/meta.db（旧兼容回退，待下线）
+output/data/management.db（生产数据管理事实）
+output/data/job_runs.db（旧任务台账，待下线）
 ```
 
 已有能力包括：
@@ -2373,6 +2374,7 @@ stock_daily
  - 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与历史基线均可追溯。
 - 全量回归：257 个测试通过（以当前工作树实际测试统计为准）。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
+- 当前生产数据管理路径：`MANAGEMENT_DB_PATH` 已使 `Warehouse` 使用 `management.db`；`warehouse/meta.db` 仍被默认回退、行业/标的旧读取、测试和迁移脚本引用，属于待下线兼容库。
 - Phase 3-6 已在验证目录完成基础闭环：Raw Batch -> Candidate Builder -> Dataset Version -> Quality -> Publish；生产下游仍未切换。
 - 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和生产小范围验证记录；历史快照已按真实日期统一建立 current。
 - 辅助源任务是否参与调度由对应 `config/tasks/*_capture.yaml` 的任务配置决定，不再使用独立环境变量旁路控制。
@@ -2387,7 +2389,8 @@ stock_daily
 - 任务执行框架已补充统一 Runner：定时、手动、补数、重试和 Shadow 使用统一执行请求契约，执行请求绑定任务配置版本、周期区间、触发方式和证券范围；阶段事件、文本日志、产物登记和血缘可统一查询。
 - 架构沉淀：任务中心负责任务定义、周期、执行请求、运行过程和技术产物；数据中心负责数据/指标定义、统一口径、最新周期、覆盖和健康。任务阶段、任务类型、数据产物和指标健康不得混用，统一术语见 `TASK_DATA_GLOSSARY.md`。
 - 证券类型适配已完成基础实现：`stock/etf/index` 使用独立 YAML profile 定义数据集和指标的 `required/optional/not_applicable`，任务通过 `scope.asset_types` 声明范围，采集、指标和因子执行会按类型筛选并返回类型统计；混合证券的大批量真实验证尚未执行。
-- 新管理库阶段已完成验证：`output/validation/data_pipeline/management.db` 可独立承载 YAML 定义和旧数据版本事实，管理服务支持通过 `MANAGEMENT_DB_PATH` 显式切换；生产页面和调度尚未切换，旧库未删除。
+- 新管理库阶段已完成验证：`output/validation/data_pipeline/management.db` 可独立承载 YAML 定义和旧数据版本事实，管理服务支持通过 `MANAGEMENT_DB_PATH` 显式切换；当前生产配置已指向 `output/data/management.db`，但生产入口和调度的全量切换验收尚未完成，旧库未删除。
 - 混合证券小量 Shadow 验证已完成：3 只股票（`sh600000`、`sh600519`、`sz000001`）和 1 只 ETF（`sh510050`）在 `2026-08-25` 至 `2026-08-28` 完成真实腾讯采集、标准构建、质量、隔离发布、指标和因子计算；类型统计为 `stock=3`、`etf=1`，覆盖率 100%。
 - 真实 Shadow Run 已完成两次小批量验证：首轮 `sh600000/sh600001/sz000001` 中 `sh600001` 无有效返回，覆盖率 2/3，质量 FAIL 且正确阻断；第二轮使用 `sh600000/sh600519/sz000001`，覆盖 3/3、5 个交易日共 15 行，质量 PASS，完整生成 Shadow Raw/Candidate/Published/指标/因子并登记产物血缘。
-- Shadow 输出位于 `output/data/shadow_validation_retry/`，与正式 `output/data/warehouse/` 隔离；正式 meta.db、daily、indicators、factors 的 checksum 在运行前后保持不变。
+- Shadow 输出位于 `output/data/shadow_validation_retry/`，与正式 `output/data/warehouse/` 隔离；正式 `meta.db`（旧兼容库）、daily、indicators、factors 的 checksum 在运行前后保持不变。
+- `meta.db` 下线前置条件：完成全量引用清理、管理库与旧库对账、隔离环境冷启动和全量回归，并完成生产只读观察；删除属于单独的破坏性运维操作，必须备份后人工确认。
