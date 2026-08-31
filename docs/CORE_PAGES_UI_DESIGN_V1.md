@@ -853,6 +853,7 @@ POST /settings/reset
 - 新业务正式 API 的筛选、研究和模拟创建接口均返回 `202 + run_id + status_url`，页面接入时必须采用短轮询，不得等待 HTTP 请求直接返回计算结果。
 - 个股研究详情页已通过 `business-runs/{run_id}` 轮询 requested/running/terminal 状态；完成后再读取 ResearchRun 结果。
 - 业务运行状态接口已将 `input_versions/output_versions` 解码为结构化对象，页面不再解析底层 JSON 字符串。
+- 个股研究页面、业务正式 API 和容器路由契约已通过测试；工作台、市场发现、观察池、持仓、复盘和通知页面仍需逐页切换新业务 API。
 
 ## 12. 全量页面设计基线
 

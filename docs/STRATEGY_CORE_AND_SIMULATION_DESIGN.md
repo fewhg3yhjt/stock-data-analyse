@@ -663,6 +663,7 @@ P0-Smoke: PASS
 
 - `tests/test_biz_simulation.py`：7 项通过，覆盖 FIFO/费用税费滑点、多标的、现金约束、确定性和权益曲线。
 - 尚未完成：ParameterSearchRun、完整策略版本管理生命周期、复杂组合级仓位分配和异步任务正式接管。
+- 当前业务专项/页面回归：`171 passed`；全量回归：`428 passed`。
 - 策略决策生成已强制要求持久化 `strategy_version_id`，规则 priority 和 suppression trace 已加入测试。
 - 业务任务 registry 已提供 simulation handler，但正式 API 仍需统一改为创建 requested JobRun 后由 Worker 执行。
 - 正式模拟 API 已遵循 requested JobRun → Worker → SimulationRun/Result 查询链路，不在 HTTP 请求线程执行模拟。

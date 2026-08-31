@@ -463,3 +463,5 @@ Route
 - `biz/task_registry.py` 已为 `screen.run`、`research.run`、`simulation.run`、`report.daily_generate`、`notification.outbox_delivery` 和 `advice.refresh` 提供业务 handler；参数搜索和复杂持仓建议仍需继续接入专用执行器。
 - `screen.run`、`research.run`、`simulation.run` 正式 API 已改为只创建 BusinessRequest/JobRun 并返回 202；Worker 执行后通过 BusinessRun/领域结果查询接口获取结果。
 - 新业务正式 API 当前已在容器内注册并通过路由契约检查；现有业务页面和生产 Scheduler 尚未完成主链路切换。
+- 当前容器内正式 API 路由检查通过，业务过渡 API 路由 49 个；业务 Worker 仍未作为生产常驻进程挂载。
+- 当前业务专项/页面测试为 `171 passed`，全量测试为 `428 passed`；未修改数据模块。
