@@ -489,7 +489,7 @@ idempotent_replay
 
 ### 开发中遇到的问题与决策
 
-1. 现金余额不能按业务交易时间排序，因为初始现金可能晚于历史补录交易；当前按流水插入顺序读取最新 `balance_after`，后续应在数据库层增加单调流水序号。
+1. 现金余额不能按业务交易时间或插入顺序取最后一条缓存；当前余额按全部 CashLedgerEntry.amount 聚合，历史补录不会覆盖当前余额。
 2. `record_execution` 已收敛为单连接 `BEGIN IMMEDIATE` 事务，Execution、Lot、CashLedger 和持仓阶段更新整体提交或回滚。
 
 ### 跨模块验证

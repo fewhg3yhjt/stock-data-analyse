@@ -89,7 +89,8 @@ class PerformanceService:
         简化实现：基于 cash_ledger 的 balance_after 时间序列 + 每日持仓市值。
         """
         ledger = self.pf.repo.db.fetchall(
-            "SELECT * FROM cash_ledger_entries WHERE portfolio_id=? ORDER BY rowid", (portfolio_id,))
+            "SELECT * FROM cash_ledger_entries WHERE portfolio_id=? "
+            "ORDER BY entry_time, rowid", (portfolio_id,))
         executions = self.pf.repo.db.fetchall(
             "SELECT * FROM executions WHERE portfolio_id=? ORDER BY trade_time, rowid", (portfolio_id,))
 
@@ -112,9 +113,9 @@ class PerformanceService:
 
         # INITIAL defines starting capital, not a dated cash movement. It must
         # remain available even when a historical transaction is backfilled.
-        while ledger_index < len(ledger) and ledger[ledger_index]["entry_type"] == "INITIAL":
-            cash += float(ledger[ledger_index]["amount"] or 0.0)
-            ledger_index += 1
+        initial_entries = [entry for entry in ledger if entry["entry_type"] == "INITIAL"]
+        cash += sum(float(entry["amount"] or 0.0) for entry in initial_entries)
+        ledger = [entry for entry in ledger if entry["entry_type"] != "INITIAL"]
 
         for date in dates:
             external_cash_flow = 0.0

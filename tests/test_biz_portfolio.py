@@ -183,6 +183,15 @@ class TestPortfolio:
             "SELECT COUNT(*) AS n FROM position_lots WHERE position_cycle_id=?", (cid,)
         )["n"] == 0
 
+    def test_backfilled_trade_keeps_cash_balance_consistent(self, svc, setup):
+        pid, cid = setup
+        svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-20",
+                             quantity=1000, price=10.0, idempotency_key="late-buy")
+        # 后补一笔更早日期的现金调整，当前现金仍按全部流水金额求和。
+        svc.record_execution(pid, cid, event_type=EVT_CASH_ADJUSTMENT,
+                             trade_time="2026-08-01", quantity=5000, idempotency_key="backfill-cash")
+        assert svc.cash_balance(pid) == pytest.approx(100000 - 10000 + 5000)
+
     def test_transaction_rolls_back_after_execution_insert(self, svc, setup, monkeypatch):
         pid, cid = setup
 

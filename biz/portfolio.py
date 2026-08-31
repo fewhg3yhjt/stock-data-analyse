@@ -198,10 +198,10 @@ class PortfolioService:
 
     def cash_balance(self, portfolio_id: str) -> float:
         row = self.repo.db.fetchone(
-            "SELECT balance_after FROM cash_ledger_entries WHERE portfolio_id=? "
-            "ORDER BY rowid DESC LIMIT 1", (portfolio_id,))
+            "SELECT COALESCE(SUM(amount), 0) AS balance "
+            "FROM cash_ledger_entries WHERE portfolio_id=?", (portfolio_id,))
         if row:
-            return float(row["balance_after"])
+            return float(row["balance"])
         # 无流水则 0（初始现金由 INITIAL 流水显式建立）
         return 0.0
 

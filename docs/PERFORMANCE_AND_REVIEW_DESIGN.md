@@ -422,4 +422,5 @@ assumptions
 - 当前验证覆盖逐日回放、外部现金流基础口径和结果落库；复杂公司行为、时间加权收益和完整导出仍未达到最终验收标准。
 - 历史权益曲线已改为按交易日回放 Execution 和 Lot，新增测试验证后续买入不会倒灌到前一交易日。
 - `tests/test_biz_performance.py` 已覆盖外部现金流不计收益和 PerformanceSnapshot/Comparison 基础落库。
+- 现金流水回放按业务日期排序，INITIAL 作为起始资本单独处理；账户余额按流水金额聚合，支持历史补录。
 - Review 创建时已自动建立 Observation/SimulationRun 的证据索引；组合估值 API 只读取当前持仓标的的有限日期窗口，避免无界全市场读取。
