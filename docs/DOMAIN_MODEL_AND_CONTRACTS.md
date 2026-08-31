@@ -265,10 +265,12 @@ draft → validated → published → enabled
 
 ```text
 requested → running → success
-                    ├→ partial_success
-                    ├→ failed
-                    └→ cancelled
+                     ├→ partial_success
+                     ├→ failed
+                     └→ cancelled
 ```
+
+任务运行状态与领域运行实体状态必须保持可追溯的一致关系。`BusinessJobRun` 失败或取消时，已创建的 `SimulationRun`、`ScreenRun`、`ResearchRun` 等领域实体不得永久停留在 `running`；前置版本、Universe 等事实若不能回滚，必须通过事务边界或显式孤儿/已对账状态记录其结果。队列 Worker 领取必须是原子 claim，不能依赖“先查询、后校验、再更新”的非原子流程。
 
 ### Observation
 

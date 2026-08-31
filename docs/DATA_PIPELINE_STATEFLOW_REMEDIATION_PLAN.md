@@ -416,6 +416,7 @@ expires_at
 10. Retry 记录 `retry_of_request_id`、`retry_of_run_id` 和 `attempt`。
 11. 真正执行 `retry_limit`、`on_partial_success` 和 `on_failure`。
 12. Retry 改为后台执行，不得同步占用 Waitress 请求线程却返回 `202`。
+13. `run_next()` 必须在同一数据库事务内原子领取 requested Run；领取成功后才能进入执行，竞争失败不得伪装成 500 任务失败。
 
 ### 必测场景
 
@@ -428,6 +429,7 @@ expires_at
 7. `partial_success=block_downstream` 时阻断下游。
 8. HTTP `202` 返回前 Request 已存在。
 9. 最近五分钟内的 RFC3339 heartbeat 不被回收，超过租约的业务 Run 可以被回收。
+10. 两个并发 Worker 领取同一 requested Run 时只有一个成功 claim，另一个得到可重试的竞争结果，不能执行同一 Run 两次。
 
 ### 建议提交
 

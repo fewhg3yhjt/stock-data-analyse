@@ -127,6 +127,8 @@
 | B3 | **Quality coverage 使用自证基准** | `ops/task_execution.py:95-100` | 将候选版本自身 `symbol_count` 传为 `expected_symbols`，覆盖率可能恒为 1.0；无法发现 Universe 缺失，质量门禁失去覆盖约束 |
 | B4 | **Publisher 缺少同分区并发互斥** | `warehouse/publish.py:17-61` | 两个版本可同时替换同一正式文件并更新 `dataset_current`，文件、Current 指针和 previous_version 可能不一致 |
 | B5 | **旧 `job_runs.db` 收敛缺少专项迁移方案** | `ops/job_runs.py`、`ops/management_db.py` | 旧库仍可能承载 TaskCenter 运行表；缺少 Legacy ID 映射、重复记录处理、只读切换和独立验收，不能证明 `management.db` 已成为唯一数据任务事实源 |
+| B6 | **领域运行状态与 BusinessJobRun 状态未收敛** | `biz/task_registry.py:206-213`、`biz/repo.py:341-354` | 模拟执行在 executor 前创建 `running` 领域对象，异常时只由任务层标记 JobRun failed；领域运行可能永久停留 `running`，筛选失败还会留下已保存的 ScreenVersion/UniverseSnapshot 孤儿记录 |
+| B7 | **业务队列领取不是原子 claim** | `biz/tasks.py:161-172`、`biz/tasks.py:196-203` | `run_next()` 先查询 requested 行，再由 `execute_run()` 单独校验和更新；并发 Worker 可能选中同一 Run，锁竞争被 API 转成 500，而不是可预期的 claim 失败/重试结果 |
 
 ### 6.5 产品 / 配置与扩展性（用户视角核心痛点）
 
