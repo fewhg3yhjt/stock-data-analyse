@@ -840,6 +840,7 @@ POST /settings/reset
 - `web/templates/research_detail.html`：结构化研究详情页，展示运行状态、技术/市场/估值/基本面状态、策略决策、证据和技术详情。
 - `web/static/research-detail.js` / `research-detail.css`：页面级 API Adapter 与响应式样式；不在浏览器端重新计算指标或伪造延期能力。
 - `tests/test_research_detail_page.py`：页面结构和研究运行上下文测试；JavaScript 使用 `node --check` 验证。
+- `web/biz_api.py` 已补齐观察订阅、持仓周期、持仓列表和周期收益的正式契约路径。
 - 当前限制：工作台、市场发现、观察池、持仓和复盘页面仍有旧接口接入，尚未全部切换至新业务 API。
 
 ## 12. 全量页面设计基线

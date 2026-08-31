@@ -24,6 +24,9 @@ def test_biz_blueprint_registered(app):
     assert "/api/screens" in routes
     assert "/api/screen-candidates/<candidate_id>/observe" in routes
     assert "/api/observations/<observation_id>/simulation-plan" in routes
+    assert "/api/watch-subscriptions" in routes
+    assert "/api/portfolios/<portfolio_id>/positions" in routes
+    assert "/api/position-cycles/<cycle_id>" in routes
 
 
 def test_preview_requires_condition(app):
@@ -47,6 +50,16 @@ def test_create_screen_validates_and_persists_definition(app):
     })
     assert response.status_code == 201
     assert response.get_json()["data"]["status"] == "published"
+
+
+def test_position_and_subscription_not_found_contracts(app):
+    client = app.test_client()
+    position = client.get("/api/position-cycles/no-such")
+    assert position.status_code == 404
+    assert position.get_json()["error"]["code"] == "POSITION_CYCLE_NOT_FOUND"
+    portfolio = client.get("/api/portfolios/no-such/positions")
+    assert portfolio.status_code == 404
+    assert portfolio.get_json()["error"]["code"] == "PORTFOLIO_NOT_FOUND"
 
 
 def test_observation_not_found(app):

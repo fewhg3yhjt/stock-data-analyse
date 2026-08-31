@@ -340,6 +340,24 @@ def list_notification_deliveries():
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/performance/cycles/<cycle_id>")
+def get_cycle_performance(cycle_id: str):
+    from StockInvestmentTool.biz.portfolio import PortfolioService
+    from StockInvestmentTool.biz.performance import PerformanceService
+    cycle = PortfolioService(_repo()).get_cycle(cycle_id)
+    if not cycle:
+        return _error("POSITION_CYCLE_NOT_FOUND", "持仓周期不存在", 404)
+    start_date = flask.request.args.get("start_date") or (cycle.opened_at or "")[:10]
+    end_date = flask.request.args.get("end_date") or datetime.utcnow().strftime("%Y-%m-%d")
+    if not start_date or not end_date:
+        return _error("PERFORMANCE_INVALID", "start_date 和 end_date 必填")
+    return flask.jsonify({"data": {
+        "cycle_id": cycle_id, "portfolio_id": cycle.portfolio_id,
+        "start_date": start_date, "end_date": end_date,
+        "summary": PortfolioService(_repo()).position_summary(cycle_id),
+    }, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
 @biz_api.get("/position-cycles/<cycle_id>/snapshots/<as_of>")
 def get_position_snapshot(cycle_id: str, as_of: str):
     from StockInvestmentTool.biz.portfolio import PortfolioService
@@ -572,6 +590,16 @@ def list_observations():
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/watch-subscriptions")
+def list_watch_subscriptions():
+    repo = _repo()
+    rows = repo.db.fetchall(
+        "SELECT * FROM watch_subscriptions ORDER BY updated_at DESC"
+    )
+    return flask.jsonify({"data": {"items": [dict(row) for row in rows]},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
 @biz_api.post("/watch-subscriptions")
 def create_watch_subscription():
     payload = flask.request.get_json(silent=True) or {}
@@ -620,6 +648,30 @@ def record_entry(observation_id: str):
     except WorkflowError as exc:
         status = 409 if str(exc) in {"ENTRY_CONFIRMATION_REQUIRED", "INSUFFICIENT_CASH"} else 400
         return _error(str(exc), str(exc), status)
+
+
+@biz_api.get("/position-cycles/<cycle_id>")
+def get_position_cycle(cycle_id: str):
+    from StockInvestmentTool.biz.portfolio import PortfolioService
+    service = PortfolioService(_repo())
+    cycle = service.get_cycle(cycle_id)
+    if not cycle:
+        return _error("POSITION_CYCLE_NOT_FOUND", "持仓周期不存在", 404)
+    return flask.jsonify({"data": {
+        "cycle": cycle.__dict__, "summary": service.position_summary(cycle_id),
+    }, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/portfolios/<portfolio_id>/positions")
+def list_positions(portfolio_id: str):
+    from StockInvestmentTool.biz.portfolio import PortfolioService
+    service = PortfolioService(_repo())
+    if not service.get_portfolio(portfolio_id):
+        return _error("PORTFOLIO_NOT_FOUND", "组合不存在", 404)
+    return flask.jsonify({"data": {"items": [
+        {"cycle": cycle.__dict__, "summary": service.position_summary(cycle.position_cycle_id)}
+        for cycle in service.list_cycles(portfolio_id)
+    ]}, "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
 @biz_api.post("/observations/<observation_id>/<action>")

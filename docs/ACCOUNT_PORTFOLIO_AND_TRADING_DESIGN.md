@@ -501,6 +501,7 @@ idempotent_replay
 - `PositionValuationService` 已持久化 `PositionSnapshot`，并由 `/api/biz/position-cycles/<cycle_id>/snapshots/<as_of>` 提供查询。
 - `biz/migration.py` 已提供旧 `portfolio.db` 的只读评估、canonical code 转换、基础现金/Lot/Execution 重建、幂等导入和 `legacy_entity_map` 记录；当前仅在临时库验证，未执行生产迁移。
 - `biz/workflow.py` 已提供 ready_for_entry → PositionCycle → BUY Execution → CashLedger → promoted 的单事务建仓流程。
+- `web/biz_api.py` 已提供 `/api/portfolios/{portfolio_id}/positions` 和 `/api/position-cycles/{cycle_id}` 正式查询入口。
 
 ### 后续待开发
 
