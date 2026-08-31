@@ -655,6 +655,8 @@ P0-Smoke: PASS
 - StrategyDecision 正式评估现在要求绑定 `strategy_version_id`；持久化决策会校验策略版本存在。
 - SimulationExecutor 已统一使用 FIFO Lot 计算已实现收益、win rate、profit factor、手续费、税费和滑点，并支持多标的独立持仓。
 - 模拟买入在信号时点执行最大仓位约束，避免使用区间末尾价格形成未来数据泄漏。
+- 决策仲裁已先按动作业务优先级（风险/卖出优先）再按规则 priority 处理；未被选中的触发规则会移动到 `suppressed_rules` 并记录抑制原因。
+- 硬止损已覆盖 holding、accumulating、left_take_profit、right_trailing 阶段。
 
 ### 阶段 1 验证
 

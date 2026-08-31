@@ -155,7 +155,7 @@ class TestEvaluate:
     def test_triggered_lower_priority_rule_is_suppressed(self):
         spec = make_spec()
         spec.entry_rules.append({
-            "rule_id": "lower", "action": "BUY_MORE", "priority": 1,
+            "rule_id": "lower", "action": "BUY", "priority": 1,
             "when": {"type": "comparison", "left": {"field": "close"},
                      "operator": ">", "right": {"value": 11}},
         })
@@ -164,3 +164,13 @@ class TestEvaluate:
         suppressed = decision.decision_trace["suppressed_rules"]
         assert any(item.get("rule_id") == "lower" and item.get("suppressed_by") == "pullback_entry"
                    for item in suppressed)
+
+    def test_sell_action_beats_higher_priority_buy(self):
+        spec = make_spec()
+        spec.entry_rules[0]["priority"] = 999
+        spec.exit_rules[0]["priority"] = 1
+        spec.exit_rules[0]["when"] = {"type": "comparison", "left": {"field": "close"},
+                                       "operator": ">", "right": {"value": 5}}
+        decision = compile_strategy(spec, strategy_version_id="sv_test").evaluate(make_ctx())
+        assert decision.action == "SELL_ALL"
+        assert decision.decision_trace["triggered_rules"][0]["rule_id"] == "hard_stop_sell"

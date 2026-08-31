@@ -126,12 +126,22 @@ class StrategyEvaluator:
             triggered, risk_action, context
         )
 
-        if used_trigger is not None:
+        if risk_action:
             for item in triggered:
-                if item is not used_trigger:
+                item["suppressed_by"] = "risk"
+                item["suppression_reason"] = risk_action["reason"]
+            suppressed.extend(triggered)
+            triggered = []
+        elif used_trigger is not None:
+            selected = []
+            for item in triggered:
+                if item is used_trigger:
+                    selected.append(item)
+                else:
                     item["suppressed_by"] = used_trigger.get("rule_id", "")
-                    item["suppression_reason"] = "被更高优先级规则或动作覆盖"
+                    item["suppression_reason"] = "被更高动作优先级或规则优先级覆盖"
                     suppressed.append(item)
+            triggered = selected
 
         decision_trace = {
             "evaluated_rules": evaluated,
@@ -179,7 +189,9 @@ class StrategyEvaluator:
     def _eval_risk(self, context: StrategyContext) -> dict | None:
         """评估风控，返回强制动作（dict 含 action/reason）或 None。"""
         hard_stop = self.spec.risk.get("hard_stop_ratio")
-        if hard_stop and context.position_state in {"open", "holding", "accumulating"}:
+        if hard_stop and context.position_state in {
+            "open", "holding", "accumulating", "left_take_profit", "right_trailing"
+        }:
             avg_cost = context.position_state_avg_cost
             price = self._reference_price(context)
             if avg_cost and price and price <= avg_cost * (1 - float(hard_stop)):
@@ -197,8 +209,8 @@ class StrategyEvaluator:
 
         best = min(
             enumerate(triggered),
-            key=lambda item: (-int(item[1].get("priority", 0)),
-                              ACTION_PRIORITY.get(item[1]["action"], 99), item[0]),
+            key=lambda item: (ACTION_PRIORITY.get(item[1]["action"], 99),
+                              -int(item[1].get("priority", 0)), item[0]),
         )[1]
         action = best["action"]
 
