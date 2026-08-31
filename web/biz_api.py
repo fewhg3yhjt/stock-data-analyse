@@ -211,6 +211,25 @@ def get_research_run(run_id: str):
     return flask.jsonify({"data": result, "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/business-runs/<run_id>")
+def get_business_run_status(run_id: str):
+    row = _repo().db.fetchone("SELECT * FROM business_job_runs WHERE run_id=?", (run_id,))
+    if not row:
+        return _error("BUSINESS_RUN_NOT_FOUND", "业务运行不存在", 404)
+    return flask.jsonify({"data": dict(row), "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/strategies/versions")
+def list_strategy_versions():
+    repo = _repo()
+    rows = repo.db.fetchall(
+        "SELECT strategy_version_id,strategy_id,version_no,config_hash,status,created_at "
+        "FROM strategy_versions ORDER BY strategy_id,version_no DESC"
+    )
+    return flask.jsonify({"data": {"items": [dict(row) for row in rows]},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
 @biz_api.get("/research-runs/<run_id>/evidence")
 def get_research_evidence(run_id: str):
     repo = _repo()
@@ -589,17 +608,6 @@ def list_business_task_runs():
     task_key = flask.request.args.get("task_key")
     runs = BusinessTaskService(_repo()).list_runs(task_key=task_key)
     return flask.jsonify({"data": {"items": runs},
-                          "request_id": flask.request.headers.get("X-Request-ID", "")})
-
-
-@biz_api.get("/business-runs/<run_id>")
-def get_business_run(run_id: str):
-    row = _repo().db.fetchone(
-        "SELECT * FROM business_job_runs WHERE run_id=?", (run_id,)
-    )
-    if not row:
-        return _error("BUSINESS_RUN_NOT_FOUND", "业务运行不存在", 404)
-    return flask.jsonify({"data": dict(row),
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 

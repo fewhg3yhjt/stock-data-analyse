@@ -851,6 +851,7 @@ POST /settings/reset
 - 当前业务专项测试与页面测试共 `151 passed`；工作台、市场发现、观察池、持仓和复盘页面的正式新 API 切换仍未完成。
 - 当前 `workbench.html/workbench.js` 已完成视觉改版，但仍消费旧的 `/api/workbench/*` 和 `/api/watch-pool` 聚合接口，属于页面改版，不属于新业务 API 主链路切换。
 - 新业务正式 API 的筛选、研究和模拟创建接口均返回 `202 + run_id + status_url`，页面接入时必须采用短轮询，不得等待 HTTP 请求直接返回计算结果。
+- 个股研究详情页已通过 `business-runs/{run_id}` 轮询 requested/running/terminal 状态；完成后再读取 ResearchRun 结果。
 
 ## 12. 全量页面设计基线
 
