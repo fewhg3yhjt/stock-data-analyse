@@ -415,6 +415,7 @@ assumptions
 - 实际/模拟/基准统一日期轴和收益口径。
 - PerformanceSnapshot/Comparison 持久化与导出 API。
 - 业务 API 已提供持仓快照、日报和复盘基础查询，但 PerformanceSnapshot/Comparison 的正式落库仍待完成。
+- `web/biz_api.py` 已提供组合收益查询、周期复盘创建/查询和证据查询基础入口；收益 API 要求明确日期范围并通过业务数据访问层读取行情。
 
 ### 跨模块验证
 

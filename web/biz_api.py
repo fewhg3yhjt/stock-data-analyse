@@ -369,6 +369,76 @@ def list_system_alerts():
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/health/live")
+def business_health_live():
+    from StockInvestmentTool.biz.platform import HealthService
+    return flask.jsonify({"data": HealthService().live(),
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/health/ready")
+def business_health_ready():
+    from StockInvestmentTool.biz.platform import HealthService
+    return flask.jsonify({"data": HealthService().ready(),
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/health/details")
+def business_health_details():
+    from StockInvestmentTool.biz.platform import HealthService
+    return flask.jsonify({"data": HealthService().details(),
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/performance/portfolios/<portfolio_id>")
+def get_business_performance(portfolio_id: str):
+    start_date = flask.request.args.get("start_date")
+    end_date = flask.request.args.get("end_date")
+    if not start_date or not end_date:
+        return _error("PERFORMANCE_INVALID", "start_date 和 end_date 必填")
+    from StockInvestmentTool.biz.performance import PerformanceService
+    from StockInvestmentTool.biz.portfolio import PortfolioService
+    from StockInvestmentTool.biz.valuation import PositionValuationService
+    from StockInvestmentTool.biz.data_access import load_market_data
+    try:
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        dataset = load_market_data(Warehouse(), start_date=start_date, end_date=end_date)
+        result = PerformanceService(PortfolioService(_repo())).compute(
+            portfolio_id, start_date, end_date, price_df=dataset.data,
+        )
+        return flask.jsonify({"data": {**result.__dict__, "data_context": dataset.context},
+                              "request_id": flask.request.headers.get("X-Request-ID", "")})
+    except Exception as exc:  # noqa: BLE001
+        return _error("PERFORMANCE_FAILED", str(exc), 500)
+
+
+@biz_api.post("/reviews/cycles/<cycle_id>")
+def create_business_review(cycle_id: str):
+    payload = flask.request.get_json(silent=True) or {}
+    from StockInvestmentTool.biz.performance import ReviewService
+    try:
+        review = ReviewService(_repo()).create_review(
+            cycle_id, discovery_reason=payload.get("discovery_reason", ""),
+            research_summary=payload.get("research_summary", ""),
+            simulation_run_id=payload.get("simulation_run_id"),
+        )
+        return flask.jsonify({"data": review.__dict__,
+                              "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+    except Exception as exc:  # noqa: BLE001
+        return _error("REVIEW_FAILED", str(exc), 500)
+
+
+@biz_api.get("/reviews/<review_id>")
+def get_business_review(review_id: str):
+    from StockInvestmentTool.biz.performance import ReviewService
+    service = ReviewService(_repo())
+    review = service.get_review(review_id)
+    if not review:
+        return _error("REVIEW_NOT_FOUND", "复盘不存在", 404)
+    review["evidence"] = service.list_evidence(review_id)
+    return flask.jsonify({"data": review, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
 @biz_api.post("/tasks/<task_key>/runs")
 def create_business_task_run(task_key: str):
     payload = flask.request.get_json(silent=True) or {}
