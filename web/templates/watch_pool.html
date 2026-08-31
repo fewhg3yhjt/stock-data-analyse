@@ -7,7 +7,7 @@
 </style>{% endblock %}
 {% block body %}
 <main class="app"><header class="header"><div><h1><i class="fas fa-layer-group"></i> 观察池</h1><div class="sub">候选 → 观察 → 选择策略模拟 → 查看结果 → 建仓</div></div>{% set active='watchpool' %}{% include '_nav.html' %}</header>
-<section class="card"><div class="card-title"><span>投资状态流</span><button class="btn btn-outline btn-sm" onclick="loadPool(true)">重算观察指标</button></div><div class="flow"><span>1. 候选</span>→<span>2. 加入观察</span>→<span>3. 选择策略模拟</span>→<span>4. 查看模拟详情</span>→<span>5. 确认建仓</span>→<span>6. 持仓管理</span></div><div id="health-note" class="notice" style="margin-top:12px">正在检查日线数据...</div></section>
+<section class="card"><div class="card-title"><span>观察流程</span><button class="btn btn-outline btn-sm" onclick="loadPool(true)">刷新观察数据</button></div><div class="flow"><span>1. 候选</span>→<span>2. 加入观察</span>→<span>3. 策略模拟</span>→<span>4. 确认建仓</span>→<span>5. 持仓</span></div><div id="health-note" class="notice" style="margin-top:12px">正在检查日线数据...</div></section>
 <section class="card"><div class="table-wrap"><table><thead><tr><th>股票</th><th>当前阶段</th><th>来源/原因</th><th>策略与模拟</th><th>持仓</th><th>下一步操作</th></tr></thead><tbody id="pool-rows"><tr><td colspan="6" class="empty">加载中...</td></tr></tbody></table></div></section></main>
 <div class="modal-bg" id="simulation-modal"><div class="modal"><div class="card-title"><span id="sim-title">策略模拟</span><button class="btn btn-outline btn-sm" onclick="closeModal()">关闭</button></div><div id="sim-form"><div class="form-group"><label>选择已启用策略方案</label><select id="sim-scheme"></select></div><div class="note" id="sim-health"></div><button class="btn btn-primary" id="sim-run" onclick="runSimulation()">运行策略模拟</button></div><div id="sim-result" style="display:none"></div></div></div>
 <script>
