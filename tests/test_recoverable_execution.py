@@ -136,3 +136,31 @@ def test_recover_inflight_publishing_marks_failed(tmp_path):
     with sqlite3.connect(state.db_path) as conn:
         row = conn.execute("SELECT publish_status FROM dataset_versions WHERE version_id=?", (version,)).fetchone()
     assert row[0] == "publish_failed"
+
+
+def test_recover_inflight_publishing_restores_matching_file(tmp_path):
+    """正式文件 checksum 匹配新版本时，恢复补齐 dataset_current。"""
+    import hashlib
+    import sqlite3
+    import pandas as pd
+    from StockInvestmentTool.warehouse.pipeline_state import PipelineState, recover_inflight_publishing
+
+    state = PipelineState(tmp_path / "meta.db")
+    path = tmp_path / "cand.parquet"
+    pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"]}).to_parquet(path, index=False)
+    version = state.create_version({
+        "version_id": "v1", "partition": "2026-08", "path": path,
+        "row_count": 1, "symbol_count": 1,
+        "checksum": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }, source_batches=[])
+    with sqlite3.connect(state.db_path) as conn:
+        conn.execute("UPDATE dataset_versions SET publish_status='publishing',published_path=? WHERE version_id=?",
+                     (str(path), version))
+    assert recover_inflight_publishing(state.db_path) == 1
+    with sqlite3.connect(state.db_path) as conn:
+        row = conn.execute("SELECT publish_status FROM dataset_versions WHERE version_id=?", (version,)).fetchone()
+        current = conn.execute(
+            "SELECT version_id FROM dataset_current WHERE dataset_name='stock_daily' AND partition_key='2026-08'"
+        ).fetchone()
+    assert row[0] == "published"
+    assert current[0] == version

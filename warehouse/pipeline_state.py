@@ -39,6 +39,11 @@ class PipelineState:
               affected_symbols TEXT, publish_allowed INTEGER NOT NULL, checked_at TEXT NOT NULL,
               checker_version TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS dataset_publish_locks (
+              dataset_name TEXT NOT NULL, partition_key TEXT NOT NULL,
+              lock_key TEXT NOT NULL, acquired_at TEXT NOT NULL,
+              PRIMARY KEY(dataset_name, partition_key)
+            );
             """)
             columns = {row[1] for row in conn.execute("PRAGMA table_info(dataset_versions)")}
             if "rollback_path" not in columns:
@@ -189,13 +194,33 @@ class PipelineState:
 def recover_inflight_publishing(db_path: Path | str | None = None) -> int:
     """启动时回收遗留 publishing 版本（进程重启时发布中断）。
 
-    将 publish_status='publishing' 的版本标记为 'publish_failed'，
-    避免恢复后误以为正式文件已就绪。
+    按文件内容恢复（工作项 3）：
+    - 正式文件 checksum 匹配新版本 → 补齐 dataset_current；
+    - 正式文件不存在或 checksum 不匹配新版本 → 标记 publish_failed，
+      不自动回退或选择其他版本（转人工）。
     """
+    import hashlib
     if db_path is None:
         from StockInvestmentTool.config import Config
         db_path = Config.DATA_DIR / "management.db"
+    recovered = 0
     with sqlite3.connect(str(db_path)) as conn:
-        cur = conn.execute(
-            "UPDATE dataset_versions SET publish_status='publish_failed' WHERE publish_status='publishing'")
-        return cur.rowcount
+        rows = conn.execute(
+            "SELECT version_id,dataset_name,partition_key,published_path,checksum,previous_version_id "
+            "FROM dataset_versions WHERE publish_status='publishing'").fetchall()
+        for version_id, dataset_name, partition_key, published_path, checksum, previous_version_id in rows:
+            path = Path(published_path) if published_path else None
+            if path and path.exists() and path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == checksum:
+                now = datetime.now().isoformat(timespec="seconds")
+                conn.execute("UPDATE dataset_versions SET publish_status='published',published_at=? WHERE version_id=?",
+                             (now, version_id))
+                conn.execute("""INSERT INTO dataset_current (dataset_name,partition_key,version_id,published_at)
+                    VALUES (?,?,?,?) ON CONFLICT(dataset_name,partition_key)
+                    DO UPDATE SET version_id=excluded.version_id,published_at=excluded.published_at""",
+                             (dataset_name, partition_key, version_id, now))
+                recovered += 1
+            else:
+                conn.execute("UPDATE dataset_versions SET publish_status='publish_failed' WHERE version_id=?",
+                             (version_id,))
+                recovered += 1
+    return recovered
