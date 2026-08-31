@@ -538,6 +538,11 @@ def _recover_stale_task_state() -> int:
         recovered += recover_inflight_publishing()
     except Exception as exc:
         logger.warning("publishing 版本回收失败: %s", exc)
+    try:
+        from StockInvestmentTool.web.app import _recover_analysis_tasks
+        recovered += _recover_analysis_tasks()
+    except Exception as exc:
+        logger.warning("分析任务回收失败: %s", exc)
     if recovered:
         logger.info("启动回收遗留任务状态 %d 项", recovered)
     return recovered

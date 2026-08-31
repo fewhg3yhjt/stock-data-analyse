@@ -12,6 +12,7 @@ from typing import Any
 
 from StockInvestmentTool.biz.db import BusinessDB, dumps_json, loads_json, now_utc
 from StockInvestmentTool.biz.models import (
+    SimulationEvent,
     SimulationFill,
     SimulationLot,
     SimulationResult,
@@ -415,3 +416,32 @@ class BusinessRepository:
             "SELECT * FROM simulation_fills WHERE simulation_run_id=? ORDER BY execution_time, fill_id",
             (run_id,))
         return [dict(r) for r in rows]
+
+    def save_simulation_event(self, event: SimulationEvent) -> str:
+        """持久化模拟事件（B8：新 biz 链路事件不再只存内存）。"""
+        self.db.insert("simulation_events", {
+            "event_id": event.event_id,
+            "simulation_run_id": event.simulation_run_id,
+            "symbol": event.symbol,
+            "event_type": event.event_type,
+            "payload_json": dumps_json(event.payload),
+            "event_time": event.event_time,
+        })
+        return event.event_id
+
+    def save_simulation_events(self, events: list[SimulationEvent]) -> int:
+        """批量持久化模拟事件，逐条幂等写入。"""
+        for event in events:
+            self.save_simulation_event(event)
+        return len(events)
+
+    def list_simulation_events(self, run_id: str) -> list[dict]:
+        rows = self.db.fetchall(
+            "SELECT * FROM simulation_events WHERE simulation_run_id=? ORDER BY event_time, event_id",
+            (run_id,))
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["payload"] = loads_json(d.pop("payload_json"))
+            result.append(d)
+        return result

@@ -56,6 +56,71 @@ _analysis_status: dict[str, dict] = {}
 _heavy_task_lock = threading.BoundedSemaphore(1)
 
 
+def _analysis_db_path() -> str:
+    from StockInvestmentTool.config import Config
+    return str(Config.DATA_DIR / "management.db")
+
+
+def _store_analysis_task(task_id: str, task_type: str, code: str, status: dict) -> None:
+    """持久化分析任务状态（阶段十一工作项 9/10）。"""
+    import sqlite3
+    from datetime import datetime as _dt
+    try:
+        with sqlite3.connect(_analysis_db_path()) as conn:
+            conn.execute("""INSERT INTO web_analysis_tasks
+                (task_id, task_type, code, status, stage, progress, result_json, error,
+                 created_at, finished_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(task_id) DO UPDATE SET
+                  status=excluded.status, stage=excluded.stage, progress=excluded.progress,
+                  result_json=excluded.result_json, error=excluded.error, finished_at=excluded.finished_at""",
+                         (task_id, task_type, code,
+                          status.get("status", "running"),
+                          status.get("stage", ""),
+                          int(status.get("progress", 0) or 0),
+                          _to_json_safe(status.get("result")),
+                          status.get("error"),
+                          status.get("_created_at", _dt.now().isoformat(timespec="seconds")),
+                          _dt.now().isoformat(timespec="seconds") if status.get("status") in ("success", "error") else None))
+    except Exception:
+        logger.warning("持久化分析任务失败: %s", task_id)
+
+
+def _recover_analysis_tasks() -> int:
+    """重启后把遗留 running 分析任务标记为 failed（工作项 10）。"""
+    import sqlite3
+    from datetime import datetime as _dt
+    try:
+        with sqlite3.connect(_analysis_db_path()) as conn:
+            cur = conn.execute(
+                "UPDATE web_analysis_tasks SET status='failed', error='进程重启，任务中断', "
+                "finished_at=? WHERE status='running'",
+                (_dt.now().isoformat(timespec="seconds"),))
+            return cur.rowcount
+    except Exception:
+        return 0
+
+
+def _get_analysis_task(task_id: str) -> dict | None:
+    import sqlite3
+    try:
+        with sqlite3.connect(_analysis_db_path()) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM web_analysis_tasks WHERE task_id=?", (task_id,)).fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            try:
+                import json as _json
+                d["result"] = _json.loads(d.pop("result_json") or "null")
+            except Exception:
+                d["result"] = None
+            return d
+    except Exception:
+        return None
+
+
 def _attach_memory(status: dict, label: str, memory_result: dict) -> None:
     """Expose task memory in the response while keeping logs concise."""
     result = memory_result.get("state", {}).get("result")
@@ -138,6 +203,7 @@ def _run_analysis(task_id: str, code: str, name: str,
                 # monitor_memory finalizes its result after this block exits.
                 pass
         _attach_memory(status, "analysis", memory)
+        _store_analysis_task(task_id, "analysis", code, status)
 
 
 @web_app.route("/", methods=["GET"])
@@ -290,6 +356,21 @@ def api_data_status():
         return flask.jsonify(result)
     except Exception as e:
         logger.exception("数据状态读取失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/analysis/tasks/<task_id>", methods=["GET"])
+def api_analysis_task(task_id: str):
+    """查询持久化的分析/对比任务状态（阶段十一工作项 9）。"""
+    try:
+        task = _get_analysis_task(task_id)
+        if task is None:
+            return flask.jsonify({"status": "error", "error": "任务不存在"}), 404
+        from StockInvestmentTool.ops.status_catalog import status_info
+        task["status_info"] = status_info(task.get("status", "unknown"))
+        return flask.jsonify({"status": "success", "task": task})
+    except Exception as e:
+        logger.exception("任务查询失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
@@ -1412,8 +1493,10 @@ def analyze():
     # 后台执行
     task_id = f"task_{datetime.now().strftime('%H%M%S_%f')}"
     _analysis_status[task_id] = {
-        "status": "running", "stage": "初始化", "progress": 0, "result": None
+        "status": "running", "stage": "初始化", "progress": 0, "result": None,
+        "_created_at": datetime.now().isoformat(timespec="seconds"),
     }
+    _store_analysis_task(task_id, "analysis", code, _analysis_status[task_id])
 
     thread = threading.Thread(
         target=_run_analysis,
@@ -1426,8 +1509,8 @@ def analyze():
 
     result = _analysis_status.get(task_id, {})
     response = _to_json_safe(result)
-    if not thread.is_alive():
-        _analysis_status.pop(task_id, None)
+    if thread.is_alive():
+        response["_query_url"] = f"/api/analysis/tasks/{task_id}"
     return flask.jsonify(response)
 
 
@@ -1478,6 +1561,7 @@ def _run_comparison(task_id: str, code: str, name: str,
                 status["stage"] = "失败"
                 status["progress"] = -1
         _attach_memory(status, "comparison", memory)
+        _store_analysis_task(task_id, "comparison", code, status)
 
 
 @web_app.route("/compare", methods=["GET", "POST"])
@@ -1525,8 +1609,10 @@ def compare():
 
     task_id = f"cmp_{datetime.now().strftime('%H%M%S_%f')}"
     _analysis_status[task_id] = {
-        "status": "running", "stage": "初始化", "progress": 0, "result": None
+        "status": "running", "stage": "初始化", "progress": 0, "result": None,
+        "_created_at": datetime.now().isoformat(timespec="seconds"),
     }
+    _store_analysis_task(task_id, "comparison", code, _analysis_status[task_id])
     thread = threading.Thread(
         target=_run_comparison,
         args=(task_id, code, name, start_date, end_date, scheme_names, stock_type),
@@ -1537,8 +1623,8 @@ def compare():
 
     result = _analysis_status.get(task_id, {})
     response = _to_json_safe(result)
-    if not thread.is_alive():
-        _analysis_status.pop(task_id, None)
+    if thread.is_alive():
+        response["_query_url"] = f"/api/analysis/tasks/{task_id}"
     return flask.jsonify(response)
 
 

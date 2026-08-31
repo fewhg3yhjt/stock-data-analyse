@@ -189,6 +189,11 @@ class ManagementDB:
               task_key TEXT NOT NULL, metric_key TEXT NOT NULL, relation_type TEXT NOT NULL,
               enabled INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(task_key, metric_key)
             );
+            CREATE TABLE IF NOT EXISTS web_analysis_tasks (
+              task_id TEXT PRIMARY KEY, task_type TEXT NOT NULL, code TEXT NOT NULL,
+              status TEXT NOT NULL, stage TEXT NOT NULL DEFAULT '', progress INTEGER NOT NULL DEFAULT 0,
+              result_json TEXT, error TEXT, created_at TEXT NOT NULL, finished_at TEXT
+            );
             """)
             conn.execute("INSERT OR REPLACE INTO management_meta(key,value,updated_at) VALUES(?,?,?)",
                          ("schema_version", MANAGEMENT_SCHEMA_VERSION, now()))
@@ -206,6 +211,7 @@ class ManagementDB:
         migrations = [
             ("v1_management_initial", "统一管理库初始 Schema"),
             ("v2_job_runs_legacy_import", "旧 job_runs.db 只读迁移"),
+            ("v3_web_analysis_tasks", "Web 分析任务持久化"),
         ]
         applied = {row[0] for row in conn.execute("SELECT migration_id FROM schema_migrations")}
         for migration_id, _desc in migrations:

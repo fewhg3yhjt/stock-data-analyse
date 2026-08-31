@@ -213,6 +213,7 @@ def _simulation_handler(service: BusinessTaskService) -> Callable:
         service.repo.save_simulation_run(run)
         for fill in fills:
             service.repo.save_simulation_fill(fill)
+        service.repo.save_simulation_events(events)
         for symbol, lots in executor.account.positions.items():
             for lot in lots:
                 service.repo.save_simulation_lot(SimulationLot(
