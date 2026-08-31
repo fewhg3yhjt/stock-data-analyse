@@ -135,3 +135,8 @@ class TestObservationService:
         got = service.get_observation(obs.observation_id)
         assert got.symbol == "sz000001"
         assert got.status == OBS_DISCOVERED
+
+    def test_only_one_active_observation_per_symbol(self, service):
+        service.create_observation("sh600908")
+        with pytest.raises(ObservationStateError):
+            service.create_observation("sh600908")

@@ -210,7 +210,12 @@ class ObservationService:
                 source_strategy_version_id=strategy_version_id,
                 data_as_of=data_as_of, reason_snapshot=reason_snapshot or {},
             )
-        return self._persist(obs, event, link)
+        try:
+            return self._persist(obs, event, link)
+        except Exception as exc:
+            if "uq_observations_active_symbol" in str(exc) or "UNIQUE constraint failed: observations.symbol" in str(exc):
+                raise ObservationStateError(f"已存在 active Observation: {obs.symbol}") from exc
+            raise
 
     def set_ready_for_entry(self, obs: Observation, *, source_id: str = "") -> ObservationEvent:
         return self.transition(obs, OBS_READY_FOR_ENTRY,

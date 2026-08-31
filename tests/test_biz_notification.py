@@ -51,6 +51,9 @@ class TestNotificationService:
         advice = svc.advice_from_decision(dec, portfolio_id="pf1", position_cycle_id="pc1")
         assert advice.action == "BUY"
         assert advice.triggered_rules == ["pullback"]
+        assert advice.strategy_decision_id == dec.decision_id
+        assert advice.quantity_ratio == pytest.approx(0.2)
+        assert advice.quantity is None
         row = svc.repo.db.fetchone("SELECT * FROM advices WHERE advice_id=?", (advice.advice_id,))
         assert row["symbol"] == "sh600908"
 

@@ -62,7 +62,10 @@ class Advice:
     strategy_version_id: str | None = None
     portfolio_id: str | None = None
     position_cycle_id: str | None = None
+    strategy_decision_id: str | None = None
     quantity: float | None = None
+    quantity_ratio: float | None = None
+    amount: float | None = None
     price: float | None = None
     stop_price: float | None = None
     target_price: float | None = None
@@ -243,7 +246,10 @@ class NotificationService:
             advice_id=new_id("adv"), symbol=decision.symbol, action=decision.action,
             strategy_version_id=decision.strategy_version_id,
             portfolio_id=portfolio_id, position_cycle_id=position_cycle_id,
-            quantity=decision.quantity_ratio,
+            strategy_decision_id=decision.decision_id,
+            quantity_ratio=decision.quantity_ratio,
+            quantity=self._suggested_quantity(decision, portfolio_id),
+            amount=self._suggested_amount(decision),
             price=decision.price, stop_price=decision.stop_price,
             target_price=decision.target_price, reason=decision.reason,
             triggered_rules=[r.get("rule_id") for r in decision.decision_trace.get("triggered_rules", [])],
@@ -252,6 +258,7 @@ class NotificationService:
         self.repo.db.insert("advices", {
             "advice_id": advice.advice_id, "portfolio_id": advice.portfolio_id or "",
             "position_cycle_id": advice.position_cycle_id or "", "symbol": advice.symbol,
+            "strategy_decision_id": advice.strategy_decision_id or "",
             "action": advice.action, "quantity": advice.quantity, "price": advice.price,
             "stop_price": advice.stop_price, "target_price": advice.target_price,
             "reason": advice.reason, "triggered_rules_json": _dumps(advice.triggered_rules),
@@ -263,6 +270,19 @@ class NotificationService:
             "created_at": advice.created_at, "updated_at": advice.updated_at,
         })
         return advice
+
+    @staticmethod
+    def _suggested_amount(decision) -> float | None:
+        if decision.price is None or decision.quantity_ratio is None:
+            return None
+        return float(decision.price) * float(decision.quantity_ratio)
+
+    @staticmethod
+    def _suggested_quantity(decision, portfolio_id: str | None) -> float | None:
+        # LiveAdviceEvaluator receives PositionSnapshot context in production;
+        # when only a ratio is available, leave actual shares unknown rather than
+        # treating the ratio as a number of shares.
+        return None
 
     def transition_advice(self, advice_id: str, status: str) -> dict:
         row = self.repo.db.fetchone("SELECT * FROM advices WHERE advice_id=?", (advice_id,))

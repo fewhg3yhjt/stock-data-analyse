@@ -375,6 +375,8 @@ CREATE TABLE IF NOT EXISTS observations (
 );
 CREATE INDEX IF NOT EXISTS idx_observations_status ON observations(status);
 CREATE INDEX IF NOT EXISTS idx_observations_symbol ON observations(symbol);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_observations_active_symbol
+    ON observations(symbol) WHERE status IN ('discovered','observing','ready_for_entry');
 
 CREATE TABLE IF NOT EXISTS observation_sources (
     link_id TEXT PRIMARY KEY,
@@ -576,6 +578,7 @@ CREATE TABLE IF NOT EXISTS advices (
     advice_id TEXT PRIMARY KEY,
     portfolio_id TEXT,
     position_cycle_id TEXT,
+    strategy_decision_id TEXT,
     symbol TEXT NOT NULL,
     action TEXT NOT NULL,
     quantity REAL,
@@ -860,6 +863,9 @@ class BusinessDB:
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(advices)")}
+            if "strategy_decision_id" not in columns:
+                conn.execute("ALTER TABLE advices ADD COLUMN strategy_decision_id TEXT")
             conn.execute(
                 "INSERT OR IGNORE INTO schema_migrations(migration_id, applied_at) VALUES('v1_initial', datetime('now'))"
             )
