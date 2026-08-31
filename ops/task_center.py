@@ -490,6 +490,37 @@ class TaskCenter:
         with self._connect() as conn:
             return [task_labels(dict(row)) for row in conn.execute("SELECT * FROM task_definitions ORDER BY stage,task_key")]
 
+    def active_configs(self) -> dict[str, dict]:
+        """Return the active config for every task from management.db.
+
+        唯一事实源：Active Config（management.db task_config_versions.status='active'）。
+        YAML 仅在初始同步时写入；运行期调度以这里为准。
+        """
+        result = {}
+        with self._connect() as conn:
+            rows = conn.execute("""SELECT t.task_key, t.enabled, t.stage, t.task_type,
+                v.version, v.config
+                FROM task_definitions t
+                JOIN task_config_versions v ON v.task_key=t.task_key AND v.version=t.active_config_version
+                WHERE t.active_config_version IS NOT NULL""").fetchall()
+        for key, enabled, stage, task_type, version, raw in rows:
+            try:
+                config = json.loads(raw or "{}")
+            except (TypeError, ValueError):
+                config = {}
+            schedule = config.get("schedule") or {}
+            result[key] = {
+                "task_key": key,
+                "display_name": config.get("task", {}).get("display_name", key),
+                "stage": stage,
+                "task_type": task_type,
+                "version": version,
+                "enabled": bool(enabled and schedule.get("enabled", False)),
+                "schedule": schedule,
+                "config": config,
+            }
+        return result
+
     def list_metrics(self):
         with sqlite3.connect(self.metadata_db_path) as conn:
             conn.row_factory = sqlite3.Row

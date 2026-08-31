@@ -370,12 +370,43 @@ def api_data_scheduler():
         else: reason = "registered"
         return {"configured": configured, "eligible": eligible, "effective": running and registered,
                 "registered": registered, "reason": reason}
+    task_status = []
+    if running:
+        from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
+        active = TaskCenter(management_db_path()).active_configs()
+        registered_ids = {j["id"] for j in jobs}
+        for key, item in active.items():
+            freq = (item["schedule"] or {}).get("frequency")
+            spec = (item["schedule"] or {}).get("time")
+            eligible = item["enabled"] and freq not in {"after_upstream", "manual"} and bool(spec)
+            job_id = f"task:{key}"
+            job = next((j for j in jobs if j["id"] == job_id), None)
+            if not item["enabled"]:
+                reason = "disabled"
+            elif not eligible:
+                reason = "not_schedulable"
+            elif job is None:
+                reason = "not_registered"
+            else:
+                reason = "registered"
+            task_status.append({
+                "task_key": key, "display_name": item["display_name"],
+                "configured": True, "enabled": item["enabled"],
+                "registered": job is not None,
+                "effective": running and eligible and job is not None,
+                "next_run": job["next_run"] if job else None,
+                "reason": reason,
+            })
     return flask.jsonify({"status": "success", "running": running,
         "reason": base_reason if not running else "registered",
         "timezone": "Asia/Shanghai", "features": {
-            "daily_sync": feature(daily, any(j["id"] == "daily_sync" for j in jobs), daily),
+            "daily_sync": {**feature(daily, any(j["id"] == "daily_sync" for j in jobs), daily),
+                           "legacy": True,
+                           "migrated_to": "task:stock_daily_capture",
+                           "note": "WAREHOUSE_DAILY_SYNC 为 Legacy 开关，新版调度统一走任务中心 Active Config"},
             "minute_snapshot": feature(minute, any(j["id"].startswith("minute_snapshot") for j in jobs), minute),
             "online_snapshot": feature(online, any(j["id"] == "online_snapshot" for j in jobs), online and not minute, minute and online)},
+        "tasks": task_status,
         "jobs": jobs})
 
 

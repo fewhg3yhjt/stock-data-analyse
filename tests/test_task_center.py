@@ -25,3 +25,34 @@ def test_task_request_event_and_artifact_preview(tmp_path):
     artifact = center.register_artifact(run_id=7, dataset_name="indicators", artifact_type="indicator_output", file_path=path)
     preview = center.preview_artifact(artifact, limit=1)
     assert preview["rows"][0]["code"] == "sh600000"
+
+
+def test_active_configs_reflect_definition_schedule(tmp_path):
+    center = TaskCenter(tmp_path / "runs.db")
+    center.sync_definitions()
+    active = center.active_configs()
+    capture = active["stock_daily_capture"]
+    assert capture["task_key"] == "stock_daily_capture"
+    assert capture["schedule"]["frequency"] == "trading_day"
+    assert capture["schedule"]["timezone"] == "Asia/Shanghai"
+    assert capture["enabled"] is True
+    assert capture["version"] >= 1
+    # 只有启用的任务在 active_configs 中体现 enabled
+    for key, item in active.items():
+        schedule = item["schedule"] or {}
+        assert item["enabled"] == bool(item["enabled"] and schedule.get("enabled", False))
+
+
+def test_active_configs_reflect_saved_and_activated_changes(tmp_path):
+    center = TaskCenter(tmp_path / "runs.db")
+    center.sync_definitions()
+    original = center.active_configs()["money_flow_capture"]["schedule"]["time"]
+    # 保存草稿不激活：active config 不变
+    config = json.loads(center.task("money_flow_capture")["config_versions"][0]["config"])
+    config["schedule"]["time"] = "09:05"
+    center.save_task_config("money_flow_capture", config, activate=False)
+    assert center.active_configs()["money_flow_capture"]["schedule"]["time"] == original
+    # 激活后生效
+    version = center.save_task_config("money_flow_capture", config, activate=True)
+    assert center.active_configs()["money_flow_capture"]["schedule"]["time"] == "09:05"
+    assert center.active_configs()["money_flow_capture"]["version"] == version

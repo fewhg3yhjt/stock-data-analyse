@@ -297,20 +297,16 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
 
 
 def run_auxiliary_data_pipeline(parent_run_id: int | None = None) -> dict:
-    """Collect auxiliary datasets according to task configuration."""
+    """Collect auxiliary datasets according to the Active Config."""
     from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
     from StockInvestmentTool.warehouse.storage import Warehouse
-    from StockInvestmentTool.ops.task_center import load_task_definitions
+    from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
     from StockInvestmentTool.fundflow.capture import capture_money_flow
 
     warehouse = Warehouse()
     for name in ("industry", "fundamentals", "valuation_daily", "money_flow_daily"):
         warehouse.metadata.register_dataset(name)
-    configured = {
-        item["task"]["key"]: item
-        for item in load_task_definitions()
-        if item.get("task", {}).get("key")
-    }
+    configured = TaskCenter(management_db_path()).active_configs()
     result = {"enabled_tasks": []}
     collector = FundamentalsCollector(warehouse=warehouse)
     if _task_schedule_enabled(configured, "industry_capture"):
@@ -352,14 +348,14 @@ def run_auxiliary_data_pipeline(parent_run_id: int | None = None) -> dict:
 
 
 def _has_enabled_auxiliary_tasks() -> bool:
-    """Whether any configured auxiliary capture task is enabled."""
-    from StockInvestmentTool.ops.task_center import load_task_definitions
+    """Whether any configured auxiliary capture task is enabled (Active Config)."""
+    from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
     auxiliary_keys = {"industry_capture", "fundamentals_capture",
                       "valuation_capture", "money_flow_capture"}
     return any(
-        item.get("task", {}).get("key") in auxiliary_keys
-        and bool((item.get("schedule") or {}).get("enabled", False))
-        for item in load_task_definitions()
+        item["task_key"] in auxiliary_keys
+        and bool(item["enabled"])
+        for item in TaskCenter(management_db_path()).active_configs().values()
     )
 
 
@@ -470,29 +466,33 @@ def init_scheduler(app) -> None:
 
 
 def _schedule_configured_data_tasks(scheduler) -> None:
-    """Register enabled data tasks from config/tasks through the new runner."""
+    """Register enabled data tasks from the Active Config fact source.
+
+    唯一事实源是 management.db 的 Active Config（sync_definitions 时从 YAML
+    初始化，之后由任务中心保存/激活/启停控制）。YAML 的 schedule.enabled
+    仅在初始同步时写入，不再作为运行期事实。
+    """
     from apscheduler.triggers.cron import CronTrigger
-    from StockInvestmentTool.ops.task_center import load_task_definitions
+    from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
 
     def run_task(task_key):
         from StockInvestmentTool.ops.task_execution import execute_task, execute_pipeline
-        from StockInvestmentTool.ops.task_center import management_db_path
         payload = {
             "trigger_type": "scheduled", "requested_by": "scheduler",
         }
         if task_key == "stock_daily_capture":
-            configured_keys = {item.get("task", {}).get("key"): item for item in load_task_definitions()}
+            configured_keys = TaskCenter(management_db_path()).active_configs()
             chain = [key for key in ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
                                      "stock_daily_publish", "indicators_build")
-                     if (configured_keys.get(key, {}).get("schedule") or {}).get("enabled")]
+                     if (configured_keys.get(key) or {}).get("enabled")]
             return execute_pipeline(management_db_path(), chain or [task_key], payload)
         return execute_task(management_db_path(), task_key, payload)
 
-    for item in load_task_definitions():
-        task = item.get("task") or {}
-        schedule = item.get("schedule") or {}
-        key = task.get("key")
-        if not key or not schedule.get("enabled"):
+    from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
+    for item in TaskCenter(management_db_path()).active_configs().values():
+        key = item["task_key"]
+        schedule = item["schedule"] or {}
+        if not item["enabled"]:
             continue
         frequency = schedule.get("frequency")
         spec = schedule.get("time")
@@ -507,9 +507,27 @@ def _schedule_configured_data_tasks(scheduler) -> None:
         scheduler.add_job(
             run_task, CronTrigger(hour=hour, minute=minute, timezone=TZ, **kwargs),
             id=f"task:{key}", args=[key], misfire_grace_time=21600,
-            coalesce=True, max_instances=1,
+            coalesce=True, max_instances=1, replace_existing=True,
         )
         logger.info("配置任务已注册: %s (%s %s)", key, frequency, spec)
+
+
+def _reload_data_scheduler_jobs(app) -> None:
+    """免重启：按 Active Config 重载数据任务（删除 task:* 再按 active 注册）。
+
+    仅影响数据任务，不影响 Outbox、分钟快照和通知 Trigger。
+    """
+    sched = app.extensions.get("scheduler") if app else None
+    if sched is None:
+        return
+    try:
+        for job in sched.get_jobs():
+            if job.id.startswith("task:"):
+                job.remove()
+        _schedule_configured_data_tasks(sched)
+        logger.info("数据任务调度已按 Active Config 重载")
+    except Exception as exc:
+        logger.error("数据任务调度重载失败: %s", exc)
 
 
 def _load_notify_settings() -> dict:
@@ -810,12 +828,13 @@ def _watch_price_lines(params: Optional[dict] = None) -> list[str]:
 
 
 def _reload_scheduler_jobs(app) -> None:
-    """免重启：保存通知配置后重挂触发器作业。"""
+    """免重启：保存通知配置后重挂触发器作业，并按 Active Config 重载数据任务。"""
     sched = app.extensions.get("scheduler") if app else None
     if sched is None:
         return
     try:
         _schedule_from_triggers(sched)
+        _reload_data_scheduler_jobs(app)
     except Exception as e:
         logger.error("重挂通知触发器失败: %s", e)
 
