@@ -3029,7 +3029,8 @@ def create_app():
     )
     app.register_blueprint(web_app, url_prefix="/")
     from StockInvestmentTool.web.biz_api import biz_api
-    app.register_blueprint(biz_api)
+    app.register_blueprint(biz_api, url_prefix="/api/biz")
+    app.register_blueprint(biz_api, url_prefix="/api", name="business_contract_api")
 
     # 操作日志: 规则检查值可读格式化
     def _fmt_advice_value(v):
