@@ -13,11 +13,15 @@ from datetime import datetime
 import flask
 
 from StockInvestmentTool.biz.db import BusinessDB
-from StockInvestmentTool.biz.models import DataContext, StrategyContext
+from StockInvestmentTool.biz.models import DataContext, StrategyContext, SimulationPlan, new_id
 from StockInvestmentTool.biz.observation import ObservationService
 from StockInvestmentTool.biz.repo import BusinessRepository
 from StockInvestmentTool.biz.screen import ScreenDefinition, ScreenExecutor
 from StockInvestmentTool.biz.workflow import BusinessWorkflowService, WorkflowError
+from StockInvestmentTool.biz.research import ResearchService
+from StockInvestmentTool.biz.regime import MarketRegimeService
+from StockInvestmentTool.biz.simulation import execute_simulation
+from StockInvestmentTool.biz.strategy import StrategySpec, compile_strategy
 
 biz_api = flask.Blueprint("biz_api", __name__, url_prefix="/api/biz")
 
@@ -61,6 +65,167 @@ def preview_screen():
         }, "request_id": flask.request.headers.get("X-Request-ID", "")})
     except Exception as exc:  # noqa: BLE001
         return _error("SCREEN_RUN_FAILED", str(exc), 500)
+
+
+@biz_api.post("/screen-runs")
+def create_screen_run():
+    """执行并持久化一次正式筛选运行。"""
+    payload = flask.request.get_json(silent=True) or {}
+    condition = payload.get("condition_spec")
+    as_of = payload.get("as_of") or payload.get("end_date")
+    if not isinstance(condition, dict) or not as_of:
+        return _error("SCREEN_INVALID", "condition_spec 和 as_of 必填")
+    try:
+        from StockInvestmentTool.warehouse.datasets import load_dataset
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        dataset = load_dataset(
+            Warehouse(), "stock_daily", start_date=payload.get("start_date"),
+            end_date=as_of, symbols=payload.get("symbols"),
+            required_quality="WARNING", allow_legacy=False,
+        )
+        definition = ScreenDefinition(
+            screen_id=payload.get("screen_id") or new_id("screen"),
+            name=payload.get("name", "筛选运行"), version=str(payload.get("version", "1")),
+            condition_spec=condition, sort_spec=payload.get("sort_spec", {}),
+            display_fields=payload.get("display_fields", []),
+        )
+        repo = _repo()
+        screen_version_id = repo.save_screen_version(definition)
+        symbols = [str(x) for x in dataset.data["code"].dropna().unique()] if "code" in dataset.data else []
+        universe_id = repo.save_universe_snapshot(symbols, universe_type="selected_symbols", as_of=as_of)
+        candidates, meta = ScreenExecutor(definition, dataset.data).execute(as_of)
+        run = __import__("StockInvestmentTool.biz.screen", fromlist=["ScreenRun"]).ScreenRun(
+            run_id=new_id("screen_run"), screen_version_id=screen_version_id,
+            universe_snapshot_id=universe_id, run_type=payload.get("run_type", "manual"),
+            requested_as_of=as_of, actual_data_as_of=meta.get("actual_data_as_of", ""),
+            data_context=dataset.context, status=meta.get("status", "success"),
+            matched_count=len(candidates), started_at=meta.get("started_at", ""),
+            finished_at=meta.get("finished_at", ""), error=meta.get("error", ""),
+        )
+        repo.save_screen_run(run)
+        for candidate in candidates:
+            candidate.screen_run_id = run.run_id
+            repo.save_screen_candidate(candidate)
+        return flask.jsonify({"data": {
+            "run": run.__dict__,
+            "candidates": [c.__dict__ for c in candidates],
+            "data_context": dataset.context,
+        }, "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+    except Exception as exc:  # noqa: BLE001
+        return _error("SCREEN_RUN_FAILED", str(exc), 500)
+
+
+@biz_api.get("/screen-runs/<run_id>")
+def get_screen_run(run_id: str):
+    repo = _repo()
+    row = repo.db.fetchone("SELECT * FROM screen_runs WHERE screen_run_id=?", (run_id,))
+    if not row:
+        return _error("SCREEN_RUN_NOT_FOUND", "筛选运行不存在", 404)
+    run = dict(row)
+    run["data_context"] = __import__("StockInvestmentTool.biz.db", fromlist=["loads_json"]).loads_json(run.pop("data_context_json"))
+    run["candidates"] = repo.list_candidates(run_id)
+    return flask.jsonify({"data": run, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.post("/research-runs")
+def create_research_run():
+    """执行并持久化一次研究运行。"""
+    payload = flask.request.get_json(silent=True) or {}
+    symbol = payload.get("symbol")
+    if not symbol:
+        return _error("RESEARCH_INVALID", "symbol 必填")
+    try:
+        from StockInvestmentTool.warehouse.datasets import load_dataset
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        from StockInvestmentTool.indicators.engine import IndicatorRegistry
+        from StockInvestmentTool.indicators.context import IndicatorContext
+        symbol = __import__("StockInvestmentTool.biz.code", fromlist=["normalize"]).normalize(symbol)
+        dataset = load_dataset(
+            Warehouse(), "stock_daily", start_date=payload.get("start_date"),
+            end_date=payload.get("as_of"), symbols=[symbol],
+            required_quality="WARNING", allow_legacy=False,
+        )
+        strategy = None
+        strategy_version_id = payload.get("strategy_version_id", "")
+        if isinstance(payload.get("strategy"), dict):
+            strategy = compile_strategy(StrategySpec(**payload["strategy"]))
+        regime = MarketRegimeService(dataset.data, dataset.context).compute(
+            payload.get("as_of") or str(dataset.data["date"].iloc[-1])[:10]
+        )
+        result = ResearchService(dataset.data, dataset.context, strategy, regime.to_dict()).run()
+        repo = _repo()
+        repo.save_market_regime(regime)
+        repo.save_research_run(
+            result, dataset.context, subject_type=payload.get("subject_type", "single_symbol"),
+            symbol=symbol, strategy_version_id=strategy_version_id,
+            observation_id=payload.get("observation_id", ""),
+            source_screen_run_id=payload.get("screen_run_id", ""),
+            source_candidate_id=payload.get("candidate_id", ""),
+        )
+        for decision in result.decisions:
+            decision.strategy_version_id = strategy_version_id or decision.strategy_version_id
+            decision.research_run_id = result.research_run_id
+            repo.save_decision(decision)
+        return flask.jsonify({"data": {
+            "research_run_id": result.research_run_id,
+            "result": result.__dict__, "data_context": dataset.context,
+        }, "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+    except Exception as exc:  # noqa: BLE001
+        return _error("RESEARCH_RUN_FAILED", str(exc), 500)
+
+
+@biz_api.get("/research-runs/<run_id>")
+def get_research_run(run_id: str):
+    repo = _repo()
+    result = repo.get_research_run(run_id)
+    if not result:
+        return _error("RESEARCH_RUN_NOT_FOUND", "研究运行不存在", 404)
+    result["evidence"] = repo.list_research_evidence(run_id)
+    return flask.jsonify({"data": result, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.post("/simulation-runs")
+def create_simulation_run():
+    """执行并持久化单标的模拟运行。"""
+    payload = flask.request.get_json(silent=True) or {}
+    strategy_data = payload.get("strategy")
+    if not isinstance(strategy_data, dict) or not payload.get("symbol"):
+        return _error("SIMULATION_INVALID", "strategy 和 symbol 必填")
+    try:
+        from StockInvestmentTool.warehouse.datasets import load_dataset
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        from StockInvestmentTool.biz.code import normalize
+        symbol = normalize(payload["symbol"])
+        dataset = load_dataset(
+            Warehouse(), "stock_daily", start_date=payload.get("start_date"),
+            end_date=payload.get("end_date"), symbols=[symbol],
+            required_quality="WARNING", allow_legacy=False,
+        )
+        strategy = compile_strategy(StrategySpec(**strategy_data))
+        repo = _repo()
+        strategy_version_id = payload.get("strategy_version_id") or repo.save_strategy_version(
+            strategy.spec.strategy_id, int(strategy.spec.version), strategy_data, strategy.config_hash,
+        )
+        plan = SimulationPlan(
+            plan_id=new_id("plan"), strategy_version_id=strategy_version_id,
+            name=payload.get("name", "模拟运行"), start_date=payload["start_date"],
+            end_date=payload["end_date"], initial_cash=float(payload.get("initial_cash", 100000)),
+            cost_config=payload.get("cost_config", {}), benchmark=payload.get("benchmark", "sh000300"),
+            data_context=dataset.context,
+        )
+        repo.save_simulation_plan(plan)
+        run, result, fills, events = execute_simulation(plan, dataset.data, strategy=strategy)
+        repo.save_simulation_run(run)
+        for fill in fills:
+            repo.save_simulation_fill(fill)
+        repo.save_simulation_result(result)
+        return flask.jsonify({"data": {
+            "run": run.__dict__, "result": result.__dict__,
+            "fills": [f.__dict__ for f in fills], "events": [e.__dict__ for e in events],
+            "data_context": dataset.context,
+        }, "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+    except Exception as exc:  # noqa: BLE001
+        return _error("SIMULATION_RUN_FAILED", str(exc), 500)
 
 
 @biz_api.post("/candidates/<candidate_id>/observation")
