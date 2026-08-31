@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}StockInvestmentTool - 通知编排器{% endblock %}
+{% block title %}StockInvestmentTool - 通知中心{% endblock %}
 {% block head %}
 <style>
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
@@ -21,7 +21,7 @@ table.kv th{background:var(--surface2);font-weight:600;}
 <div class="app">
   <div class="header">
     <div>
-      <h1><i class="fas fa-bell"></i> 通知编排器</h1>
+      <h1><i class="fas fa-bell"></i> 通知中心</h1>
       <div class="sub">何时通知 · 什么条件 · 什么渠道 —— 配置即时生效（免重启）</div>
     </div>
   {% set active = 'notify' %}{% include '_nav.html' %}

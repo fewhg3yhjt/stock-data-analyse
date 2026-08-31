@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}StockInvestmentTool - 大盘{% endblock %}
+{% block title %}StockInvestmentTool - 市场{% endblock %}
 {% block head %}
 <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
 <style>
@@ -35,7 +35,7 @@ select,input{background:var(--surface2);border:1px solid var(--border);border-ra
 
   <div class="header">
     <div>
-      <h1><i class="fas fa-chart-line"></i> 大盘</h1>
+      <h1><i class="fas fa-chart-line"></i> 市场</h1>
       <div class="sub">指数走势 · 关注板块 · 持仓股票与止盈止损线</div>
     </div>
     {% set active = 'market' %}{% include '_nav.html' %}

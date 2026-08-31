@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}StockInvestmentTool - 股票筛选器{% endblock %}
+{% block title %}StockInvestmentTool - 市场发现{% endblock %}
 {% block head %}
 <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
 <style>
@@ -7,8 +7,8 @@
 </style>
 {% endblock %}
 {% block body %}
-<main class="app"><header class="header"><div><h1><i class="fas fa-filter"></i> 个股发现</h1><div class="sub">先用高频条件缩小范围，再打开高级指标确认信号</div><div class="muted">本页只使用本地 daily 数据；缺少可靠字段的条件不会伪造展示。板块资金流作为后续待办。</div></div>{% set active='market' %}{% include '_nav.html' %}</header>
-<section class="card"><div class="result-head"><div class="muted">数据来源：本地 daily Parquet · 数据日期：<span id="data-date">读取中</span></div><button class="btn btn-outline btn-sm" onclick="showHelp()">使用说明</button></div></section>
+<main class="app"><header class="header"><div><h1><i class="fas fa-filter"></i> 市场发现</h1><div class="sub">先用客观条件缩小范围，再打开候选详情确认信号</div><div class="muted">本页只使用本地 daily 数据；缺少可靠字段的条件不会伪造展示。板块资金流作为后续待办。</div></div>{% set active='market' %}{% include '_nav.html' %}</header>
+<section class="card"><div class="result-head"><div class="muted">数据来源：本地 daily Parquet · 实际数据日期：<span id="data-date">读取中</span></div><button class="btn btn-outline btn-sm" onclick="showHelp()">使用说明</button></div><div id="action-status" class="action-status" role="status"></div></section>
 <section class="card filter-card"><div class="card-title"><span><i class="fas fa-sliders"></i> 基础条件</span><span class="filter-actions"><button class="btn btn-outline btn-sm" onclick="saveTemplate()">保存为模板</button><button class="btn btn-outline btn-sm" onclick="loadTemplate()">我的模板</button><button class="btn btn-outline btn-sm" onclick="resetFilters()">重置</button><button id="search-btn" class="btn btn-primary" onclick="runSearch()">开始筛选</button></span></div>
 <div class="filter-row"><div class="form-group"><label>关键词</label><input id="keyword" placeholder="代码 / 名称"></div><div class="form-group"><label>市场</label><select id="market"><option value="ALL">全部</option><option value="SH">沪市</option><option value="SZ">深市</option><option value="BJ">北交所</option></select></div><div class="form-group"><label>板块</label><select id="board"><option value="all">全部</option><option value="main">主板</option><option value="cyb">创业板</option><option value="kcb">科创板</option><option value="bse">北交所</option></select></div><div class="form-group"><label>行业</label><select id="industry"><option value="ALL">全部</option></select></div></div>
 <div class="filter-row"><div class="form-group"><label>股价（元）</label><div class="range"><input id="price_min" type="number" step="0.01" placeholder="最低"><input id="price_max" type="number" step="0.01" placeholder="最高"></div></div><div class="form-group"><label>涨跌幅（%）</label><div class="range"><input id="period_return_min" type="number" step="0.1" placeholder="最低"><input id="period_return_max" type="number" step="0.1" placeholder="最高"></div></div><div class="form-group"><label>换手率（%）</label><div class="range"><input id="turnover_min" type="number" step="0.1" placeholder="最低"><input id="turnover_max" type="number" step="0.1" placeholder="最高"></div></div><div class="form-group"><label>统计周期</label><select id="lookback"><option value="5">5日</option><option value="10">10日</option><option value="20" selected>20日</option><option value="30">30日</option><option value="60">60日</option><option value="120">120日</option><option value="250">250日</option></select></div></div>
