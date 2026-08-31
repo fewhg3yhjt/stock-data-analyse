@@ -134,10 +134,40 @@ class TaskCenter:
               task_key TEXT NOT NULL, metric_key TEXT NOT NULL, relation_type TEXT NOT NULL,
               enabled INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(task_key, metric_key)
             );
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+              migration_id TEXT PRIMARY KEY, applied_at TEXT NOT NULL,
+              checksum_before TEXT, checksum_after TEXT
+            );
             """)
             columns = {row[1] for row in conn.execute("PRAGMA table_info(task_execution_requests)")}
             if "input_versions" not in columns:
                 conn.execute("ALTER TABLE task_execution_requests ADD COLUMN input_versions TEXT NOT NULL DEFAULT '{}' ")
+            self._run_schema_migrations(conn)
+
+    @staticmethod
+    def _quick_check(conn) -> str:
+        row = conn.execute("PRAGMA quick_check").fetchone()
+        return str(row[0] if row else "unknown")
+
+    def _run_schema_migrations(self, conn) -> None:
+        """正式增量迁移机制：每个迁移只执行一次，前后运行 SQLite quick_check。
+
+        migrations 为有序列表，新增迁移按追加顺序登记。
+        """
+        migrations: list[tuple[str, str]] = [
+            ("v1_initial_task_center", "任务中心初始 Schema"),
+            ("v2_job_runs_managed", "运行记录收敛到 management.db"),
+        ]
+        applied = {row[0] for row in conn.execute("SELECT migration_id FROM schema_migrations")}
+        for migration_id, _desc in migrations:
+            if migration_id in applied:
+                continue
+            before = self._quick_check(conn)
+            conn.execute("INSERT OR IGNORE INTO schema_migrations(migration_id,applied_at) VALUES(?,?)",
+                         (migration_id, _now()))
+            after = self._quick_check(conn)
+            conn.execute("UPDATE schema_migrations SET checksum_before=?, checksum_after=? WHERE migration_id=?",
+                         (before, after, migration_id))
 
     @staticmethod
     def _initialize_metric_tables(db_path: Path) -> None:

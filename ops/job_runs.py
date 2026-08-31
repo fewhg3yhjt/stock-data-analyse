@@ -49,8 +49,8 @@ class JobRunStore:
         return "success" if produced or result.get("ok", True) else "failed"
     def __init__(self, db_path: Optional[Path | str] = None):
         if db_path is None:
-            from StockInvestmentTool.config import Config
-            db_path = Config.DATA_DIR / "job_runs.db"
+            from StockInvestmentTool.ops.task_center import management_db_path
+            db_path = management_db_path()  # 统一事实库：management.db
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:

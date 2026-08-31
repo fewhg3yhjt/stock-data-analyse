@@ -229,8 +229,7 @@ def execute_task(db_path: Path, task_key: str, payload: dict,
                                            symbols=symbols, requested_by=payload.get("requested_by", "admin"),
                                            input_versions=payload.get("input_versions") or {})
     from StockInvestmentTool.ops.task_runner import TaskRunner
-    warehouse = Warehouse()
-    warehouse.meta_db_path = db_path
+    warehouse = Warehouse(meta_db_path=db_path)
     runner = TaskRunner(db_path, db_path)
     result = runner.execute(task_key, lambda run_id, request: worker(task_key, warehouse, {**request, **payload}, run_id),
                             request_id=request_id, input_dataset=payload.get("input_dataset", ""),

@@ -40,6 +40,10 @@ class ManagementDB:
             CREATE TABLE IF NOT EXISTS management_meta (
               key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+              migration_id TEXT PRIMARY KEY, applied_at TEXT NOT NULL,
+              checksum_before TEXT, checksum_after TEXT
+            );
             CREATE TABLE IF NOT EXISTS job_runs (
               id INTEGER PRIMARY KEY AUTOINCREMENT, job_name TEXT NOT NULL,
               started_at TEXT NOT NULL, finished_at TEXT,
@@ -190,6 +194,29 @@ class ManagementDB:
                          ("schema_version", MANAGEMENT_SCHEMA_VERSION, now()))
             conn.execute("INSERT OR REPLACE INTO management_meta(key,value,updated_at) VALUES(?,?,?)",
                          ("initialized_at", now(), now()))
+            self._record_migrations(conn)
+
+    @staticmethod
+    def _quick_check(conn) -> str:
+        row = conn.execute("PRAGMA quick_check").fetchone()
+        return str(row[0] if row else "unknown")
+
+    def _record_migrations(self, conn) -> None:
+        """登记已执行的正式迁移（每个只执行一次，前后 quick_check）。"""
+        migrations = [
+            ("v1_management_initial", "统一管理库初始 Schema"),
+            ("v2_job_runs_legacy_import", "旧 job_runs.db 只读迁移"),
+        ]
+        applied = {row[0] for row in conn.execute("SELECT migration_id FROM schema_migrations")}
+        for migration_id, _desc in migrations:
+            if migration_id in applied:
+                continue
+            before = self._quick_check(conn)
+            conn.execute("INSERT OR IGNORE INTO schema_migrations(migration_id,applied_at) VALUES(?,?)",
+                         (migration_id, now()))
+            after = self._quick_check(conn)
+            conn.execute("UPDATE schema_migrations SET checksum_before=?, checksum_after=? WHERE migration_id=?",
+                         (before, after, migration_id))
 
     def table_exists(self, table: str) -> bool:
         with self.connect() as conn:

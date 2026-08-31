@@ -66,7 +66,7 @@ def _ym_str(dt) -> str:
 class Warehouse:
     """全量数据仓库入口：路径、分区读写、元数据清单。"""
 
-    def __init__(self, base_dir: Optional[Path] = None):
+    def __init__(self, base_dir: Optional[Path] = None, meta_db_path: Optional[Path | str] = None):
         from StockInvestmentTool.config import Config
 
         self.base_dir = Path(base_dir) if base_dir else Config.DATA_DIR / "warehouse"
@@ -76,10 +76,11 @@ class Warehouse:
         self.online_dir = self.base_dir / "online"
         self.minute_dir = self.base_dir / "minute"
         # 生产统一使用 management.db 作为元数据库（含 dataset_current/versions/instruments）；
-        # 未设置 MANAGEMENT_DB_PATH 时（本地/测试）回退到旧 meta.db。
+        # 显式 meta_db_path 优先，其次 MANAGEMENT_DB_PATH，最后（本地/测试）回退到旧 meta.db。
         import os as _os
         _mgmt = _os.getenv("MANAGEMENT_DB_PATH")
-        self.meta_db_path = Path(_mgmt) if _mgmt else self.base_dir / "meta.db"
+        self.meta_db_path = (Path(meta_db_path) if meta_db_path is not None
+                             else (Path(_mgmt) if _mgmt else self.base_dir / "meta.db"))
         for d in (self.daily_dir, self.indicator_dir,
                   self.fundamental_dir, self.online_dir, self.minute_dir):
             d.mkdir(parents=True, exist_ok=True)
