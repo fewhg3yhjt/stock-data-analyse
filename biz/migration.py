@@ -76,6 +76,7 @@ class LegacyMigration:
             source.row_factory = sqlite3.Row
             with self.target.transaction() as target:
                 portfolio_map = self._migrate_portfolios(source, target, report)
+                self._migrate_initial_cash(source, target, portfolio_map, report)
                 position_map = self._migrate_positions(source, target, portfolio_map, report)
                 self._migrate_transactions(source, target, position_map, report)
                 self._migrate_watchlist(source, target, report)
@@ -133,6 +134,44 @@ class LegacyMigration:
             result[old_id] = portfolio_id
             report.mappings += 1
         return result
+
+    def _migrate_initial_cash(self, source, target, portfolio_map, report):
+        """根据旧组合余额反推迁移时的初始现金，并建立 INITIAL 流水。"""
+        portfolios = source.execute("SELECT * FROM portfolios ORDER BY id").fetchall()
+        for portfolio in portfolios:
+            new_portfolio_id = portfolio_map.get(str(portfolio["id"]))
+            if not new_portfolio_id:
+                continue
+            transaction_rows = source.execute(
+                """SELECT t.trans_type, t.amount, t.fee
+                   FROM transactions t JOIN positions p ON p.id=t.position_id
+                   WHERE p.portfolio_id=? ORDER BY t.date, t.id""",
+                (portfolio["id"],),
+            ).fetchall()
+            current_cash = float(portfolio["cash_available"] or 0.0)
+            net_trade_cash = 0.0
+            for row in transaction_rows:
+                trans_type = str(row["trans_type"] or "").lower()
+                amount = float(row["amount"] or 0.0)
+                fee = float(row["fee"] or 0.0)
+                if trans_type in {"buy", "买入"}:
+                    net_trade_cash -= amount + fee
+                elif trans_type in {"sell", "卖出"}:
+                    net_trade_cash += amount - fee
+            initial_cash = current_cash - net_trade_cash
+            exists = target.execute(
+                "SELECT 1 FROM cash_ledger_entries WHERE portfolio_id=? AND entry_type='INITIAL'",
+                (new_portfolio_id,),
+            ).fetchone()
+            if not exists:
+                ts = now_utc()
+                target.execute(
+                    """INSERT INTO cash_ledger_entries
+                       (cash_entry_id,portfolio_id,entry_type,amount,balance_after,execution_id,entry_time,reason,created_at)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (new_id("cash"), new_portfolio_id, "INITIAL", initial_cash, initial_cash,
+                     "", portfolio["created_at"] or ts, "历史余额反推初始现金（reconstructed）", ts),
+                )
 
     def _account_for_portfolio(self, target, legacy_id: str) -> str:
         row = target.execute(
@@ -214,6 +253,47 @@ class LegacyMigration:
                  row["shares"], row["price"], row["amount"], row["fee"] or 0, 0,
                  row["amount"] or 0, row["reason"] or "历史迁移", "", "", "",
                  f"legacy-transaction-{old_id}", f"legacy-transaction-{old_id}", now_utc()),
+            )
+            if event_type == "BUY":
+                target.execute(
+                    """INSERT INTO position_lots
+                       (lot_id,position_cycle_id,symbol,opened_at,quantity,remaining_quantity,
+                        entry_price,entry_fee,source_execution_id,created_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (new_id("lot"), cycle_id, normalize(cycle["symbol"]), ts,
+                     row["shares"] or 0, row["shares"] or 0, row["price"] or 0,
+                     (row["fee"] or 0), execution_id, now_utc()),
+                )
+            elif event_type == "SELL":
+                remaining = float(row["shares"] or 0)
+                lots = target.execute(
+                    "SELECT lot_id,remaining_quantity FROM position_lots WHERE position_cycle_id=? "
+                    "AND remaining_quantity>0 ORDER BY opened_at,lot_id",
+                    (cycle_id,),
+                ).fetchall()
+                for lot in lots:
+                    if remaining <= 0:
+                        break
+                    consume = min(remaining, float(lot["remaining_quantity"]))
+                    target.execute(
+                        "UPDATE position_lots SET remaining_quantity=? WHERE lot_id=?",
+                        (float(lot["remaining_quantity"]) - consume, lot["lot_id"]),
+                    )
+                    remaining -= consume
+            # 交易现金流水按旧交易金额重建；不能把旧余额字段当作新事实。
+            cash_row = target.execute(
+                "SELECT balance_after FROM cash_ledger_entries WHERE portfolio_id=? ORDER BY rowid DESC LIMIT 1",
+                (cycle["portfolio_id"],),
+            ).fetchone()
+            previous_cash = float(cash_row["balance_after"]) if cash_row else 0.0
+            cash_delta = -(float(row["amount"] or 0) + float(row["fee"] or 0)) if event_type == "BUY" else \
+                float(row["amount"] or 0) - float(row["fee"] or 0) if event_type == "SELL" else 0.0
+            target.execute(
+                """INSERT INTO cash_ledger_entries
+                   (cash_entry_id,portfolio_id,entry_type,amount,balance_after,execution_id,entry_time,reason,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                (new_id("cash"), cycle["portfolio_id"], event_type, cash_delta,
+                 previous_cash + cash_delta, execution_id, ts, "历史交易迁移", now_utc()),
             )
             self._map(target, "transaction", old_id, "Execution", execution_id,
                       "reconstructed", "旧交易字段已映射，原始来源保留在映射表")

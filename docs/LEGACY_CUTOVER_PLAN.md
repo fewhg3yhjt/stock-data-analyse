@@ -143,7 +143,7 @@ ScreenRun
 
 ## 8.1 当前迁移实现
 
-- `biz/migration.py` 提供 `portfolio.db` 的只读评估和显式目标库导入。
+- `biz/migration.py` 提供 `portfolio.db` 的只读评估和显式目标库导入，并重建基础 Account/Portfolio、INITIAL 现金、PositionCycle、Execution、PositionLot、CashLedger 和 WatchSubscription。
 - 迁移使用 `legacy_entity_map` 记录旧类型、旧 ID、新类型、新 ID、迁移版本和分类。
 - 源 `portfolio.db` 不删除、不写入；目标只能是调用方显式创建的 `BusinessDB`。
 - 旧代码格式统一转换为 canonical code；无法转换的记录标记为 `unknown`，不写入新的业务事实表。
