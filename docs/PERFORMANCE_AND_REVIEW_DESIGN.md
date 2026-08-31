@@ -414,3 +414,8 @@ assumptions
 - 严格按 T 日回放 Execution、Lot 和公司行为。
 - 实际/模拟/基准统一日期轴和收益口径。
 - PerformanceSnapshot/Comparison 持久化与导出 API。
+
+### 跨模块验证
+
+- `tests/test_biz_end_to_end.py` 已验证 PositionCycle/Execution → PositionValuation → PerformanceResult → PositionCycleReview/ReviewEvidence。
+- 当前验证覆盖基础结果生成；严格逐日回放、外部现金流口径和正式持久化 API 仍未达到最终验收标准。

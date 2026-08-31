@@ -484,17 +484,23 @@ idempotent_replay
 
 | 文件 | 能力 | 测试 |
 |---|---|---|
-| `biz/portfolio.py` | Account/Portfolio/PositionCycle/PositionLot/Execution/CashLedger、FIFO、幂等、现金不足保护、公司行为基础调整 | `tests/test_biz_portfolio.py`（10） |
+| `biz/portfolio.py` | Account/Portfolio/PositionCycle/PositionLot/Execution/CashLedger、FIFO、幂等、现金不足保护、公司行为基础调整 | `tests/test_biz_portfolio.py`（11） |
 | `biz/valuation.py` | PositionValuationService 唯一估值入口，价格日期/来源/滞后上下文 | `tests/test_biz_valuation.py`（4） |
 
 ### 开发中遇到的问题与决策
 
 1. 现金余额不能按业务交易时间排序，因为初始现金可能晚于历史补录交易；当前按流水插入顺序读取最新 `balance_after`，后续应在数据库层增加单调流水序号。
-2. 买入、卖出、Lot 和现金流水已具备服务层串联，但当前 `record_execution` 仍需进一步收敛为单连接事务，补充中间步骤故障注入测试。
+2. `record_execution` 已收敛为单连接 `BEGIN IMMEDIATE` 事务，Execution、Lot、CashLedger 和持仓阶段更新整体提交或回滚。
 
 ### 后续待开发
 
-- 所有写入统一使用同一 SQLite 事务。
+- 建仓、买入、卖出和现金调整的核心写入已使用同一 SQLite 事务；仍需补齐跨 Observation 的建仓事务。
 - PositionEvent/PositionSnapshot 完整落库。
 - BONUS_SHARE/STOCK_SPLIT/RIGHTS_ISSUE 的正式事件模型和成本调整规则。
 - Observation.ready_for_entry → EntryPlan → Execution 的跨模块事务。
+
+### 跨模块验证
+
+- `tests/test_biz_end_to_end.py` 已验证 Observation.ready_for_entry → PositionCycle → BUY Execution → PositionValuation 的基础链路。
+- `tests/test_biz_portfolio.py` 已通过故障注入验证 Execution 插入后继续处理失败时，Execution/Lot/CashLedger 均不残留。
+- 正式建仓 Application Service、PositionEvent/PositionSnapshot 持久化和 Observation promote 的同事务收口仍待完成。

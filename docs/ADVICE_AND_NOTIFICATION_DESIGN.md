@@ -410,3 +410,8 @@ Email 是第一版完整验收渠道；Feishu 和 WeCom 不删除，继续作为
 - DailyReportBuilder、结构化快照和系统告警生命周期。
 - Feishu/WeCom Channel Adapter。
 - BusinessTask `advice.refresh` 与 `notification.outbox_delivery` 调度接入。
+
+### 跨模块验证
+
+- `tests/test_biz_end_to_end.py` 已验证 StrategyDecision → Advice → NotificationEvent → NotificationDelivery → Email Channel 的基础投递链路。
+- 当前验证使用 fake channel；LiveAdviceEvaluator、DailyReportBuilder、系统告警和正式任务调度仍待接入。

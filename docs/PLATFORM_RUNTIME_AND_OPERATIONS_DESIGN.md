@@ -430,7 +430,8 @@ Route
 
 - 业务专项测试：通过。
 - 容器 P0 真实数据冒烟：通过。
-- 完整回归：当前工作树 `377 passed, 1 failed`。
+- 业务专项测试：`125 passed`。
+- 完整回归：当前工作树 `377 passed, 1 failed`，唯一失败来自未提交的数据平面任务配置变更，非本业务平台改动。
 
 ### 已知问题
 
@@ -442,3 +443,9 @@ Route
 - BusinessScheduler 与 Web 路由接入。
 - 统一业务任务结果 DTO、HTTP 202 和持久化队列。
 - 启动恢复检查、任务影响确认、生产级 ready 依赖检查。
+
+### 跨模块验证
+
+- `tests/test_biz_end_to_end.py` 作为业务闭环验收测试已通过，验证业务对象可以在隔离 business.db 中串联。
+- `tests/test_biz_tasks.py` 已验证锁覆盖 handler 执行期、非 owner 不得释放锁和 stale run 回收。
+- 当前尚未接入 Web/API、正式 Scheduler、持久化 Worker 队列和生产切换流程。

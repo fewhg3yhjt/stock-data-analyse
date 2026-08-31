@@ -764,3 +764,8 @@ simulation snapshot → ObservationSnapshot
 - Observation 绑定策略、SimulationRun 和 ObservationSnapshot。
 - 从 Observation 生成 EntryPlan 并接入真实建仓事务。
 - Observation read model 与 Web API。
+
+### 跨模块验证
+
+- `tests/test_biz_end_to_end.py` 已覆盖 ScreenRun/ScreenCandidate → ResearchRun/StrategyDecision → Observation → SimulationPlan/SimulationRun → PositionCycle/Execution → PositionValuation → Performance/Review → Advice/NotificationDelivery。
+- 当前测试已通过，但部分跨模块关联仍由测试编排代码显式设置，正式 Application Service 尚未完全收口。
