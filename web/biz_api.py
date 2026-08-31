@@ -409,6 +409,17 @@ def run_next_business_task():
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/tasks/definitions")
+def list_business_task_definitions():
+    service = BusinessTaskService(_repo())
+    register_business_tasks(service)
+    rows = service.repo.db.fetchall(
+        "SELECT * FROM business_task_definitions ORDER BY task_key"
+    )
+    return flask.jsonify({"data": {"items": [dict(row) for row in rows]},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
 @biz_api.post("/candidates/<candidate_id>/observation")
 def candidate_observation(candidate_id: str):
     try:
