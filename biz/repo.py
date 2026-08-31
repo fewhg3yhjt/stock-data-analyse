@@ -13,6 +13,7 @@ from typing import Any
 from StockInvestmentTool.biz.db import BusinessDB, dumps_json, loads_json, now_utc
 from StockInvestmentTool.biz.models import (
     SimulationFill,
+    SimulationLot,
     SimulationResult,
     SimulationRun,
     StrategyDecision,
@@ -364,6 +365,28 @@ class BusinessRepository:
             "created_at": fill.created_at,
         })
         return fill.fill_id
+
+    def save_simulation_lot(self, lot: SimulationLot) -> str:
+        self.db.insert("simulation_lots", {
+            "lot_id": lot.lot_id,
+            "simulation_run_id": lot.simulation_run_id,
+            "symbol": lot.symbol,
+            "opened_at": lot.opened_at,
+            "quantity": lot.quantity,
+            "remaining_quantity": lot.remaining_quantity,
+            "entry_price": lot.entry_price,
+            "entry_fee": lot.entry_fee,
+            "source_fill_id": lot.source_fill_id or "",
+            "created_at": now_utc(),
+        })
+        return lot.lot_id
+
+    def list_simulation_lots(self, run_id: str) -> list[dict]:
+        rows = self.db.fetchall(
+            "SELECT * FROM simulation_lots WHERE simulation_run_id=? ORDER BY opened_at, lot_id",
+            (run_id,),
+        )
+        return [dict(row) for row in rows]
 
     def save_simulation_result(self, result: SimulationResult) -> str:
         self.db.insert("simulation_results", {

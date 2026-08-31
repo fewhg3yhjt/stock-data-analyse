@@ -666,6 +666,7 @@ P0-Smoke: PASS
 - 策略决策生成已强制要求持久化 `strategy_version_id`，规则 priority 和 suppression trace 已加入测试。
 - 业务任务 registry 已提供 simulation handler，但正式 API 仍需统一改为创建 requested JobRun 后由 Worker 执行。
 - 正式模拟 API 已遵循 requested JobRun → Worker → SimulationRun/Result 查询链路，不在 HTTP 请求线程执行模拟。
+- SimulationRun handler 已将模拟账户产生的全部 SimulationLot（含已耗尽批次）落库，便于按 Fill/Lot 重算历史结果；已有策略版本 ID 可直接用于模拟 API。
 
 ### 已知遗留问题（非阻塞）
 

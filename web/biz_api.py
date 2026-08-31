@@ -351,9 +351,9 @@ def create_simulation_run():
     """创建模拟任务；由业务 Worker 执行。"""
     payload = flask.request.get_json(silent=True) or {}
     strategy_data = payload.get("strategy")
-    if (not isinstance(strategy_data, dict) or not payload.get("symbol")
+    if ((not isinstance(strategy_data, dict) and not payload.get("strategy_version_id")) or not payload.get("symbol")
             or not payload.get("start_date") or not payload.get("end_date")):
-        return _error("SIMULATION_INVALID", "strategy、symbol、start_date 和 end_date 必填")
+        return _error("SIMULATION_INVALID", "strategy 或 strategy_version_id、symbol、start_date 和 end_date 必填")
     try:
         if payload.get("strategy_version_id") and not _repo().get_strategy_version(payload["strategy_version_id"]):
             return _error("STRATEGY_VERSION_NOT_FOUND", "策略版本不存在", 404)

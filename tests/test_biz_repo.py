@@ -122,6 +122,15 @@ class TestSimulation:
         assert got["total_return"] == 0.01
         assert got["equity_curve"][0]["equity"] == 101000.0
 
+    def test_save_simulation_lot(self, repo):
+        lot = __import__("StockInvestmentTool.biz.models", fromlist=["SimulationLot"]).SimulationLot(
+            lot_id="lot1", simulation_run_id="run1", symbol="sh600908",
+            opened_at="2026-08-14", quantity=1000, remaining_quantity=500,
+            entry_price=10.0, entry_fee=1.0, source_fill_id="fill1",
+        )
+        repo.save_simulation_lot(lot)
+        assert repo.list_simulation_lots("run1")[0]["remaining_quantity"] == 500
+
     def test_repo_isolated_from_production(self, tmp_path):
         """repository 必须能用隔离临时库，不依赖生产 business.db。"""
         db = BusinessDB(tmp_path / "iso.db")

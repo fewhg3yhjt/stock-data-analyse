@@ -173,7 +173,8 @@ def _simulation_handler(service: BusinessTaskService) -> Callable:
         from StockInvestmentTool.biz.data_access import load_market_data
         from StockInvestmentTool.biz.db import loads_json
         from StockInvestmentTool.biz.models import SimulationPlan, new_id
-        from StockInvestmentTool.biz.simulation import execute_simulation
+        from StockInvestmentTool.biz.simulation import SimulationExecutor
+        from StockInvestmentTool.biz.models import SimulationRun, now_utc, new_id, SimulationLot
         from StockInvestmentTool.biz.strategy import StrategySpec, compile_strategy
         from StockInvestmentTool.warehouse.storage import Warehouse
 
@@ -203,10 +204,23 @@ def _simulation_handler(service: BusinessTaskService) -> Callable:
             source_screen_run_id=input_data.get("screen_run_id"), data_context=dataset.context,
         )
         service.repo.save_simulation_plan(plan)
-        run, result, fills, events = execute_simulation(plan, dataset.data, strategy=strategy)
+        run = SimulationRun(run_id=new_id("run"), plan_id=plan.plan_id, status="running")
+        executor = SimulationExecutor(plan, dataset.data, strategy=strategy, run_id=run.run_id)
+        result = executor.run()
+        fills, events = executor.fills, executor.events
+        run.status = "success"
+        run.finished_at = now_utc()
         service.repo.save_simulation_run(run)
         for fill in fills:
             service.repo.save_simulation_fill(fill)
+        for symbol, lots in executor.account.positions.items():
+            for lot in lots:
+                service.repo.save_simulation_lot(SimulationLot(
+                    lot_id=lot.lot_id, simulation_run_id=run.run_id, symbol=lot.symbol,
+                    opened_at=lot.opened_at, quantity=lot.quantity,
+                    remaining_quantity=lot.remaining_quantity, entry_price=lot.entry_price,
+                    entry_fee=lot.entry_fee, source_fill_id=lot.source_fill_id,
+                ))
         service.repo.save_simulation_result(result)
         return {"status": "success", "output_versions": {"simulation_run_id": run.run_id},
                 "simulation_run_id": run.run_id}

@@ -235,7 +235,9 @@ class SimulationExecutor:
             cost=cost, fees=entry_fees + fee, tax=tax, pnl=pnl,
             opened_at=opened_at, closed_at=exec_date,
         ))
-        self.account.positions[symbol] = [lot for lot in lots if lot.remaining_quantity > 0]
+        # Keep exhausted lots for a complete, auditable run history; valuation
+        # and future order checks use remaining_quantity only.
+        self.account.positions[symbol] = lots
         fill = SimulationFill(
             fill_id=new_id("fill"), simulation_run_id=self.run_id, symbol=symbol,
             side="SELL", signal_time=signal_date, execution_time=exec_date,
