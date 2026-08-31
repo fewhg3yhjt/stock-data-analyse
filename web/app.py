@@ -907,6 +907,15 @@ def research_page():
     return flask.render_template("research.html")
 
 
+@web_app.route("/research/detail", methods=["GET"])
+def research_detail_page():
+    return flask.render_template(
+        "research_detail.html",
+        prefill_symbol=flask.request.args.get("symbol", ""),
+        prefill_run_id=flask.request.args.get("run_id", ""),
+    )
+
+
 @web_app.route("/system", methods=["GET"])
 def system_page():
     return flask.render_template("system.html")

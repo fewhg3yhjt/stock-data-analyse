@@ -833,7 +833,14 @@ POST /settings/reset
 5. 运行页面契约测试和 JavaScript 语法检查。
 6. 重启生产 Web 容器后进行页面冒烟验证。
 
-个股研究页面不纳入本章的“纯前端改造”范围，仍需等待 ResearchRun Web API 完成后再实现正式页面。
+个股研究页面已在 ResearchRun 基础 Web API 接入后实现第一版正式详情页；报告、观察快照、模拟计划和更完整的历史轮询仍按后台能力完成情况逐步接入。
+
+### 前端实现状态
+
+- `web/templates/research_detail.html`：结构化研究详情页，展示运行状态、技术/市场/估值/基本面状态、策略决策、证据和技术详情。
+- `web/static/research-detail.js` / `research-detail.css`：页面级 API Adapter 与响应式样式；不在浏览器端重新计算指标或伪造延期能力。
+- `tests/test_research_detail_page.py`：页面结构和研究运行上下文测试；JavaScript 使用 `node --check` 验证。
+- 当前限制：工作台、市场发现、观察池、持仓和复盘页面仍有旧接口接入，尚未全部切换至新业务 API。
 
 ## 12. 全量页面设计基线
 
