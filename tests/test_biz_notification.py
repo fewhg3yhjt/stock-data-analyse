@@ -92,6 +92,12 @@ class TestNotificationService:
         svc.claim(delivery.delivery_id, worker="w1")
         assert not svc.claim(delivery.delivery_id, worker="w2")  # 租约未过期
 
+    def test_claim_is_atomic(self, svc):
+        event = svc.create_event(event_type="RISK_ALERT", symbol="sh600908")
+        delivery = svc.create_delivery(event, channel="email", recipient="a@b.com")
+        assert svc.claim(delivery.delivery_id, "w1")
+        assert not svc.claim(delivery.delivery_id, "w2")
+
     def test_advice_lifecycle_and_delivery_updates(self, svc):
         from StockInvestmentTool.biz.models import StrategyContext
         from StockInvestmentTool.biz.strategy import StrategySpec, compile_strategy

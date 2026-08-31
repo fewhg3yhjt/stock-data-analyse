@@ -265,6 +265,16 @@ class ObservationService:
                 events.append(self.transition(obs, OBS_EXPIRED, reason="观察有效期结束"))
         return events
 
+    def reconcile_expiry_and_save(self, now: str | None = None) -> list[ObservationEvent]:
+        """查询并持久化所有到期 Observation，供维护任务使用。"""
+        observations = self.list_active_observations()
+        events = self.reconcile_expiry(observations, now=now)
+        for obs, event in zip(
+            (item for item in observations if item.status == OBS_EXPIRED), events
+        ):
+            self._persist_transition(obs, event)
+        return events
+
     @staticmethod
     def _is_expired(expires_at: str, now: str) -> bool:
         # 支持 YYYY-MM-DD 与 YYYY-MM-DDTHH:MM:SSZ 两种格式

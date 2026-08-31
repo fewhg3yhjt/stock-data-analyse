@@ -90,6 +90,21 @@ class TestObservationService:
         assert obs.status == OBS_EXPIRED
         assert obs2.status == OBS_OBSERVING
 
+    def test_expiry_reconcile_persists_state_and_event(self, service):
+        obs = service.create_observation("sh600908")
+        service.transition_and_save(obs, OBS_OBSERVING)
+        obs.expires_at = "2026-08-01"
+        service.update_observation(obs)
+        events = service.reconcile_expiry_and_save(now="2026-08-15T00:00:00Z")
+        assert len(events) == 1
+        stored = service.get_observation(obs.observation_id)
+        assert stored.status == OBS_EXPIRED
+        row = service.repo.db.fetchone(
+            "SELECT * FROM observation_events WHERE observation_id=? AND to_status=?",
+            (obs.observation_id, OBS_EXPIRED),
+        )
+        assert row is not None
+
     def test_expiry_not_forced_on_get(self, service):
         # 普通 GET 只返回 effective_status，不写库（此处验证 reconcile 是唯一推进者）
         obs = service.create_observation("sh601211")

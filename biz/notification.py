@@ -327,25 +327,22 @@ class NotificationService:
 
     def claim(self, delivery_id: str, worker: str, lease_seconds: int = 120) -> bool:
         """原子领取投递任务。已过期租约可被接管。"""
-        row = self.repo.db.fetchone(
-            "SELECT * FROM notification_deliveries WHERE delivery_id=?", (delivery_id,))
-        if not row:
-            return False
-        if row["status"] in {DELIVERY_SENT, DELIVERY_DEAD}:
-            return False
-        if row["status"] == DELIVERY_PROCESSING:
-            lease = row["lease_expires_at"] or ""
-            if lease and lease > now_utc():
-                return False  # 租约未过期，不可接管
         now = now_utc()
         import datetime
         from datetime import timezone
         expires = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=lease_seconds)
-        self.repo.db.update("notification_deliveries", {
-            "status": DELIVERY_PROCESSING, "claimed_by": worker, "claimed_at": now,
-            "lease_expires_at": expires.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }, "delivery_id=?", (delivery_id,))
-        return True
+        expires_text = expires.strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self.repo.db.transaction() as conn:
+            updated = conn.execute(
+                """UPDATE notification_deliveries
+                   SET status=?, claimed_by=?, claimed_at=?, lease_expires_at=?
+                   WHERE delivery_id=?
+                     AND status NOT IN (?, ?)
+                     AND (status != ? OR lease_expires_at IS NULL OR lease_expires_at <= ?)""",
+                (DELIVERY_PROCESSING, worker, now, expires_text, delivery_id,
+                 DELIVERY_SENT, DELIVERY_DEAD, DELIVERY_PROCESSING, now),
+            ).rowcount
+        return updated == 1
 
     def deliver(self, delivery_id: str, channel: Any, *, subject: str, body: str,
                 recipient: str) -> bool:

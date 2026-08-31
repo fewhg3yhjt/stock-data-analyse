@@ -424,3 +424,4 @@ Email 是第一版完整验收渠道；Feishu 和 WeCom 不删除，继续作为
 - `record_execution` 已支持按实际执行数量推进 Advice 的 `partially_executed/executed` 状态。
 - `biz/reporting.py` 已提供结构化 DailyReport 和 SystemAlert 生命周期基础服务，并接入业务 API。
 - `web/biz_api.py` 已提供 Advice、NotificationEvent 和 NotificationDelivery 查询入口。
+- Outbox claim 已改为数据库事务内条件更新，租约未过期时并发 Worker 不能重复领取。

@@ -46,11 +46,7 @@ def _default_handler(task_key: str, service: BusinessTaskService) -> Callable:
     if task_key == "observation.expiry_reconcile":
         def expiry_handler(input_data: dict) -> dict:
             from StockInvestmentTool.biz.observation import ObservationService
-            observations = ObservationService(service.repo).list_active_observations()
-            events = ObservationService(service.repo).reconcile_expiry(observations)
-            for obs, event in zip((o for o in observations if o.status == "expired"), events):
-                ObservationService(service.repo).update_observation(obs)
-                ObservationService(service.repo).save_event(obs.observation_id, event)
+            events = ObservationService(service.repo).reconcile_expiry_and_save()
             return {"status": "success", "output_versions": {"expired": len(events)}}
         return expiry_handler
 

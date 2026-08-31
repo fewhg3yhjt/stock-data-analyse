@@ -770,6 +770,7 @@ simulation snapshot → ObservationSnapshot
 - `ObservationService.transition_and_save()` 和 `promote_and_save()` 已在同一事务内写入状态与 `ObservationEvent`。
 - Observation 创建时，Observation、初始 `CREATED` 事件和 DiscoveryLink 已统一在一个事务中保存。
 - `web/biz_api.py` 已提供 Observation 列表、关注关系创建、状态操作和建仓入口。
+- `observation.expiry_reconcile` 已提供查询、状态推进、事件持久化的一体化入口，普通查询不产生状态副作用。
 
 ### 跨模块验证
 
