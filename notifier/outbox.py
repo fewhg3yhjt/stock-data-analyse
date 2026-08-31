@@ -28,8 +28,19 @@ class NotificationOutbox:
                 next_attempt_at TEXT NOT NULL,
                 last_error TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
-                sent_at TEXT
+                sent_at TEXT,
+                claimed_by TEXT,
+                claimed_at TEXT,
+                lease_expires_at TEXT
             )""")
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(notification_outbox)")}
+            for column in ("claimed_by", "claimed_at", "lease_expires_at"):
+                if column not in columns:
+                    try:
+                        conn.execute(f"ALTER TABLE notification_outbox ADD COLUMN {column} TEXT")
+                    except sqlite3.OperationalError:
+                        # 只读/无权限库：跳过该列迁移，租约功能对缺列降级
+                        continue
 
     def _connect(self):
         conn = sqlite3.connect(str(self.db_path))
@@ -46,33 +57,97 @@ class NotificationOutbox:
             )
             return int(cur.lastrowid)
 
-    def due(self, limit: int = 20) -> list[dict]:
+    def claim_due(self, limit: int = 20, worker_id: str = "default",
+                  lease_seconds: int = 300) -> list[dict]:
+        """原子领取到期任务（工作项 1/2）。
+
+        单事务内把 pending 且到期、且租约空闲/过期的任务置为 processing，
+        避免多个 Worker 重复领取。领取者通过 claim_due/mark_* 持有租约。
+        """
         now = datetime.now().isoformat(timespec="seconds")
+        expire_at = (datetime.now() + timedelta(seconds=lease_seconds)).isoformat(timespec="seconds")
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM notification_outbox WHERE status='pending' AND next_attempt_at<=? ORDER BY id LIMIT ?",
-                (now, int(limit)),
+                "SELECT id FROM notification_outbox "
+                "WHERE ((status='pending' AND next_attempt_at<=?) "
+                "OR (status='processing' AND lease_expires_at<=?)) "
+                "AND (lease_expires_at IS NULL OR lease_expires_at<=?) "
+                "ORDER BY id LIMIT ?",
+                (now, now, now, int(limit)),
             ).fetchall()
-        return [dict(row, payload=json.loads(row["payload"])) for row in rows]
+            if not rows:
+                return []
+            ids = [int(row["id"]) for row in rows]
+            placeholders = ",".join("?" * len(ids))
+            conn.execute(
+                f"UPDATE notification_outbox SET status='processing', claimed_by=?, "
+                f"claimed_at=?, lease_expires_at=? WHERE id IN ({placeholders})",
+                (worker_id, now, expire_at, *ids),
+            )
+        result = []
+        for item_id in ids:
+            item = self.get(item_id)
+            if item:
+                result.append(item)
+        return result
 
-    def mark_sent(self, item_id: int) -> None:
+    def renew_lease(self, item_id: int, worker_id: str = "default",
+                    lease_seconds: int = 300) -> bool:
+        """心跳续租（工作项 1）：仅当前 worker 可续。"""
+        expire_at = (datetime.now() + timedelta(seconds=lease_seconds)).isoformat(timespec="seconds")
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE notification_outbox SET claimed_at=?, lease_expires_at=? "
+                "WHERE id=? AND claimed_by=? AND status='processing'",
+                (datetime.now().isoformat(timespec="seconds"), expire_at, int(item_id), worker_id),
+            )
+        return cur.rowcount > 0
+
+    def release_lease(self, item_id: int, worker_id: str = "default") -> bool:
+        """主动释放租约（回到 pending，保留 attempts）。"""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE notification_outbox SET status='pending', claimed_by=NULL, "
+                "claimed_at=NULL, lease_expires_at=NULL WHERE id=? AND claimed_by=?",
+                (int(item_id), worker_id),
+            )
+        return cur.rowcount > 0
+
+    def mark_sent(self, item_id: int, worker_id: str | None = None) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        if worker_id is None:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE notification_outbox SET status='sent', sent_at=?, claimed_by=NULL, "
+                    "claimed_at=NULL, lease_expires_at=NULL WHERE id=?",
+                    (now, int(item_id)))
+            return
         with self._connect() as conn:
             conn.execute(
-                "UPDATE notification_outbox SET status='sent', sent_at=? WHERE id=?",
-                (datetime.now().isoformat(timespec="seconds"), item_id),
+                "UPDATE notification_outbox SET status='sent', sent_at=?, claimed_by=NULL, "
+                "claimed_at=NULL, lease_expires_at=NULL WHERE id=? AND claimed_by=?",
+                (now, int(item_id), worker_id),
             )
 
-    def mark_failed(self, item_id: int, attempts: int, error: str) -> None:
+    def mark_failed(self, item_id: int, attempts: int, error: str,
+                    worker_id: str | None = None) -> None:
         next_attempt = int(attempts) + 1
         status = "dead" if next_attempt >= 5 else "pending"
         delay = min(60 * (2 ** min(int(attempts), 6)), 3600)
         next_at = datetime.now() + timedelta(seconds=delay)
+        where = "WHERE id=?"
+        params = [status, next_attempt, str(error)[:1000],
+                  next_at.isoformat(timespec="seconds"), int(item_id)]
+        if worker_id is not None:
+            where = "WHERE id=? AND claimed_by=?"
+            params.append(worker_id)
         with self._connect() as conn:
             conn.execute(
-                """UPDATE notification_outbox
-                   SET status=?, attempts=?, last_error=?, next_attempt_at=?
-                   WHERE id=?""",
-                (status, next_attempt, str(error)[:1000], next_at.isoformat(timespec="seconds"), item_id),
+                f"""UPDATE notification_outbox
+                   SET status=?, attempts=?, last_error=?, next_attempt_at=?,
+                       claimed_by=NULL, claimed_at=NULL, lease_expires_at=NULL
+                   {where}""",
+                tuple(params),
             )
 
     def pending_count(self) -> int:

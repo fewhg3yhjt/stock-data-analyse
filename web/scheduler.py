@@ -714,7 +714,7 @@ def send_digest_with_outbox(digest, channel: str, **kwargs) -> dict:
     return result
 
 
-def _deliver_outbox_item(item: dict) -> dict:
+def _deliver_outbox_item(item: dict, worker_id: str | None = None) -> dict:
     from StockInvestmentTool.notifier.core import Digest, live_send_digest
     from StockInvestmentTool.notifier.outbox import NotificationOutbox
 
@@ -728,7 +728,7 @@ def _deliver_outbox_item(item: dict) -> dict:
             raise RuntimeError(str(result))
         return result
     except Exception as exc:
-        NotificationOutbox().mark_failed(item["id"], item.get("attempts", 0), str(exc))
+        NotificationOutbox().mark_failed(item["id"], item.get("attempts", 0), str(exc), worker_id)
         return {"ok": False, "error": str(exc), "outbox_id": item["id"]}
 
 
@@ -736,8 +736,9 @@ def process_notification_outbox() -> dict:
     """Retry pending notifications after process/container restarts."""
     from StockInvestmentTool.notifier.outbox import NotificationOutbox
 
+    worker_id = "scheduler"  # 当前无持久 Worker，仅 Scheduler 领取
     outbox = NotificationOutbox()
-    due = outbox.due()
+    due = outbox.claim_due(worker_id=worker_id, lease_seconds=300)
     if not due:
         return {"sent": 0, "failed": 0, "pending": outbox.counts().get("pending", 0),
                 "dead": outbox.counts().get("dead", 0)}
@@ -746,9 +747,9 @@ def process_notification_outbox() -> dict:
     run_id = store.start("notification_outbox")
     sent = failed = 0
     for item in due:
-        result = _deliver_outbox_item(item)
+        result = _deliver_outbox_item(item, worker_id)
         if result.get("ok"):
-            outbox.mark_sent(item["id"])
+            outbox.mark_sent(item["id"], worker_id)
             sent += 1
         else:
             failed += 1

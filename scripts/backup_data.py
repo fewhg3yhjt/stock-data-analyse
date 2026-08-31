@@ -24,6 +24,19 @@ def _backup_sqlite(source: Path, target: Path) -> None:
         source_conn.close()
 
 
+def _verify_backup_sqlite(target: Path) -> bool:
+    """恢复验证：备份文件 quick_check + 可打开（工作项 8）。"""
+    try:
+        conn = sqlite3.connect(target)
+        try:
+            row = conn.execute("PRAGMA quick_check").fetchone()
+            return bool(row and str(row[0]) == "ok")
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+
+
 def create_backup(destination: Path, source_root: Path) -> Path:
     destination = destination.expanduser().resolve()
     source_root = source_root.expanduser().resolve()
@@ -33,7 +46,20 @@ def create_backup(destination: Path, source_root: Path) -> Path:
         raise ValueError(f"备份目录必须为空: {destination}")
     destination.mkdir(parents=True, exist_ok=True)
     data = source_root / "output" / "data"
-    for relative in ("warehouse", "portfolio.db"):
+    backup_checks: list[str] = []
+    # 关键 SQLite 数据库（工作项 7）
+    for name in ("management.db", "notification_outbox.db", "portfolio.db", "business.db"):
+        source = data / name
+        if not source.exists():
+            continue
+        target = destination / "data" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _backup_sqlite(source, target)
+        if _verify_backup_sqlite(target):
+            backup_checks.append(f"{name}: ok")
+        else:
+            backup_checks.append(f"{name}: FAILED")
+    for relative in ("warehouse", "job_runs.db"):
         source = data / relative
         if not source.exists():
             continue
@@ -56,6 +82,7 @@ def create_backup(destination: Path, source_root: Path) -> Path:
     (destination / "BACKUP_CREATED_AT").write_text(
         datetime.now().isoformat(timespec="seconds") + "\n", encoding="utf-8"
     )
+    (destination / "BACKUP_VERIFY.txt").write_text("\n".join(backup_checks) + "\n", encoding="utf-8")
     return destination
 
 
