@@ -159,19 +159,19 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
             <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                href="/portfolio/{{ p.id }}" title="加仓/减仓/平仓操作"><i class="fas fa-arrows-rotate"></i> 操作</a>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
-               onclick="toggleDetail(this,'{{ p.stock_code }}')" data-code="{{ p.stock_code }}"
+               data-action="toggleDetail" data-code="{{ p.stock_code }}"
                title="基础指标 + 天级K线 + 盘中实时 + 实际收益"><i class="fas fa-chart-simple"></i> 详情</button>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
-               onclick="toggleReturn(this)" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}" data-cost="{{ p.avg_cost }}"
+               data-action="toggleReturn" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}" data-cost="{{ p.avg_cost }}"
                title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#28a745;"
-               onclick="openOp('{{ p.id }}','{{ p.stock_name }}','buy')" title="加仓"><i class="fas fa-plus"></i> 加仓</button>
+               data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="buy" title="加仓"><i class="fas fa-plus"></i> 加仓</button>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#e67e22;"
-               onclick="openOp('{{ p.id }}','{{ p.stock_name }}','sell')" title="减仓"><i class="fas fa-minus"></i> 减仓</button>
+               data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="sell" title="减仓"><i class="fas fa-minus"></i> 减仓</button>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#9c27b0;"
-               onclick="openOp('{{ p.id }}','{{ p.stock_name }}','dividend')" title="分红"><i class="fas fa-coins"></i> 分红</button>
+               data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="dividend" title="分红"><i class="fas fa-coins"></i> 分红</button>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#dc3545;"
-               onclick="deletePos('{{ p.id }}','{{ p.stock_name }}')" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
+               data-action="deletePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
           </span>
         </div>
         <div class="pos-grid">
@@ -372,5 +372,14 @@ async function deletePos(id, name){
     } else { showToast(d.error || '删除失败'); }
   } catch(e){ showToast('删除失败: ' + e.message); }
 }
+document.addEventListener('click', function(e){
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+  if (a === 'toggleDetail') toggleDetail(el, el.dataset.code);
+  else if (a === 'toggleReturn') toggleReturn(el);
+  else if (a === 'openOp') openOp(Number(el.dataset.id), el.dataset.name, el.dataset.type);
+  else if (a === 'deletePos') deletePos(Number(el.dataset.id), el.dataset.name);
+});
 </script>
 {% endblock %}

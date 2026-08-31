@@ -110,11 +110,11 @@ select{background:var(--surface2);border:1px solid var(--border);border-radius:6
             <select id="scheme-{{ s.id }}">
               {% for sc in schemes %}<option value="{{ sc }}" {% if sc==s.scheme_name %}selected{% endif %}>{{ sc }}</option>{% endfor %}
             </select>
-            <button class="btn btn-outline" onclick="reanalyze('{{ s.stock_code }}','{{ s.stock_name }}',{{ s.id }})"><i class="fas fa-rotate"></i> 重新分析</button>
-            <button class="btn btn-outline" onclick="toggleReturn('{{ s.stock_code }}')" title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
+<button class="btn btn-outline" data-action="reanalyze" data-code="{{ s.stock_code }}" data-name="{{ s.stock_name }}" data-id="{{ s.id }}"><i class="fas fa-rotate"></i> 重新分析</button>
+            <button class="btn btn-outline" data-action="toggleReturn" data-code="{{ s.stock_code }}" title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
             <a class="btn btn-primary" href="/portfolio/add?code={{ s.stock_code }}&name={{ s.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
             <a class="btn btn-outline" href="/analyze?code={{ s.stock_code }}&name={{ s.stock_name }}" title="进入完整分析/回测"><i class="fas fa-chart-line"></i> 完整分析</a>
-            <button class="btn btn-danger" onclick="delSim({{ s.id }})"><i class="fas fa-trash"></i></button>
+            <button class="btn btn-danger" data-action="delSim" data-id="{{ s.id }}"><i class="fas fa-trash"></i></button>
           </td>
         </tr>
         <tr class="return-row" id="return-{{ s.stock_code }}" style="display:none;">
@@ -177,5 +177,13 @@ async function addManual(){
   if (d.status==='success'){ showToast('模拟完成'); setTimeout(()=>location.reload(),500); }
   else showToast(d.error||'模拟失败');
 }
+document.addEventListener('click', function(e){
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+  if (a === 'reanalyze') reanalyze(el.dataset.code, el.dataset.name, Number(el.dataset.id));
+  else if (a === 'toggleReturn') toggleReturn(el.dataset.code);
+  else if (a === 'delSim') delSim(Number(el.dataset.id));
+});
 </script>
 {% endblock %}

@@ -315,15 +315,20 @@ function renderResult(d) {
   (d.charts || []).forEach(ch => {
     const item = document.createElement('div');
     item.className = 'chart-item';
-    item.innerHTML = `<img src="/charts/${ch.file}" alt="${ch.name}" onclick="openModal('/charts/${ch.file}')"><div class="label">${ch.name}</div>`;
+    item.innerHTML = `<img src="/charts/${encodeURIComponent(ch.file)}" alt="${ch.name.replace(/"/g, '&quot;')}" data-action="openChart" data-file="${encodeURIComponent(ch.file)}"><div class="label">${ch.name.replace(/</g, '&lt;')}</div>`;
     gallery.appendChild(item);
   });
 
   // 报告
-  $('#report-content').innerHTML = marked.parse(d.report_content || '');
+  $('#report-content').innerHTML = window.sanitizeHtml ? window.sanitizeHtml(marked.parse(d.report_content || '')) : marked.parse(d.report_content || '');
 
   $('#result-section').style.display = 'block';
   window.scrollTo({ top: $('#result-section').offsetTop - 20, behavior: 'smooth' });
 }
+document.addEventListener('click', function(e){
+  const el = e.target.closest('[data-action="openChart"]');
+  if (!el) return;
+  openModal('/charts/' + decodeURIComponent(el.dataset.file));
+});
 </script>
 {% endblock %}

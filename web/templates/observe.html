@@ -118,9 +118,9 @@ tr:last-child td{border-bottom:none;}
           <td style="white-space:nowrap;">
             {% if r.ok %}
             <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;margin-right:4px;"
-                    onclick="event.stopPropagation();simulate('{{ r.code }}','{{ r.name }}')" title="跑分析存模拟快照"><i class="fas fa-flask"></i> 模拟</button>
+                    data-action="simulate" title="跑分析存模拟快照"><i class="fas fa-flask"></i> 模拟</button>
             <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;margin-right:4px;"
-                    onclick="event.stopPropagation();addWatch('{{ r.code }}','{{ r.name }}')" title="加入自选"><i class="fas fa-star"></i> 自选</button>
+                    data-action="addWatch" title="加入自选"><i class="fas fa-star"></i> 自选</button>
             <a class="btn btn-primary" style="padding:4px 12px;font-size:12px;"
                href="/portfolio/add?code={{ r.code }}&name={{ r.name }}"
                title="录入已买入的持仓"><i class="fas fa-plus"></i> 建仓</a>
@@ -171,6 +171,14 @@ async function simulate(code, name){
   } else showToast(d.error||'模拟失败');
 }
 document.addEventListener('click', function(e){
+  const actionBtn = e.target.closest('[data-action]');
+  if (actionBtn){
+    const row = actionBtn.closest('.obs-row');
+    const code = row.dataset.code, name = row.dataset.name;
+    if (actionBtn.dataset.action === 'simulate') simulate(code, name);
+    else if (actionBtn.dataset.action === 'addWatch') addWatch(code, name);
+    return;
+  }
   const row = e.target.closest('.obs-row');
   if (!row) return;
   const code = row.dataset.code, name = row.dataset.name;

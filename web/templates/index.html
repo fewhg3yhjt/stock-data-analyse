@@ -441,13 +441,13 @@ function renderResults(data) {
     });
   }
 
-  // 报告 (Markdown → HTML)
+  // 报告 (Markdown → HTML，净化后写入)
   const reportDiv = document.getElementById('report-content');
   if (d.report_content && typeof marked !== 'undefined') {
     let html = marked.parse(d.report_content);
     // 报告内嵌图表使用裸文件名，重写为 /charts/ 静态路由，避免相对路径 404
     html = html.replace(/src="(?!\/|https?:|data:)([^"]+\.png)"/gi, 'src="/charts/$1"');
-    reportDiv.innerHTML = html;
+    reportDiv.innerHTML = window.sanitizeHtml ? window.sanitizeHtml(html) : html;
   } else if (d.report_content) {
     reportDiv.textContent = d.report_content;
   } else { reportDiv.textContent = '(报告为空)'; }

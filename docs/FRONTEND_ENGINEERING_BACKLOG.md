@@ -45,7 +45,7 @@
 | 状态词表 | `done` | `cls` 已返回完整 `status-*` canonical class，调用方已统一到 `.status-tag.status-<key>`（提交 7838b9b 后续提交） |
 | 公共壳层 | `in_progress` | `.app` 页面通过 CSS 适配，尚未全部改为真实公共结构 |
 | Toast/反馈 | `in_progress` | 普通 alert 有过渡方案，confirm/prompt 尚未统一 |
-| XSS/CSP | `todo` | 内联事件和 Markdown 净化尚未完成 |
+| XSS/CSP | `in_progress` | 内联事件已清零，marked 已净化，CSP 分阶段启用（仍允许内联脚本与 CDN） |
 | 表单/确认组件 | `todo` | 设计契约已定义，代码组件尚未完整实现 |
 | CDN/构建/版本 | `todo` | 仍存在 CDN、内联脚本和手写版本号 |
 | 真实进度和图表释放 | `todo` | 需单独实现和回归 |
@@ -54,21 +54,21 @@
 
 ### S-01 内联事件属性注入风险
 
-| 现状 | 风险 | 整改方向 | 涉及范围 | 验收标准 |
-|---|---|---|---|---|
-| 后端变量直接拼入 `onclick` 和 JS 字符串，例如股票代码、名称、方案名 | 引号或特殊字符可能破坏属性上下文，形成 XSS 或操作错绑 | 改为 `data-*` 存储 ID，通过事件委托读取；必要时使用 `tojson` 或属性专用转义 | `observe.html`、`watch_pool.html`、`watchlist.html`、`portfolio.html`、`warroom.html`、`simulation.html`、`position_detail.html` | 页面不存在后端变量直接进入 `onclick`；特殊名称不会破坏 DOM 或执行脚本 |
+| 现状 | 风险 | 整改方向 | 涉及范围 | 验收标准 | 状态 |
+|---|---|---|---|---|---|
+| 后端变量直接拼入 `onclick` 和 JS 字符串，例如股票代码、名称、方案名 | 引号或特殊字符可能破坏属性上下文，形成 XSS 或操作错绑 | 改为 `data-*` 存储 ID，通过事件委托读取；必要时使用 `tojson` 或属性专用转义 | `observe.html`、`watch_pool.html`、`watchlist.html`、`portfolio.html`、`warroom.html`、`simulation.html`、`position_detail.html` | 页面不存在后端变量直接进入 `onclick`；特殊名称不会破坏 DOM 或执行脚本 | `done`：observe/watchlist/portfolio/warroom/simulation 已改 data-* + 事件委托；compare 图表点击注入同步修复；全库 `onclick` 含模板变量命中数为 0 |
 
 ### S-02 Markdown 结果未净化
 
-| 现状 | 风险 | 整改方向 | 涉及范围 | 验收标准 |
-|---|---|---|---|---|
-| `marked.parse()` 结果直接写入 `innerHTML` | 报告内容或数据字段可能注入脚本 | 使用本地净化库或严格 Markdown 白名单；禁止未净化 HTML 进入页面 | `index.html`、`compare.html`、`morning_report.html` | 含脚本、事件属性和危险 URL 的内容不执行，正常 Markdown 仍可读 |
+| 现状 | 风险 | 整改方向 | 涉及范围 | 验收标准 | 状态 |
+|---|---|---|---|---|---|
+| `marked.parse()` 结果直接写入 `innerHTML` | 报告内容或数据字段可能注入脚本 | 使用本地净化库或严格 Markdown 白名单；禁止未净化 HTML 进入页面 | `index.html`、`compare.html`、`morning_report.html` | 含脚本、事件属性和危险 URL 的内容不执行，正常 Markdown 仍可读 | `done`：新增 `ui-sanitize.js`（DOMParser 白名单净化，剥离 script/style/iframe、on* 属性、javascript:/data:text/html URL），三个页面均经 `sanitizeHtml` 后写入 |
 
 ### S-03 缺少 CSP 和基础安全头
 
-| 现状 | 风险 | 整改方向 | 涉及范围 | 验收标准 |
-|---|---|---|---|---|
-| Web 响应未统一返回 `Content-Security-Policy` 等安全头 | XSS 发生后的影响面扩大，内联脚本治理无约束 | 按当前内联脚本现状分阶段增加 CSP；同步增加 `X-Content-Type-Options`、`X-Frame-Options` 或等价策略 | `web/app.py` | 生产页面响应包含安全头，页面脚本和图表功能不被误阻断 |
+| 现状 | 风险 | 整改方向 | 涉及范围 | 验收标准 | 状态 |
+|---|---|---|---|---|---|
+| Web 响应未统一返回 `Content-Security-Policy` 等安全头 | XSS 发生后的影响面扩大，内联脚本治理无约束 | 按当前内联脚本现状分阶段增加 CSP；同步增加 `X-Content-Type-Options`、`X-Frame-Options` 或等价策略 | `web/app.py` | 生产页面响应包含安全头，页面脚本和图表功能不被误阻断 | `done`（分阶段）：`app.after_request` 已加 CSP（`script-src 'self' 'unsafe-inline' + 已知 CDN`）、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: same-origin`；内联脚本治理完成后可收紧移除 `unsafe-inline` |
 
 ### C-01 涨跌和盈亏颜色语义统一
 

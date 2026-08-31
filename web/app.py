@@ -3041,6 +3041,27 @@ def create_app():
     app.register_blueprint(biz_api, url_prefix="/api/biz")
     app.register_blueprint(biz_api, url_prefix="/api", name="business_contract_api")
 
+    # 基础安全响应头（S-03）：当前页面仍有内联脚本与 CDN 静态资源，
+    # CSP 分阶段启用：允许内联脚本与已知 CDN，后续内联脚本治理完成后收紧。
+    @app.after_request
+    def add_security_headers(response):
+        csp = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.bootcdn.net https://cdn.jsdelivr.net https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline' https://cdn.bootcdn.net; "
+            "font-src 'self' https://cdn.bootcdn.net data:; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'"
+        )
+        response.headers.setdefault("Content-Security-Policy", csp)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        return response
+
     # 操作日志: 规则检查值可读格式化
     def _fmt_advice_value(v):
         if isinstance(v, bool):

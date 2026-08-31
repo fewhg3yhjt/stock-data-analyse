@@ -20,7 +20,7 @@
 | 状态 CSS 类 | 已迁移 | `ui-status.js` `cls` 已返回完整 `status-*` canonical class；任务中心、数据中心、数据资产、个股研究、通知、设置已改用 `.status-tag.status-<key>`，旧 `.tag.status-*`/`.dm-health.*`/`.status-tag.ok` 已删除 |
 | 公共组件类名 | 部分落地 | `.ui-card`、`.ui-input-panel` 等契约已定义但代码尚未全面使用；旧 `card/btn/tag/table` 将直接删除，不建立兼容层 |
 | 页面级 Adapter | 部分完成 | 核心系统页面有独立脚本，许多业务页仍是模板内联脚本 |
-| 安全治理 | 未完成 | 内联事件属性、Markdown 净化、CSP 尚未全部整改 |
+| 安全治理 | 完成 | 内联事件注入已清零并改事件委托；Markdown 已净化（`ui-sanitize.js`）；CSP 与基础安全头已启用（分阶段，仍允许内联脚本与 CDN） |
 | 资源治理 | 未完成 | CDN、本地库、手写版本号和构建策略尚未完全统一 |
 | 人工浏览器验收 | 未完成 | 已做路由/接口冒烟，尚未完成逐页视觉、移动端和交互验收 |
 

@@ -71,16 +71,18 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   {% if items %}
     {% for w in items %}
     <div class="card">
-      <div class="wl-head" onclick="toggle('{{ w.stock_code }}', {id:{{ w.id }}, sim_entry: {{ w.sim_entry|tojson }}})">
+      <div class="wl-head" data-action="toggle" data-code="{{ w.stock_code }}" data-id="{{ w.id }}"
+           data-sim-date="{{ w.sim_entry.date if w.sim_entry and w.sim_entry.date else '' }}"
+           data-sim-price="{{ w.sim_entry.price if w.sim_entry and w.sim_entry.price else '' }}">
         <span class="name">{{ w.stock_name }} <span class="code">{{ w.stock_code }}</span>
-          <button class="btn btn-outline" style="font-size:11px;padding:2px 8px;margin-left:6px;" onclick="event.stopPropagation();editAddedTime({{ w.id }},'{{ w.added_time or '' }}')" title="点击修改观察起点">
+          <button class="btn btn-outline" style="font-size:11px;padding:2px 8px;margin-left:6px;" data-action="editAddedTime" data-id="{{ w.id }}" data-added="{{ w.added_time or '' }}" title="点击修改观察起点">
             <i class="fas fa-clock"></i> {{ w.added_time or '设观察起点' }}
           </button>
         </span>
-        <div class="wl-actions" onclick="event.stopPropagation()">
-          <button class="btn btn-outline" onclick="simulate('{{ w.stock_code }}','{{ w.stock_name }}')"><i class="fas fa-flask"></i> 模拟</button>
+        <div class="wl-actions">
+          <button class="btn btn-outline" data-action="simulate" data-code="{{ w.stock_code }}" data-name="{{ w.stock_name }}"><i class="fas fa-flask"></i> 模拟</button>
           <a class="btn btn-primary" href="/portfolio/add?code={{ w.stock_code }}&name={{ w.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
-          <button class="btn btn-danger" onclick="delWatch('{{ w.id }}')"><i class="fas fa-trash"></i></button>
+          <button class="btn btn-danger" data-action="delWatch" data-id="{{ w.id }}"><i class="fas fa-trash"></i></button>
         </div>
       </div>
       <div class="wl-detail" id="detail-{{ w.stock_code }}">
@@ -96,7 +98,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 <div class="toast" id="toast"></div>
 <script>
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
-async function toggle(code, wl){
+function toggle(code, wl){
   const d = document.getElementById('detail-'+code);
   d.classList.toggle('open');
   if (d.classList.contains('open') && !d.dataset.loaded){
@@ -114,6 +116,22 @@ async function toggle(code, wl){
     }).catch(err=>{ box.innerHTML = '<span style="color:#c62828;font-size:13px;">'+err.message+'</span>'; });
   }
 }
+document.addEventListener('click', function(e){
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+  if (action === 'toggle'){
+    const sim = el.dataset.simDate || el.dataset.simPrice ? {date: el.dataset.simDate || '', price: el.dataset.simPrice || ''} : {};
+    toggle(el.dataset.code, {id: Number(el.dataset.id), sim_entry: sim});
+  } else if (action === 'simulate'){
+    simulate(el.dataset.code, el.dataset.name);
+  } else if (action === 'editAddedTime'){
+    e.stopPropagation();
+    editAddedTime(Number(el.dataset.id), el.dataset.added || '');
+  } else if (action === 'delWatch'){
+    delWatch(Number(el.dataset.id));
+  }
+});
 async function simulate(code, name){
   showToast('模拟中…');
   const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name})})).json();

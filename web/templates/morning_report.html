@@ -54,7 +54,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
   const el = document.getElementById('content');
   const raw = {{ content | tojson }};
   if (window.marked && typeof window.marked.parse === 'function') {
-    el.innerHTML = window.marked.parse(raw);
+    const html = window.marked.parse(raw);
+    el.innerHTML = window.sanitizeHtml ? window.sanitizeHtml(html) : html;
   } else {
     // marked CDN 加载失败时降级为纯文本，保证内容不空白
     el.textContent = raw;

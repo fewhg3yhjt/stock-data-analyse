@@ -138,10 +138,10 @@ tr:last-child td{border-bottom:none;}
         {% endif %}
         <div class="pos-actions">
           <a class="btn btn-outline" href="/portfolio/{{ p.id }}"><i class="fas fa-eye"></i> 详情</a>
-          <button class="btn btn-outline" onclick="openTxn({{ p.id }}, 'buy', '{{ p.stock_name }}')"><i class="fas fa-plus-circle"></i> 买入</button>
-          <button class="btn btn-outline" onclick="openTxn({{ p.id }}, 'sell', '{{ p.stock_name }}')"><i class="fas fa-minus-circle"></i> 卖出</button>
-          <button class="btn btn-outline" onclick="openTxn({{ p.id }}, 'dividend', '{{ p.stock_name }}')"><i class="fas fa-coins"></i> 分红</button>
-          <button class="btn btn-danger" onclick="closePos({{ p.id }}, '{{ p.stock_name }}')"><i class="fas fa-times-circle"></i> 平仓</button>
+          <button class="btn btn-outline" data-action="openTxn" data-id="{{ p.id }}" data-type="buy" data-name="{{ p.stock_name }}"><i class="fas fa-plus-circle"></i> 买入</button>
+          <button class="btn btn-outline" data-action="openTxn" data-id="{{ p.id }}" data-type="sell" data-name="{{ p.stock_name }}"><i class="fas fa-minus-circle"></i> 卖出</button>
+          <button class="btn btn-outline" data-action="openTxn" data-id="{{ p.id }}" data-type="dividend" data-name="{{ p.stock_name }}"><i class="fas fa-coins"></i> 分红</button>
+          <button class="btn btn-danger" data-action="closePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}"><i class="fas fa-times-circle"></i> 平仓</button>
         </div>
       </div>
       {% endfor %}
@@ -164,7 +164,7 @@ tr:last-child td{border-bottom:none;}
         <td>{{ '{:,.0f}'.format(w.target_capital) }}</td>
         <td>{{ '%.2f' % w.weak_support if w.weak_support else '—' }}</td>
         <td>{{ w.notes }}</td>
-        <td><button class="btn btn-outline" style="padding:4px 10px;font-size:12px;" onclick="delWatch({{ w.id }})">删除</button></td>
+        <td><button class="btn btn-outline" style="padding:4px 10px;font-size:12px;" data-action="delWatch" data-id="{{ w.id }}">删除</button></td>
       </tr>
       {% endfor %}
     </tbody></table>
@@ -238,6 +238,7 @@ tr:last-child td{border-bottom:none;}
 <script>
 const $ = s => document.querySelector(s);
 let txnPosId = null, txnType = 'buy';
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function showToast(msg, ok=true) {
   const t = $('#toast');
@@ -282,7 +283,7 @@ function delWatch(id) {
 // 交易
 function openTxn(id, type, name) {
   txnPosId = id; txnType = type;
-  $('#txn-title').innerHTML = (type === 'buy' ? '记录买入' : type === 'sell' ? '记录卖出' : '记录分红') + ' — ' + name +
+  $('#txn-title').innerHTML = (type === 'buy' ? '记录买入' : type === 'sell' ? '记录卖出' : '记录分红') + ' — ' + esc(name) +
     ' <button class="close" onclick="closeModal(\'txn\')">&times;</button>';
   $('#txn-date').value = new Date().toISOString().slice(0,10);
   openModal('txn');
@@ -323,5 +324,13 @@ function genReport() {
     btn.disabled = false;
   });
 }
+document.addEventListener('click', function(e){
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+  if (a === 'openTxn') openTxn(Number(el.dataset.id), el.dataset.type, el.dataset.name);
+  else if (a === 'closePos') closePos(Number(el.dataset.id), el.dataset.name);
+  else if (a === 'delWatch') delWatch(Number(el.dataset.id));
+});
 </script>
 {% endblock %}
