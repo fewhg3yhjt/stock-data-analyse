@@ -88,7 +88,7 @@
 
 | 现状 | 风险 | 整改方向 | 验收标准 |
 |---|---|---|---|
-| `ui-status.js` 已定义 `partial/deferred/not_applicable/requested/cancelled/degraded` 等状态，但 CSS 只覆盖部分 `status-*` 类 | 状态渲染成默认灰色，用户无法区分部分可用、延期和异常 | 补齐 `.status-tag.partial`、`.status-tag.deferred`、`.status-tag.not-applicable`、`.status-tag.requested`、`.status-tag.cancelled`、`.status-tag.degraded`，并统一类名 | 词表中每个可见状态都有对应颜色、文字和非颜色含义 |
+| `ui-status.js` 已定义 `partial/deferred/not_applicable/requested/cancelled/degraded` 等状态，但 `cls` 仍返回裸后缀，CSS 也只覆盖部分 `status-*` 类 | 页面按文档拼接时会得到不同类名，部分状态渲染成默认灰色 | 让 `cls` 直接返回完整 canonical `status-*` 类名，补齐 CSS，并统一页面类名；不保留旧类兼容别名 | 词表中每个可见状态都有对应完整 class、颜色、文字和非颜色含义 |
 
 ### T-03 表单组件契约缺失
 

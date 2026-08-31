@@ -475,6 +475,8 @@
 
 不再使用 `.tag.status-*`、`.dm-health.*` 或 `.status-tag.ok` 作为目标类名。旧类名不保留兼容别名，迁移时直接替换并删除。
 
+`ui-status.js` 每个状态项的 `cls` 字段必须返回完整的 canonical class，例如 `status-healthy`、`status-not-applicable` 和 `status-waiting-close`，不得返回裸后缀 `healthy`、`not-applicable` 或 `unknown`。页面不得自行拼接、截断或改写该字段。
+
 状态 key 与唯一视觉 class 的映射如下：
 
 | 状态 key | 展示文案 | 唯一视觉 class |
@@ -530,7 +532,7 @@
 | 未启用 | 允许 | 手动执行需说明不会自动调度 | 默认阻止 | 按业务规则 |
 | 暂无数据/未知结果 | 允许空态 | 查询后再操作 | 默认阻止 | 按业务规则 |
 
-操作状态使用 `allowed`、`disabled`、`blocked`、`denied`、`pending`、`unknown`；`denied` 仅表示当前操作不可执行，不扩展多用户角色模型。
+操作状态使用 `allowed`、`disabled`、`blocked`、`denied`、`pending_confirmation`、`pending`、`unknown`；`denied` 仅表示当前操作不可执行，不扩展多用户角色模型。
 
 中文门禁文案与机器状态必须按以下规则映射：
 
@@ -627,6 +629,7 @@
 | 确认面板 | `.ui-confirm`、`.ui-confirm-danger` |
 | 进度 | `.ui-progress`、`.ui-progress-bar` |
 | 按钮 | `.ui-button`、`.ui-button-primary`、`.ui-button-secondary`、`.ui-button-ghost`、`.ui-button-danger`、`.ui-button-sm` |
+| 辅助可访问性 | `.sr-only` |
 
 ### 6.3 Token 与实现映射
 
@@ -636,7 +639,7 @@
 |---|---|---|
 | 语义颜色 | `base.css` | `--color-up/down/success/warning/danger/info/muted` |
 | 正文颜色 | `base.css` | `--color-text`、`--color-text-subtle` |
-| 状态标签 | `base.css`、`ui-status.js` | 每个状态都有文字、CSS 类和对应色调 |
+| 状态标签 | `base.css`、`ui-status.js` | 每个状态都有文字、完整 `status-*` CSS 类和对应色调 |
 | 涨跌数值 | `base.css` | `.value-up`、`.value-down`、`.value-flat` |
 | 消息 | `base.css`、`ui-feedback.js` | `.ui-message` 及 success/warning/error/info 变体 |
 | 表格 | `base.css` | `.ui-table`、`.ui-table-wrap` |
@@ -644,6 +647,7 @@
 | 确认/输入 | `base.css`、公共 JS | `.ui-confirm`、`.ui-confirm-danger` |
 | 进度 | `base.css` | `.ui-progress`、`.ui-progress-bar` |
 | 按钮 | `base.css` | `.ui-button` 及 primary/secondary/ghost/danger/sm 变体 |
+| 辅助可访问性 | `base.css` | `.sr-only`，视觉隐藏但保留辅助技术可读性 |
 
 未完成某项时只能在实现状态文档标记为未落地，不得以旧类名或页面内联样式冒充完成。
 
@@ -741,7 +745,7 @@
     <div id="symbol-help" class="ui-field-help">例如 sh600519</div>
     <div id="symbol-error" class="ui-field-error" role="alert">请输入证券代码</div>
   </div>
-  <button class="btn btn-primary" type="submit">开始研究</button>
+  <button class="ui-button ui-button-primary" type="submit">开始研究</button>
 </form>
 ```
 
@@ -758,7 +762,7 @@
         <dt>可恢复性</dt><dd>不可自动恢复</dd>
       </dl>
     </div>
-    <footer class="ui-confirm-actions"><button class="btn btn-outline">取消</button><button class="btn btn-danger">确认平仓</button></footer>
+    <footer class="ui-confirm-actions"><button class="ui-button ui-button-secondary">取消</button><button class="ui-button ui-button-danger">确认平仓</button></footer>
   </section>
 </div>
 ```
@@ -768,7 +772,7 @@
 ```html
 <div class="ui-drawer-mask">
   <aside class="ui-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
-    <header class="ui-drawer-header"><h2 id="drawer-title">数据项详情</h2><button aria-label="关闭">×</button></header>
+    <header class="ui-drawer-header"><h2 id="drawer-title">数据项详情</h2><button class="ui-drawer-close" type="button" aria-label="关闭">×</button></header>
     <div class="ui-drawer-body"><section class="ui-drawer-section"><h3>定义</h3></section></div>
   </aside>
 </div>
@@ -782,6 +786,10 @@
   <div class="ui-progress-track"><div class="ui-progress-bar" style="width:42%"></div></div>
 </div>
 ```
+
+`.sr-only` 必须使用视觉隐藏而非 `display:none`，以便屏幕阅读器继续读取表格标题、状态说明和错误文本。
+
+确认面板是独立组件，但可以复用抽屉的遮罩和定位机制：`.ui-drawer-mask` 只负责背景遮罩与层级，`.ui-confirm` 负责确认内容和按钮；确认面板不强制表现为可导航的详情抽屉。详情抽屉关闭按钮统一使用 `.ui-drawer-close`，关闭后焦点回到触发元素。
 
 ## 7. 响应式、性能与可访问性
 
