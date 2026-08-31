@@ -456,3 +456,4 @@ Route
 - `web/biz_api.py` 当前已注册 35 个业务 API 路由，覆盖运行创建/查询、观察、建仓、估值快照、收益复盘、通知、健康和业务任务入口。
 - `web/biz_api.py` 已提供 `/api/biz/health/live`、`/health/ready`、`/health/details`，与平台 HealthService 对齐。
 - `tests/test_biz_tasks.py` 已验证 Request/JobRun 分离、Worker 执行、租约锁和失败恢复。
+- `biz/worker.py` 已提供独立业务 Worker 入口：启动回收 stale run，再领取并执行 requested run；默认单次执行，持续轮询需显式指定间隔，尚未挂入生产容器。
