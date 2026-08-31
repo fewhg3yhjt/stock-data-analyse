@@ -455,6 +455,7 @@ Route
 - 业务任务基础 API 已接入；长任务接口现在先持久化 BusinessRequest/BusinessJobRun，再由 `run-next` Worker 领取执行。业务调度适配器已有单测，尚未挂入生产 Scheduler。
 - `web/biz_api.py` 当前已注册 45 个业务 API 路由，覆盖运行创建/查询、观察、建仓、估值快照、收益复盘、通知、健康和业务任务入口。
 - `web/biz_api.py` 已提供 `/api/biz/health/live`、`/health/ready`、`/health/details`，与平台 HealthService 对齐。
+- BusinessRun 查询接口已返回结构化输入/输出版本信息，供页面和 Worker 状态轮询使用。
 - `tests/test_biz_tasks.py` 已验证 Request/JobRun 分离、Worker 执行、租约锁和失败恢复。
 - `biz/worker.py` 已提供独立业务 Worker 入口：启动回收 stale run，再领取并执行 requested run；默认单次执行，持续轮询需显式指定间隔，尚未挂入生产容器。
 - stale 回收已只针对 heartbeat 超时的 `running` JobRun，`requested` 队列不会被误判为进程重启失败；业务锁键支持 period/partition/write_group，Worker 执行期间自动 heartbeat。

@@ -213,10 +213,14 @@ def get_research_run(run_id: str):
 
 @biz_api.get("/business-runs/<run_id>")
 def get_business_run_status(run_id: str):
-    row = _repo().db.fetchone("SELECT * FROM business_job_runs WHERE run_id=?", (run_id,))
+    repo = _repo()
+    row = repo.db.fetchone("SELECT * FROM business_job_runs WHERE run_id=?", (run_id,))
     if not row:
         return _error("BUSINESS_RUN_NOT_FOUND", "业务运行不存在", 404)
-    return flask.jsonify({"data": dict(row), "request_id": flask.request.headers.get("X-Request-ID", "")})
+    result = dict(row)
+    result["output_versions"] = __import__("StockInvestmentTool.biz.db", fromlist=["loads_json"]).loads_json(result.pop("output_versions_json", "{}"))
+    result["input_versions"] = __import__("StockInvestmentTool.biz.db", fromlist=["loads_json"]).loads_json(result.pop("input_versions_json", "{}"))
+    return flask.jsonify({"data": result, "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
 @biz_api.get("/strategies/versions")
