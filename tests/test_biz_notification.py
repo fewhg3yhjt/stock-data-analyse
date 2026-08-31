@@ -66,7 +66,7 @@ class TestNotificationService:
                                    (delivery.delivery_id,))
         assert row["status"] == DELIVERY_PROCESSING
         ok = svc.deliver(delivery.delivery_id, FakeChannel(True), subject="s", body="b",
-                         recipient="a@b.com")
+                         recipient="a@b.com", worker="w1")
         assert ok
         row = svc.repo.db.fetchone("SELECT * FROM notification_deliveries WHERE delivery_id=?",
                                    (delivery.delivery_id,))
@@ -79,8 +79,10 @@ class TestNotificationService:
         from StockInvestmentTool.biz.notification import MAX_ATTEMPTS
         last_status = None
         for _ in range(MAX_ATTEMPTS):
+            svc.repo.db.update("notification_deliveries", {"next_attempt_at": ""},
+                               "delivery_id=?", (delivery.delivery_id,))
             svc.claim(delivery.delivery_id, worker="w1")
-            ok = svc.deliver(delivery.delivery_id, channel, subject="s", body="b", recipient="a@b.com")
+            ok = svc.deliver(delivery.delivery_id, channel, subject="s", body="b", recipient="a@b.com", worker="w1")
             last_status = svc.repo.db.fetchone(
                 "SELECT status FROM notification_deliveries WHERE delivery_id=?",
                 (delivery.delivery_id,))["status"]
@@ -99,6 +101,31 @@ class TestNotificationService:
         event = svc.create_event(event_type="RISK_ALERT", symbol="sh600908")
         delivery = svc.create_delivery(event, channel="email", recipient="a@b.com")
         assert svc.claim(delivery.delivery_id, "w1")
+        assert not svc.claim(delivery.delivery_id, "w2")
+
+    def test_delivery_requires_current_lease_owner(self, svc):
+        event = svc.create_event(event_type="BUY_SIGNAL", symbol="sh600908")
+        delivery = svc.create_delivery(event, channel="email", recipient="a@b.com")
+        assert svc.claim(delivery.delivery_id, "w1")
+        assert not svc.deliver(delivery.delivery_id, FakeChannel(True), subject="s", body="b",
+                               recipient="a@b.com", worker="w2")
+        assert svc.repo.db.fetchone(
+            "SELECT status FROM notification_deliveries WHERE delivery_id=?", (delivery.delivery_id,)
+        )["status"] == DELIVERY_PROCESSING
+
+    def test_failed_delivery_is_backed_off(self, svc):
+        event = svc.create_event(event_type="RISK_ALERT", symbol="sh600908")
+        delivery = svc.create_delivery(event, channel="email", recipient="a@b.com")
+        assert svc.claim(delivery.delivery_id, "w1")
+        assert not svc.deliver(delivery.delivery_id, FakeChannel(False), subject="s", body="b",
+                               recipient="a@b.com", worker="w1")
+        row = svc.repo.db.fetchone(
+            "SELECT status,next_attempt_at,attempts FROM notification_deliveries WHERE delivery_id=?",
+            (delivery.delivery_id,),
+        )
+        assert row["status"] == DELIVERY_PENDING
+        assert row["attempts"] == 1
+        assert row["next_attempt_at"]
         assert not svc.claim(delivery.delivery_id, "w2")
 
     def test_advice_lifecycle_and_delivery_updates(self, svc):

@@ -623,6 +623,7 @@ CREATE TABLE IF NOT EXISTS notification_deliveries (
     status TEXT NOT NULL DEFAULT 'pending',   -- pending/processing/sent/failed/dead/suppressed
     attempts INTEGER NOT NULL DEFAULT 0,
     last_error TEXT NOT NULL DEFAULT '',
+    next_attempt_at TEXT,
     sent_at TEXT,
     claimed_by TEXT NOT NULL DEFAULT '',
     claimed_at TEXT,
@@ -866,6 +867,9 @@ class BusinessDB:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(advices)")}
             if "strategy_decision_id" not in columns:
                 conn.execute("ALTER TABLE advices ADD COLUMN strategy_decision_id TEXT")
+            delivery_columns = {row[1] for row in conn.execute("PRAGMA table_info(notification_deliveries)")}
+            if "next_attempt_at" not in delivery_columns:
+                conn.execute("ALTER TABLE notification_deliveries ADD COLUMN next_attempt_at TEXT")
             conn.execute(
                 "INSERT OR IGNORE INTO schema_migrations(migration_id, applied_at) VALUES('v1_initial', datetime('now'))"
             )

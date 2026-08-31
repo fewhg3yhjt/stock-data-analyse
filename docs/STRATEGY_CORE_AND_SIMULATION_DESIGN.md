@@ -652,11 +652,14 @@ P0-Smoke: PASS
 - `biz/simulation.py` 已改为虚拟 Lot + FIFO 核算，统一计算成交费用、税费、滑点和已实现收益，并按信号时点执行最大仓位约束。
 - `SimulationExecutor` 已支持同一 SimulationPlan 下多标的独立 StrategyContext、持仓和成交。
 - `CompiledStrategy` 已支持携带 `strategy_version_id`，规则评估结果包含 `priority` 并参与动作仲裁。
+- StrategyDecision 正式评估现在要求绑定 `strategy_version_id`；持久化决策会校验策略版本存在。
+- SimulationExecutor 已统一使用 FIFO Lot 计算已实现收益、win rate、profit factor、手续费、税费和滑点，并支持多标的独立持仓。
+- 模拟买入在信号时点执行最大仓位约束，避免使用区间末尾价格形成未来数据泄漏。
 
 ### 阶段 1 验证
 
 - `tests/test_biz_simulation.py`：7 项通过，覆盖 FIFO/费用税费滑点、多标的、现金约束、确定性和权益曲线。
-- 尚未完成：所有正式策略版本的强制加载、max_position_ratio 的完整组合级风控、ParameterSearchRun 和 Web 异步任务接入。
+- 尚未完成：ParameterSearchRun、完整策略版本管理生命周期、复杂组合级仓位分配和异步任务正式接管。
 
 ### 已知遗留问题（非阻塞）
 

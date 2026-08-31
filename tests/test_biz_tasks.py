@@ -75,7 +75,7 @@ class TestTaskService:
             "config_version": "", "trigger_type": "manual",
             "input_versions_json": "{}", "output_versions_json": "{}",
             "attempt": 1, "status": JOB_RUNNING, "started_at": "2026-08-30T00:00:00Z",
-            "heartbeat_at": "", "finished_at": "", "error_code": "", "error_message": "",
+            "heartbeat_at": "2026-08-30T00:00:00Z", "finished_at": "", "error_code": "", "error_message": "",
         })
         n = svc.recover_stale_runs()
         assert n >= 1

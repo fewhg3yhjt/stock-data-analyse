@@ -774,6 +774,7 @@ simulation snapshot → ObservationSnapshot
 - `biz/workflow.py` 已提供候选 → Observation → SimulationPlan → EntryContext → PositionCycle/Execution 的跨模块应用服务。
 - `web/biz_api.py` 已提供 `/api/observations`、`/api/watch-subscriptions` 和状态操作正式入口。
 - `ObservationSnapshot` 已落库，并可由 `/api/research-runs/{run_id}/observation-snapshot` 从研究结果创建。
+- 候选加入 Observation 时已按当前 UTC 时间校验 `expires_at`；同一 canonical symbol 的 active Observation 由业务唯一索引保护。
 
 ### 跨模块验证
 

@@ -302,7 +302,10 @@ class BusinessTaskService:
     def recover_stale_runs(self) -> int:
         """回收 stale running 任务（PROCESS_RESTARTED）。"""
         rows = self.repo.db.fetchall(
-            "SELECT * FROM business_job_runs WHERE status IN ('requested','running')")
+            "SELECT * FROM business_job_runs WHERE status='running' "
+            "AND heartbeat_at IS NOT NULL AND heartbeat_at != '' "
+            "AND heartbeat_at < datetime('now','-5 minutes')"
+        )
         count = 0
         for row in rows:
             self.repo.db.update("business_job_runs", {
@@ -321,6 +324,11 @@ class BusinessTaskService:
             rows = self.repo.db.fetchall(
                 "SELECT * FROM business_job_runs ORDER BY rowid DESC LIMIT ?", (limit,))
         return [dict(r) for r in rows]
+
+    @staticmethod
+    def make_lock_key(task_key: str, *, period: str = "", partition: str = "",
+                      write_group: str = "") -> str:
+        return f"task:{task_key}|period:{period}|partition:{partition}|write:{write_group}"
 
     @staticmethod
     def _row_to_job(row) -> BusinessJobRun:

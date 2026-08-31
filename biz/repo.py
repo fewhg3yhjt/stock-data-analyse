@@ -62,6 +62,10 @@ class BusinessRepository:
 
     def save_decision(self, decision: StrategyDecision) -> str:
         ts = now_utc()
+        if not decision.strategy_version_id:
+            raise ValueError("strategy_version_id is required for persisted decision")
+        if not self.get_strategy_version(decision.strategy_version_id):
+            raise ValueError(f"unknown strategy version: {decision.strategy_version_id}")
         self.db.insert("strategy_decisions", {
             "decision_id": decision.decision_id,
             "strategy_version_id": decision.strategy_version_id or "",
