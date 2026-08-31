@@ -72,6 +72,62 @@ class WarehouseSource:
         return [f for f in files if Path(f).exists()]
 
     @staticmethod
+    def _available_daily_columns(files: list[str]) -> set[str]:
+        """探测 daily 分区真实存在的标准字段（工作项 2：只查真实字段）。"""
+        import duckdb
+        con = duckdb.connect()
+        try:
+            file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
+            try:
+                cols = con.execute(f"DESCRIBE SELECT * FROM read_parquet({file_list})").fetchall()
+            except Exception:
+                cols = []
+            return {str(row[0]) for row in cols}
+        finally:
+            con.close()
+
+    # 标准 snake_case 字段；pe_ttm/pb_mrq 为可选估值字段；code 仅作过滤不返回
+    REQUIRED_DAILY_COLUMNS = ("date", "code", "open", "high", "low", "close", "volume", "amount")
+    OPTIONAL_DAILY_COLUMNS = ("turn", "pe_ttm", "pb_mrq")
+    RETURN_DAILY_COLUMNS = ("date", "open", "high", "low", "close",
+                            "volume", "amount", "pe_ttm", "pb_mrq", "turn")
+
+    def _select_daily(self, files: list[str], code: str, start: Optional[str],
+                      end: Optional[str], days: int | None = None) -> pd.DataFrame:
+        """构建安全的日线查询：只查真实存在的列，可选字段缺失补空列。
+
+        必填字段缺失抛出明确契约错误；可选字段缺失记录 Schema Mismatch。
+        """
+        available = self._available_daily_columns(files)
+        missing_required = sorted(set(self.REQUIRED_DAILY_COLUMNS) - available)
+        if missing_required:
+            raise ValueError(
+                f"daily 分区缺少必填字段 {missing_required}（Schema Mismatch），拒绝返回空表伪装成功")
+        missing_optional = sorted(set(self.OPTIONAL_DAILY_COLUMNS) - available)
+        if missing_optional:
+            logger.warning("daily 分区可选字段缺失 %s（Schema Mismatch），查询时补空列", missing_optional)
+        columns = [c for c in self.RETURN_DAILY_COLUMNS if c in available]
+        file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
+        where = f"code = '{code}'"
+        if start:
+            where += f" AND date >= DATE '{start}'"
+        if end:
+            where += f" AND date <= DATE '{end}'"
+        order = "ORDER BY date DESC" if days else "ORDER BY date"
+        limit = f"LIMIT {days}" if days else ""
+        df = self._query(
+            f"SELECT {', '.join(columns)} FROM read_parquet({file_list}) "
+            f"WHERE {where} {order} {limit}"
+        )
+        if days:
+            df = df.sort_values("date")
+        # 补可选字段空列，保证契约列齐全
+        for c in self.OPTIONAL_DAILY_COLUMNS:
+            if c not in df.columns:
+                df[c] = None
+        return self._finalize(df)
+
+    @staticmethod
     def _query(sql: str) -> pd.DataFrame:
         import duckdb
         con = duckdb.connect()
@@ -113,19 +169,7 @@ class WarehouseSource:
         files = self._daily_files(start)
         if not files:
             return pd.DataFrame()
-        try:
-            file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
-            df = self._query(
-                f"""SELECT date, open, high, low, close, volume, amount, turn, pe_ttm, pb_mrq
-                    FROM read_parquet({file_list})
-                    WHERE code = '{code_nodot}'
-                      AND date >= DATE '{start}' AND date <= DATE '{end}'
-                    ORDER BY date"""
-            )
-            return self._finalize(df)
-        except Exception as e:
-            logger.warning("WarehouseSource.fetch_kline %s 失败(%s)", code_nodot, e)
-            return pd.DataFrame()
+        return self._select_daily(files, code_nodot, start, end)
 
     def fetch_daily_series(self, code: str, days: int = 750) -> pd.DataFrame:
         """个股图表单查询：取最近 N 个交易日的原始日线（tail(days)）。"""
@@ -136,20 +180,7 @@ class WarehouseSource:
         files = self._daily_files(None)
         if not files:
             return pd.DataFrame()
-        try:
-            file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
-            df = self._query(
-                f"""SELECT date, open, high, low, close, volume, amount, turn, pe_ttm, pb_mrq
-                    FROM read_parquet({file_list})
-                    WHERE code = '{code_nodot}'
-                    ORDER BY date DESC
-                    LIMIT {days}"""
-            )
-            df = df.sort_values("date")
-            return self._finalize(df)
-        except Exception as e:
-            logger.warning("WarehouseSource.fetch_daily_series %s 失败(%s)", code_nodot, e)
-            return pd.DataFrame()
+        return self._select_daily(files, code_nodot, None, None, days=days)
 
     def fetch_snapshot(self, code: str) -> dict:
         """从在线源退化为空快照；仓库源不持实时快照。"""
