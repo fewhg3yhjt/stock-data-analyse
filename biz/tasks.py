@@ -128,33 +128,33 @@ class BusinessTaskService:
         if task_key not in TASK_HANDLERS:
             raise KeyError(f"未注册业务任务: {task_key}")
         lock_key = f"task:{task_key}"
-        if not self.acquire_lock(lock_key, run_id="run_pending"):
-            raise TaskStateError(f"任务冲突: {task_key} 正在运行")
-
         run = BusinessJobRun(
             run_id=new_id("job"), task_key=task_key,
             request_id=request_id or new_id("req"), trigger_type=trigger_type,
             status=JOB_RUNNING, started_at=now_utc(),
         )
-        self.repo.db.insert("business_job_runs", {
-            "run_id": run.run_id, "request_id": run.request_id, "task_key": run.task_key,
-            "config_version": run.config_version, "trigger_type": run.trigger_type,
-            "input_versions_json": _dumps(run.input_versions),
-            "output_versions_json": _dumps(run.output_versions),
-            "attempt": run.attempt, "status": run.status,
-            "started_at": run.started_at, "heartbeat_at": run.heartbeat_at or "",
-            "finished_at": run.finished_at or "", "error_code": run.error_code,
-            "error_message": run.error_message,
-        })
-        self.release_lock(lock_key)
+        if not self.acquire_lock(lock_key, run_id=run.run_id):
+            raise TaskStateError(f"任务冲突: {task_key} 正在运行")
 
         try:
+            self.repo.db.insert("business_job_runs", {
+                "run_id": run.run_id, "request_id": run.request_id, "task_key": run.task_key,
+                "config_version": run.config_version, "trigger_type": run.trigger_type,
+                "input_versions_json": _dumps(run.input_versions),
+                "output_versions_json": _dumps(run.output_versions),
+                "attempt": run.attempt, "status": run.status,
+                "started_at": run.started_at, "heartbeat_at": run.heartbeat_at or "",
+                "finished_at": run.finished_at or "", "error_code": run.error_code,
+                "error_message": run.error_message,
+            })
             handler = TASK_HANDLERS[task_key]
             result = handler(input_data or {})
             self._finish(run, JOB_SUCCESS, output_versions=result.get("output_versions", {}))
         except Exception as e:  # noqa: BLE001
             logger.exception("business task failed: %s", task_key)
             self._finish(run, JOB_FAILED, error_code="TASK_EXECUTION_FAILED", error_message=str(e))
+        finally:
+            self.release_lock(lock_key, owner_run_id=run.run_id)
         return run
 
     def _finish(self, run: BusinessJobRun, status: str, *, output_versions: dict | None = None,
@@ -186,24 +186,36 @@ class BusinessTaskService:
     # ── 锁（数据库租约）───────────────────────────────────
 
     def acquire_lock(self, lock_key: str, run_id: str, lease_seconds: int = 300) -> bool:
-        row = self.repo.db.fetchone("SELECT * FROM business_task_locks WHERE lock_key=?", (lock_key,))
         now = now_utc()
-        if row:
-            if row["expires_at"] and row["expires_at"] > now:
-                return False
-            # 过期锁可接管
         import datetime
         from datetime import timezone
         expires = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=lease_seconds)
-        self.repo.db.upsert("business_task_locks", {
-            "lock_key": lock_key, "owner_run_id": run_id,
-            "acquired_at": now, "heartbeat_at": now,
-            "expires_at": expires.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }, "lock_key")
-        return True
+        expires_text = expires.strftime("%Y-%m-%dT%H:%M:%SZ")
+        # BEGIN IMMEDIATE + 条件写，避免两个 Worker 同时看到空闲锁。
+        with self.repo.db.transaction() as conn:
+            row = conn.execute(
+                "SELECT owner_run_id, expires_at FROM business_task_locks WHERE lock_key=?",
+                (lock_key,),
+            ).fetchone()
+            if row and row["expires_at"] and row["expires_at"] > now:
+                return False
+            conn.execute(
+                "INSERT INTO business_task_locks(lock_key,owner_run_id,acquired_at,heartbeat_at,expires_at) "
+                "VALUES(?,?,?,?,?) "
+                "ON CONFLICT(lock_key) DO UPDATE SET owner_run_id=excluded.owner_run_id, "
+                "acquired_at=excluded.acquired_at, heartbeat_at=excluded.heartbeat_at, expires_at=excluded.expires_at",
+                (lock_key, run_id, now, now, expires_text),
+            )
+            return True
 
-    def release_lock(self, lock_key: str) -> None:
-        self.repo.db.execute("DELETE FROM business_task_locks WHERE lock_key=?", (lock_key,))
+    def release_lock(self, lock_key: str, owner_run_id: str | None = None) -> None:
+        if owner_run_id:
+            self.repo.db.execute(
+                "DELETE FROM business_task_locks WHERE lock_key=? AND owner_run_id=?",
+                (lock_key, owner_run_id),
+            )
+        else:
+            self.repo.db.execute("DELETE FROM business_task_locks WHERE lock_key=?", (lock_key,))
 
     def heartbeat(self, lock_key: str, lease_seconds: int = 300) -> None:
         import datetime

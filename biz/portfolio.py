@@ -243,44 +243,43 @@ class PortfolioService:
         """录入一笔执行并记账（BUY/SELL/DIVIDEND 等），幂等。"""
         if not idempotency_key:
             raise ValueError("idempotency_key 必填")
-        # 幂等检查
-        dup = self.repo.db.fetchone(
-            "SELECT * FROM executions WHERE portfolio_id=? AND idempotency_key=?",
-            (portfolio_id, idempotency_key))
-        if dup:
-            return self._row_to_execution(dup)
+        # A transaction must cover the fact, lot, ledger and phase updates.
+        with self.repo.db.transaction() as conn:
+            dup = conn.execute(
+                "SELECT * FROM executions WHERE portfolio_id=? AND idempotency_key=?",
+                (portfolio_id, idempotency_key)).fetchone()
+            if dup:
+                return self._row_to_execution(dup)
 
-        cycle = self._get_cycle(cycle_id)
-        sym = symbol or cycle.symbol
-        gross = (quantity or 0) * (price or 0) if event_type in {EVT_BUY, EVT_SELL} else None
-        net = (gross or 0) - fee - tax if event_type == EVT_BUY else \
-              (gross or 0) - fee - tax if event_type == EVT_SELL else \
-              (quantity or 0) if event_type in {EVT_CASH_DIVIDEND, EVT_CASH_ADJUSTMENT} else \
-              -fee if event_type == EVT_FEE else 0.0
+            cycle = self._get_cycle_conn(conn, cycle_id)
+            sym = symbol or cycle.symbol
+            gross = (quantity or 0) * (price or 0) if event_type in {EVT_BUY, EVT_SELL} else None
+            net = (gross or 0) - fee - tax if event_type in {EVT_BUY, EVT_SELL} else \
+                  (quantity or 0) if event_type in {EVT_CASH_DIVIDEND, EVT_CASH_ADJUSTMENT} else \
+                  -fee if event_type == EVT_FEE else 0.0
 
-        exec_obj = Execution(
-            execution_id=new_id("exe"), portfolio_id=portfolio_id,
-            position_cycle_id=cycle_id, symbol=sym, event_type=event_type,
-            trade_time=trade_time, quantity=quantity, price=price, gross_amount=gross,
-            fee=fee, tax=tax, net_amount=net, reason=reason,
-            advice_id=advice_id, decision_id=decision_id, idempotency_key=idempotency_key,
-        )
-        self._insert_execution(exec_obj)
+            exec_obj = Execution(
+                execution_id=new_id("exe"), portfolio_id=portfolio_id,
+                position_cycle_id=cycle_id, symbol=sym, event_type=event_type,
+                trade_time=trade_time, quantity=quantity, price=price, gross_amount=gross,
+                fee=fee, tax=tax, net_amount=net, reason=reason,
+                advice_id=advice_id, decision_id=decision_id, idempotency_key=idempotency_key,
+            )
+            self._insert_execution_conn(conn, exec_obj)
 
-        # 记账
-        if event_type == EVT_BUY:
-            self._apply_buy(exec_obj)
-        elif event_type == EVT_SELL:
-            self._apply_sell(exec_obj)
-        elif event_type == EVT_CASH_DIVIDEND:
-            self._apply_cash_in(exec_obj, LEDGER_DIVIDEND, net)
-        elif event_type == EVT_CASH_ADJUSTMENT:
-            self._apply_cash_in(exec_obj, LEDGER_ADJUSTMENT, net)
-        elif event_type == EVT_FEE:
-            self._apply_cash_out(exec_obj, LEDGER_FEE, fee)
-        elif event_type in {EVT_BONUS_SHARE, EVT_STOCK_SPLIT, EVT_RIGHTS_ISSUE, EVT_COST_ADJUSTMENT}:
-            self._apply_company_action(exec_obj)
-        return exec_obj
+            if event_type == EVT_BUY:
+                self._apply_buy_conn(conn, exec_obj)
+            elif event_type == EVT_SELL:
+                self._apply_sell_conn(conn, exec_obj)
+            elif event_type == EVT_CASH_DIVIDEND:
+                self._apply_cash_in_conn(conn, exec_obj, LEDGER_DIVIDEND, net)
+            elif event_type == EVT_CASH_ADJUSTMENT:
+                self._apply_cash_in_conn(conn, exec_obj, LEDGER_ADJUSTMENT, net)
+            elif event_type == EVT_FEE:
+                self._apply_cash_out_conn(conn, exec_obj, LEDGER_FEE, fee)
+            elif event_type in {EVT_BONUS_SHARE, EVT_STOCK_SPLIT, EVT_RIGHTS_ISSUE, EVT_COST_ADJUSTMENT}:
+                self._apply_company_action_conn(conn, exec_obj)
+            return exec_obj
 
     # ── 内部记账 ──────────────────────────────────────────
 
@@ -298,6 +297,21 @@ class PortfolioService:
         self._insert_lot(lot)
         self._append_ledger(exe, LEDGER_BUY, -total_cost)
         self._advance_phase(exe)
+
+    def _apply_buy_conn(self, conn, exe: Execution) -> None:
+        cash = self._cash_balance_conn(conn, exe.portfolio_id)
+        total_cost = exe.gross_amount + exe.fee + exe.tax
+        if cash < total_cost:
+            raise ValueError(f"现金不足: 需 {total_cost:.2f}，现有 {cash:.2f}")
+        lot = PositionLot(
+            lot_id=new_id("lot"), position_cycle_id=exe.position_cycle_id,
+            symbol=exe.symbol, opened_at=exe.trade_time, quantity=exe.quantity or 0,
+            remaining_quantity=exe.quantity or 0, entry_price=exe.price or 0,
+            entry_fee=exe.fee + exe.tax, source_execution_id=exe.execution_id,
+        )
+        self._insert_lot_conn(conn, lot)
+        self._append_ledger_conn(conn, exe, LEDGER_BUY, -total_cost)
+        self._advance_phase_conn(conn, exe)
 
     def _apply_sell(self, exe: Execution) -> None:
         qty = exe.quantity or 0
@@ -324,11 +338,40 @@ class PortfolioService:
         if self._sellable_quantity(exe.position_cycle_id) == 0:
             self._close_cycle(exe.position_cycle_id)
 
+    def _apply_sell_conn(self, conn, exe: Execution) -> None:
+        qty = exe.quantity or 0
+        remaining = self._sellable_quantity_conn(conn, exe.position_cycle_id)
+        if qty > remaining:
+            raise ValueError(f"卖出数量超持仓: 卖出 {qty}，可用 {remaining}")
+        lots = conn.execute(
+            "SELECT * FROM position_lots WHERE position_cycle_id=? AND remaining_quantity>0 "
+            "ORDER BY opened_at, lot_id", (exe.position_cycle_id,)).fetchall()
+        sell_qty = qty
+        for lot_row in lots:
+            if sell_qty <= 0:
+                break
+            consume = min(lot_row["remaining_quantity"], sell_qty)
+            conn.execute(
+                "UPDATE position_lots SET remaining_quantity=? WHERE lot_id=?",
+                (lot_row["remaining_quantity"] - consume, lot_row["lot_id"]))
+            sell_qty -= consume
+        proceeds = (exe.gross_amount or 0) - exe.fee - exe.tax
+        self._append_ledger_conn(conn, exe, LEDGER_SELL, proceeds)
+        self._advance_phase_conn(conn, exe)
+        if self._sellable_quantity_conn(conn, exe.position_cycle_id) == 0:
+            self._close_cycle_conn(conn, exe.position_cycle_id)
+
     def _apply_cash_in(self, exe: Execution, entry_type: str, amount: float) -> None:
         self._append_ledger(exe, entry_type, amount)
 
+    def _apply_cash_in_conn(self, conn, exe: Execution, entry_type: str, amount: float) -> None:
+        self._append_ledger_conn(conn, exe, entry_type, amount)
+
     def _apply_cash_out(self, exe: Execution, entry_type: str, amount: float) -> None:
         self._append_ledger(exe, entry_type, -amount)
+
+    def _apply_cash_out_conn(self, conn, exe: Execution, entry_type: str, amount: float) -> None:
+        self._append_ledger_conn(conn, exe, entry_type, -amount)
 
     def _apply_company_action(self, exe: Execution) -> None:
         """送股/转增/拆股：调整 Lot 数量与价格因子。"""
@@ -346,12 +389,44 @@ class PortfolioService:
                 self.repo.db.update("position_lots", {"remaining_quantity": new_qty},
                                     "lot_id=?", (lot_row["lot_id"],))
 
+    def _apply_company_action_conn(self, conn, exe: Execution) -> None:
+        if exe.quantity is None or exe.quantity <= 0:
+            return
+        lots = conn.execute(
+            "SELECT * FROM position_lots WHERE position_cycle_id=? AND remaining_quantity>0",
+            (exe.position_cycle_id,)).fetchall()
+        for lot_row in lots:
+            old_qty = lot_row["remaining_quantity"]
+            if exe.event_type == EVT_BONUS_SHARE:
+                new_qty = old_qty + exe.quantity
+            elif exe.event_type == EVT_STOCK_SPLIT:
+                new_qty = old_qty * exe.quantity
+            else:
+                new_qty = old_qty
+            conn.execute(
+                "UPDATE position_lots SET remaining_quantity=? WHERE lot_id=?",
+                (new_qty, lot_row["lot_id"]))
+
     # ── 辅助 ──────────────────────────────────────────────
 
     def _sellable_quantity(self, cycle_id: str) -> float:
         row = self.repo.db.fetchone(
             "SELECT COALESCE(SUM(remaining_quantity),0) s FROM position_lots WHERE position_cycle_id=?",
             (cycle_id,))
+        return float(row["s"]) if row else 0.0
+
+    @staticmethod
+    def _cash_balance_conn(conn, portfolio_id: str) -> float:
+        row = conn.execute(
+            "SELECT balance_after FROM cash_ledger_entries WHERE portfolio_id=? "
+            "ORDER BY rowid DESC LIMIT 1", (portfolio_id,)).fetchone()
+        return float(row["balance_after"]) if row else 0.0
+
+    @staticmethod
+    def _sellable_quantity_conn(conn, cycle_id: str) -> float:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(remaining_quantity),0) s FROM position_lots WHERE position_cycle_id=?",
+            (cycle_id,)).fetchone()
         return float(row["s"]) if row else 0.0
 
     def _advance_phase(self, exe: Execution) -> None:
@@ -363,11 +438,31 @@ class PortfolioService:
             self.repo.db.update("position_cycles", {"phase": new_phase, "updated_at": now_utc()},
                                 "position_cycle_id=?", (exe.position_cycle_id,))
 
+    def _advance_phase_conn(self, conn, exe: Execution) -> None:
+        row = conn.execute(
+            "SELECT phase FROM position_cycles WHERE position_cycle_id=?",
+            (exe.position_cycle_id,)).fetchone()
+        if not row:
+            raise KeyError(f"unknown position cycle: {exe.position_cycle_id}")
+        current = row["phase"]
+        new_phase = PHASE_HOLDING if exe.event_type == EVT_BUY else current
+        if new_phase in PHASE_TRANSITIONS.get(current, set()) or new_phase == current:
+            conn.execute(
+                "UPDATE position_cycles SET phase=?, updated_at=? WHERE position_cycle_id=?",
+                (new_phase, now_utc(), exe.position_cycle_id))
+
     def _close_cycle(self, cycle_id: str) -> None:
         self.repo.db.update("position_cycles", {
             "status": CYCLE_CLOSED, "phase": PHASE_CLOSED, "closed_at": now_utc(),
             "updated_at": now_utc(),
         }, "position_cycle_id=?", (cycle_id,))
+
+    @staticmethod
+    def _close_cycle_conn(conn, cycle_id: str) -> None:
+        ts = now_utc()
+        conn.execute(
+            "UPDATE position_cycles SET status=?, phase=?, closed_at=?, updated_at=? WHERE position_cycle_id=?",
+            (CYCLE_CLOSED, PHASE_CLOSED, ts, ts, cycle_id))
 
     def _append_ledger(self, exe: Execution, entry_type: str, amount: float) -> None:
         prev = self.cash_balance(exe.portfolio_id)
@@ -378,6 +473,15 @@ class PortfolioService:
         )
         self._insert_ledger(entry)
 
+    def _append_ledger_conn(self, conn, exe: Execution, entry_type: str, amount: float) -> None:
+        prev = self._cash_balance_conn(conn, exe.portfolio_id)
+        conn.execute(
+            "INSERT INTO cash_ledger_entries "
+            "(cash_entry_id,portfolio_id,entry_type,amount,balance_after,execution_id,entry_time,reason,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (new_id("cash"), exe.portfolio_id, entry_type, amount, prev + amount,
+             exe.execution_id, exe.trade_time, exe.reason, now_utc()))
+
     def _insert_ledger(self, entry: CashLedgerEntry) -> None:
         self.repo.db.insert("cash_ledger_entries", {
             "cash_entry_id": entry.cash_entry_id, "portfolio_id": entry.portfolio_id,
@@ -386,6 +490,16 @@ class PortfolioService:
             "entry_time": entry.entry_time, "reason": entry.reason,
             "created_at": entry.created_at,
         })
+
+    @staticmethod
+    def _insert_lot_conn(conn, lot: PositionLot) -> None:
+        conn.execute(
+            "INSERT INTO position_lots "
+            "(lot_id,position_cycle_id,symbol,opened_at,quantity,remaining_quantity,entry_price,entry_fee,source_execution_id,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (lot.lot_id, lot.position_cycle_id, lot.symbol, lot.opened_at, lot.quantity,
+             lot.remaining_quantity, lot.entry_price, lot.entry_fee,
+             lot.source_execution_id or "", lot.created_at))
 
     def _insert_cycle(self, cycle: PositionCycle) -> None:
         self.repo.db.insert("position_cycles", {
@@ -421,6 +535,25 @@ class PortfolioService:
             "external_ref": exe.external_ref, "idempotency_key": exe.idempotency_key,
             "created_at": exe.created_at,
         })
+
+    @staticmethod
+    def _insert_execution_conn(conn, exe: Execution) -> None:
+        conn.execute(
+            "INSERT INTO executions "
+            "(execution_id,portfolio_id,position_cycle_id,symbol,event_type,trade_time,quantity,price,gross_amount,fee,tax,net_amount,reason,advice_id,decision_id,simulation_run_id,external_ref,idempotency_key,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (exe.execution_id, exe.portfolio_id, exe.position_cycle_id or "", exe.symbol,
+             exe.event_type, exe.trade_time, exe.quantity, exe.price, exe.gross_amount,
+             exe.fee, exe.tax, exe.net_amount, exe.reason, exe.advice_id or "",
+             exe.decision_id or "", exe.simulation_run_id or "", exe.external_ref,
+             exe.idempotency_key, exe.created_at))
+
+    def _get_cycle_conn(self, conn, cycle_id: str) -> PositionCycle:
+        row = conn.execute(
+            "SELECT * FROM position_cycles WHERE position_cycle_id=?", (cycle_id,)).fetchone()
+        if not row:
+            raise KeyError(f"unknown position cycle: {cycle_id}")
+        return self._row_to_cycle(row)
 
     def _get_cycle(self, cycle_id: str) -> PositionCycle:
         row = self.repo.db.fetchone("SELECT * FROM position_cycles WHERE position_cycle_id=?", (cycle_id,))

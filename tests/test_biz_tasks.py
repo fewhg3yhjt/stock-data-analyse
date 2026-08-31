@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """biz 包单元测试：业务任务框架。"""
 
+import threading
+
 import pytest
 
 from StockInvestmentTool.biz.db import BusinessDB
@@ -87,3 +89,34 @@ class TestTaskService:
         svc.run("screen.run", input_data={})
         runs = svc.list_runs("screen.run")
         assert len(runs) >= 1
+
+    def test_lock_is_held_until_handler_finishes(self, svc):
+        entered = threading.Event()
+        release = threading.Event()
+
+        def blocking_handler(input_data):
+            entered.set()
+            assert release.wait(timeout=5)
+            return {}
+
+        register_task("blocking.run", blocking_handler)
+        first = {}
+
+        def run_first():
+            first["run"] = svc.run("blocking.run", input_data={})
+
+        thread = threading.Thread(target=run_first)
+        thread.start()
+        assert entered.wait(timeout=5)
+        with pytest.raises(TaskStateError):
+            svc.run("blocking.run", input_data={})
+        release.set()
+        thread.join(timeout=5)
+        assert first["run"].status == JOB_SUCCESS
+
+    def test_release_only_by_owner(self, svc):
+        assert svc.acquire_lock("task:x", "owner")
+        svc.release_lock("task:x", owner_run_id="other")
+        assert not svc.acquire_lock("task:x", "other")
+        svc.release_lock("task:x", owner_run_id="owner")
+        assert svc.acquire_lock("task:x", "other")

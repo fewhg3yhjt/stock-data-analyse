@@ -118,3 +118,27 @@ class TestPortfolio:
             svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-14",
                                  quantity=100000, price=2.0, idempotency_key="x")
         assert svc.cash_balance(pid) == pytest.approx(100000)  # 事务未污染
+
+        # 失败动作不能留下孤立 Execution 或 Lot
+        assert svc.repo.db.fetchone(
+            "SELECT COUNT(*) AS n FROM executions WHERE idempotency_key='x'"
+        )["n"] == 0
+        assert svc.repo.db.fetchone(
+            "SELECT COUNT(*) AS n FROM position_lots WHERE position_cycle_id=?", (cid,)
+        )["n"] == 0
+
+    def test_transaction_rolls_back_after_execution_insert(self, svc, setup, monkeypatch):
+        pid, cid = setup
+
+        def fail_after_insert(conn, exe):
+            raise RuntimeError("injected failure")
+
+        monkeypatch.setattr(svc, "_apply_buy_conn", fail_after_insert)
+        with pytest.raises(RuntimeError):
+            svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-14",
+                                 quantity=1000, price=10.0, idempotency_key="rollback")
+
+        assert svc.repo.db.fetchone(
+            "SELECT COUNT(*) AS n FROM executions WHERE idempotency_key='rollback'"
+        )["n"] == 0
+        assert svc.cash_balance(pid) == pytest.approx(100000)

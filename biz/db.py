@@ -839,7 +839,9 @@ class BusinessDB:
             conn.execute(sql, params)
 
     def transaction(self):
-        return self._connect()
+        conn = self._connect()
+        conn.execute("BEGIN IMMEDIATE")
+        return conn
 
 
 def _json_default(value: Any) -> Any:
