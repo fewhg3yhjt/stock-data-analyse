@@ -23,4 +23,13 @@ body .app .modal,body .app .modal-content{border:1px solid #e1e6ec;border-radius
 body .app .btn-outline{background:#fff;border-color:#d4dce6;color:#546276}body .app .btn-outline:hover{border-color:#4b87dd;color:#1765cf}
 body .app .btn-ghost{background:#f7faff;border-color:#cfe1fb;color:#1765cf}
 body .app .empty{padding:42px 20px;color:#8490a0}
+body .app .hub-grid{gap:12px}body .app .hub-card{background:#fff;border:1px solid #e1e6ec;border-radius:10px;box-shadow:0 2px 8px rgba(25,43,65,.025);transition:border-color .2s,box-shadow .2s,transform .2s}body .app .hub-card:hover{border-color:#78a9e8;box-shadow:0 6px 16px rgba(25,43,65,.08);transform:translateY(-1px)}
+body .app .layout,body .app .op-layout,body .app .indicator-layout{gap:16px}
+body .app .pool-row,body .app .pos{background:#fff;border-color:#e1e6ec;border-radius:10px}body .app .pool-row:hover,body .app .pos:hover{background:#f7faff}
+body .app .flow span{border-color:#d8e3ef;background:#f7faff;color:#53667e}
+body .app .metric-grid .m,body .app .result-grid div{border-color:#e1e6ec;background:#fff}
+body .app .form-grid{gap:12px}body .app .form-grid>div{background:#fff;border:1px solid #e1e6ec;border-radius:8px;padding:10px}
+body .app .rule-box{border-color:#e1e6ec;border-radius:10px;background:#fff}body .app .rule-box:hover{border-color:#b5cdeb}
+body .app .panel{border-color:#e1e6ec;border-radius:10px}
+body .app .action-status,body .app .op-status{min-height:24px;margin-top:10px;color:#647286;font-size:12px}
 @media(max-width:760px){body .app{padding:20px 12px 32px}body .app .header{display:block}body .app .header .nav{position:static;width:auto;margin:16px -12px 0;padding:8px 12px;background:#172331;overflow:visible}body .app .header .nav:before{display:none}body .app .nav-primary{display:flex;overflow:auto;gap:4px}body .app .nav-primary a,body .app .header .nav>a{white-space:nowrap;min-height:34px;padding:7px 10px;font-size:12px}body .app .nav-secondary{display:flex;overflow:auto;margin:8px 0 0;padding:8px 0 0}body .app .nav-secondary span{display:none}body .app .nav-secondary a{white-space:nowrap;font-size:12px;padding:6px 9px}body .app .header h1{font-size:23px}}
