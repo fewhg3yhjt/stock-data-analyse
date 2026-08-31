@@ -618,6 +618,8 @@
 
 ### 6.2 公共类名
 
+以下为主类名。子元素类（如 `.ui-message-title/body/close`、`.ui-drawer-header/body/close`、`.ui-card-meta`、`.ui-field-help`、`.ui-confirm-header/body/impact/actions`、`.ui-progress-meta/track`、`.status-tag-label`）以 6.7 组件结构样例为准。
+
 | 组件 | 类名 |
 |---|---|
 | 状态标签 | `.status-tag.status-<key>` |
@@ -629,6 +631,7 @@
 | 表单 | `.ui-form`、`.ui-field`、`.ui-field-error` |
 | 输入面板 | `.ui-input-panel`、`.ui-input-panel-header`、`.ui-input-panel-body`、`.ui-input-panel-actions` |
 | 确认面板 | `.ui-confirm`、`.ui-confirm-danger` |
+| 居中遮罩（确认/输入面板用） | `.ui-overlay` |
 | 进度 | `.ui-progress`、`.ui-progress-bar` |
 | 按钮 | `.ui-button`、`.ui-button-primary`、`.ui-button-secondary`、`.ui-button-ghost`、`.ui-button-danger`、`.ui-button-sm` |
 | 辅助可访问性 | `.sr-only` |
@@ -766,7 +769,7 @@
 #### 输入面板
 
 ```html
-<div class="ui-drawer-mask" data-open="true">
+<div class="ui-overlay" data-open="true">
   <section class="ui-input-panel" role="dialog" aria-modal="true" aria-labelledby="input-title">
     <header class="ui-input-panel-header"><h2 id="input-title">设置观察起点</h2></header>
     <div class="ui-input-panel-body">
@@ -780,7 +783,7 @@
 #### 确认/输入面板
 
 ```html
-<div class="ui-drawer-mask" data-open="true">
+<div class="ui-overlay" data-open="true">
   <section class="ui-confirm ui-confirm-danger" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
     <header class="ui-confirm-header"><h2 id="confirm-title">确认平仓</h2></header>
     <div class="ui-confirm-body">
@@ -817,7 +820,7 @@
 
 `.sr-only` 必须使用视觉隐藏而非 `display:none`，以便屏幕阅读器继续读取表格标题、状态说明和错误文本。
 
-确认面板是独立组件，但可以复用抽屉的遮罩和定位机制：`.ui-drawer-mask` 只负责背景遮罩与层级，`.ui-confirm` 负责确认内容和按钮；确认面板不强制表现为可导航的详情抽屉。详情抽屉关闭按钮统一使用 `.ui-drawer-close`，关闭后焦点回到触发元素。
+确认面板是独立组件，但可以复用居中遮罩和定位机制：`.ui-overlay` 负责居中面板（确认/输入）的背景遮罩与层级，`.ui-confirm` / `.ui-input-panel` 负责内容；`.ui-drawer-mask` 只用于详情抽屉的右侧滑入。详情抽屉关闭按钮统一使用 `.ui-drawer-close`，关闭后焦点回到触发元素。
 
 ### 6.8 目标组件迁移规则
 
