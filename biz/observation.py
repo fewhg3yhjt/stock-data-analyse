@@ -156,6 +156,14 @@ class ObservationService:
         )
         return event
 
+    def transition_and_save(self, obs: Observation, to_status: str, *, reason: str = "",
+                            source_id: str = "") -> ObservationEvent:
+        """执行状态转换并立即持久化状态与事件。"""
+        event = self.transition(obs, to_status, reason=reason, source_id=source_id)
+        self.update_observation(obs)
+        self.save_event(obs.observation_id, event)
+        return event
+
     def create_observation(self, symbol: str, *, name: str = "",
                            reason: str = "", target_amount: float | None = None,
                            expires_at: str | None = None,
@@ -197,6 +205,12 @@ class ObservationService:
         event = self.transition(obs, OBS_PROMOTED, reason="真实建仓已成交")
         obs.promoted_position_cycle_id = position_cycle_id
         obs.updated_at = now_utc()
+        return event
+
+    def promote_and_save(self, obs: Observation, position_cycle_id: str) -> ObservationEvent:
+        event = self.promote(obs, position_cycle_id)
+        self.update_observation(obs)
+        self.save_event(obs.observation_id, event)
         return event
 
     def pause(self, obs: Observation) -> ObservationEvent:

@@ -197,12 +197,13 @@ class BusinessRepository:
 
     def save_research_run(self, result: ResearchResult, data_context: dict,
                           subject_type: str = "single_symbol", symbol: str = "",
-                          strategy_version_id: str = "") -> str:
+                          strategy_version_id: str = "", observation_id: str = "",
+                          source_screen_run_id: str = "", source_candidate_id: str = "") -> str:
         ts = now_utc()
         self.db.insert("research_runs", {
             "research_run_id": result.research_run_id, "subject_type": subject_type,
-            "symbol": symbol, "observation_id": "",
-            "source_screen_run_id": "", "source_candidate_id": "",
+            "symbol": symbol, "observation_id": observation_id,
+            "source_screen_run_id": source_screen_run_id, "source_candidate_id": source_candidate_id,
             "strategy_version_id": strategy_version_id,
             "data_context_json": dumps_json(data_context),
             "status": result.status,
@@ -217,7 +218,9 @@ class BusinessRepository:
             }),
             "started_at": result.started_at, "finished_at": result.finished_at, "error": result.error,
         })
-        for ev in self.evidences_to_save(result):
+        for ev in (result.evidences or self.evidences_to_save(result)):
+            if not ev.research_run_id:
+                ev.research_run_id = result.research_run_id
             self.save_research_evidence(ev)
         return result.research_run_id
 
@@ -268,6 +271,27 @@ class BusinessRepository:
         return out
 
     # ── 模拟 ──────────────────────────────────────────────
+
+    def save_simulation_plan(self, plan) -> str:
+        self.db.insert("simulation_plans", {
+            "plan_id": plan.plan_id,
+            "strategy_version_id": plan.strategy_version_id,
+            "name": plan.name,
+            "universe_snapshot_id": plan.universe_snapshot_id or "",
+            "source_screen_run_id": plan.source_screen_run_id or "",
+            "observation_id": plan.observation_id or "",
+            "start_date": plan.start_date,
+            "end_date": plan.end_date,
+            "initial_cash": plan.initial_cash,
+            "position_sizing_json": dumps_json(plan.position_sizing),
+            "execution_rules_json": dumps_json(plan.execution_rules),
+            "cost_config_json": dumps_json(plan.cost_config),
+            "benchmark": plan.benchmark,
+            "data_context_json": dumps_json(plan.data_context),
+            "created_at": plan.created_at,
+            "updated_at": plan.updated_at,
+        })
+        return plan.plan_id
 
     def save_simulation_run(self, run: SimulationRun) -> str:
         self.db.insert("simulation_runs", {

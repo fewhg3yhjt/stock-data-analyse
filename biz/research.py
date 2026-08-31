@@ -55,6 +55,7 @@ class ResearchResult:
     exit_plan: dict = field(default_factory=dict)
     strategy_decision_ids: list = field(default_factory=list)
     decisions: list = field(default_factory=list)   # StrategyDecision 对象引用
+    evidences: list = field(default_factory=list)   # ResearchEvidence 对象引用
     evidence_ids: list = field(default_factory=list)
     report_id: str | None = None
     warnings: list = field(default_factory=list)
@@ -117,7 +118,10 @@ class ResearchService:
 
         result.status = "success"
         result.finished_at = now_utc()
+        for evidence in self.evidences:
+            evidence.research_run_id = result.research_run_id
         result.evidence_ids = [e.evidence_id for e in self.evidences]
+        result.evidences = list(self.evidences)
         return result
 
     # ── 内部 ──────────────────────────────────────────────
