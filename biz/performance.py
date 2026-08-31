@@ -50,6 +50,7 @@ class PerformanceResult:
     excess_return: float | None = None
     comparison_status: str = "unavailable"
     data_context: dict = field(default_factory=dict)
+    net_investment: float | None = None
 
 
 @dataclass
@@ -103,16 +104,35 @@ class PerformanceService:
         lots: dict[str, list[dict]] = {}
         ledger_index = 0
         execution_index = 0
+        realized_pnl = 0.0
+        fees = 0.0
+        tax = 0.0
+        dividend_income = 0.0
         points: list[EquityPoint] = []
 
+        # INITIAL defines starting capital, not a dated cash movement. It must
+        # remain available even when a historical transaction is backfilled.
+        while ledger_index < len(ledger) and ledger[ledger_index]["entry_type"] == "INITIAL":
+            cash += float(ledger[ledger_index]["amount"] or 0.0)
+            ledger_index += 1
+
         for date in dates:
+            external_cash_flow = 0.0
             while ledger_index < len(ledger) and str(ledger[ledger_index]["entry_time"])[:10] <= date:
-                cash += float(ledger[ledger_index]["amount"] or 0.0)
+                entry = ledger[ledger_index]
+                amount = float(entry["amount"] or 0.0)
+                cash += amount
+                if entry["entry_type"] in {"ADJUSTMENT", "CORRECTION"}:
+                    external_cash_flow += amount
                 ledger_index += 1
 
             while execution_index < len(executions) and str(executions[execution_index]["trade_time"])[:10] <= date:
                 execution = executions[execution_index]
-                self._replay_execution(lots, execution)
+                realized_delta, fee_delta, tax_delta, dividend_delta = self._replay_execution(lots, execution)
+                realized_pnl += realized_delta
+                fees += fee_delta
+                tax += tax_delta
+                dividend_income += dividend_delta
                 execution_index += 1
 
             market_value = 0.0
@@ -125,8 +145,17 @@ class PerformanceService:
                     prices = day_df[day_df["code"].astype(str).map(self._safe_normalize) == symbol]
                     if not prices.empty and pd.notna(prices["close"].iloc[-1]):
                         market_value += quantity * float(prices["close"].iloc[-1])
-            points.append(EquityPoint(date=date, cash=cash, market_value=market_value,
-                                      equity=cash + market_value))
+            cost_basis = sum(
+                float(lot["quantity"]) * float(lot["price"]) + float(lot.get("entry_fee", 0.0))
+                for symbol_lots in lots.values() for lot in symbol_lots
+                if lot["quantity"] > 0
+            )
+            unrealized_pnl = market_value - cost_basis
+            points.append(EquityPoint(
+                date=date, cash=cash, market_value=market_value, equity=cash + market_value,
+                external_cash_flow=external_cash_flow, realized_pnl=realized_pnl,
+                unrealized_pnl=unrealized_pnl, fees=fees, dividend_income=dividend_income,
+            ))
         return points
 
     @staticmethod
@@ -138,21 +167,35 @@ class PerformanceService:
             return value
 
     @staticmethod
-    def _replay_execution(lots: dict[str, list[dict]], execution) -> None:
-        """将一笔历史交易应用到内存 Lot 状态，按 FIFO 重放。"""
+    def _replay_execution(lots: dict[str, list[dict]], execution) -> tuple[float, float, float, float]:
+        """将一笔历史交易应用到内存 Lot 状态，按 FIFO 重放。
+
+        返回本次执行产生的 realized_pnl、fee、tax、dividend_income。
+        """
         symbol = PerformanceService._safe_normalize(str(execution["symbol"]))
         event_type = execution["event_type"]
         quantity = float(execution["quantity"] or 0.0)
+        fee = float(execution["fee"] or 0.0)
+        tax = float(execution["tax"] or 0.0)
+        price = float(execution["price"] or 0.0)
         if event_type == "BUY":
-            lots.setdefault(symbol, []).append({"quantity": quantity, "price": float(execution["price"] or 0.0)})
+            lots.setdefault(symbol, []).append({
+                "quantity": quantity, "price": price, "entry_fee": fee + tax,
+            })
         elif event_type == "SELL":
             remaining = quantity
+            gross = quantity * price
+            realized = 0.0
             for lot in lots.get(symbol, []):
                 if remaining <= 0:
                     break
                 consumed = min(remaining, lot["quantity"])
                 lot["quantity"] -= consumed
+                entry_fee = float(lot.get("entry_fee", 0.0)) * consumed / float(lot["quantity"] + consumed or 1.0)
+                realized += consumed * price - consumed * float(lot["price"]) - entry_fee
                 remaining -= consumed
+            realized -= fee + tax
+            return realized, fee, tax, 0.0
         elif event_type == "BONUS_SHARE":
             for lot in lots.get(symbol, []):
                 if lot["quantity"] > 0:
@@ -166,6 +209,9 @@ class PerformanceService:
             for lot in lots.get(symbol, []):
                 if lot["quantity"] > 0:
                     lot["quantity"] += quantity
+        elif event_type == "CASH_DIVIDEND":
+            return 0.0, fee, tax, quantity
+        return 0.0, fee, tax, 0.0
 
     def compute(self, portfolio_id: str, start_date: str, end_date: str,
                 price_df: pd.DataFrame | None = None,
@@ -178,8 +224,14 @@ class PerformanceService:
 
         begin_equity = curve[0].equity
         end_equity = curve[-1].equity
-        # 简化：不计外部现金流差异（P1 阶段外部现金流来自 ledger）
-        total_return = (end_equity - begin_equity) / begin_equity if begin_equity else None
+        # 期间外部现金流不计入投资收益；首个点的 INITIAL 现金是期初资本。
+        # The first valuation point establishes beginning capital; cash flows
+        # after that point are excluded from investment return.
+        external_flows = [float(point.external_cash_flow or 0.0) for point in curve[1:]]
+        net_external_flow = sum(external_flows)
+        invested_capital = begin_equity + sum(flow for flow in external_flows if flow > 0)
+        net_pnl = end_equity - begin_equity - net_external_flow
+        total_return = net_pnl / invested_capital if invested_capital else None
         max_dd = self._max_drawdown([p.equity for p in curve])
         n_days = len(curve)
         annualized = None
@@ -195,7 +247,35 @@ class PerformanceService:
             benchmark_return=benchmark_return,
             excess_return=(total_return - benchmark_return) if total_return is not None and benchmark_return is not None else None,
             comparison_status="ok" if benchmark_return is not None else "unavailable",
+            net_investment=invested_capital,
         )
+
+    def save_result(self, result: PerformanceResult, repo=None) -> str:
+        """保存 PerformanceSnapshot 与 Comparison 的基础结果。"""
+        if repo is None:
+            repo = self.pf.repo
+        query_id = new_id("pquery")
+        for point in result.equity_curve:
+            repo.db.insert("performance_snapshots", {
+                "snapshot_id": new_id("psnap"), "query_id": query_id,
+                "as_of": point["date"], "cash": point["cash"],
+                "market_value": point["market_value"], "equity": point["equity"],
+                "net_investment": point.get("external_cash_flow", 0.0),
+                "realized_pnl": point.get("realized_pnl"),
+                "unrealized_pnl": point.get("unrealized_pnl"),
+                "fees": point.get("fees", 0.0), "return_rate": result.total_return,
+                "data_context_json": "{}", "created_at": now_utc(),
+            })
+        repo.db.insert("performance_comparisons", {
+            "comparison_id": new_id("comparison"), "portfolio_id": result.portfolio_id,
+            "cycle_id": "", "actual_return": result.total_return,
+            "simulation_return": None, "benchmark_return": result.benchmark_return,
+            "actual_excess_vs_benchmark": result.excess_return,
+            "actual_gap_vs_simulation": None, "simulation_excess_vs_benchmark": None,
+            "start_date": result.start_date, "end_date": result.end_date,
+            "assumptions_json": "{}", "created_at": now_utc(),
+        })
+        return query_id
 
     @staticmethod
     def _max_drawdown(equities: list[float]) -> float:

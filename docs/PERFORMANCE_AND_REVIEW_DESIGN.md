@@ -405,20 +405,20 @@ assumptions
 
 ### 已知限制
 
-1. 当前权益曲线已按交易日生成，但历史持仓数量仍主要复用当前 Lot 聚合结果；在正式验收前必须改为按每个 T 日回放 Execution/公司行为，不能把当前持仓倒灌到历史日期。
-2. 当前 `invested_capital`、外部现金流时间加权收益和跨日现金流处理仍需明确并补充测试。
+1. 当前权益曲线已按交易日回放 Execution、Lot 和基础公司行为，不使用当前持仓数量倒灌历史日期；复杂公司行为和外部现金流时间加权口径仍需继续加固。
+2. 当前 `invested_capital` 使用期初权益加期间正向外部现金流，完整 Modified Dietz/时间加权收益仍待后续版本。
 3. `index_daily/sh000300` 尚未发布时，基准比较按设计返回 `unavailable`，不得用 ETF 代替。
 
 ### 后续待开发
 
 - 严格按 T 日回放 Execution、Lot 和公司行为。
 - 实际/模拟/基准统一日期轴和收益口径。
-- PerformanceSnapshot/Comparison 持久化与导出 API。
-- 业务 API 已提供持仓快照、日报和复盘基础查询，但 PerformanceSnapshot/Comparison 的正式落库仍待完成。
+- PerformanceSnapshot/Comparison 已支持基础落库；导出 API、模拟结果自动接入和完整对比读模型仍待完成。
 - `web/biz_api.py` 已提供组合收益查询、周期复盘创建/查询和证据查询基础入口；收益 API 要求明确日期范围并通过业务数据访问层读取行情。
 
 ### 跨模块验证
 
 - `tests/test_biz_end_to_end.py` 已验证 PositionCycle/Execution → PositionValuation → PerformanceResult → PositionCycleReview/ReviewEvidence。
-- 当前验证覆盖基础结果生成；严格逐日回放、外部现金流口径和正式持久化 API 仍未达到最终验收标准。
+- 当前验证覆盖逐日回放、外部现金流基础口径和结果落库；复杂公司行为、时间加权收益和完整导出仍未达到最终验收标准。
 - 历史权益曲线已改为按交易日回放 Execution 和 Lot，新增测试验证后续买入不会倒灌到前一交易日。
+- `tests/test_biz_performance.py` 已覆盖外部现金流不计收益和 PerformanceSnapshot/Comparison 基础落库。

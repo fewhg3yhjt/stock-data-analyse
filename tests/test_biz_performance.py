@@ -69,6 +69,29 @@ class TestPerformance:
     def test_max_drawdown(self):
         assert PerformanceService._max_drawdown([100, 90, 95]) == pytest.approx(0.1)
 
+    def test_external_cash_flow_is_not_return(self, setup):
+        svc, pid, cid = setup
+        svc.record_execution(pid, cid, event_type="CASH_ADJUSTMENT", trade_time="2026-08-20",
+                             quantity=50000, idempotency_key="cash-in")
+        result = PerformanceService(svc).compute(
+            pid, "2026-08-20", "2026-08-26", price_df=make_price_df()
+        )
+        assert result.total_return == pytest.approx(0.0)
+
+    def test_save_performance_snapshots(self, setup):
+        svc, pid, cid = setup
+        result = PerformanceService(svc).compute(
+            pid, "2026-08-20", "2026-08-26", price_df=make_price_df()
+        )
+        query_id = PerformanceService(svc).save_result(result)
+        assert query_id
+        assert svc.repo.db.fetchone(
+            "SELECT COUNT(*) AS n FROM performance_snapshots WHERE query_id=?", (query_id,)
+        )["n"] == len(result.equity_curve)
+        assert svc.repo.db.fetchone(
+            "SELECT COUNT(*) AS n FROM performance_comparisons WHERE portfolio_id=?", (pid,)
+        )["n"] == 1
+
     def test_equity_curve_replays_historical_quantity(self, setup):
         svc, pid, cid = setup
         svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-20",
