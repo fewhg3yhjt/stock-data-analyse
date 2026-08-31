@@ -390,3 +390,27 @@ assumptions
 7. 复盘能追溯到 Discovery、Observation、Simulation 和 Execution。
 8. 同一交易周期重复计算结果一致。
 9. 导出包含数据日期和来源。
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P2-1 基础能力完成，完整收益口径仍需加固
+
+### 已完成交付物
+
+| 文件 | 能力 | 测试 |
+|---|---|---|
+| `biz/performance.py` | 逐日权益曲线、收益指标、基准 unavailable 语义、PositionCycleReview、ReviewEvidence | `tests/test_biz_performance.py`（6） |
+
+### 已知限制
+
+1. 当前权益曲线已按交易日生成，但历史持仓数量仍主要复用当前 Lot 聚合结果；在正式验收前必须改为按每个 T 日回放 Execution/公司行为，不能把当前持仓倒灌到历史日期。
+2. 当前 `invested_capital`、外部现金流时间加权收益和跨日现金流处理仍需明确并补充测试。
+3. `index_daily/sh000300` 尚未发布时，基准比较按设计返回 `unavailable`，不得用 ETF 代替。
+
+### 后续待开发
+
+- 严格按 T 日回放 Execution、Lot 和公司行为。
+- 实际/模拟/基准统一日期轴和收益口径。
+- PerformanceSnapshot/Comparison 持久化与导出 API。

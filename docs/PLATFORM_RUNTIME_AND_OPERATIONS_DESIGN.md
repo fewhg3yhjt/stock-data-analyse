@@ -412,3 +412,33 @@ Route
 8. 高风险操作无确认不能执行。
 9. 备份包含三个关键数据库和仓库数据。
 10. 恢复到临时目录后应用可以启动并读取关键事实。
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P3-1/P3-2 基础能力完成，业务 API 接入待后续阶段
+
+### 已完成交付物
+
+| 文件 | 能力 | 测试 |
+|---|---|---|
+| `biz/tasks.py` | BusinessTaskDefinition/Request/JobRun/Lock、统一任务注册执行、状态转换、租约锁、stale run 回收 | `tests/test_biz_tasks.py`（8） |
+| `biz/platform.py` | Health live/ready/details、SQLite 文件头与 quick_check、BackupService、checksum/manifest、统一 API 错误结构 | `tests/test_biz_platform.py`（9） |
+
+### 验证结果
+
+- 业务专项测试：通过。
+- 容器 P0 真实数据冒烟：通过。
+- 完整回归：当前工作树 `377 passed, 1 failed`。
+
+### 已知问题
+
+1. `tests/test_task_run_semantics.py` 的失败来自未提交的数据平面配置改动：`config/tasks/stock_daily_capture.yaml` 等文件将 `enabled` 从 `false` 改为 `true`。该改动不属于本业务平台提交，未回退、未提交；待数据平面配置变更完成配套测试更新或确认后处理。
+2. BackupService 当前提供 SQLite 备份与恢复检查；仓库目录、配置和密钥的完整备份编排尚未接入业务 API。
+
+### 后续待开发
+
+- BusinessScheduler 与 Web 路由接入。
+- 统一业务任务结果 DTO、HTTP 202 和持久化队列。
+- 启动恢复检查、任务影响确认、生产级 ready 依赖检查。

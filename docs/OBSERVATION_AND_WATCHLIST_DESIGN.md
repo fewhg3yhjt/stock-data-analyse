@@ -745,3 +745,22 @@ simulation snapshot → ObservationSnapshot
 通知模块     → ObservationEvent / StrategyDecision
 复盘模块     → DiscoveryLink / ObservationSnapshot / PositionCycle
 ```
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P1-1 基础能力完成
+
+### 已完成交付物
+
+| 文件 | 能力 | 测试 |
+|---|---|---|
+| `biz/observation.py` | Observation/WatchSubscription/DiscoveryLink、8 态状态机、状态事件、expiry_reconcile、查询与持久化 | `tests/test_biz_observation.py`（9） |
+
+### 后续待开发
+
+- 从 ScreenCandidate 自动建立来源链路。
+- Observation 绑定策略、SimulationRun 和 ObservationSnapshot。
+- 从 Observation 生成 EntryPlan 并接入真实建仓事务。
+- Observation read model 与 Web API。

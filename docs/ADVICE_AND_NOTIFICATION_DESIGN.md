@@ -391,3 +391,22 @@ Email 是第一版完整验收渠道；Feishu 和 WeCom 不删除，继续作为
 8. Advice 与实际 Execution 可关联并计算偏差。
 9. 系统告警可确认、恢复和关闭。
 10. 发送失败不会影响交易和持仓事实。
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P2-2 基础能力完成，正式通道编排待接入
+
+### 已完成交付物
+
+| 文件 | 能力 | 测试 |
+|---|---|---|
+| `biz/notification.py` | Advice 转换、NotificationEvent 去重、NotificationDelivery、claim/lease、失败重试/dead、EmailChannel | `tests/test_biz_notification.py`（6） |
+
+### 后续待开发
+
+- LiveAdviceEvaluator 与 PositionValuationService/StrategyDecision 正式接入。
+- DailyReportBuilder、结构化快照和系统告警生命周期。
+- Feishu/WeCom Channel Adapter。
+- BusinessTask `advice.refresh` 与 `notification.outbox_delivery` 调度接入。

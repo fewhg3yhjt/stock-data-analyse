@@ -473,3 +473,28 @@ idempotent_replay
 8. Observation 只在真实成交后变为 `promoted`。
 9. 删除当前页面记录不删除历史交易事实。
 10. 持仓总览和复盘使用同一收益核算结果。
+
+---
+
+## 实现状态与记录
+
+### 实现状态：P1-2/P1-3 基础能力完成
+
+### 已完成交付物
+
+| 文件 | 能力 | 测试 |
+|---|---|---|
+| `biz/portfolio.py` | Account/Portfolio/PositionCycle/PositionLot/Execution/CashLedger、FIFO、幂等、现金不足保护、公司行为基础调整 | `tests/test_biz_portfolio.py`（10） |
+| `biz/valuation.py` | PositionValuationService 唯一估值入口，价格日期/来源/滞后上下文 | `tests/test_biz_valuation.py`（4） |
+
+### 开发中遇到的问题与决策
+
+1. 现金余额不能按业务交易时间排序，因为初始现金可能晚于历史补录交易；当前按流水插入顺序读取最新 `balance_after`，后续应在数据库层增加单调流水序号。
+2. 买入、卖出、Lot 和现金流水已具备服务层串联，但当前 `record_execution` 仍需进一步收敛为单连接事务，补充中间步骤故障注入测试。
+
+### 后续待开发
+
+- 所有写入统一使用同一 SQLite 事务。
+- PositionEvent/PositionSnapshot 完整落库。
+- BONUS_SHARE/STOCK_SPLIT/RIGHTS_ISSUE 的正式事件模型和成本调整规则。
+- Observation.ready_for_entry → EntryPlan → Execution 的跨模块事务。
