@@ -79,10 +79,96 @@ class LegacyMigration:
                 self._migrate_initial_cash(source, target, portfolio_map, report)
                 position_map = self._migrate_positions(source, target, portfolio_map, report)
                 self._migrate_transactions(source, target, position_map, report)
+                self._repair_sell_allocations(source, target, position_map, report)
                 self._migrate_watchlist(source, target, report)
                 self._migrate_advices(source, target, position_map, report)
                 self._migrate_simulations(source, target, report)
         return report
+
+    def repair_sell_allocations(self) -> MigrationReport:
+        """为已迁移但尚无 Lot 分配的历史卖出补建可重算明细。"""
+        report = MigrationReport(str(self.source_path), str(self.target.db_path))
+        with sqlite3.connect(f"file:{self.source_path}?mode=ro", uri=True) as source:
+            source.row_factory = sqlite3.Row
+            with self.target.transaction() as target:
+                position_map = {
+                    str(row["legacy_id"]): row["new_id"]
+                    for row in target.execute(
+                        "SELECT legacy_id,new_id FROM legacy_entity_map "
+                        "WHERE legacy_db=? AND legacy_type='position' AND migration_version=?",
+                        (str(self.source_path), MIGRATION_VERSION),
+                    ).fetchall()
+                }
+                self._repair_sell_allocations(source, target, position_map, report)
+        return report
+
+    def _repair_sell_allocations(self, source, target, position_map, report):
+        rows = source.execute(
+            "SELECT * FROM transactions ORDER BY date, id"
+        ).fetchall()
+        open_lots: dict[str, list[dict]] = {}
+        for row in rows:
+            cycle_id = position_map.get(str(row["position_id"]))
+            if not cycle_id:
+                continue
+            trans_type = str(row["trans_type"] or "").lower()
+            if trans_type in {"buy", "买入"}:
+                execution = target.execute(
+                    "SELECT execution_id FROM executions WHERE idempotency_key=?",
+                    (f"legacy-transaction-{row['id']}",),
+                ).fetchone()
+                if not execution:
+                    continue
+                lot = target.execute(
+                    "SELECT * FROM position_lots WHERE source_execution_id=?",
+                    (execution[0],),
+                ).fetchone()
+                if lot:
+                    open_lots.setdefault(cycle_id, []).append({
+                        "lot_id": lot["lot_id"],
+                        "quantity": float(row["shares"] or 0),
+                        "price": float(row["price"] or 0),
+                        "entry_fee": float(row["fee"] or 0),
+                    })
+            elif trans_type in {"sell", "卖出"}:
+                execution = target.execute(
+                    "SELECT execution_id,fee,tax,price,gross_amount FROM executions "
+                    "WHERE idempotency_key=?",
+                    (f"legacy-transaction-{row['id']}",),
+                ).fetchone()
+                if not execution or target.execute(
+                    "SELECT 1 FROM execution_lot_allocations WHERE execution_id=? LIMIT 1",
+                    (execution[0],),
+                ).fetchone():
+                    continue
+                remaining = float(row["shares"] or 0)
+                allocations = []
+                for lot in open_lots.get(cycle_id, []):
+                    if remaining <= 0:
+                        break
+                    consume = min(remaining, lot["quantity"])
+                    gross = consume * float(execution["price"] or row["price"] or 0)
+                    allocations.append({
+                        "lot_id": lot["lot_id"], "quantity": consume, "gross": gross,
+                        "cost": consume * lot["price"],
+                        "entry_fee": lot["entry_fee"] * consume / lot["quantity"] if lot["quantity"] else 0,
+                    })
+                    lot["quantity"] -= consume
+                    remaining -= consume
+                total_gross = sum(item["gross"] for item in allocations)
+                for item in allocations:
+                    share = item["gross"] / total_gross if total_gross else 0
+                    fee = float(execution["fee"] or 0) * share
+                    tax = float(execution["tax"] or 0) * share
+                    target.execute(
+                        """INSERT OR IGNORE INTO execution_lot_allocations
+                           (allocation_id,execution_id,lot_id,quantity,cost_amount,fee_allocated,tax_allocated,realized_pnl,created_at)
+                           VALUES(?,?,?,?,?,?,?,?,?)""",
+                        (new_id("alloc"), execution[0], item["lot_id"], item["quantity"],
+                         item["cost"], fee + item["entry_fee"], tax,
+                         item["gross"] - item["cost"] - item["entry_fee"] - fee - tax, now_utc()),
+                    )
+                    report.mappings += 1
 
     def _evaluate_table(self, source, table: str, report: MigrationReport, kind: str) -> None:
         try:
