@@ -4,23 +4,23 @@
 <style>
 .app{max-width:1280px;margin:0 auto;padding:28px 22px 60px;}
 .card h2{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
-.card h2 i{color:var(--accent);}
+.card h2 i{color:var(--color-info);}
 .layout{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
 @media(max-width:900px){.layout{grid-template-columns:1fr;}}
-.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);margin-right:6px;cursor:pointer;border:1px solid var(--border);}
-.tag.active{background:var(--accent);color:#fff;border-color:var(--accent);}
-.tag-buy{background:#e8f5e9;color:var(--green);}
-.tag-sell{background:#fbe9e7;color:var(--red);}
-.rule-box{border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:12px;background:var(--surface2);}
+.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;background:var(--color-surface-subtle);color:var(--color-text-subtle);margin-right:6px;cursor:pointer;border:1px solid var(--color-border);}
+.tag.active{background:var(--color-info);color:#fff;border-color:var(--color-info);}
+.tag-buy{background:#e8f5e9;color:var(--color-success);}
+.tag-sell{background:#fbe9e7;color:var(--color-danger);}
+.rule-box{border:1px solid var(--color-border);border-radius:6px;padding:14px;margin-bottom:12px;background:var(--color-surface-subtle);}
 .rule-box .rule-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
 .rule-box h4{font-size:14px;display:flex;align-items:center;gap:8px;}
 table.kv{width:100%;border-collapse:collapse;font-size:13px;}
-table.kv th,table.kv td{border:1px solid var(--border);padding:6px 10px;text-align:left;}
-table.kv th{background:var(--surface2);font-weight:600;}
-textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier New',monospace;font-size:12.5px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--text);line-height:1.5;white-space:pre;overflow:auto;}
+table.kv th,table.kv td{border:1px solid var(--color-border);padding:6px 10px;text-align:left;}
+table.kv th{background:var(--color-surface-subtle);font-weight:600;}
+textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier New',monospace;font-size:12.5px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:12px;color:var(--color-text);line-height:1.5;white-space:pre;overflow:auto;}
 .mode-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;}
-.modal{background:var(--surface);border-radius:10px;padding:20px;max-width:520px;width:90%;}
+.modal{background:var(--color-surface);border-radius:10px;padding:20px;max-width:520px;width:90%;}
 </style>
 {% endblock %}
 {% block body %}
@@ -163,9 +163,9 @@ function renderIndicators(){
   for(const [label,key,bg] of groups){
     const items=(INDICATORS[key]||[]).filter(i=>i.name.toLowerCase().includes(q));
     if(!items.length)continue;
-    let html=`<div style="font-weight:700;font-size:13px;margin:8px 0 4px;color:var(--text2)">${label}</div>`;
+    let html=`<div style="font-weight:700;font-size:13px;margin:8px 0 4px;color:var(--color-text-subtle)">${label}</div>`;
     for(const i of items){
-      html+=`<div style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;margin-bottom:5px;background:${bg};">
+      html+=`<div style="padding:6px 8px;border:1px solid var(--color-border);border-radius:4px;margin-bottom:5px;background:${bg};">
         <span style="font-weight:600">${i.name}</span>
         <span class="help" style="margin-left:6px">${i.expr||'代码指标'}</span>
         <div class="help">${i.description||''}</div>
@@ -353,7 +353,7 @@ async function validateYaml(content){
   const r=await fetch('/api/schemes/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
   const d=await r.json();
   const hint=document.getElementById('validate-hint');
-  if(d.status==='success'){hint.textContent='✓ 校验通过';hint.style.color='var(--green)';}
+  if(d.status==='success'){hint.textContent='✓ 校验通过';hint.style.color='var(--color-success)';}
   else{try{const cv=await (await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collectModel())})).json();hint.textContent=cv.error||'校验失败';}catch(e){hint.textContent=d.error;}}
 }
 
@@ -367,8 +367,8 @@ async function validateRun(){
   const d=await r.json();
   if(d.status==='success'){
     hint.textContent=`✓ 可执行：${d.trades} 笔交易，收益 ${d.total_return}%，最大回撤 ${d.max_drawdown}%`;
-    hint.style.color='var(--green)';
-  }else{hint.textContent='样本验证失败：'+d.error;hint.style.color='var(--red)';}
+    hint.style.color='var(--color-success)';
+  }else{hint.textContent='样本验证失败：'+d.error;hint.style.color='var(--color-danger)';}
 }
 
 async function saveScheme(){
@@ -456,7 +456,7 @@ async function showVersions(name){
   if(d.status!=='success'){showToast(d.error||'版本读取失败');return;}
   const versions=d.versions||[]; let html='<div class="help" style="margin-bottom:10px">最近版本（回滚会生成一个新版本）</div>';
   if(!versions.length)html+='<div class="empty">暂无历史版本</div>';
-  versions.slice().reverse().forEach(v=>{html+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);"><span>${v.time||v.ts}</span><button class="btn btn-ghost btn-sm" onclick="rollbackScheme('${name}',${v.ts})">回滚</button></div>`;});
+  versions.slice().reverse().forEach(v=>{html+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border);"><span>${v.time||v.ts}</span><button class="btn btn-ghost btn-sm" onclick="rollbackScheme('${name}',${v.ts})">回滚</button></div>`;});
   document.getElementById('modal-body').innerHTML=html; openModal(name+' 版本历史');
 }
 async function rollbackScheme(name,ts){

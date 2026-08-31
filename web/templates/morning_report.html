@@ -5,27 +5,27 @@
 <script src="https://unpkg.com/marked/marked.min.js"></script>
 <style>
 *, *::before, *::after{box-sizing:border-box;margin:0;padding:0;}
-:root{--bg:#f5f6f8;--surface:#fff;--surface2:#f8f9fb;--border:#e0e4ea;--text:#1a1a2e;--text2:#6b7280;--accent:#1a73e8;--accent2:#1557b0;--red:#dc3545;--green:#28a745;--orange:#e67e22;--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.07);}
-body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--color-surface-subtle);color:var(--color-text);line-height:1.8;font-size:16px;}
 .app{max-width:1100px;margin:0 auto;padding:28px 20px 60px;}
 .header h1{font-size:22px;font-weight:700;display:flex;align-items:center;gap:10px;}
-.header h1 i{color:var(--accent);}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px 26px;box-shadow:var(--shadow);}
+.header h1 i{color:var(--color-info);}
+.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:22px 26px;box-shadow:var(--shadow);}
 .btn{padding:10px 24px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:8px;text-decoration:none;}
-.btn-primary{background:var(--accent);color:#fff;}
-.btn-primary:hover{background:var(--accent2);}
-.btn-outline{background:var(--surface);border:1px solid var(--border);color:var(--text2);}
-.btn-outline:hover{border-color:var(--accent);color:var(--accent);}
+.btn-primary{background:var(--color-info);color:#fff;}
+.btn-primary:hover{background:var(--color-info);}
+.btn-outline{background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-subtle);}
+.btn-outline:hover{border-color:var(--color-info);color:var(--color-info);}
 #content{font-size:15px;}
 #content h1{font-size:24px;margin-bottom:12px;}
-#content h2{font-size:19px;margin:1.2em 0 .5em;border-bottom:1px solid var(--border);padding-bottom:6px;}
+#content h2{font-size:19px;margin:1.2em 0 .5em;border-bottom:1px solid var(--color-border);padding-bottom:6px;}
 #content table{width:100%;border-collapse:collapse;font-size:13px;margin:1em 0;}
-#content th{text-align:left;padding:9px 10px;color:var(--text2);font-weight:500;background:var(--surface2);border-bottom:1px solid var(--border);white-space:nowrap;}
-#content td{padding:9px 10px;border-bottom:1px solid var(--border);}
-#content strong{color:var(--accent);}
-#content blockquote{border-left:4px solid var(--accent);padding:8px 16px;background:var(--surface2);margin:1em 0;border-radius:0 4px 4px 0;color:var(--text2);}
-#content hr{border:none;border-top:1px solid var(--border);margin:1.5em 0;}
-.empty{padding:40px;text-align:center;color:var(--text2);}
+#content th{text-align:left;padding:9px 10px;color:var(--color-text-subtle);font-weight:500;background:var(--color-surface-subtle);border-bottom:1px solid var(--color-border);white-space:nowrap;}
+#content td{padding:9px 10px;border-bottom:1px solid var(--color-border);}
+#content strong{color:var(--color-info);}
+#content blockquote{border-left:4px solid var(--color-info);padding:8px 16px;background:var(--color-surface-subtle);margin:1em 0;border-radius:0 4px 4px 0;color:var(--color-text-subtle);}
+#content hr{border:none;border-top:1px solid var(--color-border);margin:1.5em 0;}
+.empty{padding:40px;text-align:center;color:var(--color-text-subtle);}
 .empty i{font-size:40px;color:#cbd5e1;display:block;margin-bottom:12px;}
 </style>
 {% endblock %}
@@ -33,7 +33,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
 <div class="app">
   <div class="header">
     <div>
-      <h1><i class="fas fa-newspaper"></i> 晨报 <span style="font-size:14px;color:var(--text2);font-weight:400;">{{ today }}</span></h1>
+      <h1><i class="fas fa-newspaper"></i> 晨报 <span style="font-size:14px;color:var(--color-text-subtle);font-weight:400;">{{ today }}</span></h1>
     </div>
     {% set active = '' %}{% include '_nav.html' %}
   </div>

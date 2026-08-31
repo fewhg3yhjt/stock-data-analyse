@@ -7,67 +7,62 @@
 <script src="/static/stock-detail.js?v=7"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-:root {
-  --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
-  --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
-  --red:#dc3545; --green:#28a745; --orange:#e67e22;
-  --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
-}
-body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--color-surface-subtle);color:var(--color-text);line-height:1.8;font-size:16px;}
 .app{max-width:1400px;margin:0 auto;padding:28px 22px 60px;}
-.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--color-border);}
 .header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
-.header h1 i{color:var(--accent);}
-.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.header h1 i{color:var(--color-info);}
+.header .sub{font-size:14px;color:var(--color-text-subtle);margin-top:3px;}
 .header .nav{font-size:14px;}
-.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
-.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
+.header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
+.header .nav a.active{font-weight:700;border-bottom:2px solid var(--color-info);padding-bottom:2px;}
+.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
 .card-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.card-title i{color:var(--accent);}
+.card-title i{color:var(--color-info);}
 .btn{padding:9px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;text-decoration:none;}
-.btn-primary{background:var(--accent);color:#fff;}
-.btn-outline{background:var(--surface);border:1px solid var(--border);color:var(--text2);}
+.btn-primary{background:var(--color-info);color:#fff;}
+.btn-outline{background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-subtle);}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
-.stat-card{background:var(--surface2);border-radius:6px;padding:16px 12px;text-align:center;border:1px solid var(--border);}
+.stat-card{background:var(--color-surface-subtle);border-radius:6px;padding:16px 12px;text-align:center;border:1px solid var(--color-border);}
 .stat-card .value{font-size:21px;font-weight:700;}
-.stat-card .label{font-size:12px;color:var(--text2);}
-.stat-card.green .value{color:var(--green);}
-.stat-card.red .value{color:var(--red);}
-.stat-card.blue .value{color:var(--accent);}
+.stat-card .label{font-size:12px;color:var(--color-text-subtle);}
+.stat-card.green .value{color:var(--color-success);}
+.stat-card.red .value{color:var(--color-danger);}
+.stat-card.blue .value{color:var(--color-info);}
 .risk-banner{border-radius:6px;padding:12px 16px;font-size:15px;font-weight:600;margin-top:12px;}
 .risk-banner.ok{background:#e8f5e9;color:#14532d;}
 .risk-banner.warn{background:#fff3e0;color:#7c4a03;}
 .risk-banner.crisis{background:#fbe9e7;color:#7f1d1d;}
-.pos{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;}
+.pos{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;}
 .pos-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
 .pos-head .name{font-weight:700;font-size:16px;}
-.pos-head .code{color:var(--text2);font-size:13px;}
+.pos-head .code{color:var(--color-text-subtle);font-size:13px;}
 .pos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:10px;}
-.pos-metric{background:var(--surface2);border-radius:5px;padding:8px 10px;text-align:center;}
+.pos-metric{background:var(--color-surface-subtle);border-radius:5px;padding:8px 10px;text-align:center;}
 .pos-metric .v{font-size:15px;font-weight:600;}
-.pos-metric .l{font-size:11px;color:var(--text2);}
-.pos-metric.stop .v{color:var(--red);}
-.pos-metric.warn .v{color:var(--orange);}
-.pos-metric.gain .v{color:var(--green);}
-.pos-metric.buy .v{color:var(--accent);}
-.pos-metric.peak .v{color:var(--text2);}
-.fund{font-size:12px;color:var(--text2);margin-bottom:8px;}
-.advice{background:#fff8e1;border-left:4px solid var(--orange);padding:10px 14px;border-radius:0 5px 5px 0;font-size:13px;color:#5f4b00;margin-bottom:8px;}
-.advice.urgent{background:#fbe9e7;border-left-color:var(--red);color:#7f1d1d;}
-.advice.hold{background:var(--surface2);border-left-color:var(--text2);color:var(--text2);}
+.pos-metric .l{font-size:11px;color:var(--color-text-subtle);}
+.pos-metric.stop .v{color:var(--color-danger);}
+.pos-metric.warn .v{color:var(--color-warning);}
+.pos-metric.gain .v{color:var(--color-success);}
+.pos-metric.buy .v{color:var(--color-info);}
+.pos-metric.peak .v{color:var(--color-text-subtle);}
+.fund{font-size:12px;color:var(--color-text-subtle);margin-bottom:8px;}
+.advice{background:#fff8e1;border-left:4px solid var(--color-warning);padding:10px 14px;border-radius:0 5px 5px 0;font-size:13px;color:#5f4b00;margin-bottom:8px;}
+.advice.urgent{background:#fbe9e7;border-left-color:var(--color-danger);color:#7f1d1d;}
+.advice.hold{background:var(--color-surface-subtle);border-left-color:var(--color-text-subtle);color:var(--color-text-subtle);}
 .tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;}
-.tag.green{background:#e8f5e9;color:var(--green);}
-.tag.red{background:#fbe9e7;color:var(--red);}
-.tag.orange{background:#fff3e0;color:var(--orange);}
-.tag.gray{background:#eceff1;color:var(--text2);}
-.tag.blue{background:#e3f2fd;color:var(--accent);}
-.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--red);font-size:14px;margin-bottom:14px;}
-.note{font-size:13px;color:var(--text2);}
-.empty{padding:30px;text-align:center;color:var(--text2);}
-.detail{font-size:12px;color:var(--text2);margin-top:6px;}
-.metric-grid .m{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:6px 10px;text-align:center;}
-.metric-grid .m .l{font-size:11px;color:var(--text2);}
+.tag.green{background:#e8f5e9;color:var(--color-success);}
+.tag.red{background:#fbe9e7;color:var(--color-danger);}
+.tag.orange{background:#fff3e0;color:var(--color-warning);}
+.tag.gray{background:#eceff1;color:var(--color-text-subtle);}
+.tag.blue{background:#e3f2fd;color:var(--color-info);}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--color-danger);font-size:14px;margin-bottom:14px;}
+.note{font-size:13px;color:var(--color-text-subtle);}
+.empty{padding:30px;text-align:center;color:var(--color-text-subtle);}
+.detail{font-size:12px;color:var(--color-text-subtle);margin-top:6px;}
+.metric-grid .m{background:var(--color-surface);border:1px solid var(--color-border);border-radius:5px;padding:6px 10px;text-align:center;}
+.metric-grid .m .l{font-size:11px;color:var(--color-text-subtle);}
 .metric-grid .m .v{font-size:14px;font-weight:600;}
 </style>
 {% endblock %}
@@ -115,7 +110,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   <div class="card">
     <div class="card-title" style="cursor:pointer;" onclick="toggleHist()">
       <span><i class="fas fa-clock-rotate-left"></i> 账户历史操作记录 <span class="tag gray">{{ data.history_txns|length }} 笔</span></span>
-      <span class="chevron" style="font-size:12px;color:var(--text2);"><i class="fas fa-chevron-down"></i></span>
+      <span class="chevron" style="font-size:12px;color:var(--color-text-subtle);"><i class="fas fa-chevron-down"></i></span>
     </div>
     <div id="history-box" style="display:none;">
       {% if data.history_txns %}
@@ -126,19 +121,19 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
           {% for t in data.history_txns %}
             <tr>
               <td>{{ t.date }}</td>
-              <td>{{ t.stock_name }} <span style="color:var(--text2);font-size:11px;">{{ t.stock_code }}</span></td>
+              <td>{{ t.stock_name }} <span style="color:var(--color-text-subtle);font-size:11px;">{{ t.stock_code }}</span></td>
               <td><span class="tag {{ 'green' if t.trans_type=='buy' else ('red' if t.trans_type in ('sell','sell_all') else 'orange') }}">{{ {'buy':'加仓','sell':'减仓','sell_all':'清仓','dividend':'分红'}.get(t.trans_type, t.trans_type) }}</span></td>
               <td>{{ "%.2f"|format(t.price) }}</td>
               <td>{{ "{:,.0f}".format(t.shares) }}</td>
               <td>{{ "{:,.0f}".format(t.amount) }}</td>
               <td class="{{ 'red' if (t.pnl or 0)>=0 else 'green' }}">{{ "%+.2f"|format(t.pnl) if t.pnl else '—' }}</td>
-              <td style="font-size:12px;color:var(--text2);">{{ t.reason }}</td>
+              <td style="font-size:12px;color:var(--color-text-subtle);">{{ t.reason }}</td>
             </tr>
           {% endfor %}
           </tbody>
         </table>
       </div>
-      {% else %}<div style="color:var(--text2);">暂无操作记录</div>{% endif %}
+      {% else %}<div style="color:var(--color-text-subtle);">暂无操作记录</div>{% endif %}
     </div>
   </div>
 
@@ -164,13 +159,13 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                data-action="toggleReturn" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}" data-cost="{{ p.avg_cost }}"
                title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
-            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#28a745;"
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-success);"
                data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="buy" title="加仓"><i class="fas fa-plus"></i> 加仓</button>
-            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#e67e22;"
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-warning);"
                data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="sell" title="减仓"><i class="fas fa-minus"></i> 减仓</button>
             <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#9c27b0;"
                data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="dividend" title="分红"><i class="fas fa-coins"></i> 分红</button>
-            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#dc3545;"
+            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-danger);"
                data-action="deletePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
           </span>
         </div>
@@ -194,9 +189,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
           <div class="pos-metric buy"><div class="v">{{ p.buy_more.trigger_price }}</div><div class="l">💰补仓线{{ p.buy_more.label }}</div></div>
           {% endif %}
         </div>
-        <div class="detail-box" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;"></div>
-        <div class="return-box" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
-          <div class="return-loading" style="color:var(--text2);font-size:13px;">收益加载中…</div>
+        <div class="detail-box" style="display:none;margin-top:10px;padding:12px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;"></div>
+        <div class="return-box" style="display:none;margin-top:10px;padding:12px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;">
+          <div class="return-loading" style="color:var(--color-text-subtle);font-size:13px;">收益加载中…</div>
         </div>
         {% if p.fundamental %}
         <div class="fund">📊 营收 {{ p.fundamental.revenue or '—' }}亿 · 净利 {{ p.fundamental.net_profit or '—' }}亿 · 增速 {{ p.fundamental.revenue_yoy or '—' }}% · ROE {{ p.fundamental.roe or '—' }}%（{{ p.fundamental.date }}）</div>
@@ -234,7 +229,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
       <input id="op-reason" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="操作理由（可选）"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn" style="padding:8px 16px;border:1px solid #e0e4ea;border-radius:6px;background:#f8f9fb;color:#6b7280;cursor:pointer;" onclick="closeOp()">取消</button>
-      <button class="btn" style="padding:8px 16px;border:none;border-radius:6px;background:#1a73e8;color:#fff;cursor:pointer;" onclick="submitOp()">确认</button>
+      <button class="btn" style="padding:8px 16px;border:none;border-radius:6px;background:var(--color-info);color:#fff;cursor:pointer;" onclick="submitOp()">确认</button>
     </div>
   </div>
 </div>
@@ -266,7 +261,7 @@ async function toggleDetail(btn, code){
   const box = btn.closest('.pos').querySelector('.detail-box');
   if (box.style.display !== 'none'){ box.style.display = 'none'; return; }
   box.style.display = 'block';
-  box.innerHTML = '<div style="color:var(--text2);font-size:13px;">加载中…</div>';
+  box.innerHTML = '<div style="color:var(--color-text-subtle);font-size:13px;">加载中…</div>';
   window.StockDetail.load(code, 'position', box)
     .catch(err => { box.innerHTML = '<span style="color:#c62828;font-size:13px;">' + err.message + '</span>'; });
 }
@@ -276,13 +271,13 @@ async function toggleReturn(btn){
   box.style.display = 'block';
   box.dataset.code = btn.dataset.code;
   box.dataset.cost = btn.dataset.cost || '';
-  box.innerHTML = '<div class="return-loading" style="color:var(--text2);font-size:13px;">加载中…</div>';
+  box.innerHTML = '<div class="return-loading" style="color:var(--color-text-subtle);font-size:13px;">加载中…</div>';
   // 首次渲染：加周期切换 + 图表容器
   const code = btn.dataset.code;
   const cost = box.dataset.cost;
   box.innerHTML =
     '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">' +
-    '<button class="btn btn-outline pbtn" data-p="day" style="padding:4px 12px;font-size:12px;background:#1a73e8;color:#fff;" onclick="loadStockChart(this)">日线</button>' +
+    '<button class="btn btn-outline pbtn" data-p="day" style="padding:4px 12px;font-size:12px;background:var(--color-info);color:#fff;" onclick="loadStockChart(this)">日线</button>' +
     '<button class="btn btn-outline pbtn" data-p="week" style="padding:4px 12px;font-size:12px;" onclick="loadStockChart(this)">周线</button>' +
     '<button class="btn btn-outline pbtn" data-p="month" style="padding:4px 12px;font-size:12px;" onclick="loadStockChart(this)">月线</button>' +
     '<span style="font-size:12px;color:#6b7280;align-self:center;">收盘+指标 | 双线收益率</span>' +
@@ -295,7 +290,7 @@ async function loadStockChart(btn){
   const code = box.dataset.code;
   const cost = box.dataset.cost;
   const period = btn.dataset.p;
-  box.querySelectorAll('.pbtn').forEach(b => { b.style.background = b===btn?'#1a73e8':''; b.style.color = b===btn?'#fff':''; });
+  box.querySelectorAll('.pbtn').forEach(b => { b.style.background = b===btn?'var(--color-info)':''; b.style.color = b===btn?'#fff':''; });
   const chartEl = box.querySelector('.chart');
   const fd = new FormData();
   fd.append('code', code); fd.append('period', period);

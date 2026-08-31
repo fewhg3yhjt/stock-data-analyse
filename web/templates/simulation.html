@@ -3,45 +3,40 @@
 {% block head %}
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-:root {
-  --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
-  --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
-  --red:#dc3545; --green:#28a745; --orange:#e67e22;
-  --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
-}
-body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:16px;}
+
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--color-surface-subtle);color:var(--color-text);line-height:1.8;font-size:16px;}
 .app{max-width:1300px;margin:0 auto;padding:28px 22px 60px;}
-.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--color-border);}
 .header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
-.header h1 i{color:var(--accent);}
-.header .sub{font-size:14px;color:var(--text2);margin-top:3px;}
+.header h1 i{color:var(--color-info);}
+.header .sub{font-size:14px;color:var(--color-text-subtle);margin-top:3px;}
 .header .nav{font-size:14px;}
-.header .nav a{color:var(--accent);text-decoration:none;margin-left:16px;}
-.header .nav a.active{font-weight:700;border-bottom:2px solid var(--accent);padding-bottom:2px;}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 22px;margin-bottom:16px;box-shadow:var(--shadow);}
+.header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
+.header .nav a.active{font-weight:700;border-bottom:2px solid var(--color-info);padding-bottom:2px;}
+.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:18px 22px;margin-bottom:16px;box-shadow:var(--shadow);}
 .card-title{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.card-title i{color:var(--accent);}
+.card-title i{color:var(--color-info);}
 table{width:100%;border-collapse:collapse;font-size:14px;}
 .table-wrap{overflow-x:auto;}
-th{text-align:left;padding:9px 10px;color:var(--text2);font-weight:500;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap;}
-td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+th{text-align:left;padding:9px 10px;color:var(--color-text-subtle);font-weight:500;border-bottom:1px solid var(--color-border);font-size:13px;white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid var(--color-border);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
 .tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;}
-.tag.green{background:#e8f5e9;color:var(--green);}
-.tag.red{background:#fbe9e7;color:var(--red);}
-.tag.orange{background:#fff3e0;color:var(--orange);}
-.tag.blue{background:#e3f2fd;color:var(--accent);}
-.tag.gray{background:#eceff1;color:var(--text2);}
+.tag.green{background:#e8f5e9;color:var(--color-success);}
+.tag.red{background:#fbe9e7;color:var(--color-danger);}
+.tag.orange{background:#fff3e0;color:var(--color-warning);}
+.tag.blue{background:#e3f2fd;color:var(--color-info);}
+.tag.gray{background:#eceff1;color:var(--color-text-subtle);}
 .btn{padding:5px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:6px;text-decoration:none;}
-.btn-primary{background:var(--accent);color:#fff;}
-.btn-outline{background:var(--surface);border:1px solid var(--border);color:var(--text2);}
-.btn-danger{background:#fbe9e7;color:var(--red);}
-.btn-outline:hover{border-color:var(--accent);color:var(--accent);}
-select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);}
-.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--red);font-size:14px;margin-bottom:14px;}
+.btn-primary{background:var(--color-info);color:#fff;}
+.btn-outline{background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-subtle);}
+.btn-danger{background:#fbe9e7;color:var(--color-danger);}
+.btn-outline:hover{border-color:var(--color-info);color:var(--color-info);}
+select{background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--color-text);}
+.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--color-danger);font-size:14px;margin-bottom:14px;}
 .toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
-.note{font-size:12px;color:var(--text2);}
-.empty{padding:30px;text-align:center;color:var(--text2);}
+.note{font-size:12px;color:var(--color-text-subtle);}
+.empty{padding:30px;text-align:center;color:var(--color-text-subtle);}
 </style>
 {% endblock %}
 {% block body %}
@@ -71,9 +66,9 @@ select{background:var(--surface2);border:1px solid var(--border);border-radius:6
   <div class="card">
     <div class="card-title"><span><i class="fas fa-plus-circle"></i> 手动添加模拟</span></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-      <input id="sim-code" placeholder="代码 sh600519 / 600519" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:160px;">
-      <input id="sim-name" placeholder="名称（可留空自动识别）" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:160px;">
-      <select id="sim-scheme" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;">
+      <input id="sim-code" placeholder="代码 sh600519 / 600519" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:160px;">
+      <input id="sim-name" placeholder="名称（可留空自动识别）" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:160px;">
+      <select id="sim-scheme" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;">
         {% for sc in schemes %}<option value="{{ sc }}">{{ sc }}</option>{% endfor %}
       </select>
       <button class="btn btn-primary" onclick="addManual()"><i class="fas fa-flask"></i> 跑模拟</button>
@@ -118,7 +113,7 @@ select{background:var(--surface2);border:1px solid var(--border);border-radius:6
           </td>
         </tr>
         <tr class="return-row" id="return-{{ s.stock_code }}" style="display:none;">
-          <td colspan="9" style="background:var(--surface2);padding:12px 16px;">
+          <td colspan="9" style="background:var(--color-surface-subtle);padding:12px 16px;">
             <div class="return-box" style="font-size:13px;">收益加载中…</div>
           </td>
         </tr>
@@ -162,7 +157,7 @@ async function toggleReturn(code){
     const d = await res.json();
     if (d.status !== 'success'){ box.innerHTML = '<span style="color:#c62828;">'+d.error+'</span>'; return; }
     box.innerHTML = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">' +
-      '<span>累计收益率 <b style="color:'+(d.ret_pct>=0?'#28a745':'#dc3545')+';">'+d.ret_pct+'%</b></span>' +
+      '<span>累计收益率 <b style="color:'+(d.ret_pct>=0?'var(--color-up)':'var(--color-down)')+';">'+d.ret_pct+'%</b></span>' +
       '<span>最新收盘 <b>'+d.latest_close+'</b></span></div>' +
       '<img src="'+d.chart+'" style="width:100%;max-width:640px;border-radius:6px;">';
   } catch(e){ box.innerHTML = '<span style="color:#c62828;">请求失败</span>'; }

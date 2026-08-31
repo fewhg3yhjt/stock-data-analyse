@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 研究中心{% endblock %}
-{% block head %}<style>.hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.hub-card{display:block;color:var(--text);min-height:150px}.hub-card:hover{border-color:var(--accent);transform:translateY(-1px)}.hub-card h2{font-size:17px;margin-bottom:8px}.flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.flow span{background:var(--surface2);border:1px solid var(--border);padding:6px 10px;border-radius:6px;font-size:13px}</style>{% endblock %}
+{% block head %}<style>.hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.hub-card{display:block;color:var(--color-text);min-height:150px}.hub-card:hover{border-color:var(--color-info);transform:translateY(-1px)}.hub-card h2{font-size:17px;margin-bottom:8px}.flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.flow span{background:var(--color-surface-subtle);border:1px solid var(--color-border);padding:6px 10px;border-radius:6px;font-size:13px}</style>{% endblock %}
 {% block body %}
 <main class="app"><header class="header"><div><h1><i class="fas fa-flask-vial"></i> 研究中心</h1><div class="sub">从指标定义到策略验证、回测和发布</div></div>{% set active='research' %}{% include '_nav.html' %}</header>
 <section class="card"><div class="card-title">研究流程</div><div class="flow"><span>1. 个股分析</span>→<span>2. 指标定义</span>→<span>3. 策略组装</span>→<span>4. 回测验证</span>→<span>5. 发布使用</span></div></section>

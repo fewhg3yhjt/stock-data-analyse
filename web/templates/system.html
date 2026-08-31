@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 系统{% endblock %}
-{% block head %}<style>.hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}.hub-card{display:block;color:var(--text);min-height:150px}.hub-card:hover{border-color:var(--accent)}.hub-card h2{font-size:17px;margin-bottom:8px}</style>{% endblock %}
+{% block head %}<style>.hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}.hub-card{display:block;color:var(--color-text);min-height:150px}.hub-card:hover{border-color:var(--color-info)}.hub-card h2{font-size:17px;margin-bottom:8px}</style>{% endblock %}
 {% block body %}
 <main class="app"><header class="header"><div><h1><i class="fas fa-gears"></i> 系统</h1><div class="sub">数据、任务、通知、诊断和系统设置</div></div>{% set active='system' %}{% include '_nav.html' %}</header>
 <div class="notice"><strong>系统工作区</strong> 数据状态进入数据中心，任务执行进入任务中心，通知投递进入通知中心；本页只负责统一入口。</div>

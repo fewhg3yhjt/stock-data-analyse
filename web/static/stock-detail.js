@@ -14,8 +14,8 @@ window.StockDetail = (function(){
   }
   function color(pct){
     // 国人习惯：红涨绿跌
-    if (pct === null || pct === undefined || isNaN(pct)) return 'var(--text2)';
-    return pct > 0 ? 'var(--red)' : (pct < 0 ? 'var(--green)' : 'var(--text2)');
+    if (pct === null || pct === undefined || isNaN(pct)) return 'var(--color-text-subtle)';
+    return pct > 0 ? 'var(--color-danger)' : (pct < 0 ? 'var(--color-success)' : 'var(--color-text-subtle)');
   }
   function pctHtml(v, suffix){
     if (v === null || v === undefined || isNaN(Number(v))) return '—';
@@ -59,14 +59,14 @@ window.StockDetail = (function(){
     let simRow = '';
     if (kind === 'watch' && opts.onSimEntry){
       simRow = `
-        <div class="sim-entry-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
-          <span style="font-size:12px;color:var(--text2);"><i class="fas fa-bullseye"></i> 模拟收益入场点</span>
+        <div class="sim-entry-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0;padding:8px 10px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;">
+          <span style="font-size:12px;color:var(--color-text-subtle);"><i class="fas fa-bullseye"></i> 模拟收益入场点</span>
           <input type="date" class="sim-entry-date" value="${opts.entryDate || ''}"
-                 style="background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;">
+                 style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:5px;padding:4px 8px;font-size:12px;">
           <input type="number" step="0.01" class="sim-entry-price" placeholder="入场价" value="${opts.entryPrice || ''}"
-                 style="background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;width:90px;">
+                 style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:5px;padding:4px 8px;font-size:12px;width:90px;">
           <button class="btn btn-outline" style="padding:3px 10px;font-size:11px;cursor:pointer;" data-save="1"><i class="fas fa-check"></i> 应用</button>
-          <span class="sim-entry-msg" style="font-size:11px;color:var(--text2);"></span>
+          <span class="sim-entry-msg" style="font-size:11px;color:var(--color-text-subtle);"></span>
         </div>`;
     }
 
@@ -115,25 +115,25 @@ window.StockDetail = (function(){
     const chg = Number(b.change_pct);
     const chgColor = color(chg);
     const quotePanel = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:4px 16px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin-bottom:10px;font-size:13px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:4px 16px;padding:10px 14px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;margin-bottom:10px;font-size:13px;">
         <div style="grid-column:1/-1;display:flex;align-items:baseline;gap:12px;margin-bottom:4px;">
           <span style="font-size:24px;font-weight:700;color:${chgColor};">${fmt(b.price)}</span>
           <span style="font-size:15px;font-weight:600;color:${chgColor};">${chg>=0?'+':''}${fmt(chg)}%</span>
-          <span style="font-size:11px;color:var(--text2);"><i class="fas fa-clock"></i> ${b.snapshot_time || iv.snapshot_time || '—'}</span>
+          <span style="font-size:11px;color:var(--color-text-subtle);"><i class="fas fa-clock"></i> ${b.snapshot_time || iv.snapshot_time || '—'}</span>
         </div>
-        <div><span style="color:var(--text2);">今开</span> <b>${fmt(b.open)}</b></div>
-        <div><span style="color:var(--text2);">昨收</span> <b>${fmt(b.prev_close)}</b></div>
-        <div><span style="color:var(--text2);">最高</span> <b style="color:var(--red);">${fmt(b.high)}</b></div>
-        <div><span style="color:var(--text2);">最低</span> <b style="color:var(--green);">${fmt(b.low)}</b></div>
-        <div><span style="color:var(--text2);">成交量</span> <b>${handFmt(b.volume)}</b></div>
-        <div><span style="color:var(--text2);">成交额</span> <b>${b.amount_wan!=null?(b.amount_wan/10000).toFixed(2)+'亿':'—'}</b></div>
-        <div><span style="color:var(--text2);">换手率</span> <b>${b.turnover!=null?fmt(b.turnover)+'%':'—'}</b></div>
-        <div><span style="color:var(--text2);">量比</span> <b>${fmt(b.vol_ratio)}</b></div>
-        <div><span style="color:var(--text2);">PE(TTM)</span> <b>${fmt(b.pe_ttm)}</b></div>
-        <div><span style="color:var(--text2);">PB</span> <b>${fmt(b.pb)}</b></div>
-        <div><span style="color:var(--text2);">总市值</span> <b>${mcapFmt(b.total_mcap)}</b></div>
-        <div><span style="color:var(--text2);">流通市值</span> <b>${mcapFmt(b.float_mcap)}</b></div>
-        <div><span style="color:var(--text2);">振幅</span> <b>${b.amplitude!=null?fmt(b.amplitude)+'%':'—'}</b></div>
+        <div><span style="color:var(--color-text-subtle);">今开</span> <b>${fmt(b.open)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">昨收</span> <b>${fmt(b.prev_close)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">最高</span> <b style="color:var(--color-danger);">${fmt(b.high)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">最低</span> <b style="color:var(--color-success);">${fmt(b.low)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">成交量</span> <b>${handFmt(b.volume)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">成交额</span> <b>${b.amount_wan!=null?(b.amount_wan/10000).toFixed(2)+'亿':'—'}</b></div>
+        <div><span style="color:var(--color-text-subtle);">换手率</span> <b>${b.turnover!=null?fmt(b.turnover)+'%':'—'}</b></div>
+        <div><span style="color:var(--color-text-subtle);">量比</span> <b>${fmt(b.vol_ratio)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">PE(TTM)</span> <b>${fmt(b.pe_ttm)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">PB</span> <b>${fmt(b.pb)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">总市值</span> <b>${mcapFmt(b.total_mcap)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">流通市值</span> <b>${mcapFmt(b.float_mcap)}</b></div>
+        <div><span style="color:var(--color-text-subtle);">振幅</span> <b>${b.amplitude!=null?fmt(b.amplitude)+'%':'—'}</b></div>
       </div>`;
 
     // 盘中走势（10分钟粒度快照序列，有则展示）
@@ -143,16 +143,16 @@ window.StockDetail = (function(){
       ${simRow}
       ${quotePanel}
       <div style="display:flex;gap:6px;margin:6px 0 2px;">
-        <button class="tab-btn" data-tab="kline" style="padding:4px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;font-size:13px;cursor:pointer;">日K</button>
-        <button class="tab-btn" data-tab="trend" style="padding:4px 14px;border:1px solid var(--border);background:var(--surface);color:var(--text2);border-radius:6px;font-size:13px;cursor:pointer;">分时</button>
+        <button class="tab-btn" data-tab="kline" style="padding:4px 14px;border:1px solid var(--color-info);background:var(--color-info);color:#fff;border-radius:6px;font-size:13px;cursor:pointer;">日K</button>
+        <button class="tab-btn" data-tab="trend" style="padding:4px 14px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-subtle);border-radius:6px;font-size:13px;cursor:pointer;">分时</button>
       </div>
       <div class="kline-wrap">
-        <div id="krange" style="font-size:12px;color:var(--text2);padding:2px 0 0;"></div>
+        <div id="krange" style="font-size:12px;color:var(--color-text-subtle);padding:2px 0 0;"></div>
         <div class="chart kline-chart" style="width:100%;height:470px;"></div>
         ${showReturn ? `<div class="returns-chart" style="width:100%;height:220px;margin-top:10px;"></div>` : ''}
       </div>
       <div class="intraday-wrap" style="display:none;">
-        ${hasTrend ? `<div class="chart intraday-trend-chart" style="width:100%;height:240px;"></div>` : '<div style="font-size:12px;color:var(--text2);padding:10px 0;">暂无盘中快照数据</div>'}
+        ${hasTrend ? `<div class="chart intraday-trend-chart" style="width:100%;height:240px;"></div>` : '<div style="font-size:12px;color:var(--color-text-subtle);padding:10px 0;">暂无盘中快照数据</div>'}
       </div>
       ${retBlock}
     `;
@@ -168,9 +168,9 @@ window.StockDetail = (function(){
       activeTab = tab;
       container.querySelectorAll('.tab-btn').forEach(function(b){
         const on = b.dataset.tab === tab;
-        b.style.background = on ? 'var(--accent)' : 'var(--surface)';
-        b.style.color = on ? '#fff' : 'var(--text2)';
-        b.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+        b.style.background = on ? 'var(--color-info)' : 'var(--color-surface)';
+        b.style.color = on ? '#fff' : 'var(--color-text-subtle)';
+        b.style.borderColor = on ? 'var(--color-info)' : 'var(--color-border)';
       });
       const kw = container.querySelector('.kline-wrap');
       const iw = container.querySelector('.intraday-wrap');
