@@ -623,9 +623,11 @@
 | 状态标签 | `.status-tag.status-<key>` |
 | 涨跌/盈亏 | `.value-up`、`.value-down`、`.value-flat` |
 | 消息 | `.ui-message.message-success/warning/error/info` |
+| 卡片 | `.ui-card`、`.ui-card-header`、`.ui-card-body`、`.ui-card-footer` |
 | 表格 | `.ui-table`、`.ui-table-wrap` |
 | 抽屉 | `.ui-drawer`、`.ui-drawer-mask` |
 | 表单 | `.ui-form`、`.ui-field`、`.ui-field-error` |
+| 输入面板 | `.ui-input-panel`、`.ui-input-panel-header`、`.ui-input-panel-body`、`.ui-input-panel-actions` |
 | 确认面板 | `.ui-confirm`、`.ui-confirm-danger` |
 | 进度 | `.ui-progress`、`.ui-progress-bar` |
 | 按钮 | `.ui-button`、`.ui-button-primary`、`.ui-button-secondary`、`.ui-button-ghost`、`.ui-button-danger`、`.ui-button-sm` |
@@ -642,8 +644,10 @@
 | 状态标签 | `base.css`、`ui-status.js` | 每个状态都有文字、完整 `status-*` CSS 类和对应色调 |
 | 涨跌数值 | `base.css` | `.value-up`、`.value-down`、`.value-flat` |
 | 消息 | `base.css`、`ui-feedback.js` | `.ui-message` 及 success/warning/error/info 变体 |
+| 卡片 | `base.css` | `.ui-card` 及 header/body/footer 结构 |
 | 表格 | `base.css` | `.ui-table`、`.ui-table-wrap` |
 | 表单 | `base.css` | `.ui-form`、`.ui-field`、`.ui-field-error` |
+| 输入面板 | `base.css`、公共 JS | `.ui-input-panel` 及 header/body/actions 结构 |
 | 确认/输入 | `base.css`、公共 JS | `.ui-confirm`、`.ui-confirm-danger` |
 | 进度 | `base.css` | `.ui-progress`、`.ui-progress-bar` |
 | 按钮 | `base.css` | `.ui-button` 及 primary/secondary/ghost/danger/sm 变体 |
@@ -713,6 +717,16 @@
 <span class="value-flat" aria-label="无变化">0.00%</span>
 ```
 
+#### 卡片
+
+```html
+<section class="ui-card">
+  <header class="ui-card-header"><h2>数据摘要</h2><span class="ui-card-meta">数据截至 2026-08-31</span></header>
+  <div class="ui-card-body"><p>当前数据可用。</p></div>
+  <footer class="ui-card-footer"><button class="ui-button ui-button-secondary">查看详情</button></footer>
+</section>
+```
+
 #### 页面消息
 
 ```html
@@ -747,6 +761,20 @@
   </div>
   <button class="ui-button ui-button-primary" type="submit">开始研究</button>
 </form>
+```
+
+#### 输入面板
+
+```html
+<div class="ui-drawer-mask" data-open="true">
+  <section class="ui-input-panel" role="dialog" aria-modal="true" aria-labelledby="input-title">
+    <header class="ui-input-panel-header"><h2 id="input-title">设置观察起点</h2></header>
+    <div class="ui-input-panel-body">
+      <div class="ui-field"><label for="input-value">观察起点日期</label><input id="input-value" type="date" aria-describedby="input-help input-error"><div id="input-help" class="ui-field-help">可填写历史交易日</div><div id="input-error" class="ui-field-error" role="alert"></div></div>
+    </div>
+    <footer class="ui-input-panel-actions"><button class="ui-button ui-button-secondary">取消</button><button class="ui-button ui-button-primary">保存</button></footer>
+  </section>
+</div>
 ```
 
 #### 确认/输入面板
@@ -801,9 +829,13 @@
 | `.dm-health.*` | `.status-tag.status-*` | 不再由页面拼接裸状态后缀 |
 | `.status-tag.ok/no` | `.status-tag.status-healthy/status-unknown` | 按业务状态直接映射 |
 | `.btn*` | `.ui-button*` | 直接替换按钮类，不保留双类 |
-| `.card/table/form-group` | `.ui-*` 对应组件 | 按组件结构样例重写，不做 CSS 别名 |
+| `.card` | `.ui-card` | 按 card header/body/footer 结构重写，不做 CSS 别名 |
+| `table` | `.ui-table` | 按表格结构样例重写 |
+| `.form-group` | `.ui-form` / `.ui-field` | 按表单字段结构重写 |
 | 内联 `onclick` | `data-*` + 事件绑定 | 数据不进入 JS 属性字符串 |
-| `alert/confirm/prompt` | `.ui-message` / `.ui-confirm` / 输入面板 | 普通操作和确认操作分别使用对应组件 |
+| `alert` | `.ui-message` | 普通提示使用页面消息 |
+| `confirm` | `.ui-confirm` | 危险操作使用确认面板 |
+| `prompt` | `.ui-input-panel` | 输入操作使用输入面板 |
 
 ## 7. 响应式、性能与可访问性
 

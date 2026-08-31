@@ -18,7 +18,7 @@
 | 反馈机制 | 过渡完成 | 普通 `alert` 被页面提示接管；`confirm/prompt` 仍有残留 |
 | 设计 Token | 基础变量已落地 | `base.css` 已增加基础 `--color-*` 变量；页面仍大量使用旧变量，按无兼容方案继续直接替换 |
 | 状态 CSS 类 | 未完全落地 | `ui-status.js` 仍返回裸 class 值，页面仍使用旧状态类；目标 canonical class 尚未完成迁移 |
-| 公共组件类名 | 部分落地 | `.ui-*` 契约已定义但代码尚未全面使用；旧 `card/btn/tag/table` 将直接删除，不建立兼容层 |
+| 公共组件类名 | 部分落地 | `.ui-card`、`.ui-input-panel` 等契约已定义但代码尚未全面使用；旧 `card/btn/tag/table` 将直接删除，不建立兼容层 |
 | 页面级 Adapter | 部分完成 | 核心系统页面有独立脚本，许多业务页仍是模板内联脚本 |
 | 安全治理 | 未完成 | 内联事件属性、Markdown 净化、CSP 尚未全部整改 |
 | 资源治理 | 未完成 | CDN、本地库、手写版本号和构建策略尚未完全统一 |
@@ -69,7 +69,7 @@
 
 | 资源 | 当前作用 | 当前问题 |
 |---|---|---|
-| `base.css` | 公共 Token 和基础组件 | 语义 Token 已增加，历史别名和页面内联样式仍并存 |
+| `base.css` | 公共 Token 和基础组件 | 语义 Token 已增加；`.ui-card`、`.ui-input-panel` 等目标组件仍在落地，旧类和页面内联样式仍并存 |
 | `ui-shell.css` | 旧 `.app` 页面公共壳层适配 | 仍通过选择器覆盖旧模板结构 |
 | `ui-status.js` | 状态词表和 canonical class 映射 | 当前 `cls` 仍是裸后缀，需改为完整 `status-*` 类名并同步调用方 |
 | `ui-feedback.js` | 全局页面消息和旧 alert 过渡 | 不应继续劫持 `window.alert` 作为最终方案 |
