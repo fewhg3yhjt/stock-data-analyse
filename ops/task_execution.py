@@ -125,7 +125,7 @@ def _publish(warehouse: Warehouse, request: dict) -> dict:
     published = {partition: Publisher(warehouse).publish(version) for partition, version in versions.items()}
     return {"rows": len(published), "published": published,
             "input_versions": versions,
-            "output_versions": {key: value.get("version_id", version)
+            "output_versions": {key: value.get("version_id", versions[key])
                                  for key, value in published.items()}}
 
 
