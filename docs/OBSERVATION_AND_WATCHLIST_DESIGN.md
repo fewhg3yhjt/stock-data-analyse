@@ -773,6 +773,7 @@ simulation snapshot → ObservationSnapshot
 ### 跨模块验证
 
 - `tests/test_biz_end_to_end.py` 已覆盖 ScreenRun/ScreenCandidate → ResearchRun/StrategyDecision → Observation → SimulationPlan/SimulationRun → PositionCycle/Execution → PositionValuation → Performance/Review → Advice/NotificationDelivery。
+- `tests/test_biz_workflow.py` 已覆盖 ScreenCandidate → Observation → SimulationPlan → EntryContext → PositionCycle/Execution，并验证建仓前确认、现金不足回滚和幂等重放。
 - 当前测试已通过，但业务 API 和最终 Web 入口尚未接入。
 
 ### 跨模块验证

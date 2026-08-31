@@ -496,7 +496,8 @@ idempotent_replay
 
 - `tests/test_biz_end_to_end.py` 已验证 Observation.ready_for_entry → PositionCycle → BUY Execution → PositionValuation 的基础链路。
 - `tests/test_biz_portfolio.py` 已通过故障注入验证 Execution 插入后继续处理失败时，Execution/Lot/CashLedger 均不残留。
-- 正式建仓 Application Service、公司行为完整规则和 PositionSnapshot 读模型仍待完成。
+- `biz/workflow.py` 与 `tests/test_biz_workflow.py` 已将 EntryContext → PositionCycle → Execution → CashLedger → Observation promoted 收口为应用服务事务。
+- 正式 Web 建仓入口、公司行为完整规则和 PositionSnapshot 读模型仍待完成。
 
 ### 后续待开发
 
