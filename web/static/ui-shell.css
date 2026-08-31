@@ -1,0 +1,14 @@
+/* Shared shell for business pages. Data/workbench pages keep their dedicated shell. */
+.app{max-width:none;min-height:100vh;margin:0;padding:30px 36px 60px 264px;background:#f7f8fa}
+.app .header{min-height:72px;margin:0 0 20px;padding:0 0 18px;border-bottom:1px solid #dce2e9;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.app .header h1{font-size:27px;letter-spacing:-.5px}.app .header .sub{font-size:14px;color:#718095}
+.app .header .nav{position:fixed;z-index:40;inset:0 auto 0 0;width:228px;padding:24px 14px 18px;background:#172331;color:#dce5ee;font-size:14px;overflow:auto}
+.app .header .nav:before{content:'量化星球\A数据智能平台';white-space:pre;display:block;padding:0 12px 28px;color:#fff;font-size:16px;font-weight:700;line-height:1.7;letter-spacing:.5px}
+.app .nav-primary{display:grid;gap:4px;border:0;padding:0}.app .nav-primary a{display:flex;align-items:center;min-height:40px;padding:9px 13px;border-radius:8px;color:#afbecd;margin:0;text-decoration:none}.app .nav-primary a:hover{background:#223448;color:#fff}.app .nav-primary a.active{background:#245fc2;color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.16)}
+.app .nav-secondary{display:grid;gap:3px;margin:18px 0 0;padding:14px 0 0;border-top:1px solid #2a3b4d}.app .nav-secondary span{padding:0 13px 5px;color:#7f92a6;font-size:11px;letter-spacing:1px}.app .nav-secondary a{padding:7px 13px;color:#afbecd;margin:0;border-radius:7px}.app .nav-secondary a:hover,.app .nav-secondary a.active{background:#223448;color:#fff}
+.app .nav-legacy{display:none}
+.app .card{border-color:#e1e6ec;border-radius:10px;box-shadow:0 2px 8px rgba(25,43,65,.025)}
+.app table{font-size:13px}.app th{background:#fafbfc;color:#7b8797;font-size:12px;font-weight:600}.app td{font-size:13px}
+.app .btn{border-radius:6px}.app .btn-primary{background:#1765cf}.app .btn-primary:hover{background:#0f56b6}
+.app .form-group input,.app .form-group select,.app .form-group textarea{background:#fff;border-color:#d8dfe7}
+@media(max-width:760px){.app{padding:20px 12px 32px}.app .header{display:block}.app .header .nav{position:static;width:auto;margin:16px -12px 0;padding:8px 12px;background:#172331;overflow:visible}.app .header .nav:before{display:none}.app .nav-primary{display:flex;overflow:auto;gap:4px}.app .nav-primary a{white-space:nowrap;min-height:34px;padding:7px 10px;font-size:12px}.app .nav-secondary{display:flex;overflow:auto;margin:8px 0 0;padding:8px 0 0}.app .nav-secondary span{display:none}.app .nav-secondary a{white-space:nowrap;font-size:12px;padding:6px 9px}.app .header h1{font-size:23px}}
