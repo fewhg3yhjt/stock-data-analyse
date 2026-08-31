@@ -56,7 +56,7 @@ AI摘要可以将结构化结果改写成易读语言，但不能重新计算指
 | 任务运行详情 | `/api/task-center/runs/{run_id}`、`/logs` | 已有接口 | 详情 Tab 展示执行概览、日志和结果 |
 | 研究领域服务 | `biz/research.py` | 已完成核心服务 | 可生成技术、市场、估值、基本面状态和策略决策 |
 | 研究持久化 | `biz/repo.py`、`research_runs`、`research_evidence` | 已有存储能力 | 可作为页面数据模型，但尚无 Web 查询入口 |
-| 研究 Web API | 设计目标为 `/api/research-runs` | 当前未接入 `web/app.py` | 先完成接口契约，再实现正式研究详情页 |
+| 研究 Web API | `/api/research-runs` | 已接入 `web/biz_api.py` 基础运行/查询入口 | 页面仍需接入并补齐报告、快照和状态轮询 |
 | 研究报告 | `ResearchReport` | 文档标记待开发 | 不作为 V1 首屏依赖 |
 | 基本面研究 | `fundamentals` 契约 | 延期 | 明确展示“延期”，不显示空白或已完成 |
 
@@ -223,7 +223,7 @@ AI摘要可以将结构化结果改写成易读语言，但不能重新计算指
 
 ### 5.7 后台缺口与建议接口
 
-当前 `web/app.py` 没有 ResearchRun 的 Web API。正式实现前需要提供：
+当前新业务蓝图已提供 ResearchRun 的基础 Web API。仍需补齐报告、观察快照和模拟计划等完整接口：
 
 | 接口 | 用途 |
 |---|---|

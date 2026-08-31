@@ -26,7 +26,7 @@ from StockInvestmentTool.biz.data_access import load_market_data
 from StockInvestmentTool.biz.tasks import BusinessTaskService
 from StockInvestmentTool.biz.task_registry import register_business_tasks
 
-biz_api = flask.Blueprint("biz_api", __name__, url_prefix="/api/biz")
+biz_api = flask.Blueprint("biz_api", __name__)
 
 
 def _repo() -> BusinessRepository:
@@ -71,6 +71,37 @@ def preview_screen():
         }, "request_id": flask.request.headers.get("X-Request-ID", "")})
     except Exception as exc:  # noqa: BLE001
         return _error("SCREEN_RUN_FAILED", str(exc), 500)
+
+
+@biz_api.post("/screens")
+def create_screen_definition():
+    """创建并发布一个筛选方案版本。"""
+    payload = flask.request.get_json(silent=True) or {}
+    if not payload.get("name") or not isinstance(payload.get("condition_spec"), dict):
+        return _error("SCREEN_INVALID", "name 和 condition_spec 必填")
+    try:
+        from StockInvestmentTool.biz.models import validate_condition_spec
+        errors = validate_condition_spec(payload["condition_spec"])
+        if errors:
+            return _error("SCREEN_INVALID", "; ".join(errors))
+        definition = ScreenDefinition(
+            screen_id=payload.get("screen_id") or new_id("screen"),
+            name=payload["name"], version=str(payload.get("version", "1")),
+            description=payload.get("description", ""),
+            asset_types=payload.get("asset_types", ["stock"]),
+            condition_spec=payload["condition_spec"],
+            sort_spec=payload.get("sort_spec", {}),
+            display_fields=payload.get("display_fields", []),
+        )
+        repo = _repo()
+        version_id = repo.save_screen_version(definition)
+        return flask.jsonify({"data": {
+            "screen_id": definition.screen_id, "screen_version_id": version_id,
+            "version": definition.version, "status": "published",
+            "config_hash": definition.config_hash(),
+        }, "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+    except Exception as exc:  # noqa: BLE001
+        return _error("SCREEN_INVALID", str(exc), 400)
 
 
 @biz_api.post("/screen-runs")
@@ -498,6 +529,31 @@ def candidate_observation(candidate_id: str):
         return flask.jsonify({"data": obs.__dict__, "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
     except WorkflowError as exc:
         return _error(str(exc), str(exc))
+
+
+@biz_api.post("/screen-candidates/<candidate_id>/observe")
+def contract_candidate_observation(candidate_id: str):
+    return candidate_observation(candidate_id)
+
+
+@biz_api.post("/observations/<observation_id>/simulation-plan")
+def observation_simulation_plan(observation_id: str):
+    payload = flask.request.get_json(silent=True) or {}
+    required = ("strategy_version_id", "start_date", "end_date", "initial_cash")
+    if any(payload.get(key) in (None, "") for key in required):
+        return _error("SIMULATION_INVALID", "strategy_version_id/start_date/end_date/initial_cash 必填")
+    try:
+        plan = BusinessWorkflowService(_repo()).create_simulation_plan(
+            observation_id, strategy_version_id=payload["strategy_version_id"],
+            start_date=payload["start_date"], end_date=payload["end_date"],
+            initial_cash=float(payload["initial_cash"]),
+            benchmark=payload.get("benchmark", "sh000300"),
+            cost_config=payload.get("cost_config", {}),
+        )
+        return flask.jsonify({"data": plan.__dict__,
+                              "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+    except WorkflowError as exc:
+        return _error(str(exc), str(exc), 409)
 
 
 @biz_api.get("/observations/<observation_id>")

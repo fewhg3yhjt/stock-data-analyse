@@ -21,6 +21,9 @@ def test_biz_blueprint_registered(app):
     assert "/api/biz/screens/preview" in routes
     assert "/api/biz/observations/<observation_id>" in routes
     assert "/api/biz/observations/<observation_id>/entry" in routes
+    assert "/api/screens" in routes
+    assert "/api/screen-candidates/<candidate_id>/observe" in routes
+    assert "/api/observations/<observation_id>/simulation-plan" in routes
 
 
 def test_preview_requires_condition(app):
@@ -35,6 +38,15 @@ def test_preview_requires_date_range(app):
     })
     assert response.status_code == 400
     assert response.get_json()["error"]["code"] == "SCREEN_INVALID"
+
+
+def test_create_screen_validates_and_persists_definition(app):
+    response = app.test_client().post("/api/screens", json={
+        "name": "API筛选", "condition_spec": {"type": "comparison",
+        "left": {"field": "close"}, "operator": ">", "right": {"value": 10}},
+    })
+    assert response.status_code == 201
+    assert response.get_json()["data"]["status"] == "published"
 
 
 def test_observation_not_found(app):
