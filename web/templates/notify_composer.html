@@ -29,6 +29,8 @@ table.kv th{background:var(--surface2);font-weight:600;}
 
   <div class="notice"><strong>通知中心</strong> 业务通知、系统告警和投递台账分开查看；失败和死信请从投递台账处理。</div>
 
+  <div class="page-context"><span class="note">先配置规则和渠道，再通过投递台账确认消息是否真正送达。</span><a class="btn btn-outline btn-sm" href="/diagnostics"><i class="fas fa-stethoscope"></i> 查看系统诊断</a></div>
+
   {% if error %}<div class="error" style="color:var(--red);background:#fbe9e7;border-radius:6px;padding:12px;margin-bottom:14px;">{{ error }}</div>{% endif %}
 
   <!-- 触发器 -->

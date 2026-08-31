@@ -57,6 +57,13 @@ select{background:var(--surface2);border:1px solid var(--border);border-radius:6
 
   <div class="notice"><strong>模拟工作区</strong> 模拟结果用于验证策略，不会直接修改真实持仓；结果应结合策略版本、数据区间和执行状态阅读。</div>
 
+  <div class="page-summary">
+    <div class="page-summary-item"><span class="label">模拟记录</span><span class="value">{{ items|length }}</span><span class="note">当前保存的模拟对象</span></div>
+    <div class="page-summary-item"><span class="label">策略方案</span><span class="value">{{ schemes|length }}</span><span class="note">可用于重新分析</span></div>
+    <div class="page-summary-item"><span class="label">当前页面</span><span class="value">只读</span><span class="note">结果不会直接写入持仓</span></div>
+    <div class="page-summary-item"><span class="label">下一步</span><span class="value">复核</span><span class="note">确认数据日期和策略版本</span></div>
+  </div>
+
   {% if error %}
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   {% endif %}
