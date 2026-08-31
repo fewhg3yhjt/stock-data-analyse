@@ -129,6 +129,15 @@ def get_screen_run(run_id: str):
     return flask.jsonify({"data": run, "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/screen-runs/<run_id>/candidates")
+def get_screen_candidates(run_id: str):
+    repo = _repo()
+    if not repo.db.fetchone("SELECT screen_run_id FROM screen_runs WHERE screen_run_id=?", (run_id,)):
+        return _error("SCREEN_RUN_NOT_FOUND", "筛选运行不存在", 404)
+    return flask.jsonify({"data": {"run_id": run_id, "candidates": repo.list_candidates(run_id)},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
 @biz_api.post("/research-runs")
 def create_research_run():
     """执行并持久化一次研究运行。"""
@@ -186,6 +195,15 @@ def get_research_run(run_id: str):
     return flask.jsonify({"data": result, "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/research-runs/<run_id>/evidence")
+def get_research_evidence(run_id: str):
+    repo = _repo()
+    if not repo.get_research_run(run_id):
+        return _error("RESEARCH_RUN_NOT_FOUND", "研究运行不存在", 404)
+    return flask.jsonify({"data": {"run_id": run_id, "evidence": repo.list_research_evidence(run_id)},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
 @biz_api.post("/simulation-runs")
 def create_simulation_run():
     """执行并持久化单标的模拟运行。"""
@@ -229,6 +247,64 @@ def create_simulation_run():
         }, "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
     except Exception as exc:  # noqa: BLE001
         return _error("SIMULATION_RUN_FAILED", str(exc), 500)
+
+
+@biz_api.get("/simulation-runs/<run_id>")
+def get_simulation_run(run_id: str):
+    repo = _repo()
+    run = repo.db.fetchone("SELECT * FROM simulation_runs WHERE run_id=?", (run_id,))
+    if not run:
+        return _error("SIMULATION_RUN_NOT_FOUND", "模拟运行不存在", 404)
+    result = repo.get_simulation_result(run_id)
+    fills = repo.list_simulation_fills(run_id)
+    data = dict(run)
+    data["data_context"] = __import__("StockInvestmentTool.biz.db", fromlist=["loads_json"]).loads_json(data.pop("data_context_json"))
+    data["result"] = result
+    data["fills"] = fills
+    return flask.jsonify({"data": data, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/portfolios/<portfolio_id>/summary")
+def get_portfolio_summary(portfolio_id: str):
+    from StockInvestmentTool.biz.portfolio import PortfolioService
+    from StockInvestmentTool.biz.valuation import PositionValuationService
+
+    repo = _repo()
+    portfolio = PortfolioService(repo).get_portfolio(portfolio_id)
+    if not portfolio:
+        return _error("PORTFOLIO_NOT_FOUND", "组合不存在", 404)
+    # API 调用方应传入已通过 DatasetAccess 获取的行情；没有行情时返回事实层摘要。
+    summary = {
+        "portfolio_id": portfolio_id,
+        "cash_balance": PortfolioService(repo).cash_balance(portfolio_id),
+        "market_value": None,
+        "total_assets": None,
+        "valuation_status": "unavailable",
+    }
+    return flask.jsonify({"data": summary, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/advices")
+def list_advices():
+    repo = _repo()
+    rows = repo.db.fetchall("SELECT * FROM advices ORDER BY created_at DESC LIMIT 200")
+    return flask.jsonify({"data": {"items": [dict(row) for row in rows]},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/notifications/events")
+def list_notification_events():
+    from StockInvestmentTool.biz.notification import NotificationService
+    return flask.jsonify({"data": {"items": NotificationService(_repo()).list_events()},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/notifications/deliveries")
+def list_notification_deliveries():
+    repo = _repo()
+    rows = repo.db.fetchall("SELECT * FROM notification_deliveries ORDER BY created_at DESC LIMIT 200")
+    return flask.jsonify({"data": {"items": [dict(row) for row in rows]},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
 @biz_api.post("/candidates/<candidate_id>/observation")
