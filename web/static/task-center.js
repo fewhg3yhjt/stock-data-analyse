@@ -2,12 +2,12 @@
   const state = {tasks: []};
   const stageNames = {CAPTURE:'数据采集',BUILD:'数据构建',QUALITY:'数据质量',PUBLISH:'数据发布',DERIVED:'派生计算'};
   const typeNames = {SOURCE_CAPTURE:'源数据采集',DATA_BUILD:'标准数据构建',QUALITY_CHECK:'数据质量检查',DATA_PUBLISH:'数据正式发布',INDICATOR_BUILD:'技术指标计算',FACTOR_BUILD:'研究因子计算',DERIVED_BUILD:'派生数据计算'};
-  const statusNames = {running:'执行中',success:'已完成',partial_success:'部分完成',failed:'执行失败',skipped:'已跳过',scheduled:'已排期',disabled:'未启用'};
+  const statusNames = new Proxy({}, {get: (_, key) => window.UI_STATUS_LABEL?.(key, 'run') || key || '状态未知'});
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const statusTag = value => {
     const key = value || 'disabled';
-    const cls = key === 'success' ? 'healthy' : key === 'failed' ? 'critical' : key === 'running' ? 'stale' : key === 'partial_success' ? 'partial' : 'unknown';
-    return `<span class="dm-health ${cls}">${esc(statusNames[key] || key)}</span>`;
+    const cls = window.UI_STATUS_CLS?.(key) || 'unknown';
+    return `<span class="dm-health ${esc(cls)}">${esc(statusNames[key] || key)}</span>`;
   };
   const taskStatus = task => task.running_run?.status || task.latest_run?.status || (task.enabled ? 'scheduled' : 'disabled');
   const formatRange = run => run?.period_start && run?.period_end ? `${run.period_start} ~ ${run.period_end}` : '暂无执行记录';

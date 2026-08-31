@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}个股研究{% endblock %}
-{% block head %}<link rel="stylesheet" href="/static/research-detail.css?v=1">{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/research-detail.css?v=1"><script src="/static/ui-status.js?v=1"></script>{% endblock %}
 {% block body %}
 <main class="app research-page">
   <header class="header">
@@ -26,6 +26,7 @@
       <div><div class="eyebrow">研究运行</div><h2 id="run-title">--</h2><p id="run-meta" class="note">--</p></div>
       <div id="run-status" class="status-badge">--</div>
     </section>
+    <section class="card data-context-card"><div class="card-title">数据可信上下文</div><dl id="data-context" class="data-context"><dt>数据日期</dt><dd>暂无</dd></dl><p class="note">研究结论只对当前数据日期、版本和质量状态负责。</p></section>
     <section class="research-grid">
       <article class="card assessment"><div class="card-title">技术面</div><div id="technical"></div></article>
       <article class="card assessment"><div class="card-title">市场面</div><div id="market"></div></article>

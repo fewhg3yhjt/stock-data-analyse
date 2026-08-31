@@ -1,5 +1,5 @@
 (() => {
-  const dataStatusText = {healthy:'正常', stale:'有些滞后', critical:'严重异常', failed:'更新失败', empty:'暂无数据', disabled:'未开启', unknown:'状态未知', running:'更新中', waiting_close:'等待收盘'};
+  const dataStatusText = new Proxy({}, {get: (_, key) => window.UI_STATUS_LABEL?.(key) || key || '状态未知'});
   const actionLabels = {simulate:'待模拟', buy:'待建仓', review:'已持仓', none:'候选'};
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const json = async url => { const response = await fetch(url); const data = await response.json(); if (!response.ok || data.status !== 'success') throw new Error(data.error || '请求失败'); return data; };

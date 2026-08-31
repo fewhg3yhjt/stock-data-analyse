@@ -1,6 +1,6 @@
 (() => {
   const state = {assets: [], attention: [], pipeline: [], tasks: [], operation: null};
-  const taskLabels = {running: '运行中', success: '已完成', partial_success: '部分可用', failed: '失败', scheduled: '已排期', disabled: '未启用'};
+  const taskLabel = key => window.UI_STATUS_LABEL?.(key, 'run') || ({scheduled: '已排期', disabled: '未启用'}[key] || key);
   const typeLabels = {stock: '股票', etf: 'ETF', index: '指数'};
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const json = async (url, options) => { const response = await fetch(url, options); const data = await response.json(); if (!response.ok || data.status !== 'success') throw new Error(data.error || '请求失败'); return data; };
@@ -54,7 +54,7 @@
       const status = task.current_status || taskStatus(task);
       const done = status === 'success' || status === 'partial_success';
       const range = run?.actual_period_start && run?.actual_period_end ? `${run.actual_period_start} ~ ${run.actual_period_end}` : '';
-      return `<div class="dm-flow-step ${done ? 'done' : status === 'running' ? 'running' : ''}"><div class="dm-flow-dot">${done ? '✓' : status === 'running' ? '…' : '○'}</div><div class="dm-flow-title">${esc(task.display_name)}</div><div class="dm-flow-sub">${esc(taskLabels[status] || status)}${range ? `<br>${esc(range)}` : ''}</div></div>`;
+      return `<div class="dm-flow-step ${done ? 'done' : status === 'running' ? 'running' : ''}"><div class="dm-flow-dot">${done ? '✓' : status === 'running' ? '…' : '○'}</div><div class="dm-flow-title">${esc(task.display_name)}</div><div class="dm-flow-sub">${esc(taskLabel(status))}${range ? `<br>${esc(range)}` : ''}</div></div>`;
     }).join('') || '<div class="dm-empty">暂无生产链路任务</div>';
   }
 
