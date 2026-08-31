@@ -125,6 +125,19 @@ class TestTaskService:
         assert "partition:2026-08" in key
         assert "write:simulation" in key
 
+    def test_heartbeat_updates_job_run(self, svc):
+        register_task("health.reconcile", run_ok)
+        request = svc.enqueue("health.reconcile", input_data={})
+        run = svc.create_run_for_request(request.request_id)
+        svc.repo.db.update("business_job_runs", {"status": JOB_RUNNING},
+                           "run_id=?", (run.run_id,))
+        assert svc.acquire_lock(run.lock_key, run.run_id)
+        svc.heartbeat(run.lock_key, owner_run_id=run.run_id)
+        row = svc.repo.db.fetchone(
+            "SELECT heartbeat_at FROM business_job_runs WHERE run_id=?", (run.run_id,)
+        )
+        assert row["heartbeat_at"]
+
     def test_lock_is_held_until_handler_finishes(self, svc):
         entered = threading.Event()
         release = threading.Event()

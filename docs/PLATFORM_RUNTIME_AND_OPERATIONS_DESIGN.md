@@ -459,6 +459,7 @@ Route
 - `tests/test_biz_tasks.py` 已验证 Request/JobRun 分离、Worker 执行、租约锁和失败恢复。
 - `biz/worker.py` 已提供独立业务 Worker 入口：启动回收 stale run，再领取并执行 requested run；默认单次执行，持续轮询需显式指定间隔，尚未挂入生产容器。
 - stale 回收已只针对 heartbeat 超时的 `running` JobRun，`requested` 队列不会被误判为进程重启失败；业务锁键支持 period/partition/write_group，Worker 执行期间自动 heartbeat。
+- heartbeat 现在同时更新任务锁和 `BusinessJobRun.heartbeat_at`，恢复逻辑不会把仍在执行的长任务误判为 stale。
 - `biz/task_registry.py` 已为 `screen.run`、`research.run`、`simulation.run`、`report.daily_generate`、`notification.outbox_delivery` 和 `advice.refresh` 提供业务 handler；参数搜索和复杂持仓建议仍需继续接入专用执行器。
 - `screen.run`、`research.run`、`simulation.run` 正式 API 已改为只创建 BusinessRequest/JobRun 并返回 202；Worker 执行后通过 BusinessRun/领域结果查询接口获取结果。
 - 新业务正式 API 当前已在容器内注册并通过路由契约检查；现有业务页面和生产 Scheduler 尚未完成主链路切换。

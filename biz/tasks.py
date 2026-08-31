@@ -278,14 +278,24 @@ class BusinessTaskService:
         else:
             self.repo.db.execute("DELETE FROM business_task_locks WHERE lock_key=?", (lock_key,))
 
-    def heartbeat(self, lock_key: str, lease_seconds: int = 300) -> None:
+    def heartbeat(self, lock_key: str, lease_seconds: int = 300,
+                  owner_run_id: str | None = None) -> None:
         import datetime
         from datetime import timezone
         expires = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=lease_seconds)
+        now = now_utc()
+        where = "lock_key=?"
+        params = (lock_key,)
+        if owner_run_id:
+            where += " AND owner_run_id=?"
+            params = (lock_key, owner_run_id)
         self.repo.db.update("business_task_locks",
-                            {"heartbeat_at": now_utc(),
+                            {"heartbeat_at": now,
                              "expires_at": expires.strftime("%Y-%m-%dT%H:%M:%SZ")},
-                            "lock_key=?", (lock_key,))
+                            where, params)
+        if owner_run_id:
+            self.repo.db.update("business_job_runs", {"heartbeat_at": now},
+                                "run_id=? AND status=?", (owner_run_id, JOB_RUNNING))
 
     def _heartbeat_loop(self, lock_key: str, owner_run_id: str, stop: threading.Event,
                         lease_seconds: int = 300) -> None:
@@ -296,7 +306,7 @@ class BusinessTaskService:
             )
             if not row or row["owner_run_id"] != owner_run_id:
                 return
-            self.heartbeat(lock_key, lease_seconds=lease_seconds)
+            self.heartbeat(lock_key, lease_seconds=lease_seconds, owner_run_id=owner_run_id)
 
     # ── 重启恢复 ──────────────────────────────────────────
 
