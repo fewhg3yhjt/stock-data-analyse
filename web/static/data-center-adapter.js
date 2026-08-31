@@ -1,11 +1,12 @@
 (() => {
   const state = {assets: [], attention: [], pipeline: [], tasks: [], operation: null};
-  const healthLabels = {healthy: '正常', partial: '部分可用', stale: '待更新', critical: '异常', failed: '更新失败', unknown: '暂无状态'};
-  const taskLabels = {running: '执行中', success: '已完成', partial_success: '部分完成', failed: '执行失败', scheduled: '已排期', disabled: '未启用'};
+  const taskLabels = {running: '运行中', success: '已完成', partial_success: '部分可用', failed: '失败', scheduled: '已排期', disabled: '未启用'};
   const typeLabels = {stock: '股票', etf: 'ETF', index: '指数'};
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const json = async (url, options) => { const response = await fetch(url, options); const data = await response.json(); if (!response.ok || data.status !== 'success') throw new Error(data.error || '请求失败'); return data; };
-  const health = value => { const key = value || 'unknown'; return `<span class="dm-health ${esc(key)}">${esc(healthLabels[key] || key)}</span>`; };
+  const statusLabels = window.UI_STATUS ? Object.fromEntries(Object.keys(window.UI_STATUS).map(k => [k, window.UI_STATUS[k].label])) : {healthy:'正常', partial:'部分可用', stale:'待更新', critical:'异常', failed:'失败', unknown:'状态未知'};
+  const statusCls = window.UI_STATUS_CLS || (key => key || 'unknown');
+  const health = value => { const key = value || 'unknown'; return `<span class="dm-health ${esc(statusCls(key))}">${esc(statusLabels[key] || key)}</span>`; };
   const taskStatus = task => task.running_run?.status || task.latest_run?.status || (task.enabled ? 'scheduled' : 'disabled');
 
   // Keep page rendering independent from the two existing API response shapes.
