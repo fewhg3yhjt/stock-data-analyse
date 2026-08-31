@@ -111,6 +111,27 @@ class NotificationDelivery:
     created_at: str = field(default_factory=now_utc)
 
 
+ADVICE_TRANSITIONS = {
+    ADVICE_GENERATED: {ADVICE_NOTIFIED, ADVICE_ACKNOWLEDGED, ADVICE_ACCEPTED,
+                       ADVICE_IGNORED, ADVICE_EXPIRED, ADVICE_CANCELLED},
+    ADVICE_NOTIFIED: {ADVICE_ACKNOWLEDGED, ADVICE_ACCEPTED, ADVICE_IGNORED,
+                      ADVICE_EXPIRED, ADVICE_CANCELLED},
+    ADVICE_ACKNOWLEDGED: {ADVICE_ACCEPTED, ADVICE_IGNORED, ADVICE_EXPIRED, ADVICE_CANCELLED},
+    ADVICE_ACCEPTED: {ADVICE_PARTIALLY_EXECUTED, ADVICE_EXECUTED, ADVICE_EXPIRED,
+                      ADVICE_CANCELLED},
+    ADVICE_PARTIALLY_EXECUTED: {ADVICE_PARTIALLY_EXECUTED, ADVICE_EXECUTED,
+                                ADVICE_EXPIRED, ADVICE_CANCELLED},
+    ADVICE_IGNORED: set(),
+    ADVICE_EXPIRED: set(),
+    ADVICE_EXECUTED: set(),
+    ADVICE_CANCELLED: set(),
+}
+
+
+class AdviceStateError(ValueError):
+    """非法 Advice 状态转换。"""
+
+
 # ---------------------------------------------------------------------------
 # Channel 接口
 # ---------------------------------------------------------------------------
@@ -243,6 +264,31 @@ class NotificationService:
         })
         return advice
 
+    def transition_advice(self, advice_id: str, status: str) -> dict:
+        row = self.repo.db.fetchone("SELECT * FROM advices WHERE advice_id=?", (advice_id,))
+        if not row:
+            raise KeyError(f"unknown advice: {advice_id}")
+        current = row["status"]
+        if status not in ADVICE_TRANSITIONS.get(current, set()):
+            raise AdviceStateError(f"非法 Advice 状态转换: {current} -> {status}")
+        self.repo.db.update("advices", {"status": status, "updated_at": now_utc()},
+                            "advice_id=?", (advice_id,))
+        return {"advice_id": advice_id, "from_status": current, "to_status": status}
+
+    def mark_delivery_result(self, delivery_id: str, success: bool) -> None:
+        """投递成功后推进 Advice；失败不改变 Advice 的有效生命周期。"""
+        row = self.repo.db.fetchone(
+            "SELECT event_id FROM notification_deliveries WHERE delivery_id=?", (delivery_id,))
+        if not row:
+            raise KeyError(f"unknown delivery: {delivery_id}")
+        event = self.repo.db.fetchone(
+            "SELECT advice_id FROM notification_events WHERE event_id=?", (row["event_id"],))
+        if success and event and event["advice_id"]:
+            advice = self.repo.db.fetchone(
+                "SELECT status FROM advices WHERE advice_id=?", (event["advice_id"],))
+            if advice and advice["status"] == ADVICE_GENERATED:
+                self.transition_advice(event["advice_id"], ADVICE_NOTIFIED)
+
     # ── 投递 ──────────────────────────────────────────────
 
     def create_delivery(self, event: NotificationEvent, channel: str,
@@ -292,6 +338,7 @@ class NotificationService:
             self.repo.db.update("notification_deliveries", {
                 "status": DELIVERY_SENT, "sent_at": now_utc(),
             }, "delivery_id=?", (delivery_id,))
+            self.mark_delivery_result(delivery_id, True)
             return True
         row = self.repo.db.fetchone(
             "SELECT * FROM notification_deliveries WHERE delivery_id=?", (delivery_id,))
@@ -317,6 +364,22 @@ class NotificationService:
             d["payload"] = _loads(d.pop("payload_json"))
             out.append(d)
         return out
+
+
+class LiveAdviceEvaluator:
+    """PositionSnapshot + StrategyVersion -> StrategyDecision -> Advice。"""
+
+    def __init__(self, strategy, notification_service: NotificationService | None = None):
+        self.strategy = strategy
+        self.notifications = notification_service or NotificationService()
+
+    def evaluate(self, context, *, portfolio_id: str | None = None,
+                 position_cycle_id: str | None = None) -> tuple[Any, Advice]:
+        decision = self.strategy.evaluate(context)
+        advice = self.notifications.advice_from_decision(
+            decision, portfolio_id=portfolio_id, position_cycle_id=position_cycle_id,
+        )
+        return decision, advice
 
 
 def _dumps(value: Any) -> str:

@@ -11,6 +11,7 @@ from StockInvestmentTool.biz.notification import (
     DELIVERY_PROCESSING,
     DELIVERY_SENT,
     EmailChannel,
+    LiveAdviceEvaluator,
     NotificationService,
     register_channel,
 )
@@ -90,6 +91,47 @@ class TestNotificationService:
         delivery = svc.create_delivery(event, channel="email", recipient="a@b.com")
         svc.claim(delivery.delivery_id, worker="w1")
         assert not svc.claim(delivery.delivery_id, worker="w2")  # 租约未过期
+
+    def test_advice_lifecycle_and_delivery_updates(self, svc):
+        from StockInvestmentTool.biz.models import StrategyContext
+        from StockInvestmentTool.biz.strategy import StrategySpec, compile_strategy
+        import pandas as pd
+
+        df = pd.DataFrame({
+            "date": pd.to_datetime(["2026-08-14"]), "code": ["sh600908"],
+            "open": [11.0], "high": [12.0], "low": [10.0], "close": [11.8],
+            "volume": [1000], "amount": [10000],
+        })
+        strategy = compile_strategy(StrategySpec(
+            strategy_id="s1", version="1",
+            entry_rules=[{"rule_id": "buy", "action": "BUY", "when": {
+                "type": "comparison", "left": {"field": "close"},
+                "operator": ">", "right": {"value": 10}}}],
+            exit_rules=[{"rule_id": "sell", "action": "SELL_ALL", "when": {
+                "type": "comparison", "left": {"field": "close"},
+                "operator": "<", "right": {"value": 5}}}],
+            position_sizing={"initial_ratio": 0.2},
+        ))
+        context = StrategyContext(
+            symbol="sh600908", evaluation_time="2026-08-14T15:00:00Z",
+            data_as_of="2026-08-14", market_data=df, cash_available=10000,
+        )
+        decision, advice = LiveAdviceEvaluator(strategy, svc).evaluate(
+            context, portfolio_id="pf1", position_cycle_id="pc1")
+        assert decision.action == "BUY"
+        assert advice.status == "generated"
+        svc.transition_advice(advice.advice_id, "accepted")
+        event = svc.create_event(event_type="BUY_SIGNAL", symbol=advice.symbol,
+                                 advice_id=advice.advice_id, strategy_version_id="sv1",
+                                 action=advice.action, data_as_of=advice.data_as_of,
+                                 trigger_fingerprint="life")
+        delivery = svc.create_delivery(event, "email", "test@example.com")
+        svc.claim(delivery.delivery_id, "worker")
+        assert svc.deliver(delivery.delivery_id, FakeChannel(True), subject="s", body="b",
+                           recipient="test@example.com")
+        assert svc.repo.db.fetchone(
+            "SELECT status FROM advices WHERE advice_id=?", (advice.advice_id,)
+        )["status"] == "accepted"
 
 
 class TestEmailChannel:

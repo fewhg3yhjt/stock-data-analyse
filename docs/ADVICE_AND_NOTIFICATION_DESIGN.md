@@ -396,13 +396,13 @@ Email 是第一版完整验收渠道；Feishu 和 WeCom 不删除，继续作为
 
 ## 实现状态与记录
 
-### 实现状态：P2-2 基础能力完成，正式通道编排待接入
+### 实现状态：P2-2 基础能力完成，Web/任务编排待接入
 
 ### 已完成交付物
 
 | 文件 | 能力 | 测试 |
 |---|---|---|
-| `biz/notification.py` | Advice 转换、NotificationEvent 去重、NotificationDelivery、claim/lease、失败重试/dead、EmailChannel | `tests/test_biz_notification.py`（6） |
+| `biz/notification.py` | LiveAdviceEvaluator、Advice 状态机、Advice 转换、NotificationEvent 去重、NotificationDelivery、claim/lease、失败重试/dead、EmailChannel | `tests/test_biz_notification.py`（8） |
 
 ### 后续待开发
 
@@ -415,3 +415,9 @@ Email 是第一版完整验收渠道；Feishu 和 WeCom 不删除，继续作为
 
 - `tests/test_biz_end_to_end.py` 已验证 StrategyDecision → Advice → NotificationEvent → NotificationDelivery → Email Channel 的基础投递链路。
 - 当前验证使用 fake channel；LiveAdviceEvaluator、DailyReportBuilder、系统告警和正式任务调度仍待接入。
+
+### 已补充
+
+- `LiveAdviceEvaluator` 已实现 `StrategyContext → StrategyDecision → Advice`。
+- Advice 状态转换已集中到 `NotificationService.transition_advice()`。
+- 成功投递可推进关联 Advice，失败投递不会伪造通知成功。
