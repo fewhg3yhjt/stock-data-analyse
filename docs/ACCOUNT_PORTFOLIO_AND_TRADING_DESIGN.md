@@ -478,7 +478,7 @@ idempotent_replay
 
 ## 实现状态与记录
 
-### 实现状态：P1-2/P1-3 基础能力完成
+### 实现状态：P1-2/P1-3 基础能力完成，交易事务已补齐
 
 ### 已完成交付物
 
@@ -491,6 +491,12 @@ idempotent_replay
 
 1. 现金余额不能按业务交易时间排序，因为初始现金可能晚于历史补录交易；当前按流水插入顺序读取最新 `balance_after`，后续应在数据库层增加单调流水序号。
 2. `record_execution` 已收敛为单连接 `BEGIN IMMEDIATE` 事务，Execution、Lot、CashLedger 和持仓阶段更新整体提交或回滚。
+
+### 跨模块验证
+
+- `tests/test_biz_end_to_end.py` 已验证 Observation.ready_for_entry → PositionCycle → BUY Execution → PositionValuation 的基础链路。
+- `tests/test_biz_portfolio.py` 已通过故障注入验证 Execution 插入后继续处理失败时，Execution/Lot/CashLedger 均不残留。
+- 正式建仓 Application Service、公司行为完整规则和 PositionSnapshot 读模型仍待完成。
 
 ### 后续待开发
 

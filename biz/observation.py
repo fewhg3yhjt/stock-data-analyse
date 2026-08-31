@@ -14,6 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from StockInvestmentTool.biz.code import normalize
 from StockInvestmentTool.biz.models import new_id, now_utc
 
 logger = logging.getLogger(__name__)
@@ -175,7 +176,7 @@ class ObservationService:
         """从候选或手工创建观察对象，并建立 DiscoveryLink。"""
         obs = Observation(
             observation_id=new_id("obs"),
-            symbol=symbol, name=name, status=OBS_DISCOVERED,
+            symbol=normalize(symbol), name=name, status=OBS_DISCOVERED,
             observation_reason=reason, target_amount=target_amount,
             expires_at=expires_at,
         )
@@ -287,35 +288,44 @@ class ObservationService:
                  link: DiscoveryLink | None) -> Observation:
         from StockInvestmentTool.biz.db import dumps_json, now_utc
 
-        self.repo.db.insert("observations", {
-            "observation_id": obs.observation_id, "symbol": obs.symbol,
-            "name": obs.name, "asset_type": obs.asset_type, "status": obs.status,
-            "current_strategy_version_id": obs.current_strategy_version_id or "",
-            "observation_reason": obs.observation_reason,
-            "target_amount": obs.target_amount, "started_at": obs.started_at,
-            "expires_at": obs.expires_at or "", "latest_data_as_of": obs.latest_data_as_of or "",
-            "latest_simulation_run_id": obs.latest_simulation_run_id or "",
-            "latest_research_run_id": obs.latest_research_run_id or "",
-            "promoted_position_cycle_id": obs.promoted_position_cycle_id or "",
-            "created_at": obs.created_at, "updated_at": obs.updated_at,
-        })
-        self.repo.db.insert("observation_events", {
-            "event_id": event.event_id, "observation_id": event.observation_id,
-            "event_type": event.event_type, "event_time": event.event_time,
-            "from_status": event.from_status, "to_status": event.to_status,
-            "source_id": event.source_id, "reason": event.reason,
-            "metadata_json": dumps_json(event.metadata),
-        })
-        if link is not None:
-            self.repo.db.insert("observation_sources", {
-                "link_id": link.link_id, "observation_id": link.observation_id,
-                "source_type": link.source_type, "screen_run_id": link.screen_run_id or "",
-                "screen_candidate_id": link.screen_candidate_id or "",
-                "source_strategy_version_id": link.source_strategy_version_id or "",
-                "discovered_at": link.discovered_at,
-                "reason_snapshot_json": dumps_json(link.reason_snapshot),
-                "data_as_of": link.data_as_of or "", "created_at": link.created_at,
-            })
+        with self.repo.db.transaction() as conn:
+            conn.execute("""
+                INSERT INTO observations
+                (observation_id,symbol,name,asset_type,status,current_strategy_version_id,
+                 observation_reason,target_amount,started_at,expires_at,latest_data_as_of,
+                 latest_simulation_run_id,latest_research_run_id,promoted_position_cycle_id,
+                 created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+            obs.observation_id, obs.symbol, obs.name, obs.asset_type, obs.status,
+            obs.current_strategy_version_id or "", obs.observation_reason,
+            obs.target_amount, obs.started_at, obs.expires_at or "",
+            obs.latest_data_as_of or "", obs.latest_simulation_run_id or "",
+            obs.latest_research_run_id or "", obs.promoted_position_cycle_id or "",
+            obs.created_at, obs.updated_at,
+            ))
+            conn.execute("""
+                INSERT INTO observation_events
+                (event_id,observation_id,event_type,event_time,from_status,to_status,
+                 source_id,reason,metadata_json)
+                VALUES(?,?,?,?,?,?,?,?,?)
+            """, (
+            event.event_id, event.observation_id, event.event_type, event.event_time,
+            event.from_status, event.to_status, event.source_id, event.reason,
+            dumps_json(event.metadata),
+            ))
+            if link is not None:
+                conn.execute("""
+                    INSERT INTO observation_sources
+                    (link_id,observation_id,source_type,screen_run_id,screen_candidate_id,
+                     source_strategy_version_id,discovered_at,reason_snapshot_json,data_as_of,created_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?)
+                """, (
+                link.link_id, link.observation_id, link.source_type,
+                link.screen_run_id or "", link.screen_candidate_id or "",
+                link.source_strategy_version_id or "", link.discovered_at,
+                dumps_json(link.reason_snapshot), link.data_as_of or "", link.created_at,
+                ))
         return obs
 
     def save_event(self, obs_id: str, event: ObservationEvent) -> str:

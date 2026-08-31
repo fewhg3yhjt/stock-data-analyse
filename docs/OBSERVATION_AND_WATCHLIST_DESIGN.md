@@ -765,6 +765,16 @@ simulation snapshot → ObservationSnapshot
 - 从 Observation 生成 EntryPlan 并接入真实建仓事务。
 - Observation read model 与 Web API。
 
+### 已补充
+
+- `ObservationService.transition_and_save()` 和 `promote_and_save()` 已在同一事务内写入状态与 `ObservationEvent`。
+- Observation 创建时，Observation、初始 `CREATED` 事件和 DiscoveryLink 已统一在一个事务中保存。
+
+### 跨模块验证
+
+- `tests/test_biz_end_to_end.py` 已覆盖 ScreenRun/ScreenCandidate → ResearchRun/StrategyDecision → Observation → SimulationPlan/SimulationRun → PositionCycle/Execution → PositionValuation → Performance/Review → Advice/NotificationDelivery。
+- 当前测试已通过，但业务 API 和最终 Web 入口尚未接入。
+
 ### 跨模块验证
 
 - `tests/test_biz_end_to_end.py` 已覆盖 ScreenRun/ScreenCandidate → ResearchRun/StrategyDecision → Observation → SimulationPlan/SimulationRun → PositionCycle/Execution → PositionValuation → Performance/Review → Advice/NotificationDelivery。
