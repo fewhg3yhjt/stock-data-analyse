@@ -69,6 +69,19 @@ class TestPerformance:
     def test_max_drawdown(self):
         assert PerformanceService._max_drawdown([100, 90, 95]) == pytest.approx(0.1)
 
+    def test_equity_curve_replays_historical_quantity(self, setup):
+        svc, pid, cid = setup
+        svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-20",
+                             quantity=1000, price=10.0, idempotency_key="b1")
+        # 第二笔买入发生在后面，历史第一天不能倒灌第二笔数量。
+        svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-24",
+                             quantity=1000, price=11.0, idempotency_key="b2")
+        curve = PerformanceService(svc).equity_curve(pid, price_df=make_price_df())
+        first = next(point for point in curve if point.date == "2026-08-20")
+        second = next(point for point in curve if point.date == "2026-08-24")
+        assert first.market_value == pytest.approx(1000 * 10.0)
+        assert second.market_value == pytest.approx(2000 * 11.0)
+
 
 class TestReview:
     def test_create_and_get(self, tmp_path):

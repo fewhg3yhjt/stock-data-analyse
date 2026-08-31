@@ -87,48 +87,86 @@ class PerformanceService:
         计算 Cash Balance，聚合剩余 Lot，用 T 收盘价估值。
         简化实现：基于 cash_ledger 的 balance_after 时间序列 + 每日持仓市值。
         """
-        # 现金流随时间变化
         ledger = self.pf.repo.db.fetchall(
             "SELECT * FROM cash_ledger_entries WHERE portfolio_id=? ORDER BY rowid", (portfolio_id,))
-        cash_at: dict[str, float] = {}
-        cur_cash = 0.0
-        for row in ledger:
-            cur_cash = float(row["balance_after"])
-            cash_at[row["entry_time"][:10]] = cur_cash
+        executions = self.pf.repo.db.fetchall(
+            "SELECT * FROM executions WHERE portfolio_id=? ORDER BY trade_time, rowid", (portfolio_id,))
 
-        # 持仓市值按日
-        # 简化：使用当前持仓估值（P1 阶段），逐日部分依赖历史 lot 归因
-        cycles = self.pf.list_cycles(portfolio_id)
-        open_cycles = [c for c in cycles if c.status == "open"]
-
-        # 构造交易日序列
-        dates = []
+        # 交易日必须来自估值行情；没有行情时只能返回现金流水日期。
         if price_df is not None and not price_df.empty:
-            dates = [str(pd.to_datetime(d).strftime("%Y-%m-%d"))
-                     for d in sorted(set(price_df["date"]))]
+            dates = sorted({pd.to_datetime(d).strftime("%Y-%m-%d") for d in price_df["date"]})
         else:
-            dates = sorted(cash_at.keys())
+            dates = sorted({str(row["entry_time"])[:10] for row in ledger})
 
+        # 以交易日为轴重放，不使用当前 position_lots 的 remaining_quantity。
+        cash = 0.0
+        lots: dict[str, list[dict]] = {}
+        ledger_index = 0
+        execution_index = 0
         points: list[EquityPoint] = []
-        for d in dates:
-            cash = cash_at.get(d, cash_at.get(max(cash_at, default="")) if cash_at else 0.0)
-            mv = 0.0
+
+        for date in dates:
+            while ledger_index < len(ledger) and str(ledger[ledger_index]["entry_time"])[:10] <= date:
+                cash += float(ledger[ledger_index]["amount"] or 0.0)
+                ledger_index += 1
+
+            while execution_index < len(executions) and str(executions[execution_index]["trade_time"])[:10] <= date:
+                execution = executions[execution_index]
+                self._replay_execution(lots, execution)
+                execution_index += 1
+
+            market_value = 0.0
             if price_df is not None and not price_df.empty:
-                day_df = price_df[price_df["date"].astype(str).str[:10] == d]
-                for c in open_cycles:
-                    summary = self.pf.position_summary(c.position_cycle_id)
-                    qty = summary["quantity"]
-                    if qty > 0:
-                        sub = day_df[day_df["code"] == c.symbol]
-                        if not sub.empty:
-                            mv += qty * float(sub["close"].iloc[-1])
-            points.append(EquityPoint(date=d, cash=cash, market_value=mv, equity=cash + mv))
+                day_df = price_df[pd.to_datetime(price_df["date"]).dt.strftime("%Y-%m-%d") == date]
+                for symbol, symbol_lots in lots.items():
+                    quantity = sum(float(lot["quantity"]) for lot in symbol_lots if lot["quantity"] > 0)
+                    if quantity <= 0:
+                        continue
+                    prices = day_df[day_df["code"].astype(str).map(self._safe_normalize) == symbol]
+                    if not prices.empty and pd.notna(prices["close"].iloc[-1]):
+                        market_value += quantity * float(prices["close"].iloc[-1])
+            points.append(EquityPoint(date=date, cash=cash, market_value=market_value,
+                                      equity=cash + market_value))
         return points
+
+    @staticmethod
+    def _safe_normalize(value: str) -> str:
+        from StockInvestmentTool.biz.code import normalize
+        try:
+            return normalize(value)
+        except ValueError:
+            return value
+
+    @staticmethod
+    def _replay_execution(lots: dict[str, list[dict]], execution) -> None:
+        """将一笔历史交易应用到内存 Lot 状态，按 FIFO 重放。"""
+        symbol = PerformanceService._safe_normalize(str(execution["symbol"]))
+        event_type = execution["event_type"]
+        quantity = float(execution["quantity"] or 0.0)
+        if event_type == "BUY":
+            lots.setdefault(symbol, []).append({"quantity": quantity, "price": float(execution["price"] or 0.0)})
+        elif event_type == "SELL":
+            remaining = quantity
+            for lot in lots.get(symbol, []):
+                if remaining <= 0:
+                    break
+                consumed = min(remaining, lot["quantity"])
+                lot["quantity"] -= consumed
+                remaining -= consumed
+        elif event_type == "BONUS_SHARE":
+            for lot in lots.get(symbol, []):
+                if lot["quantity"] > 0:
+                    lot["quantity"] += quantity
+        elif event_type == "STOCK_SPLIT":
+            for lot in lots.get(symbol, []):
+                if lot["quantity"] > 0:
+                    lot["quantity"] *= quantity
 
     def compute(self, portfolio_id: str, start_date: str, end_date: str,
                 price_df: pd.DataFrame | None = None,
                 benchmark_return: float | None = None) -> PerformanceResult:
-        curve = self.equity_curve(portfolio_id, price_df)
+        curve = [point for point in self.equity_curve(portfolio_id, price_df)
+                 if start_date <= point.date <= end_date]
         if not curve:
             return PerformanceResult(portfolio_id=portfolio_id, start_date=start_date,
                                      end_date=end_date, comparison_status="unavailable")
