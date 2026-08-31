@@ -68,11 +68,6 @@ tr:last-child td{border-bottom:none;}
 .tag.orange{background:#fff3e0;color:var(--orange);}
 .tag.blue{background:#e3f2fd;color:var(--accent);}
 .tag.gray{background:#eceff1;color:var(--text2);}
-.tag.status-healthy{background:#e8f5e9;color:var(--green);}
-.tag.status-stale{background:#fff3e0;color:var(--orange);}
-.tag.status-critical,.tag.status-failed{background:#fbe9e7;color:var(--red);}
-.tag.status-empty,.tag.status-disabled,.tag.status-unknown{background:#eceff1;color:var(--text2);}
-.tag.status-running{background:#e3f2fd;color:var(--accent);}
 .tag-buy{background:#e8f5e9;color:var(--green);}
 .tag-sell{background:#fbe9e7;color:var(--red);}
 .tag.instant{background:#fbe9e7;color:var(--red);}
@@ -92,8 +87,6 @@ tr:last-child td{border-bottom:none;}
 .hint{font-size:12px;color:var(--text2);}
 
 .status-tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;}
-.status-tag.ok{background:#e8f5e9;color:var(--green);}
-.status-tag.no{background:#eceff1;color:var(--text2);}
 
 /* ── 目标状态标签（契约 5.1 / 6.2）──
    唯一采用 .status-tag.status-<key> canonical class。

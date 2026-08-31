@@ -42,7 +42,7 @@
 | 范围 | 状态 | 说明 |
 |---|---|---|
 | 红涨绿跌 | `in_progress` | 主要盈亏字段已调整，语义 Token 尚未全部落地 |
-| 状态词表 | `in_progress` | 核心页面已共享，旧页面仍有局部映射 |
+| 状态词表 | `done` | `cls` 已返回完整 `status-*` canonical class，调用方已统一到 `.status-tag.status-<key>`（提交 7838b9b 后续提交） |
 | 公共壳层 | `in_progress` | `.app` 页面通过 CSS 适配，尚未全部改为真实公共结构 |
 | Toast/反馈 | `in_progress` | 普通 alert 有过渡方案，confirm/prompt 尚未统一 |
 | XSS/CSP | `todo` | 内联事件和 Markdown 净化尚未完成 |
@@ -86,9 +86,9 @@
 
 ### T-02 状态词表和 CSS 类不完整对齐
 
-| 现状 | 风险 | 整改方向 | 验收标准 |
-|---|---|---|---|
-| `ui-status.js` 已定义状态，但 `cls` 仍返回裸后缀，CSS 和调用方仍使用旧类 | 页面按文档拼接时会得到不同类名，部分状态渲染成默认灰色 | 让 `cls` 直接返回完整 canonical `status-*` 类名，补齐 CSS，并同步所有调用方；不保留旧类兼容别名 | 词表中每个可见状态都有对应完整 class、颜色、文字和非颜色含义 |
+| 现状 | 风险 | 整改方向 | 验收标准 | 状态 |
+|---|---|---|---|---|
+| `ui-status.js` 已定义状态，但 `cls` 仍返回裸后缀，CSS 和调用方仍使用旧类 | 页面按文档拼接时会得到不同类名，部分状态渲染成默认灰色 | 让 `cls` 直接返回完整 canonical `status-*` 类名，补齐 CSS，并同步所有调用方；不保留旧类兼容别名 | 词表中每个可见状态都有对应完整 class、颜色、文字和非颜色含义 | `done`：`ui-status.js` `cls` 已返回 `status-*`；任务中心/数据中心/数据资产/个股研究/通知/设置已统一到 `.status-tag.status-<key>`；旧 `.tag.status-*`/`.dm-health.*`/`.status-tag.ok`/`.status-badge.*` 已删除 |
 
 ### T-03 表单组件契约缺失
 

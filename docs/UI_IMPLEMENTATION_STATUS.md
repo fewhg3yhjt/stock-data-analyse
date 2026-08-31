@@ -17,7 +17,7 @@
 | 状态词表 | 核心页面已接入 | `ui-status.js` 由基础模板全局加载；旧页面仍有局部文案 |
 | 反馈机制 | 过渡完成 | 普通 `alert` 被页面提示接管；`confirm/prompt` 仍有残留 |
 | 设计 Token | 基础变量已落地 | `base.css` 已增加基础 `--color-*` 变量；页面仍大量使用旧变量，按无兼容方案继续直接替换 |
-| 状态 CSS 类 | 未完全落地 | `ui-status.js` 仍返回裸 class 值，页面仍使用旧状态类；目标 canonical class 尚未完成迁移 |
+| 状态 CSS 类 | 已迁移 | `ui-status.js` `cls` 已返回完整 `status-*` canonical class；任务中心、数据中心、数据资产、个股研究、通知、设置已改用 `.status-tag.status-<key>`，旧 `.tag.status-*`/`.dm-health.*`/`.status-tag.ok` 已删除 |
 | 公共组件类名 | 部分落地 | `.ui-card`、`.ui-input-panel` 等契约已定义但代码尚未全面使用；旧 `card/btn/tag/table` 将直接删除，不建立兼容层 |
 | 页面级 Adapter | 部分完成 | 核心系统页面有独立脚本，许多业务页仍是模板内联脚本 |
 | 安全治理 | 未完成 | 内联事件属性、Markdown 净化、CSP 尚未全部整改 |
@@ -83,7 +83,7 @@
 
 | 验证项 | 最近结果 | 备注 |
 |---|---|---|
-| 全量 Python 测试 | 最近基线 `428 passed` | 仅代表已记录基线，代码变更后必须重新执行 |
+| 全量 Python 测试 | 以当前测试收集结果和 CI 为准 | 历史通过数仅作记录，代码变更后必须重新执行 |
 | JavaScript 语法 | 通过 | 已对 `web/static/*.js` 逐文件检查 |
 | 页面路由冒烟 | 主要页面 HTTP 200 | 不等于浏览器交互或视觉验收 |
 | 生产容器 | `healthy` | 代码挂载模式，纯代码改动通过 restart 生效 |

@@ -17,7 +17,7 @@
     $('run-title').textContent = data.symbol || result.symbol || '个股研究';
     $('run-meta').textContent = `运行 ${data.research_run_id || data.id || '--'} · 数据截至 ${data.data_as_of || data.data_context?.max_date || '--'}`;
     renderContext(data.data_context || {});
-    const status = data.status || 'success'; $('run-status').textContent = statusText(status, 'run'); $('run-status').className = `status-badge ${esc(window.UI_STATUS_CLS?.(status) || status)}`;
+    const status = data.status || 'success'; $('run-status').textContent = statusText(status, 'run'); $('run-status').className = `status-tag ${esc(window.UI_STATUS_CLS?.(status) || 'status-unknown')}`;
     renderAssessment('technical', result.technical_assessment); renderAssessment('market', result.market_assessment); renderAssessment('valuation', result.valuation_assessment); renderAssessment('fundamental', result.fundamental_assessment);
     const decisions = result.strategy_decision_ids || [];
     $('decision').innerHTML = decisions.length ? `<div class="decision-line"><strong>${esc(decisions[0])}</strong><span>${esc(result.entry_plan?.action || result.exit_plan?.action || '已生成决策')}</span></div><p class="note">${esc(result.entry_plan?.reason || result.exit_plan?.reason || '详见决策记录')}</p>` : '<div class="note">本次研究未绑定策略，未生成 StrategyDecision。</div>';

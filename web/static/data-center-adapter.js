@@ -5,8 +5,8 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const json = async (url, options) => { const response = await fetch(url, options); const data = await response.json(); if (!response.ok || data.status !== 'success') throw new Error(data.error || '请求失败'); return data; };
   const statusLabels = window.UI_STATUS ? Object.fromEntries(Object.keys(window.UI_STATUS).map(k => [k, window.UI_STATUS[k].label])) : {healthy:'正常', partial:'部分可用', stale:'待更新', critical:'异常', failed:'失败', unknown:'状态未知'};
-  const statusCls = window.UI_STATUS_CLS || (key => key || 'unknown');
-  const health = value => { const key = value || 'unknown'; return `<span class="dm-health ${esc(statusCls(key))}">${esc(statusLabels[key] || key)}</span>`; };
+  const statusCls = window.UI_STATUS_CLS || (key => `status-${key || 'unknown'}`);
+  const health = value => { const key = value || 'unknown'; return `<span class="status-tag ${esc(statusCls(key))}">${esc(statusLabels[key] || key)}</span>`; };
   const taskStatus = task => task.running_run?.status || task.latest_run?.status || (task.enabled ? 'scheduled' : 'disabled');
 
   // Keep page rendering independent from the two existing API response shapes.

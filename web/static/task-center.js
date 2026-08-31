@@ -6,8 +6,8 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const statusTag = value => {
     const key = value || 'disabled';
-    const cls = window.UI_STATUS_CLS?.(key) || 'unknown';
-    return `<span class="dm-health ${esc(cls)}">${esc(statusNames[key] || key)}</span>`;
+    const cls = window.UI_STATUS_CLS?.(key) || 'status-unknown';
+    return `<span class="status-tag ${esc(cls)}">${esc(statusNames[key] || key)}</span>`;
   };
   const taskStatus = task => task.running_run?.status || task.latest_run?.status || (task.enabled ? 'scheduled' : 'disabled');
   const formatRange = run => run?.period_start && run?.period_end ? `${run.period_start} ~ ${run.period_end}` : '暂无执行记录';

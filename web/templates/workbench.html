@@ -14,5 +14,4 @@
   </main>
 </div>
 <script src="/static/workbench.js?v=1"></script>
-<script>const dataStatuses=new Set(['healthy','stale','critical','failed','empty','disabled','unknown','running']);function setDataStatus(status){const normalized=dataStatuses.has(status)?status:'unknown';return 'status-'+normalized;}function markWorkbenchError(){setDataStatus('failed');}</script>
 {% endblock %}

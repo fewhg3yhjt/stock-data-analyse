@@ -223,9 +223,9 @@ async function loadConfig(){
   const w=d.webhook||{};const m=d.mail||{};
   document.getElementById('channel').value=w.channel||'feishu';
   document.getElementById('channel-status').innerHTML=
-    `飞书 <span class="status-tag ${w.feishu_configured?'ok':'no'}">${w.feishu_configured?'✓':'未配'}</span> | `+
-    `企微 <span class="status-tag ${w.wecom_configured?'ok':'no'}">${w.wecom_configured?'✓':'未配'}</span> | `+
-    `邮件 <span class="status-tag ${m.email_configured?'ok':'no'}">${m.email_configured?'✓':'未配'}</span>`;
+    `飞书 <span class="status-tag ${w.feishu_configured?'status-healthy':'status-empty'}">${w.feishu_configured?'✓':'未配'}</span> | `+
+    `企微 <span class="status-tag ${w.wecom_configured?'status-healthy':'status-empty'}">${w.wecom_configured?'✓':'未配'}</span> | `+
+    `邮件 <span class="status-tag ${m.email_configured?'status-healthy':'status-empty'}">${m.email_configured?'✓':'未配'}</span>`;
   document.getElementById('email-to').value=(m.email_to_addresses||[]).join(',');
 }
 async function saveMail(){
