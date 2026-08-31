@@ -55,6 +55,8 @@ select{background:var(--surface2);border:1px solid var(--border);border-radius:6
     {% set active = 'simulation' %}{% include '_nav.html' %}
   </div>
 
+  <div class="notice"><strong>模拟工作区</strong> 模拟结果用于验证策略，不会直接修改真实持仓；结果应结合策略版本、数据区间和执行状态阅读。</div>
+
   {% if error %}
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   {% endif %}

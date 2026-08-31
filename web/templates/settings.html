@@ -51,8 +51,10 @@ textarea.code.mini{min-height:200px;}
        <h1><i class="fas fa-gear"></i> 系统设置</h1>
        <div class="sub">策略方案、筛选规则、通知配置、账户与运行数据</div>
     </div>
-    {% set active = 'settings' %}{% include '_nav.html' %}
+     {% set active = 'settings' %}{% include '_nav.html' %}
   </div>
+
+  <div class="notice"><strong>配置提示</strong> 保存配置只影响后续运行；数据健康、任务执行和通知投递请进入对应工作区处理。</div>
 
   {% if error %}
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>

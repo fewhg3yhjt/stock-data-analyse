@@ -60,6 +60,8 @@ tr:last-child td{border-bottom:none;}
     {% set active = 'review' %}{% include '_nav.html' %}
   </div>
 
+  <div class="notice"><strong>复盘摘要</strong> 先看已实现收益和执行结果，再查看逐笔流水；真实交易、模拟结果和建议记录保持区分。</div>
+
   {% if error %}
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   {% endif %}
