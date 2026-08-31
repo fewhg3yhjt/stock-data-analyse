@@ -631,9 +631,9 @@
 | 按钮 | `.ui-button`、`.ui-button-primary`、`.ui-button-secondary`、`.ui-button-ghost`、`.ui-button-danger`、`.ui-button-sm` |
 | 辅助可访问性 | `.sr-only` |
 
-### 6.3 Token 与实现映射
+### 6.3 目标契约映射
 
-设计 Token 的验收不只检查文档名称，还必须检查公共 CSS 和公共 JS 是否存在对应实现：
+本表描述目标实现位置和必须具备的契约，不代表当前代码已经完成。实际落地状态只记录在 `UI_IMPLEMENTATION_STATUS.md`，未完成项只记录在 `FRONTEND_ENGINEERING_BACKLOG.md`。
 
 | 契约 | 公共实现位置 | 必须具备 |
 |---|---|---|
@@ -649,7 +649,7 @@
 | 按钮 | `base.css` | `.ui-button` 及 primary/secondary/ghost/danger/sm 变体 |
 | 辅助可访问性 | `base.css` | `.sr-only`，视觉隐藏但保留辅助技术可读性 |
 
-未完成某项时只能在实现状态文档标记为未落地，不得以旧类名或页面内联样式冒充完成。
+目标契约不提供旧类名、旧 Token 或旧组件的兼容映射。迁移时直接替换，完成后删除旧实现。
 
 ### 6.4 表单
 
@@ -790,6 +790,20 @@
 `.sr-only` 必须使用视觉隐藏而非 `display:none`，以便屏幕阅读器继续读取表格标题、状态说明和错误文本。
 
 确认面板是独立组件，但可以复用抽屉的遮罩和定位机制：`.ui-drawer-mask` 只负责背景遮罩与层级，`.ui-confirm` 负责确认内容和按钮；确认面板不强制表现为可导航的详情抽屉。详情抽屉关闭按钮统一使用 `.ui-drawer-close`，关闭后焦点回到触发元素。
+
+### 6.8 目标组件迁移规则
+
+| 当前旧实现 | 目标实现 | 迁移要求 |
+|---|---|---|
+| `--red/--green/--orange` | `--color-up/down/warning` 等 | 直接替换，删除旧变量 |
+| `--surface/--surface2/--border/--text2/--accent` | `--color-surface/surface-subtle/border/text-subtle/info` | 直接替换，删除旧变量 |
+| `.tag.status-*` | `.status-tag.status-*` | 使用 canonical class，删除旧类 |
+| `.dm-health.*` | `.status-tag.status-*` | 不再由页面拼接裸状态后缀 |
+| `.status-tag.ok/no` | `.status-tag.status-healthy/status-unknown` | 按业务状态直接映射 |
+| `.btn*` | `.ui-button*` | 直接替换按钮类，不保留双类 |
+| `.card/table/form-group` | `.ui-*` 对应组件 | 按组件结构样例重写，不做 CSS 别名 |
+| 内联 `onclick` | `data-*` + 事件绑定 | 数据不进入 JS 属性字符串 |
+| `alert/confirm/prompt` | `.ui-message` / `.ui-confirm` / 输入面板 | 普通操作和确认操作分别使用对应组件 |
 
 ## 7. 响应式、性能与可访问性
 

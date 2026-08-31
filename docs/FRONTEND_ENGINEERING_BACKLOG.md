@@ -78,17 +78,17 @@
 
 ## P1：设计 Token 与公共组件
 
-### T-01 设计 Token 未形成契约
+### T-01 设计 Token 已定义但代码未完成迁移
 
 | 现状 | 风险 | 整改方向 | 验收标准 |
 |---|---|---|---|
-| 文档只口头约定颜色，源码只有 `--red/--green/--orange/--accent` | 页面各自猜测“正常、涨跌、警告、运行中”的颜色 | 在 `base.css` 定义语义 Token：`--color-up`、`--color-down`、`--color-warning`、`--color-success`、`--color-danger`、`--color-info`、`--color-muted`、背景和边框 Token | 页面禁止直接用业务语义之外的颜色；设计文档、CSS 和组件类名一一对应 |
+| 目标文档已定义语义 Token，但页面仍大量使用旧变量 | 页面颜色无法由单一语义契约控制 | 直接替换为 `--color-*`，删除旧变量和旧引用，不保留兼容别名 | 页面不再引用旧变量；设计文档、CSS 和组件类名一一对应 |
 
 ### T-02 状态词表和 CSS 类不完整对齐
 
 | 现状 | 风险 | 整改方向 | 验收标准 |
 |---|---|---|---|
-| `ui-status.js` 已定义 `partial/deferred/not_applicable/requested/cancelled/degraded` 等状态，但 `cls` 仍返回裸后缀，CSS 也只覆盖部分 `status-*` 类 | 页面按文档拼接时会得到不同类名，部分状态渲染成默认灰色 | 让 `cls` 直接返回完整 canonical `status-*` 类名，补齐 CSS，并统一页面类名；不保留旧类兼容别名 | 词表中每个可见状态都有对应完整 class、颜色、文字和非颜色含义 |
+| `ui-status.js` 已定义状态，但 `cls` 仍返回裸后缀，CSS 和调用方仍使用旧类 | 页面按文档拼接时会得到不同类名，部分状态渲染成默认灰色 | 让 `cls` 直接返回完整 canonical `status-*` 类名，补齐 CSS，并同步所有调用方；不保留旧类兼容别名 | 词表中每个可见状态都有对应完整 class、颜色、文字和非颜色含义 |
 
 ### T-03 表单组件契约缺失
 
