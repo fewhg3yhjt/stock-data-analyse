@@ -819,3 +819,13 @@ close > ma60
 - SQL 批量缩小阶段（DuckDB）与保守超集等价性测试
 - ChartService（走势图查询，依赖 DatasetAccess）
 - 行业筛选（`industry_membership` 契约完成后启用）、PE/PB 降级筛选
+
+### 已补充
+
+- `web/biz_api.py` 已提供 `/api/biz/screens/preview` 和 `/api/biz/screen-runs`，正式运行会固化 ScreenVersion、UniverseSnapshot、ScreenRun 和 ScreenCandidate。
+- API 要求明确 `start_date/end_date/as_of`，避免无边界读取大批量历史数据。
+
+### 跨模块验证
+
+- `tests/test_biz_api.py` 已验证业务蓝图注册、参数错误、资源不存在和正式筛选运行返回候选。
+- `tests/test_biz_end_to_end.py` 已验证筛选结果可进入研究、观察和后续业务链路。

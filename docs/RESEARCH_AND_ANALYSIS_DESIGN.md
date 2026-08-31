@@ -232,3 +232,12 @@ observation_id
 - ResearchReport 生成（Markdown/HTML）
 - 基本面评估接入（`fundamentals` 契约完成后）
 - ResearchRun 持久化关联 Observation/SimulationPlan
+
+### 已补充
+
+- `web/biz_api.py` 已提供 `/api/biz/research-runs`，通过 DatasetAccess 加载明确日期范围的数据并持久化 ResearchRun、ResearchEvidence 和 StrategyDecision。
+- `ResearchService` 生成的 Evidence/Decision 对象已由调用方统一持久化，避免只保存 ID 而丢失实际对象。
+
+### 跨模块验证
+
+- `tests/test_biz_api.py` 和 `tests/test_biz_end_to_end.py` 已验证研究运行可关联筛选来源并向 Observation/Simulation 传递上下文。

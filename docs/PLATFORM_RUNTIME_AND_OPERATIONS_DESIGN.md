@@ -417,7 +417,7 @@ Route
 
 ## 实现状态与记录
 
-### 实现状态：P3-1/P3-2 基础能力完成，业务 API 接入待后续阶段
+### 实现状态：P3-1/P3-2 基础能力完成，业务 API 已接入基础入口
 
 ### 已完成交付物
 
@@ -449,3 +449,4 @@ Route
 - `tests/test_biz_end_to_end.py` 作为业务闭环验收测试已通过，验证业务对象可以在隔离 business.db 中串联。
 - `tests/test_biz_tasks.py` 已验证锁覆盖 handler 执行期、非 owner 不得释放锁和 stale run 回收。
 - 当前尚未接入 Web/API、正式 Scheduler、持久化 Worker 队列和生产切换流程。
+- `web/biz_api.py` 已接入新业务蓝图，当前提供筛选预览、正式筛选运行、研究运行、模拟运行、观察查询、建仓确认和建仓录入基础入口；完整业务页面、Scheduler 和 Worker 仍待接入。

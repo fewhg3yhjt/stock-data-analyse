@@ -127,7 +127,15 @@ class BusinessTaskService:
         """同步执行一个任务（同一 Runner，幂等锁保护）。返回 JobRun。"""
         if task_key not in TASK_HANDLERS:
             raise KeyError(f"未注册业务任务: {task_key}")
+        # 运行时注册表是执行器事实源；持久化定义必须同步存在，满足外键约束。
+        if not self.repo.db.fetchone(
+            "SELECT task_key FROM business_task_definitions WHERE task_key=?", (task_key,)
+        ):
+            self.register_definition(BusinessTaskDefinition(task_key=task_key, name=task_key))
         lock_key = f"task:{task_key}"
+        if request_id is None:
+            request = self.enqueue(task_key, trigger_type=trigger_type, input_data=input_data)
+            request_id = request.request_id
         run = BusinessJobRun(
             run_id=new_id("job"), task_key=task_key,
             request_id=request_id or new_id("req"), trigger_type=trigger_type,

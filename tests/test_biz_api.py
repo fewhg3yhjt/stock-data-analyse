@@ -29,6 +29,14 @@ def test_preview_requires_condition(app):
     assert response.get_json()["error"]["code"] == "SCREEN_INVALID"
 
 
+def test_preview_requires_date_range(app):
+    response = app.test_client().post("/api/biz/screens/preview", json={
+        "condition_spec": {"type": "comparison"},
+    })
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "SCREEN_INVALID"
+
+
 def test_observation_not_found(app):
     response = app.test_client().get("/api/biz/observations/no-such")
     assert response.status_code == 404
@@ -50,7 +58,8 @@ def test_screen_run_api_persists_run_and_candidates(app, monkeypatch):
         lambda *args, **kwargs: DatasetResult(data=data, context={"quality_status": "PASS"}),
     )
     response = app.test_client().post("/api/biz/screen-runs", json={
-        "screen_id": "api-screen", "name": "API筛选", "as_of": "2026-08-14",
+        "screen_id": "api-screen", "name": "API筛选", "start_date": "2026-08-01",
+        "as_of": "2026-08-14",
         "condition_spec": {"type": "comparison", "left": {"field": "close"},
                            "operator": ">", "right": {"value": 10}},
     })

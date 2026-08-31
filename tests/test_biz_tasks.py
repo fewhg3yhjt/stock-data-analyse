@@ -44,6 +44,11 @@ class TestTaskService:
         run = svc.run("screen.run", input_data={"screen_id": "sc1"})
         assert run.status == JOB_SUCCESS
         assert run.output_versions == {"screen_run_id": "run_ok"}
+        request = svc.repo.db.fetchone(
+            "SELECT request_id FROM business_execution_requests WHERE request_id=?",
+            (run.request_id,),
+        )
+        assert request is not None
 
     def test_run_failure(self, svc):
         register_task("research.run", run_bad)

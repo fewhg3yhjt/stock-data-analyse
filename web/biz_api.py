@@ -42,6 +42,8 @@ def preview_screen():
     """用已加载数据预览筛选，不创建运行记录。"""
     payload = flask.request.get_json(silent=True) or {}
     condition = payload.get("condition_spec")
+    if not payload.get("start_date") or not payload.get("end_date"):
+        return _error("SCREEN_INVALID", "start_date 和 end_date 必填")
     if not isinstance(condition, dict):
         return _error("SCREEN_INVALID", "condition_spec 必须是对象")
     try:
@@ -73,7 +75,7 @@ def create_screen_run():
     payload = flask.request.get_json(silent=True) or {}
     condition = payload.get("condition_spec")
     as_of = payload.get("as_of") or payload.get("end_date")
-    if not isinstance(condition, dict) or not as_of:
+    if not isinstance(condition, dict) or not as_of or not payload.get("start_date"):
         return _error("SCREEN_INVALID", "condition_spec 和 as_of 必填")
     try:
         from StockInvestmentTool.warehouse.datasets import load_dataset
@@ -132,8 +134,8 @@ def create_research_run():
     """执行并持久化一次研究运行。"""
     payload = flask.request.get_json(silent=True) or {}
     symbol = payload.get("symbol")
-    if not symbol:
-        return _error("RESEARCH_INVALID", "symbol 必填")
+    if not symbol or not payload.get("start_date") or not payload.get("as_of"):
+        return _error("RESEARCH_INVALID", "symbol、start_date 和 as_of 必填")
     try:
         from StockInvestmentTool.warehouse.datasets import load_dataset
         from StockInvestmentTool.warehouse.storage import Warehouse
@@ -189,8 +191,9 @@ def create_simulation_run():
     """执行并持久化单标的模拟运行。"""
     payload = flask.request.get_json(silent=True) or {}
     strategy_data = payload.get("strategy")
-    if not isinstance(strategy_data, dict) or not payload.get("symbol"):
-        return _error("SIMULATION_INVALID", "strategy 和 symbol 必填")
+    if (not isinstance(strategy_data, dict) or not payload.get("symbol")
+            or not payload.get("start_date") or not payload.get("end_date")):
+        return _error("SIMULATION_INVALID", "strategy、symbol、start_date 和 end_date 必填")
     try:
         from StockInvestmentTool.warehouse.datasets import load_dataset
         from StockInvestmentTool.warehouse.storage import Warehouse

@@ -644,6 +644,11 @@ P0-Smoke: PASS
 - P2：Performance（权益曲线/三线对比/Review）、Advice/Notification（Outbox/Email）
 - P3：业务任务框架、Health、Backup
 
+### 已补充
+
+- `web/biz_api.py` 已提供正式研究、模拟运行入口；模拟接口要求明确日期范围，并将 Plan、Run、Fill、Result 写入 business.db。
+- `tests/test_biz_end_to_end.py` 已验证 StrategyDecision 可被 Research、Simulation、Advice 消费。
+
 ### 已知遗留问题（非阻塞）
 
 - 既有未提交改动 `config/tasks/*.yaml`（enabled false→true）导致 `test_task_run_semantics.py` 失败，与 biz 无关，属数据平面启用配置，待数据平面确认。
