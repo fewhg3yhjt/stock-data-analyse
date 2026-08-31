@@ -421,3 +421,4 @@ assumptions
 
 - `tests/test_biz_end_to_end.py` 已验证 PositionCycle/Execution → PositionValuation → PerformanceResult → PositionCycleReview/ReviewEvidence。
 - 当前验证覆盖基础结果生成；严格逐日回放、外部现金流口径和正式持久化 API 仍未达到最终验收标准。
+- 历史权益曲线已改为按交易日回放 Execution 和 Lot，新增测试验证后续买入不会倒灌到前一交易日。

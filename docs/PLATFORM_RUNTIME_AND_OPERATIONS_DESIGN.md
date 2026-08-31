@@ -430,8 +430,8 @@ Route
 
 - 业务专项测试：通过。
 - 容器 P0 真实数据冒烟：通过。
-- 业务专项测试：`134 passed`。
-- 完整回归：当前工作树 `381 passed, 1 failed`，唯一失败来自未提交的数据平面任务配置变更，非本业务平台改动。
+- 业务专项测试：`146 passed`。
+- 完整回归：当前工作树仍有 1 个既有数据平面配置断言失败，业务专项测试全部通过；详见本节已知问题。
 
 ### 已知问题
 
@@ -453,5 +453,6 @@ Route
 - `biz/scheduler.py` 已提供业务 APScheduler 适配器：调度回调只创建 BusinessRequest/BusinessJobRun，Worker 通过 `run_next()` 执行。
 - `web/biz_api.py` 已接入新业务蓝图，当前提供筛选预览、正式筛选运行、研究运行、模拟运行、观察查询、建仓确认和建仓录入基础入口；完整业务页面、Scheduler 和 Worker 仍待接入。
 - 业务任务基础 API 已接入；长任务接口现在先持久化 BusinessRequest/BusinessJobRun，再由 `run-next` Worker 领取执行。业务调度适配器已有单测，尚未挂入生产 Scheduler。
+- `web/biz_api.py` 当前已注册 35 个业务 API 路由，覆盖运行创建/查询、观察、建仓、估值快照、收益复盘、通知、健康和业务任务入口。
 - `web/biz_api.py` 已提供 `/api/biz/health/live`、`/health/ready`、`/health/details`，与平台 HealthService 对齐。
 - `tests/test_biz_tasks.py` 已验证 Request/JobRun 分离、Worker 执行、租约锁和失败恢复。
