@@ -11,6 +11,8 @@
   };
   const taskStatus = task => task.running_run?.status || task.latest_run?.status || (task.enabled ? 'scheduled' : 'disabled');
   const formatRange = run => run?.period_start && run?.period_end ? `${run.period_start} ~ ${run.period_end}` : '暂无执行记录';
+  const operation = (message, type = '') => { const target = document.getElementById('task-operation'); if (!target) return; target.className = `dm-operation ${type}`; target.textContent = message; target.hidden = false; };
+  const operationError = error => operation(`操作失败：${error.message || error}`, 'error');
 
   function renderTasks() {
     const stage = document.getElementById('task-stage').value;
@@ -51,14 +53,12 @@
 
   function runTask(task) {
     if (!task) return;
-    fetch(`/api/task-center/tasks/${encodeURIComponent(task.task_key)}/execute`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})}).then(response => response.json()).then(data => {
-      if (data.status !== 'success') alert(data.error || '启动失败'); else loadTasks();
-    }).catch(error => alert(`启动失败：${error.message}`));
+    operation(`${task.display_name}已提交，正在刷新运行状态…`); fetch(`/api/task-center/tasks/${encodeURIComponent(task.task_key)}/execute`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})}).then(response => response.json()).then(data => { if (data.status !== 'success') throw new Error(data.error || '启动失败'); operation(`${task.display_name}已提交，当前接口未返回运行编号，请在列表中查看状态。`, 'ok'); loadTasks(); }).catch(operationError);
   }
 
   const postJson = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
-  window.taskCenterToggle = (key, enabled) => postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/enabled`, {enabled}).then(d => { if (d.status !== 'success') throw new Error(d.error); loadTasks(); }).catch(e => alert(e.message));
-  window.taskCenterActivate = (key, version) => { if (!confirm(`确认生效任务配置 v${version}？`)) return; postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config/${version}/activate`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert('配置已生效'); loadTasks(); }).catch(e => alert(e.message)); };
+  window.taskCenterToggle = (key, enabled) => postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/enabled`, {enabled}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(enabled ? '调度已启用' : '调度已停用', 'ok'); loadTasks(); }).catch(operationError);
+  window.taskCenterActivate = (key, version) => { if (!confirm(`确认生效任务配置 v${version}？`)) return; postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config/${version}/activate`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(`任务配置 v${version} 已生效`, 'ok'); loadTasks(); }).catch(operationError); };
   window.taskCenterEdit = key => {
     const task = state.tasks.find(item => item.task_key === key);
     if (!task) return;
@@ -79,13 +79,13 @@
       config.scope.asset_types = document.getElementById('cfg-assets').value.split(',').map(x => x.trim()).filter(Boolean);
       config.execution.retry_limit = Number(document.getElementById('cfg-retry').value || 0);
       config.policy.on_failure = document.getElementById('cfg-failure').value;
-      postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config`, {config, activate}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert(activate ? '配置已保存并生效' : `配置草稿 v${d.version} 已保存`); loadTasks(); }).catch(e => alert(e.message));
+      postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config`, {config, activate}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(activate ? '配置已保存并生效' : `配置草稿 v${d.version} 已保存`, 'ok'); loadTasks(); }).catch(operationError);
     };
     document.getElementById('cfg-save').onclick = () => save(false);
     document.getElementById('cfg-save-active').onclick = () => { if (confirm('确认保存并立即生效？')) save(true); };
   };
-  window.taskCenterExecute = key => postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/execute`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert('任务已提交'); loadTasks(); }).catch(e => alert(e.message));
-  window.taskCenterRetry = runId => postJson(`/api/task-center/runs/${runId}/retry`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); alert('重试已提交'); loadTasks(); }).catch(e => alert(e.message));
+  window.taskCenterExecute = key => { operation('任务已提交，正在刷新运行状态…'); return postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/execute`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation('任务已提交，当前接口未返回运行编号，请在列表中查看状态。', 'ok'); loadTasks(); }).catch(operationError); };
+  window.taskCenterRetry = runId => { operation(`运行记录 #${runId} 正在重试…`); return postJson(`/api/task-center/runs/${runId}/retry`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(`运行记录 #${runId} 已提交重试`, 'ok'); loadTasks(); }).catch(operationError); };
 
   function loadTasks() {
     fetch('/api/task-center/overview').then(response => response.json()).then(data => {
@@ -109,8 +109,8 @@
     banner.innerHTML = `<strong>任务管理</strong><span>共 ${overview.task_definition_count || 0} 个任务，${overview.enabled_schedule_count || 0} 个已启用调度，${overview.registered || 0} 个已有运行记录。</span><span class="dm-management-hint">列表可直接启用/停用、执行和重试。</span>`;
   }
 
-  window.taskCenterShowLogs = runId => { if (!runId) return alert('当前任务还没有执行记录'); fetch(`/api/task-center/runs/${runId}/logs`).then(r => r.json()).then(d => alert(d.text || '暂无日志')); };
-  window.taskCenterShowArtifacts = runId => { if (!runId) return alert('当前任务还没有执行产物'); fetch(`/api/tasks/runs/${runId}/artifacts`).then(r => r.json()).then(d => alert((d.artifacts || []).map(x => x.artifact_type_label || x.file_name).join('\n') || '暂无产物')); };
+  window.taskCenterShowLogs = runId => { const target = document.getElementById('task-run-detail'); if (!runId) return operation('当前任务还没有执行记录', 'error'); target.innerHTML = '<span class="dm-muted">正在读取日志…</span>'; fetch(`/api/task-center/runs/${runId}/logs`).then(r => r.json()).then(d => { if (d.status !== 'success') throw new Error(d.error || '日志读取失败'); target.innerHTML = `<h4>运行日志 #${runId}</h4><pre class="dm-log">${esc(d.text || '暂无日志')}</pre>`; }).catch(operationError); };
+  window.taskCenterShowArtifacts = runId => { const target = document.getElementById('task-run-detail'); if (!runId) return operation('当前任务还没有执行产物', 'error'); target.innerHTML = '<span class="dm-muted">正在读取产物…</span>'; fetch(`/api/tasks/runs/${runId}/artifacts`).then(r => r.json()).then(d => { if (d.status !== 'success') throw new Error(d.error || '产物读取失败'); const items = d.artifacts || []; const rows = items.map(x => '<div class="dm-artifact"><strong>' + esc(x.artifact_type_label || x.file_name || '未命名产物') + '</strong><span>' + esc(x.file_path || '') + '</span></div>').join(''); target.innerHTML = `<h4>运行产物 #${runId}</h4>${rows || '<span class="dm-muted">暂无产物</span>'}`; }).catch(operationError); };
   document.getElementById('task-stage').onchange = renderTasks;
   document.getElementById('task-status').onchange = renderTasks;
   document.getElementById('task-search').oninput = renderTasks;
