@@ -64,12 +64,12 @@
 | 工作台 | `/workbench` | `/` 无参数时进入工作台，带股票参数进入个股分析 |
 | 市场 | `/market` | `/market-discovery`、`/compare` |
 | 观察池 | `/watch-pool` | `/dashboard/observe`、`/watchlist`、`/simulation` |
-| 持仓 | `/dashboard/warroom` | `/portfolio`、`/portfolio/add`、`/portfolio/{id}`（持仓详情）、`/log` |
+| 持仓 | `/dashboard/warroom` | `/portfolio`、`/portfolio/add`、`/portfolio/{id}`（持仓详情） |
 | 研究 | `/research` | `/analyze`、`/research/detail`、`/indicator-center`、`/strategy-composer`、`/strategy`、`/operation-points` |
 | 复盘 | `/dashboard/review` | `/morning-report`、`/log`、`/quicklog` |
 | 系统 | `/system` | `/data-center`、`/data-center/assets`、`/data-center/tasks`、`/notify-center`、`/diagnostics`、`/settings` |
 
-旧路由可以为已有书签保留，但只作为过渡入口，不得维护第二套长期业务流程。用户主导航中只出现主入口。
+旧路由不属于目标设计。切换时直接下线；如必须处理已有链接，只允许一次性跳转到新入口，不保留旧页面、旧导航或第二套业务流程。用户主导航中只出现主入口。
 
 ### 2.3 最终页面壳层
 
@@ -465,6 +465,16 @@
 
 状态 CSS、JS 词表和页面文案必须使用同一映射。`success` 的文案由业务上下文决定：健康结果显示“正常”，任务或研究运行结果显示“已完成”。`waiting_close` 是业务等待状态，不覆盖数据健康状态；`unavailable` 等价于暂无数据；`degraded` 等价于部分可用。
 
+状态类名唯一采用：
+
+```text
+.status-tag.status-healthy
+.status-tag.status-partial
+.status-tag.status-running
+```
+
+不再使用 `.tag.status-*`、`.dm-health.*` 或 `.status-tag.ok` 作为目标类名。旧类名不保留兼容别名，迁移时直接替换并删除。
+
 ### 5.2 多维状态
 
 数据可用性、数据新鲜度、任务执行、权限和操作门禁是不同维度，不压成一个状态：
@@ -569,6 +579,8 @@
 --color-border: #e0e4ea;
 ```
 
+旧的 `--red`、`--green`、`--orange`、`--surface`、`--surface2`、`--border`、`--text2` 和 `--accent` 不属于目标设计系统。禁止兼容别名和双写变量；迁移时直接删除旧变量，页面只能使用上述语义 Token。
+
 ### 6.2 公共类名
 
 | 组件 | 类名 |
@@ -630,6 +642,111 @@
 
 图表必须有数据范围、来源、日期和文字摘要；容器重建前释放旧实例。
 
+图表中的方向颜色和状态颜色必须通过视觉形态区分：
+
+| 场景 | 颜色 | 形态 | 文字要求 |
+|---|---|---|---|
+| 上涨/盈利 | `--color-up` | 带 `+` 号的数值或阳线 | 必须显示正负号或方向 |
+| 下跌/亏损 | `--color-down` | 带 `-` 号的数值或阴线 | 必须显示正负号或方向 |
+| 数据异常 | `--color-danger` | 状态标签底色/边框 | 必须显示“异常/失败” |
+| 数据警告 | `--color-warning` | 状态标签底色/边框 | 必须显示“待更新/部分可用” |
+
+上涨/盈利不使用实心状态标签冒充异常；异常不只用红色数字表达。数值使用方向符号，状态使用标签和状态文字，避免同色误读。
+
+### 6.7 公共组件结构样例
+
+以下结构是目标 DOM 契约。页面可以增加业务字段，但不得改变组件的核心层级和语义。
+
+#### 状态标签
+
+```html
+<span class="status-tag status-partial" role="status">
+  <span class="status-tag-label">部分可用</span>
+</span>
+```
+
+#### 涨跌/盈亏数值
+
+```html
+<span class="value-up" aria-label="上涨 5.20%">+5.20%</span>
+<span class="value-down" aria-label="下跌 2.10%">-2.10%</span>
+<span class="value-flat" aria-label="无变化">0.00%</span>
+```
+
+#### 页面消息
+
+```html
+<div class="ui-message message-error" role="alert" aria-live="assertive">
+  <span class="ui-message-title">操作失败</span>
+  <span class="ui-message-body">任务正在运行，请稍后重试。</span>
+  <button class="ui-message-close" type="button" aria-label="关闭">×</button>
+</div>
+```
+
+#### 表格
+
+```html
+<div class="ui-table-wrap">
+  <table class="ui-table">
+    <caption class="sr-only">数据资产列表</caption>
+    <thead><tr><th scope="col">数据资产</th><th scope="col">状态</th></tr></thead>
+    <tbody><tr><td>日线行情</td><td><span class="status-tag status-healthy">正常</span></td></tr></tbody>
+  </table>
+</div>
+```
+
+#### 表单字段
+
+```html
+<form class="ui-form">
+  <div class="ui-field">
+    <label for="symbol">证券代码</label>
+    <input id="symbol" name="symbol" aria-describedby="symbol-help symbol-error" required>
+    <div id="symbol-help" class="ui-field-help">例如 sh600519</div>
+    <div id="symbol-error" class="ui-field-error" role="alert">请输入证券代码</div>
+  </div>
+  <button class="btn btn-primary" type="submit">开始研究</button>
+</form>
+```
+
+#### 确认/输入面板
+
+```html
+<div class="ui-drawer-mask" data-open="true">
+  <section class="ui-confirm ui-confirm-danger" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <header class="ui-confirm-header"><h2 id="confirm-title">确认平仓</h2></header>
+    <div class="ui-confirm-body">
+      <dl class="ui-confirm-impact">
+        <dt>操作对象</dt><dd>贵州茅台（sh600519）</dd>
+        <dt>影响范围</dt><dd>提交一笔真实卖出事务</dd>
+        <dt>可恢复性</dt><dd>不可自动恢复</dd>
+      </dl>
+    </div>
+    <footer class="ui-confirm-actions"><button class="btn btn-outline">取消</button><button class="btn btn-danger">确认平仓</button></footer>
+  </section>
+</div>
+```
+
+#### 详情抽屉
+
+```html
+<div class="ui-drawer-mask">
+  <aside class="ui-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+    <header class="ui-drawer-header"><h2 id="drawer-title">数据项详情</h2><button aria-label="关闭">×</button></header>
+    <div class="ui-drawer-body"><section class="ui-drawer-section"><h3>定义</h3></section></div>
+  </aside>
+</div>
+```
+
+#### 进度
+
+```html
+<div class="ui-progress" role="status" aria-live="polite">
+  <div class="ui-progress-meta"><span>正在计算指标</span><strong>42%</strong></div>
+  <div class="ui-progress-track"><div class="ui-progress-bar" style="width:42%"></div></div>
+</div>
+```
+
 ## 7. 响应式、性能与可访问性
 
 ### 7.1 断点
@@ -642,6 +759,18 @@
 | `<=420px` | 摘要单列/两列，操作收进更多菜单 |
 
 移动端表格必须定义必留字段；可折叠字段进入详情，不靠无限缩小字号解决。
+
+| 页面类型 | 必留字段 | 可折叠字段 |
+|---|---|---|
+| 市场 | 指数/板块名称、最新价、涨跌幅、数据日期 | 成交额、次要指标 |
+| 市场发现 | 标的、最新价、涨跌幅、命中条件、下一步 | PE/PB、次要成交指标 |
+| 观察池 | 标的、来源、状态、数据健康、下一动作 | 支撑位、完整模拟字段 |
+| 持仓 | 标的、数量、当前价、盈亏、风险、建议 | 成本详情、历史流水 |
+| 模拟 | 标的、策略、状态、收益、下一步 | 完整事件和参数 |
+| 复盘 | 日期、标的、方向、结果、盈亏 | 手续费、辅助诊断 |
+| 任务中心 | 任务、状态、进度、最近结果、操作 | 配置代码、完整时间字段 |
+| 通知中心 | 时间、标题、状态、重试 | payload、通道详情 |
+| 研究工具 | 标的/方案、状态、核心结果、下一步 | 原始表达式、输入快照 |
 
 ### 7.2 性能目标
 
