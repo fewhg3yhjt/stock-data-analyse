@@ -773,6 +773,7 @@ simulation snapshot → ObservationSnapshot
 - `observation.expiry_reconcile` 已提供查询、状态推进、事件持久化的一体化入口，普通查询不产生状态副作用。
 - `biz/workflow.py` 已提供候选 → Observation → SimulationPlan → EntryContext → PositionCycle/Execution 的跨模块应用服务。
 - `web/biz_api.py` 已提供 `/api/observations`、`/api/watch-subscriptions` 和状态操作正式入口。
+- `ObservationSnapshot` 已落库，并可由 `/api/research-runs/{run_id}/observation-snapshot` 从研究结果创建。
 
 ### 跨模块验证
 

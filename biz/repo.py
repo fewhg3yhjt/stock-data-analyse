@@ -260,6 +260,22 @@ class BusinessRepository:
         d["result"] = loads_json(d.pop("result_json"))
         return d
 
+    def save_research_report(self, research_run_id: str, content: str,
+                             format: str = "markdown") -> str:
+        report_id = new_id("report")
+        self.db.insert("research_reports", {
+            "report_id": report_id, "research_run_id": research_run_id,
+            "format": format, "content": content, "created_at": now_utc(),
+        })
+        return report_id
+
+    def get_research_report(self, research_run_id: str) -> dict | None:
+        row = self.db.fetchone(
+            "SELECT * FROM research_reports WHERE research_run_id=? ORDER BY rowid DESC LIMIT 1",
+            (research_run_id,),
+        )
+        return dict(row) if row else None
+
     def list_research_evidence(self, research_run_id: str) -> list[dict]:
         rows = self.db.fetchall(
             "SELECT * FROM research_evidence WHERE research_run_id=?", (research_run_id,))

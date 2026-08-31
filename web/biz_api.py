@@ -237,6 +237,78 @@ def get_research_evidence(run_id: str):
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/research-runs/<run_id>/decision")
+def get_research_decision(run_id: str):
+    repo = _repo()
+    research = repo.get_research_run(run_id)
+    if not research:
+        return _error("RESEARCH_RUN_NOT_FOUND", "研究运行不存在", 404)
+    ids = research["result"].get("strategy_decision_ids", [])
+    decisions = [repo.get_decision(decision_id) for decision_id in ids]
+    return flask.jsonify({"data": {"run_id": run_id, "decisions": [d for d in decisions if d]},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/research-runs/<run_id>/report")
+def get_research_report(run_id: str):
+    repo = _repo()
+    if not repo.get_research_run(run_id):
+        return _error("RESEARCH_RUN_NOT_FOUND", "研究运行不存在", 404)
+    report = repo.get_research_report(run_id)
+    if not report:
+        return _error("RESEARCH_REPORT_NOT_FOUND", "研究报告不存在", 404)
+    return flask.jsonify({"data": report, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.post("/research-runs/<run_id>/report")
+def create_research_report(run_id: str):
+    repo = _repo()
+    research = repo.get_research_run(run_id)
+    if not research:
+        return _error("RESEARCH_RUN_NOT_FOUND", "研究运行不存在", 404)
+    result = research["result"]
+    content = "\n".join([
+        f"# 个股研究 {research.get('symbol', '')}",
+        f"\n## 技术面\n{result.get('technical_assessment', {})}",
+        f"\n## 市场面\n{result.get('market_assessment', {})}",
+        f"\n## 估值面\n{result.get('valuation_assessment', {})}",
+        f"\n## 基本面\n{result.get('fundamental_assessment', {})}",
+        f"\n## 决策\n{result.get('strategy_decision_ids', [])}",
+    ])
+    report_id = repo.save_research_report(run_id, content)
+    return flask.jsonify({"data": {"report_id": report_id, "content": content},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+
+
+@biz_api.post("/research-runs/<run_id>/observation-snapshot")
+def create_research_observation_snapshot(run_id: str):
+    payload = flask.request.get_json(silent=True) or {}
+    repo = _repo()
+    research = repo.get_research_run(run_id)
+    if not research:
+        return _error("RESEARCH_RUN_NOT_FOUND", "研究运行不存在", 404)
+    observation_id = payload.get("observation_id") or research.get("observation_id")
+    if not observation_id:
+        return _error("OBSERVATION_REQUIRED", "observation_id 必填")
+    from StockInvestmentTool.biz.observation import ObservationSnapshot
+    result = research["result"]
+    snapshot = ObservationSnapshot(
+        snapshot_id=new_id("snapshot"), observation_id=observation_id,
+        snapshot_time=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        data_as_of=payload.get("data_as_of") or research.get("data_context", {}).get("max_date", ""),
+        strategy_version_id=payload.get("strategy_version_id"),
+        price=result.get("technical_assessment", {}).get("price"),
+        market_regime=result.get("market_assessment", {}),
+        entry_plan=result.get("entry_plan", {}), stop_plan=result.get("exit_plan", {}),
+        decision_action=result.get("entry_plan", {}).get("action", ""),
+        decision_reason=result.get("entry_plan", {}).get("reason", ""),
+        data_context=research.get("data_context", {}),
+    )
+    ObservationService(repo).save_snapshot(snapshot)
+    return flask.jsonify({"data": snapshot.__dict__,
+                          "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+
+
 @biz_api.post("/simulation-runs")
 def create_simulation_run():
     """执行并持久化单标的模拟运行。"""

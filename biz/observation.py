@@ -125,6 +125,22 @@ class ObservationEvent:
     metadata: dict = field(default_factory=dict)
 
 
+@dataclass
+class ObservationSnapshot:
+    snapshot_id: str
+    observation_id: str
+    snapshot_time: str
+    data_as_of: str
+    strategy_version_id: str | None = None
+    price: float | None = None
+    market_regime: dict = field(default_factory=dict)
+    entry_plan: dict = field(default_factory=dict)
+    stop_plan: dict = field(default_factory=dict)
+    decision_action: str = ""
+    decision_reason: str = ""
+    data_context: dict = field(default_factory=dict)
+
+
 class ObservationStateError(ValueError):
     """非法状态转换。"""
 
@@ -313,6 +329,26 @@ class ObservationService:
         else:
             rows = self.repo.db.fetchall("SELECT * FROM observations ORDER BY updated_at DESC")
         return [Observation(**self._row_to_obs_dict(row)) for row in rows]
+
+    def save_snapshot(self, snapshot: ObservationSnapshot) -> ObservationSnapshot:
+        from StockInvestmentTool.biz.db import dumps_json
+
+        self.repo.db.insert("observation_snapshots", {
+            "snapshot_id": snapshot.snapshot_id,
+            "observation_id": snapshot.observation_id,
+            "snapshot_time": snapshot.snapshot_time,
+            "data_as_of": snapshot.data_as_of,
+            "strategy_version_id": snapshot.strategy_version_id or "",
+            "price": snapshot.price,
+            "market_regime_json": dumps_json(snapshot.market_regime),
+            "entry_plan_json": dumps_json(snapshot.entry_plan),
+            "stop_plan_json": dumps_json(snapshot.stop_plan),
+            "decision_action": snapshot.decision_action,
+            "decision_reason": snapshot.decision_reason,
+            "data_context_json": dumps_json(snapshot.data_context),
+            "created_at": now_utc(),
+        })
+        return snapshot
 
     # ── 持久化 ────────────────────────────────────────────
 
