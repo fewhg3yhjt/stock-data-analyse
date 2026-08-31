@@ -499,6 +499,7 @@ idempotent_replay
 - `biz/workflow.py` 与 `tests/test_biz_workflow.py` 已将 EntryContext → PositionCycle → Execution → CashLedger → Observation promoted 收口为应用服务事务。
 - 正式 Web 建仓入口、公司行为完整规则和 PositionSnapshot 读模型仍待完成。
 - `PositionValuationService` 已持久化 `PositionSnapshot`，并由 `/api/biz/position-cycles/<cycle_id>/snapshots/<as_of>` 提供查询。
+- `biz/migration.py` 已提供旧 `portfolio.db` 的只读评估、canonical code 转换、幂等导入和 `legacy_entity_map` 记录；当前仅在临时库验证，未执行生产迁移。
 
 ### 后续待开发
 

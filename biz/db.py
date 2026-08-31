@@ -794,6 +794,20 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     migration_id TEXT PRIMARY KEY,
     applied_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS legacy_entity_map (
+    map_id TEXT PRIMARY KEY,
+    legacy_db TEXT NOT NULL,
+    legacy_type TEXT NOT NULL,
+    legacy_id TEXT NOT NULL,
+    new_type TEXT NOT NULL,
+    new_id TEXT NOT NULL,
+    migration_version TEXT NOT NULL,
+    classification TEXT NOT NULL DEFAULT 'migrated',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE(legacy_db, legacy_type, legacy_id, migration_version)
+);
 """
 
 
