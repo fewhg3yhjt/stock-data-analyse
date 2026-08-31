@@ -457,3 +457,4 @@ Route
 - `web/biz_api.py` 已提供 `/api/biz/health/live`、`/health/ready`、`/health/details`，与平台 HealthService 对齐。
 - `tests/test_biz_tasks.py` 已验证 Request/JobRun 分离、Worker 执行、租约锁和失败恢复。
 - `biz/worker.py` 已提供独立业务 Worker 入口：启动回收 stale run，再领取并执行 requested run；默认单次执行，持续轮询需显式指定间隔，尚未挂入生产容器。
+- 新业务正式 API 当前已在容器内注册并通过路由契约检查；现有业务页面和生产 Scheduler 尚未完成主链路切换。
