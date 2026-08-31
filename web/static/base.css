@@ -1,5 +1,6 @@
-/* StockInvestmentTool 统一设计系统（FR-4.1）
-   设计令牌 + 通用组件。所有页面继承/引用，消除各自内联 <style> 重复。
+/* StockInvestmentTool 统一设计系统
+   设计 Token 与公共组件。目标契约见 docs/CORE_PAGES_UI_DESIGN_V1.md 第 6 章。
+   所有页面继承/引用，消除各自内联 <style> 重复。
    使用方式：<link rel="stylesheet" href="/static/base.css"> */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -8,6 +9,10 @@
   --bg:#f5f6f8; --surface:#fff; --surface2:#f8f9fb; --border:#e0e4ea;
   --text:#1a1a2e; --text2:#6b7280; --accent:#1a73e8; --accent2:#1557b0;
   --red:#dc3545; --green:#28a745; --orange:#e67e22;
+  --color-up:#dc3545; --color-down:#28a745; --color-success:#28a745;
+  --color-warning:#e67e22; --color-danger:#dc3545; --color-info:#1a73e8;
+  --color-muted:#6b7280; --color-surface:#fff; --color-surface-subtle:#f8f9fb;
+  --color-border:#e0e4ea;
   --radius:8px; --shadow:0 1px 3px rgba(0,0,0,.07);
   --font:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;
 }
@@ -117,7 +122,7 @@ tr:last-child td{border-bottom:none;}
 /* 详情行位于超宽观察表内，图表必须锁定到桌面视口宽度，不能继承整张表的宽度。 */
 .detail-row .stock-detail-box{width:min(1352px,calc(100vw - 90px));max-width:100%;}
 
-/* 移动端（FR-4.1 验收）：≤700px 可用 */
+/* 移动端基础规则，具体页面断点见统一 UI 契约。 */
 @media(max-width:700px){
   .header{display:block;}
   .header .nav{margin-top:8px;}

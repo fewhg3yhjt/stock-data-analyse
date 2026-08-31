@@ -1,4 +1,4 @@
-/* StockInvestmentTool 统一状态词表（设计文档 19.1）
+/* StockInvestmentTool 统一状态词表（目标契约：UI 设计文档第 5.1 节）
    全局常量，页面只引用，不自行维护状态中文与颜色。 */
 window.UI_STATUS = {
   healthy: {label: '正常', cls: 'healthy', tone: 'healthy'},
