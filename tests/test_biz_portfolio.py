@@ -137,6 +137,37 @@ class TestPortfolio:
                              idempotency_key="s1")
         assert svc.get_cycle(cid).phase == "stopped"
 
+    def test_company_action_is_recorded_and_adjusts_lot(self, svc, setup):
+        pid, cid = setup
+        svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-01",
+                             quantity=1000, price=10.0, idempotency_key="b1")
+        svc.record_execution(pid, cid, event_type="BONUS_SHARE", trade_time="2026-08-10",
+                             quantity=100, idempotency_key="bonus1")
+        lot = svc.repo.db.fetchone(
+            "SELECT remaining_quantity, entry_price FROM position_lots WHERE position_cycle_id=?",
+            (cid,),
+        )
+        adjustment = svc.repo.db.fetchone(
+            "SELECT event_type, quantity_delta FROM position_lot_adjustments LIMIT 1"
+        )
+        assert lot["remaining_quantity"] == 1100
+        assert lot["entry_price"] == pytest.approx(10.0)
+        assert adjustment["event_type"] == "BONUS_SHARE"
+        assert adjustment["quantity_delta"] == 100
+
+    def test_stock_split_adjusts_quantity_and_price(self, svc, setup):
+        pid, cid = setup
+        svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-01",
+                             quantity=1000, price=10.0, idempotency_key="b1")
+        svc.record_execution(pid, cid, event_type="STOCK_SPLIT", trade_time="2026-08-10",
+                             quantity=2, idempotency_key="split1")
+        lot = svc.repo.db.fetchone(
+            "SELECT remaining_quantity, entry_price FROM position_lots WHERE position_cycle_id=?",
+            (cid,),
+        )
+        assert lot["remaining_quantity"] == 2000
+        assert lot["entry_price"] == pytest.approx(5.0)
+
     def test_cash_never_negative_silent(self, svc, setup):
         pid, cid = setup
         with pytest.raises(ValueError):

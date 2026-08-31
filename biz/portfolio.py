@@ -422,13 +422,30 @@ class PortfolioService:
             old_qty = lot_row["remaining_quantity"]
             if exe.event_type == EVT_BONUS_SHARE:
                 new_qty = old_qty + exe.quantity
+                price_factor = 1.0
+                quantity_delta = exe.quantity
             elif exe.event_type == EVT_STOCK_SPLIT:
                 new_qty = old_qty * exe.quantity
+                price_factor = 1.0 / exe.quantity
+                quantity_delta = new_qty - old_qty
+            elif exe.event_type == EVT_RIGHTS_ISSUE:
+                new_qty = old_qty + exe.quantity
+                price_factor = 1.0
+                quantity_delta = exe.quantity
             else:
                 new_qty = old_qty
+                price_factor = 1.0
+                quantity_delta = 0.0
             conn.execute(
-                "UPDATE position_lots SET remaining_quantity=? WHERE lot_id=?",
-                (new_qty, lot_row["lot_id"]))
+                "UPDATE position_lots SET remaining_quantity=?, entry_price=entry_price*? WHERE lot_id=?",
+                (new_qty, price_factor, lot_row["lot_id"]))
+            conn.execute(
+                """INSERT INTO position_lot_adjustments
+                   (adjustment_id,lot_id,event_type,quantity_delta,price_factor,event_time,reason,created_at)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (new_id("adj"), lot_row["lot_id"], exe.event_type, quantity_delta,
+                 price_factor, exe.trade_time, exe.reason, now_utc()),
+            )
 
     # ── 辅助 ──────────────────────────────────────────────
 
@@ -685,6 +702,15 @@ class PortfolioService:
             "phase": cycle.phase, "quantity": qty, "average_cost": avg_cost,
             "cost_basis": cost_basis, "realized_pnl": self.realized_pnl(cycle_id),
         }
+
+    def list_lot_allocations(self, cycle_id: str) -> list[dict]:
+        rows = self.repo.db.fetchall(
+            """SELECT a.* FROM execution_lot_allocations a
+               JOIN position_lots l ON l.lot_id=a.lot_id
+               WHERE l.position_cycle_id=? ORDER BY a.created_at, a.allocation_id""",
+            (cycle_id,),
+        )
+        return [dict(row) for row in rows]
 
     @staticmethod
     def _row_to_ledger(row) -> CashLedgerEntry:

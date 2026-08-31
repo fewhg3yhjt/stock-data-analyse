@@ -161,6 +161,11 @@ class PerformanceService:
             for lot in lots.get(symbol, []):
                 if lot["quantity"] > 0:
                     lot["quantity"] *= quantity
+                    lot["price"] /= quantity
+        elif event_type == "RIGHTS_ISSUE":
+            for lot in lots.get(symbol, []):
+                if lot["quantity"] > 0:
+                    lot["quantity"] += quantity
 
     def compute(self, portfolio_id: str, start_date: str, end_date: str,
                 price_df: pd.DataFrame | None = None,
