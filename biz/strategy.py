@@ -83,6 +83,8 @@ class CompiledStrategy:
     # ── 评估入口 ──────────────────────────────────────────
 
     def evaluate(self, context: StrategyContext) -> StrategyDecision:
+        if not self.strategy_version_id:
+            raise ValueError("strategy_version_id is required for a formal strategy decision")
         evaluator = StrategyEvaluator(self)
         return evaluator.evaluate(context)
 

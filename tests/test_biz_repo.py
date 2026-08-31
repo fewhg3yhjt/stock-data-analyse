@@ -38,11 +38,12 @@ class TestStrategy:
 
 class TestDecision:
     def test_save_and_get_decision(self, repo):
+        repo.save_strategy_version("s1", 1, {"name": "s1", "version": "1"}, "hash-s1")
         dec = StrategyDecision(
             decision_id=new_id("dec"), strategy_id="s1", strategy_version="1",
             symbol="sh600908", decision_time="2026-08-14T15:00:00Z", data_as_of="2026-08-14",
             action="BUY", quantity_ratio=0.2, price=11.8,
-            strategy_version_id="sv1",
+            strategy_version_id=repo.list_strategy_versions("s1")[0]["strategy_version_id"],
             input_snapshot={"symbol": "sh600908"},
             decision_trace={"evaluated_rules": [], "triggered_rules": [], "suppressed_rules": [], "final_action": "BUY"},
         )

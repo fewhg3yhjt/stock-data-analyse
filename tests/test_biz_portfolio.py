@@ -112,6 +112,22 @@ class TestPortfolio:
         # 剩余为第二批（price 12），FIFO 消耗第一批
         assert summary["average_cost"] == pytest.approx(12.0)
 
+    def test_realized_pnl_only_uses_sold_fifo_lot(self, svc, setup):
+        pid, cid = setup
+        svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-01",
+                             quantity=500, price=10.0, fee=5.0, idempotency_key="b1")
+        svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-05",
+                             quantity=500, price=20.0, fee=10.0, idempotency_key="b2")
+        svc.record_execution(pid, cid, event_type=EVT_SELL, trade_time="2026-08-10",
+                             quantity=500, price=12.0, fee=6.0, idempotency_key="s1")
+        summary = svc.position_summary(cid)
+        assert summary["quantity"] == 500
+        # 500 * 12 - FIFO cost 500 * 10 - buy fee 5 - sell fee 6 = 989
+        assert summary["realized_pnl"] == pytest.approx(989.0)
+        assert svc.repo.db.fetchone(
+            "SELECT COUNT(*) AS n FROM execution_lot_allocations"
+        )["n"] == 1
+
     def test_cash_never_negative_silent(self, svc, setup):
         pid, cid = setup
         with pytest.raises(ValueError):

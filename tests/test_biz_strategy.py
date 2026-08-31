@@ -100,7 +100,7 @@ class TestValidate:
 
 class TestEvaluate:
     def test_buy_signal(self):
-        strategy = compile_strategy(make_spec())
+        strategy = compile_strategy(make_spec(), strategy_version_id="sv_test")
         ctx = make_ctx(close_last=11.8)
         dec = strategy.evaluate(ctx)
         assert dec.action == "BUY"
@@ -110,13 +110,13 @@ class TestEvaluate:
         assert dec.input_snapshot["symbol"] == "sh600908"
 
     def test_no_action_when_below(self):
-        strategy = compile_strategy(make_spec())
+        strategy = compile_strategy(make_spec(), strategy_version_id="sv_test")
         ctx = make_ctx(close_last=10.0)  # 不满足 > 11
         dec = strategy.evaluate(ctx)
         assert dec.action == "NO_ACTION"
 
     def test_hard_stop_sells_all(self):
-        strategy = compile_strategy(make_spec())
+        strategy = compile_strategy(make_spec(), strategy_version_id="sv_test")
         # 持有中，close 8.5 <= 成本 10 * (1-0.1)=9 → 硬止损
         ctx = make_ctx(close_last=8.5, position_state="holding", quantity=1000)
         dec = strategy.evaluate(ctx)
@@ -124,14 +124,14 @@ class TestEvaluate:
         assert "硬止损" in dec.reason
 
     def test_insufficient_cash_suppresses_buy(self):
-        strategy = compile_strategy(make_spec())
+        strategy = compile_strategy(make_spec(), strategy_version_id="sv_test")
         ctx = make_ctx(close_last=11.8, cash=0.0)
         dec = strategy.evaluate(ctx)
         assert dec.action == "NO_ACTION"
         assert "现金不足" in dec.reason
 
     def test_deterministic(self):
-        strategy = compile_strategy(make_spec())
+        strategy = compile_strategy(make_spec(), strategy_version_id="sv_test")
         ctx = make_ctx()
         d1 = strategy.evaluate(ctx)
         d2 = strategy.evaluate(ctx)
@@ -139,7 +139,7 @@ class TestEvaluate:
         assert d1.decision_trace == d2.decision_trace
 
     def test_suppressed_rules_recorded(self):
-        strategy = compile_strategy(make_spec())
+        strategy = compile_strategy(make_spec(), strategy_version_id="sv_test")
         # 现金不足：buy 被抑制，出现在 suppressed 但 trace 有记录
         ctx = make_ctx(close_last=11.8, cash=0.0)
         dec = strategy.evaluate(ctx)

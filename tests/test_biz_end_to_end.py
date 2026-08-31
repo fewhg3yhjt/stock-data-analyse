@@ -53,13 +53,16 @@ def strategy():
             "operator": "<", "right": {"value": 5.0}}}],
         risk={"hard_stop_ratio": 0.5},
         position_sizing={"initial_ratio": 0.2},
-    ))
+    ), strategy_version_id="sv_e2e")
 
 
 def test_full_business_flow(tmp_path):
     repo = BusinessRepository(BusinessDB(tmp_path / "business.db"))
     df = market_data()
     compiled = strategy()
+    strategy_version_id = repo.save_strategy_version(
+        "e2e_strategy", 1, {"name": "E2E 策略", "version": "1"}, compiled.config_hash
+    )
 
     # ScreenRun -> ScreenCandidate
     screen = ScreenDefinition(
@@ -89,11 +92,11 @@ def test_full_business_flow(tmp_path):
     research_result = research.run()
     repo.save_research_run(
         research_result, {"quality_status": "PASS"}, symbol="sh600908",
-        strategy_version_id="sv_e2e", source_screen_run_id=run.run_id,
+        strategy_version_id=strategy_version_id, source_screen_run_id=run.run_id,
         source_candidate_id=candidate.candidate_id,
     )
     for decision in research_result.decisions:
-        decision.strategy_version_id = "sv_e2e"
+        decision.strategy_version_id = strategy_version_id
         decision.research_run_id = research_result.research_run_id
         repo.save_decision(decision)
     assert repo.get_research_run(research_result.research_run_id)
@@ -104,13 +107,13 @@ def test_full_business_flow(tmp_path):
     observation = observations.create_observation(
         "sh600908", source_type="screen", screen_run_id=run.run_id,
         screen_candidate_id=candidate.candidate_id,
-        strategy_version_id="sv_e2e", data_as_of=meta["actual_data_as_of"],
+        strategy_version_id=strategy_version_id, data_as_of=meta["actual_data_as_of"],
     )
     observations.transition_and_save(observation, OBS_OBSERVING)
-    observation.current_strategy_version_id = "sv_e2e"
+    observation.current_strategy_version_id = strategy_version_id
     observations.update_observation(observation)
     plan = SimulationPlan(
-        plan_id=new_id("plan"), strategy_version_id="sv_e2e",
+        plan_id=new_id("plan"), strategy_version_id=strategy_version_id,
         source_screen_run_id=run.run_id, observation_id=observation.observation_id,
         start_date="2026-06-01", end_date="2026-07-24", initial_cash=100000,
         benchmark="sh000300", cost_config={"fee_rate": 0.001},
@@ -129,7 +132,7 @@ def test_full_business_flow(tmp_path):
     _, portfolio = pf_service.ensure_default_account_portfolio()
     pf_service.initialize_cash(portfolio.portfolio_id, 100000)
     cycle = pf_service.open_cycle(
-        portfolio.portfolio_id, "sh600908", strategy_version_id="sv_e2e",
+        portfolio.portfolio_id, "sh600908", strategy_version_id=strategy_version_id,
         observation_id=observation.observation_id,
         entry_plan={"action": "BUY", "quantity": 1000},
     )

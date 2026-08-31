@@ -117,7 +117,7 @@ class TestNotificationService:
                 "type": "comparison", "left": {"field": "close"},
                 "operator": "<", "right": {"value": 5}}}],
             position_sizing={"initial_ratio": 0.2},
-        ))
+        ), strategy_version_id="sv_test")
         context = StrategyContext(
             symbol="sh600908", evaluation_time="2026-08-14T15:00:00Z",
             data_as_of="2026-08-14", market_data=df, cash_available=10000,

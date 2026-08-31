@@ -40,7 +40,7 @@ def make_strategy():
         position_sizing={"mode": "fixed_ratio", "initial_ratio": 0.2},
         execution={"signal_at": "close", "execute_at": "next_open"},
     )
-    return compile_strategy(spec)
+    return compile_strategy(spec, strategy_version_id="sv_test")
 
 
 def make_plan(initial_cash=100000.0):
@@ -97,7 +97,7 @@ class TestSimulation:
             exit_rules=[{"rule_id": "e", "action": "SELL_ALL", "when": {
                 "type": "comparison", "left": {"field": "close"}, "operator": "<", "right": {"value": 5}}}],
             position_sizing={"initial_ratio": 0.2},
-        ))
+        ), strategy_version_id="sv_test")
         _, result, fills, _ = execute_simulation(plan, df, strategy=strategy)
         assert not fills
         assert result.final_equity == pytest.approx(plan.initial_cash)

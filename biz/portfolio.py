@@ -347,6 +347,7 @@ class PortfolioService:
             "SELECT * FROM position_lots WHERE position_cycle_id=? AND remaining_quantity>0 "
             "ORDER BY opened_at, lot_id", (exe.position_cycle_id,)).fetchall()
         sell_qty = qty
+        allocations = []
         for lot_row in lots:
             if sell_qty <= 0:
                 break
@@ -354,7 +355,29 @@ class PortfolioService:
             conn.execute(
                 "UPDATE position_lots SET remaining_quantity=? WHERE lot_id=?",
                 (lot_row["remaining_quantity"] - consume, lot_row["lot_id"]))
+            allocations.append({
+                "lot_id": lot_row["lot_id"],
+                "quantity": consume,
+                "gross": consume * float(exe.price or 0),
+                "cost": consume * float(lot_row["entry_price"] or 0),
+                "entry_fee": (float(lot_row["entry_fee"] or 0)
+                              * consume / float(lot_row["quantity"] or 1)),
+            })
             sell_qty -= consume
+        total_gross = sum(item["gross"] for item in allocations)
+        for item in allocations:
+            share = item["gross"] / total_gross if total_gross else 0.0
+            fee_allocated = exe.fee * share
+            tax_allocated = exe.tax * share
+            realized = (item["gross"] - item["cost"] - item["entry_fee"]
+                        - fee_allocated - tax_allocated)
+            conn.execute(
+                """INSERT INTO execution_lot_allocations
+                   (allocation_id,execution_id,lot_id,quantity,cost_amount,fee_allocated,tax_allocated,realized_pnl,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                (new_id("alloc"), exe.execution_id, item["lot_id"], item["quantity"],
+                 item["cost"], fee_allocated, tax_allocated, realized, now_utc()),
+            )
         proceeds = (exe.gross_amount or 0) - exe.fee - exe.tax
         self._append_ledger_conn(conn, exe, LEDGER_SELL, proceeds)
         self._advance_phase_conn(conn, exe)
@@ -603,16 +626,34 @@ class PortfolioService:
 
     def realized_pnl(self, cycle_id: str) -> float:
         """周期已实现收益（卖出收入 - 对应批次成本 - 费用）。"""
-        cycle = self._get_cycle(cycle_id)
-        buys = self.repo.db.fetchall(
-            "SELECT * FROM executions WHERE position_cycle_id=? AND event_type='BUY'",
-            (cycle_id,))
+        row = self.repo.db.fetchone(
+            """SELECT COALESCE(SUM(a.realized_pnl), 0) AS pnl
+               FROM execution_lot_allocations a
+               JOIN executions e ON e.execution_id=a.execution_id
+               WHERE e.position_cycle_id=?""",
+            (cycle_id,),
+        )
+        allocation_count = self.repo.db.fetchone(
+            """SELECT COUNT(*) AS n
+               FROM execution_lot_allocations a
+               JOIN executions e ON e.execution_id=a.execution_id
+               WHERE e.position_cycle_id=?""",
+            (cycle_id,),
+        )
+        if allocation_count and allocation_count["n"]:
+            return float(row["pnl"] or 0) if row else 0.0
+        # Only legacy/reconstructed rows may lack allocation details.
+        # For a current partial sale, do not charge all BUY costs to realized PnL.
         sells = self.repo.db.fetchall(
             "SELECT * FROM executions WHERE position_cycle_id=? AND event_type='SELL'",
-            (cycle_id,))
-        cost = sum((b["gross_amount"] or 0) + (b["fee"] or 0) + (b["tax"] or 0) for b in buys)
-        proceeds = sum((s["gross_amount"] or 0) - (s["fee"] or 0) - (s["tax"] or 0) for s in sells)
-        return proceeds - cost
+            (cycle_id,),
+        )
+        if not sells:
+            return 0.0
+        return float(sum(
+            (s["gross_amount"] or 0) - (s["fee"] or 0) - (s["tax"] or 0)
+            for s in sells
+        ))
 
     def position_summary(self, cycle_id: str) -> dict:
         cycle = self._get_cycle(cycle_id)

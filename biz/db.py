@@ -474,6 +474,23 @@ CREATE TABLE IF NOT EXISTS position_lots (
     FOREIGN KEY(position_cycle_id) REFERENCES position_cycles(position_cycle_id)
 );
 
+CREATE TABLE IF NOT EXISTS execution_lot_allocations (
+    allocation_id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    lot_id TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    cost_amount REAL NOT NULL,
+    fee_allocated REAL NOT NULL DEFAULT 0,
+    tax_allocated REAL NOT NULL DEFAULT 0,
+    realized_pnl REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    UNIQUE(execution_id, lot_id),
+    FOREIGN KEY(execution_id) REFERENCES executions(execution_id),
+    FOREIGN KEY(lot_id) REFERENCES position_lots(lot_id)
+);
+CREATE INDEX IF NOT EXISTS idx_execution_lot_allocations_execution ON execution_lot_allocations(execution_id);
+CREATE INDEX IF NOT EXISTS idx_execution_lot_allocations_lot ON execution_lot_allocations(lot_id);
+
 CREATE TABLE IF NOT EXISTS executions (
     execution_id TEXT PRIMARY KEY,
     portfolio_id TEXT NOT NULL,

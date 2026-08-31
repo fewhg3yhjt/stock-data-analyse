@@ -77,10 +77,10 @@ def main() -> int:
         execution={"signal_at": "close", "execute_at": "next_open"},
         benchmark="sh000300",
     )
-    strategy = compile_strategy(strategy_spec)
     svid = repo.save_strategy_version("smoke_strategy", 1,
                                       {"name": "smoke_strategy", "version": "1"},
                                       strategy_spec.config_hash())
+    strategy = compile_strategy(strategy_spec, strategy_version_id=svid)
 
     regime_svc = MarketRegimeService(hist, ctx)
     regime = regime_svc.compute(meta["actual_data_as_of"])

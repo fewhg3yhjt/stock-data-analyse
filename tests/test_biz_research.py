@@ -32,7 +32,7 @@ def make_strategy():
             "type": "comparison", "left": {"field": "close"}, "operator": "<", "right": {"value": 5}}}],
         position_sizing={"initial_ratio": 0.2},
     )
-    return compile_strategy(spec)
+    return compile_strategy(spec, strategy_version_id="sv_test")
 
 
 class TestResearch:
