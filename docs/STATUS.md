@@ -118,7 +118,17 @@
 | M1 | **旧 `warehouse/meta.db` 尚未下线** | 生产环境通过 `MANAGEMENT_DB_PATH` 已将 Warehouse 元数据路径指向 `management.db`；但默认回退、行业/标的旧读取、测试和迁移脚本仍引用 `meta.db` | 现在直接删除会破坏本地/测试/迁移路径，也无法证明所有生产入口已切换 |
 | M2 | **管理库事实仍存在多口径** | `management.db`、`job_runs.db`、`meta.db` 均能在不同路径承载部分管理或运行表 | 数据中心、任务中心和恢复逻辑可能读取不同事实 |
 
-### 6.4 产品 / 配置与扩展性（用户视角核心痛点）
+### 6.4 已确认但尚未闭环的后端缺陷
+
+| # | 问题 | 位置 | 影响 |
+|---|---|---|---|
+| B1 | **业务 stale Run 回收条件失效** | `biz/tasks.py:315-318`、`biz/db.py:944-946` | `heartbeat_at` 使用 `YYYY-MM-DDTHH:MM:SSZ`，SQL `datetime()` 使用空格格式，当前 TEXT 比较不能可靠识别超时；Worker 崩溃后的 `running` 任务可能永久不被回收 |
+| B2 | **业务 Blueprint 双前缀注册造成路由冲突** | `web/app.py:3041-3042` | 同一个 `biz_api` 同时注册 `/api/biz` 和 `/api`；与旧 `/api/health/details`、`/api/system/alerts` 等路径重叠，可能静默遮蔽新接口 |
+| B3 | **Quality coverage 使用自证基准** | `ops/task_execution.py:95-100` | 将候选版本自身 `symbol_count` 传为 `expected_symbols`，覆盖率可能恒为 1.0；无法发现 Universe 缺失，质量门禁失去覆盖约束 |
+| B4 | **Publisher 缺少同分区并发互斥** | `warehouse/publish.py:17-61` | 两个版本可同时替换同一正式文件并更新 `dataset_current`，文件、Current 指针和 previous_version 可能不一致 |
+| B5 | **旧 `job_runs.db` 收敛缺少专项迁移方案** | `ops/job_runs.py`、`ops/management_db.py` | 旧库仍可能承载 TaskCenter 运行表；缺少 Legacy ID 映射、重复记录处理、只读切换和独立验收，不能证明 `management.db` 已成为唯一数据任务事实源 |
+
+### 6.5 产品 / 配置与扩展性（用户视角核心痛点）
 
 | # | 问题 | 现状 | 用户期望 |
 |---|------|------|------|

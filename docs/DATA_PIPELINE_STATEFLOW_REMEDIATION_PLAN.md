@@ -220,6 +220,8 @@ FAIL    → failed，禁止发布
 8. 删除 Publish 的隐式历史候选补位逻辑。Publish 没有明确 `output_versions` 时必须失败。
 9. 发布前校验 Candidate Version、Quality Version 和 Requested Version 完全一致。
 10. 人工发布历史 Candidate 应使用独立显式入口，不得复用自动流水线回退。
+11. `expected_symbols` 必须来自请求固化 Universe、UniverseSnapshot、active instruments 或明确配置基准，禁止使用 Candidate 自身 `symbol_count`。
+12. Publisher 必须按 `dataset_name + partition_key` 获取数据库租约或等价分区锁；锁覆盖读取 current、复制 rollback、标记 publishing、替换文件、更新 current 的完整发布临界区。
 
 ### 必测场景
 
@@ -230,6 +232,8 @@ FAIL    → failed，禁止发布
 5. Publish 缺少明确版本时失败。
 6. Publish Version 与 Quality Version 不一致时失败。
 7. Request 和 Job Run 终态一致。
+8. Candidate 自身数量变化不能改变 coverage 基准；缺失 Universe 标的时必须降低质量或阻断发布。
+9. 两个并发 Publisher 发布同一分区时只有一个进入临界区，最终文件、Current 指针和版本状态一致。
 
 ### 验收
 
@@ -407,6 +411,7 @@ expires_at
 6. 锁至少覆盖同任务、同分区和同数据集写入组。
 7. 应用启动时回收遗留 Request、Job Run、Source Batch、任务锁和 `publishing` 版本。
 8. 回收错误使用明确原因，如 `process_restarted` 或 `stale_run_reclaimed`。
+8.1. 所有 heartbeat 时间必须使用同一可比较格式；不得将 RFC3339 `T...Z` 字符串直接与 SQLite `datetime()` 的空格格式做 TEXT 字典序比较。stale 回收必须通过时间解析或统一 UTC 存储格式验证。
 9. Retry 复用原请求的日期、Symbols、Universe、Config Version 和 Input Versions。
 10. Retry 记录 `retry_of_request_id`、`retry_of_run_id` 和 `attempt`。
 11. 真正执行 `retry_limit`、`on_partial_success` 和 `on_failure`。
@@ -422,6 +427,7 @@ expires_at
 6. 达到 Retry Limit 后停止。
 7. `partial_success=block_downstream` 时阻断下游。
 8. HTTP `202` 返回前 Request 已存在。
+9. 最近五分钟内的 RFC3339 heartbeat 不被回收，超过租约的业务 Run 可以被回收。
 
 ### 建议提交
 
@@ -476,6 +482,19 @@ Parquet / CSV
 8. 增加 `schema_migrations` 表和正式增量迁移机制。
 9. 每个迁移只执行一次，执行前后运行 SQLite `quick_check`。
 10. 使用旧 Schema Fixture 验证升级幂等和数据不丢失。
+
+### `job_runs.db` 收敛专项
+
+`job_runs.db` 与 `management.db` 均曾承载 TaskCenter 相关表，不能仅通过将默认路径改为 `management.db` 视为完成迁移。收敛必须单独完成：
+
+1. 列出 `job_runs.db` 中仍有价值的 `job_runs`、`job_plan`、任务定义、配置、事件和指标管理事实，并建立旧 ID 到 `management.db` ID 的映射。
+2. 对 `job_runs.db` 与 `management.db` 做任务定义、运行记录、计划和状态数量/内容对账，明确重复记录、冲突状态和保留策略。
+3. 将需要保留的历史运行记录以只读迁移方式导入 `management.db`，标记 `record_origin=legacy`，不得覆盖更新较新的新事实。
+4. 统一所有 API、Scheduler、Runner、数据中心和恢复逻辑的默认路径为 `management.db`，禁止运行时无提示回退到 `job_runs.db`。
+5. 将 `job_runs.db` 改为只读归档输入，增加写入拦截或启动诊断，确认运行期间不会产生新事实。
+6. 在隔离环境移除 `job_runs.db` 后完成应用冷启动、任务中心查询、调度注册、手工执行、失败恢复和健康检查。
+
+验收：新运行只写 `management.db`；历史记录可通过 Legacy ID 映射查询；`job_runs.db` 只读且不再产生新记录；两个数据库的差异有报告和处理结论。
 
 ### 验收
 
@@ -700,6 +719,7 @@ fix: unify trading date and freshness rules
 4. 所有补偿操作记录事件并保持幂等。
 5. `published_path` 改为相对 Warehouse Root 的路径，运行时解析。
 6. 历史绝对路径通过显式迁移处理，不长期保留多路径猜测。
+7. Publish 必须按 `dataset_name + partition_key` 获取数据库租约或等价分区锁；锁覆盖读取 current、复制 rollback、标记 publishing、替换文件、更新 current 的完整临界区。
 
 ### 必测场景
 
@@ -708,6 +728,7 @@ fix: unify trading date and freshness rules
 3. 文件仍为旧版本时恢复正确。
 4. 文件与新旧 Checksums 都不一致时不自动发布。
 5. 容器和宿主机都能解析相对路径。
+6. 两个 Publisher 并发发布同一分区时只有一个进入临界区，最终文件、Current 指针、版本状态和 previous_version 关系一致。
 
 ### 建议提交
 

@@ -470,4 +470,7 @@ Route
 - 新业务正式 API 当前已在容器内注册并通过路由契约检查；现有业务页面和生产 Scheduler 尚未完成主链路切换。
 - 当前容器内正式 API 路由检查通过，业务过渡 API 路由 49 个；业务 Worker 仍未作为生产常驻进程挂载。
 - 生产 `Warehouse` 已通过 `MANAGEMENT_DB_PATH` 使用 `management.db`；`warehouse/meta.db` 仍被默认回退、行业/标的旧读取、测试和迁移脚本引用，只有完成全量引用清理、数据对账、生产只读观察和回归验证后，才允许将其降为归档并在人工确认后删除。
+- 当前已知未闭环缺陷：`biz/tasks.py:318` 的 stale heartbeat SQL 与 UTC `T...Z` 存储格式不一致，回收条件可能恒不成立；`web/app.py:3041-3042` 双注册 `biz_api` 造成 `/api` 与 `/api/biz` 路由冲突；`ops/task_execution.py:99` 使用候选自身 `symbol_count` 作为质量期望基准；`warehouse/publish.py` 尚无同分区并发锁；`job_runs.db` 尚无独立收敛迁移和只读验收。上述问题不能以已有单元测试通过或设计意图描述为已修复。
+- 路由约束：业务 Blueprint 只允许挂载到明确的 `/api/biz` 命名空间；不得同时注册到 `/api`。旧 `/api/health/details`、`/api/system/alerts` 等同路径必须在路由切换表中明确归属，不能依赖 Blueprint 注册顺序解决冲突。
+- stale 回收约束：heartbeat 存储和比较必须使用同一 UTC 可比较格式，或在应用层解析后比较；必须有“未超时不回收”和“超时可回收”的回归测试。
 - 当前业务专项/页面测试为 `171 passed`，全量测试为 `428 passed`；未修改数据模块。
