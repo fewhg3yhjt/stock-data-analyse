@@ -160,8 +160,7 @@ class ObservationService:
                             source_id: str = "") -> ObservationEvent:
         """执行状态转换并立即持久化状态与事件。"""
         event = self.transition(obs, to_status, reason=reason, source_id=source_id)
-        self.update_observation(obs)
-        self.save_event(obs.observation_id, event)
+        self._persist_transition(obs, event)
         return event
 
     def create_observation(self, symbol: str, *, name: str = "",
@@ -209,9 +208,29 @@ class ObservationService:
 
     def promote_and_save(self, obs: Observation, position_cycle_id: str) -> ObservationEvent:
         event = self.promote(obs, position_cycle_id)
-        self.update_observation(obs)
-        self.save_event(obs.observation_id, event)
+        self._persist_transition(obs, event)
         return event
+
+    def _persist_transition(self, obs: Observation, event: ObservationEvent) -> None:
+        """在同一事务中保存状态字段和状态事件。"""
+        from StockInvestmentTool.biz.db import dumps_json
+
+        with self.repo.db.transaction() as conn:
+            conn.execute(
+                "UPDATE observations SET status=?, promoted_position_cycle_id=?, "
+                "updated_at=? WHERE observation_id=?",
+                (obs.status, obs.promoted_position_cycle_id or "", now_utc(), obs.observation_id),
+            )
+            if conn.execute("SELECT changes()").fetchone()[0] != 1:
+                raise KeyError(f"unknown observation: {obs.observation_id}")
+            conn.execute(
+                "INSERT INTO observation_events "
+                "(event_id,observation_id,event_type,event_time,from_status,to_status,source_id,reason,metadata_json) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (event.event_id, event.observation_id, event.event_type, event.event_time,
+                 event.from_status, event.to_status, event.source_id, event.reason,
+                 dumps_json(event.metadata)),
+            )
 
     def pause(self, obs: Observation) -> ObservationEvent:
         return self.transition(obs, OBS_PAUSED, reason="用户暂停观察")

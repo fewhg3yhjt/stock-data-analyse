@@ -450,6 +450,14 @@ class PortfolioService:
             conn.execute(
                 "UPDATE position_cycles SET phase=?, updated_at=? WHERE position_cycle_id=?",
                 (new_phase, now_utc(), exe.position_cycle_id))
+            if new_phase != current:
+                conn.execute(
+                    "INSERT INTO position_events "
+                    "(position_event_id,position_cycle_id,event_type,event_time,old_phase,new_phase,reason,advice_id,decision_id,created_at) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (new_id("pe"), exe.position_cycle_id, exe.event_type, exe.trade_time,
+                     current, new_phase, exe.reason, exe.advice_id or "", exe.decision_id or "", now_utc()),
+                )
 
     def _close_cycle(self, cycle_id: str) -> None:
         self.repo.db.update("position_cycles", {
@@ -460,9 +468,20 @@ class PortfolioService:
     @staticmethod
     def _close_cycle_conn(conn, cycle_id: str) -> None:
         ts = now_utc()
+        row = conn.execute(
+            "SELECT phase FROM position_cycles WHERE position_cycle_id=?", (cycle_id,)
+        ).fetchone()
         conn.execute(
             "UPDATE position_cycles SET status=?, phase=?, closed_at=?, updated_at=? WHERE position_cycle_id=?",
             (CYCLE_CLOSED, PHASE_CLOSED, ts, ts, cycle_id))
+        if row and row["phase"] != PHASE_CLOSED:
+            conn.execute(
+                "INSERT INTO position_events "
+                "(position_event_id,position_cycle_id,event_type,event_time,old_phase,new_phase,reason,advice_id,decision_id,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (new_id("pe"), cycle_id, "CLOSED", ts, row["phase"], PHASE_CLOSED,
+                 "持仓数量归零", "", "", ts),
+            )
 
     def _append_ledger(self, exe: Execution, entry_type: str, amount: float) -> None:
         prev = self.cash_balance(exe.portfolio_id)

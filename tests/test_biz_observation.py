@@ -44,8 +44,8 @@ class TestObservationService:
         assert ev["event_type"] == "CREATED"
 
     def test_transition_valid(self, service):
-        obs = make_obs()
-        event = service.transition(obs, OBS_OBSERVING)
+        obs = service.create_observation("sh600908")
+        event = service.transition_and_save(obs, OBS_OBSERVING)
         assert obs.status == OBS_OBSERVING
         assert event.from_status == OBS_DISCOVERED
         assert event.to_status == OBS_OBSERVING

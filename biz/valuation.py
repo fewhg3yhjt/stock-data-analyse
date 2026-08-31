@@ -69,7 +69,7 @@ class PositionValuationService:
         total_pnl = (unrealized or 0) + summary["realized_pnl"]
         return_rate = total_pnl / cost_basis if cost_basis else None
 
-        return PositionValuation(
+        valuation = PositionValuation(
             position_cycle_id=position_cycle_id,
             symbol=cycle.symbol,
             as_of=self._as_of(),
@@ -85,6 +85,8 @@ class PositionValuationService:
             price_source="published_stock_daily" if not self.context.get("fallback_used") else "fallback",
             data_context=self.context,
         )
+        self._save_snapshot(valuation)
+        return valuation
 
     def valuate_portfolio(self, portfolio_id: str) -> dict:
         """组合总览：现金 + Σ 持仓市值。"""
@@ -140,3 +142,25 @@ class PositionValuationService:
         if self.df is not None and not self.df.empty and "date" in self.df.columns:
             return str(pd.to_datetime(self.df["date"].iloc[-1]).strftime("%Y-%m-%d"))
         return now_utc()[:10]
+
+    def _save_snapshot(self, valuation: PositionValuation) -> None:
+        """保存按周期和估值日确定的派生快照，重复计算保持幂等。"""
+        from StockInvestmentTool.biz.db import dumps_json
+
+        snapshot_id = f"ps_{valuation.position_cycle_id}_{valuation.as_of}"
+        self.pf.repo.db.upsert("position_snapshots", {
+            "snapshot_id": snapshot_id,
+            "position_cycle_id": valuation.position_cycle_id,
+            "as_of": valuation.as_of,
+            "quantity": valuation.quantity,
+            "average_cost": valuation.average_cost,
+            "cost_basis": valuation.cost_basis,
+            "market_price": valuation.market_price,
+            "market_value": valuation.market_value,
+            "unrealized_pnl": valuation.unrealized_pnl,
+            "realized_pnl": valuation.realized_pnl,
+            "return_rate": valuation.return_rate,
+            "phase": self.pf.get_cycle(valuation.position_cycle_id).phase,
+            "data_context_json": dumps_json(valuation.data_context),
+            "created_at": now_utc(),
+        }, "snapshot_id")
