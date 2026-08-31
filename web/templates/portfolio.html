@@ -106,8 +106,8 @@ tr:last-child td{border-bottom:none;}
       <div class="stat-card blue"><div class="label">持仓数</div><div class="value">{{ summary.get('position_count', 0) }}</div></div>
       <div class="stat-card"><div class="label">总市值</div><div class="value">{{ '{:,.0f}'.format(summary.get('total_market_value', 0)) }}</div></div>
       <div class="stat-card"><div class="label">总成本</div><div class="value">{{ '{:,.0f}'.format(summary.get('total_cost', 0)) }}</div></div>
-      <div class="stat-card {{ 'green' if summary.get('total_pnl', 0) >= 0 else 'red' }}"><div class="label">总盈亏</div><div class="value">{{ '{:+,.0f}'.format(summary.get('total_pnl', 0)) }}</div></div>
-      <div class="stat-card {{ 'green' if summary.get('total_pnl_pct', 0) >= 0 else 'red' }}"><div class="label">盈亏率</div><div class="value">{{ '{:+.2f}%'.format(summary.get('total_pnl_pct', 0)) }}</div></div>
+      <div class="stat-card {{ 'red' if summary.get('total_pnl', 0) >= 0 else 'green' }}"><div class="label">总盈亏</div><div class="value">{{ '{:+,.0f}'.format(summary.get('total_pnl', 0)) }}</div></div>
+      <div class="stat-card {{ 'red' if summary.get('total_pnl_pct', 0) >= 0 else 'green' }}"><div class="label">盈亏率</div><div class="value">{{ '{:+.2f}%'.format(summary.get('total_pnl_pct', 0)) }}</div></div>
       <div class="stat-card"><div class="label">可用资金</div><div class="value">{{ '{:,.0f}'.format(summary.get('portfolio', {}).get('cash_available', 0)) }}</div></div>
     </div>
   </div>
@@ -120,14 +120,14 @@ tr:last-child td{border-bottom:none;}
       <div class="pos" id="pos-{{ p.id }}">
         <div class="pos-head">
           <span class="name">{{ p.stock_name }} <span class="code">{{ p.stock_code }} · {{ p.scheme_name }}</span></span>
-          <span class="tag {{ 'green' if p.unrealized_pnl_pct >= 0 else 'red' }}">{{ '{:+.2f}%'.format(p.unrealized_pnl_pct) }}</span>
+          <span class="tag {{ 'red' if p.unrealized_pnl_pct >= 0 else 'green' }}">{{ '{:+.2f}%'.format(p.unrealized_pnl_pct) }}</span>
         </div>
         <div class="pos-grid">
           <div class="pos-metric"><div class="l">当前价</div><div class="v">{{ '%.2f' % p.current_price }}</div></div>
           <div class="pos-metric"><div class="l">成本</div><div class="v">{{ '%.2f' % p.avg_cost }}</div></div>
           <div class="pos-metric"><div class="l">份额</div><div class="v">{{ '{:,.0f}'.format(p.total_shares) }}</div></div>
           <div class="pos-metric"><div class="l">市值</div><div class="v">{{ '{:,.0f}'.format(p.market_value) }}</div></div>
-          <div class="pos-metric"><div class="l">浮盈</div><div class="v {{ 'green' if p.unrealized_pnl >= 0 else 'red' }}">{{ '{:+,.0f}'.format(p.unrealized_pnl) }}</div></div>
+          <div class="pos-metric"><div class="l">浮盈</div><div class="v {{ 'red' if p.unrealized_pnl >= 0 else 'green' }}">{{ '{:+,.0f}'.format(p.unrealized_pnl) }}</div></div>
           <div class="pos-metric"><div class="l">止损线</div><div class="v">{{ '%.2f' % p.stop_loss_price }}</div></div>
           <div class="pos-metric"><div class="l">阶段</div><div class="v" style="font-size:13px;">{{ p.position_phase }}</div></div>
         </div>

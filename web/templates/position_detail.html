@@ -85,10 +85,10 @@ table.mini td.v{color:var(--text);font-weight:500;}
       <div class="stat-card"><div class="l">持仓均价</div><div class="v">{{ '%.2f' % p.avg_cost }}</div></div>
       <div class="stat-card"><div class="l">份额</div><div class="v">{{ '{:,.0f}'.format(p.total_shares) }}</div></div>
       <div class="stat-card"><div class="l">市值</div><div class="v">{{ '{:,.0f}'.format(p.market_value) }}</div></div>
-      <div class="stat-card"><div class="l">浮动盈亏</div><div class="v {{ 'green' if p.unrealized_pnl >= 0 else 'red' }}">{{ '{:+,.0f}'.format(p.unrealized_pnl) }}</div></div>
+      <div class="stat-card"><div class="l">浮动盈亏</div><div class="v {{ 'red' if p.unrealized_pnl >= 0 else 'green' }}">{{ '{:+,.0f}'.format(p.unrealized_pnl) }}</div></div>
       <div class="stat-card"><div class="l">止损线</div><div class="v">{{ '%.2f' % p.stop_loss_price }}</div></div>
       <div class="stat-card"><div class="l">阶段</div><div class="v" style="font-size:14px;">{{ p.position_phase }}</div></div>
-      <div class="stat-card"><div class="l">已实现盈亏</div><div class="v {{ 'green' if detail.realized_pnl >= 0 else 'red' }}">{{ '{:+,.0f}'.format(detail.realized_pnl) }}</div></div>
+      <div class="stat-card"><div class="l">已实现盈亏</div><div class="v {{ 'red' if detail.realized_pnl >= 0 else 'green' }}">{{ '{:+,.0f}'.format(detail.realized_pnl) }}</div></div>
     </div>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
       <span class="tag gray">方案: {{ p.scheme_name }}</span>
@@ -286,7 +286,7 @@ table.mini td.v{color:var(--text);font-weight:500;}
         <td>{{ '%.2f' % t.price }}</td>
         <td>{{ '{:,.0f}'.format(t.shares) }}</td>
         <td>{{ '{:,.0f}'.format(t.amount) }}</td>
-        <td class="{{ 'green' if t.pnl >= 0 else 'red' }}">{{ '{:+,.2f}'.format(t.pnl) if t.pnl else '—' }}</td>
+        <td class="{{ 'red' if t.pnl >= 0 else 'green' }}">{{ '{:+,.2f}'.format(t.pnl) if t.pnl else '—' }}</td>
         <td>{{ t.reason }}</td>
       </tr>
       {% endfor %}

@@ -39,6 +39,10 @@
 - [Phase 4 实施记录](PHASE4_IMPLEMENTATION.md)
 - [市场发现待办](MARKET_DISCOVERY_TODO.md)
 
+## 前端
+
+- [前端工程整改清单](FRONTEND_ENGINEERING_BACKLOG.md)：颜色语义、XSS/CSP、toast/公共函数收敛、CDN 本地化、静态资源版本等工程实现问题与验收标准。
+
 ## 运维
 
 - [备份运行手册](BACKUP_RUNBOOK.md)

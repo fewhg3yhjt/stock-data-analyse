@@ -363,9 +363,9 @@ function renderResults(data) {
   ];
   if (d.backtest_done) {
     s.push(
-      { label: '策略收益', value: d.total_return != null ? d.total_return + '%' : '-', cls: 'green' },
-      { label: '买入持有', value: d.buy_hold_return != null ? d.buy_hold_return + '%' : '-', cls: 'orange' },
-      { label: '超额收益', value: d.total_return != null && d.buy_hold_return != null ? (d.total_return - d.buy_hold_return).toFixed(2) + '%' : '-', cls: 'green' },
+      { label: '策略收益', value: d.total_return != null ? d.total_return + '%' : '-', cls: d.total_return != null && d.total_return >= 0 ? 'red' : 'green' },
+      { label: '买入持有', value: d.buy_hold_return != null ? d.buy_hold_return + '%' : '-', cls: d.buy_hold_return != null && d.buy_hold_return >= 0 ? 'red' : 'green' },
+      { label: '超额收益', value: d.total_return != null && d.buy_hold_return != null ? (d.total_return - d.buy_hold_return).toFixed(2) + '%' : '-', cls: d.total_return != null && d.buy_hold_return != null && (d.total_return - d.buy_hold_return) >= 0 ? 'red' : 'green' },
       { label: '最大回撤', value: d.max_drawdown != null ? d.max_drawdown + '%' : '-', cls: 'red' },
       { label: '夏普', value: d.sharpe_ratio || '-', cls: 'blue' },
       { label: '胜率', value: d.win_rate != null ? d.win_rate + '%' : '-', cls: 'green' },
