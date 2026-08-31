@@ -79,7 +79,7 @@ A股分析工具，生产环境直接迭代（Docker 容器 `stock-invest`，代
 
 ### 🔴 高优先级
 1. ~~补拉 000 开头深市主板股票~~ ✅ 已补（daily 482只/财务史20只/行业后台采）
-2. ~~全面梳理数据源统一走数据层~~ ✅ 已改（reporter/engine/runner warehouse-first）
+2. 全面梳理数据源统一走数据层：部分完成。新 `biz/` 业务链路使用 Published/Unified Data Access；`core/engine.py`、`portfolio/*` 和部分 `web/app.py` 仍直接引用 `StockDataFetcher` 或旧在线回退，不能标记为完成。
 
 ### 🟡 中优先级
 3. ~~页面所有按钮交互反馈~~ ✅ 已统一（market/position_detail/strategy 补 toast）

@@ -17,7 +17,7 @@ External Source
 → Quality Check
 → Published Version
 → Dataset Current
-→ Indicators / Factors
+→ Indicators（研究因子统一归入指标；历史 Factors 仅归档）
 → Business Consumers
 ```
 
@@ -26,13 +26,17 @@ External Source
 1. 任务中心显示启用不代表 APScheduler 已注册。
 2. 质量失败可能被任务层记录为成功，并继续进入发布阶段。
 3. Publish 可能在缺少本次输出版本时选择历史合格 Candidate。
-4. Indicators/Factors 未经过独立质量检查即登记 `PASS/published`。
+4. Indicators 未经过独立质量检查即登记 `PASS/published`；历史 Factors 链路的清理尚未完成。
 5. `management.db`、`warehouse/meta.db`、旧 `job_runs.db` 的事实口径分裂。
 6. 生产文件、数据集配置和消费者之间存在字段契约不一致。
 7. 大量正式业务消费者绕过 `DatasetAccess`，直接读取物理文件或静默在线回退。
 8. 日期口径、数据来源、降级状态和质量状态没有贯穿到 API 和 UI。
 9. 后台任务缺少跨入口互斥、可靠提交和进程重启恢复。
 10. 数据中心的健康状态不能真实表达全市场覆盖和业务可用性。
+
+补充的业务事实缺口：新 `biz` 模拟链路会在内存生成 `SimulationEvent`，但当前没有 `biz/repo.py` 写入/查询方法，`simulation_events` 表不会获得新链路事件。旧 backend domain service 的事件写入测试不等价于新 `biz` 链路验收。
+
+补充的契约与迁移缺口：`DataContext` 文档字段与 `biz/models.py`、`DatasetAccess` 输出尚未完全一致；旧 `RuleContext` 仍被 `strategy/core/portfolio` 正式旧链路使用；数据源统一只完成新 `biz` 路径，旧 Fetcher/fallback 仍有调用方；Factors 目标已废弃但配置、术语和历史兼容链路仍未完全退役。
 
 改造目标是收口事实源、状态传播和消费契约，不是推倒重来。
 
@@ -222,6 +226,10 @@ FAIL    → failed，禁止发布
 10. 人工发布历史 Candidate 应使用独立显式入口，不得复用自动流水线回退。
 11. `expected_symbols` 必须来自请求固化 Universe、UniverseSnapshot、active instruments 或明确配置基准，禁止使用 Candidate 自身 `symbol_count`。
 12. Publisher 必须按 `dataset_name + partition_key` 获取数据库租约或等价分区锁；锁覆盖读取 current、复制 rollback、标记 publishing、替换文件、更新 current 的完整发布临界区。
+13. 模拟任务必须持久化 `SimulationEvent`，并与 `SimulationRun`、`SimulationFill`、`SimulationResult` 保持相同 run 关联。
+14. `DataContext` 必须形成单一 canonical DTO；`partition_versions`、`max_date` 等内部字段不得直接作为新业务公共契约。
+15. 新 `biz` 统一使用 `StrategyContext`；旧 `RuleContext` 只能存在于明确标记的迁移兼容链路，迁移完成前不得删除。
+16. Factors 退役必须停止新生产、清理 active 配置/任务/消费者/术语，并将历史文件转为显式 legacy archive；不得误删历史文件。
 
 ### 必测场景
 
@@ -234,6 +242,10 @@ FAIL    → failed，禁止发布
 7. Request 和 Job Run 终态一致。
 8. Candidate 自身数量变化不能改变 coverage 基准；缺失 Universe 标的时必须降低质量或阻断发布。
 9. 两个并发 Publisher 发布同一分区时只有一个进入临界区，最终文件、Current 指针和版本状态一致。
+10. 新 `biz` 模拟链路产生的 `DATA_GAP`、`FILLED`、`ORDER_REJECTED`、`END_OF_PERIOD` 等事件可从业务库按 run 查询。
+11. DatasetAccess、Screen、Research、Simulation 和 API DTO 返回一致的 DataContext 字段与版本引用。
+12. 旧 `RuleContext` 仅由迁移兼容链路引用，且有迁移前后回归对账。
+13. Factors 不再被新任务、API、数据中心或消费者作为正式结果依赖，历史归档可被显式查询。
 
 ### 验收
 
@@ -546,9 +558,9 @@ valuation_daily = PE/PB 等估值事实
 4. 禁止吞掉所有 SQL 异常后返回空表。
 5. Indicators 新结果只写标准小写字段。
 6. 旧 `MA20/volatility20` 在统一访问层标准化，页面不再分别兼容。
-7. Factors 配置、计算、存储和扫描器统一字段，例如统一采用 `volatility_20_factor`。
-8. 估值输入不可用时，因子标记为 unavailable，并在质量报告中列出缺失依赖。
-9. 为 WarehouseSource、DatasetAccess、Builders 和主要消费者增加字段契约测试。
+7. Factors 新生产链路按退役流程清理：停止任务和调度、移除 active 配置和消费者、清理数据中心/健康检查/API/术语残留；历史 Factors 文件只作为 legacy archive 保留。
+8. 估值输入不可用时，相关指标或历史因子归档状态标记为 unavailable，并在质量报告中列出缺失依赖。
+9. 为 WarehouseSource、DatasetAccess、Builders 和主要消费者增加字段契约测试；不得让新消费者依赖 Factors。
 
 ### 验收
 
@@ -558,6 +570,7 @@ valuation_daily = PE/PB 等估值事实
 4. 页面不再直接判断大小写字段名。
 5. Factors 配置字段与 Parquet 字段一致。
 6. Schema Mismatch 可观测且不会伪装为在线源正常返回。
+7. 新任务、API、数据中心和消费者不再创建或依赖 Factors 正式结果；历史 Factors 仅可通过显式归档入口访问。
 
 ### 建议提交
 

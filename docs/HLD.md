@@ -528,7 +528,7 @@ RENDERER_FACTORY = {"email": HtmlRenderer, "feishu": CardRenderer, "wecom": Mark
 
 ## 5. 展示层设计（FR-4）
 
-**现状**：16 个模板各自内联 `<style>`，`_nav.html` 靠 include 内联 header/nav 样式「保证渲染一致」。
+**现状**：模板已统一继承 `base.html`，公共 CSS 和导航已经建立；局部内联样式、历史命名和组件差异仍需继续清理。
 
 **目标设计**：
 - 抽 `web/templates/base.html`（布局骨架）+ `web/static/base.css`（CSS 变量 + 组件类：card/btn/form/table/tag/toast）；
@@ -537,7 +537,7 @@ RENDERER_FACTORY = {"email": HtmlRenderer, "feishu": CardRenderer, "wecom": Mark
 
 **改动点**：
 - 新建 `base.html`、`base.css`；
-- 16 个模板逐个改为继承 base + 去内联样式；
+- 逐个清理局部样式并继续收敛公共组件；模板数量以自动检查为准；
 - 清理冗余路由/模板（`portfolio.html` → `warroom.html` 的陈旧重定向）。
 
 **设计意图**：统一设计系统，非重写前端。保留 Jinja + 原生 JS + ECharts，降低风险。

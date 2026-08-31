@@ -202,7 +202,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 指标中心 | 第一版完成 | `/indicator-center` 已支持指标浏览、表达式预览、自定义 base/composite 指标 CRUD；代码指标和内置指标保持只读 |
 | FR-2 策略编排器 | 部分完成 | 结构化参数、实时预览、schema 校验、样本回测预检、默认/版本/回滚 UI 已完成；发布策略与全量引擎迁移仍进行中 |
 | FR-3 通知编排器 | 部分完成 | action/price/indicator、AND/OR、持久化 outbox、重试、死信、投递台账和每日 Digest 已完成；历史兼容通知管线仍待清理 |
-| FR-4 UI 统一 | 已完成主要页面 | 19 个业务模板已继承 `base.html`；公共导航和设计系统已统一 |
+| FR-4 UI 统一 | 基础完成 | 模板已继承 `base.html`；公共导航和设计系统已建立，数量以自动检查为准 |
 | FR-5 DuckDB 图表 | 基本完成 | 主图表路径已改善；分钟分区也已独立接入，但没有性能基线和 P95 证据 |
 
 ### 4.3 最近已落地的连续批次
@@ -215,7 +215,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 | 规则/状态主链路 | `7761397` `ddf4172` `9f15ede` | 买入计划 registry、Advisor 硬止损 registry、持仓状态机生产接入 |
 | 可信性修复 | `e304657` `afaed04` `a855316` `7b908aa` | 财务事务原子性、通知去重时机、trail 参数生效、配置路径/session 加固 |
 
-当前完整回归：**116 个测试通过**。
+当前测试总数不在本文手工维护；以当前测试收集结果和 CI 为准。
 
 ### 4.4 本轮新增治理能力
 
@@ -227,7 +227,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://stock.easyconnect.ltd/
 - `notifier/channels.py` / `web/scheduler.py`：Webhook 非 2xx 失败、调度任务 `max_instances=1`、通知状态原子写入。
 - `docs/BACKUP_RUNBOOK.md`：备份范围、隔离恢复演练和生产数据安全边界。
 - `web/app.py:/api/health/details`：返回调度、仓库分区和关键开关状态，供生产巡检。
-- 19 个业务模板已全部继承 `web/templates/base.html`；模板迁移不改变路由和业务脚本。
+- 业务模板已统一继承 `web/templates/base.html`；具体模板数量以自动检查为准，模板迁移不改变路由和业务脚本。
 - `warehouse/storage.py` / `portfolio/dashboard.py`：指标分区按标的使用 DuckDB 投影查询，避免逐分区全量 pandas 扫描。
 - `web/app.py`：Excel 导入限制扩展名和 10MB 大小，避免无限制上传进入生产数据目录。
 - `notifier/outbox.py`：持久化通知队列、失败退避、5 次失败进入 dead 状态和投递台账接口。

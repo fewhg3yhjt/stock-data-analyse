@@ -28,7 +28,7 @@
 │ 数据层 warehouse/     全量数据仓库                           │
 │  ├─ raw/            贴源层（各接口原始数据，互不覆盖）          │
 │  ├─ daily/          加工层（标准OHLCV+PE/PB，单位统一）        │
-│  ├─ factors/        因子层（固定列预计算，全市场扫描用）        │
+│  ├─ factors/        历史因子归档（目标并入 indicators，不再新增） │
 │  ├─ indicators/     指标层（动态可配，单股分析/决策用）        │
 │  ├─ fundamentals/   基本面层（完整财务史：ROE/毛利率/扣非/负债率）│
 │  ├─ online/         盘中快照                                │
@@ -112,19 +112,19 @@ Parquet/CSV 保存原始数据、标准数据和计算结果
   → Published stock_daily（当前正式版本）
   → Unified Data Access ── ① 指标/因子统一输入
   → indicators/ 指标层（可配置计算）
-  → factors/ 因子层（固定列，全市场扫描）
+   → indicators/ 统一指标层（历史 factors 仅归档）
   → 下游：advisor决策 / 折线图 / 策略扫描 / 邮件
 ```
 
 ### 关键衔接点
-1. **指标和因子通过 Unified Data Access 读取 Published stock_daily**，不直接枚举 daily 或读取 raw
-2. **指标层与因子层职责分离**：
-   - `factors/`：固定列预计算，供全市场扫描（DuckDB 直接扫）
-   - `indicators/`：动态可配，供单股分析/决策/展示
+1. **指标通过 Unified Data Access 读取 Published stock_daily**，不直接枚举 daily 或读取 raw；历史 factors 不属于新的正式消费入口
+2. **指标层与历史因子归档边界**：
+   - `indicators/`：统一的指标和研究因子生产、读取与业务消费入口
+   - `factors/`：历史兼容文件和归档，目标不再更新；下线前不得新增独立任务、API 或消费者
 3. **下游消费**：
    - advisor：策略 yaml 可引用指标表达式（止盈点等）
    - 折线图：前端请求指标序列 → 指标引擎现算/读分区
-   - 策略扫描：DuckDB 扫 factors/indicators 分区
+    - 策略扫描：通过统一 Data Access 读取 indicators；历史 factors 只允许显式归档查询
     - 邮件：操作依据里展示指标值
 
 ## 二.一、任务中心与数据中心边界

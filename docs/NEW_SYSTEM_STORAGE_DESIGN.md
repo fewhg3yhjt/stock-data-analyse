@@ -93,6 +93,12 @@ relative_path
 | ParameterSearchRun | `parameter_search_runs` |
 | ParameterSearchResult | `parameter_search_results` |
 
+`SimulationEvent` 是模拟过程事实，不是仅存在于执行器内存中的调试对象。新 `biz` 模拟链路必须将 `SimulationExecutor.events` 持久化到 `simulation_events`，并支持按 `simulation_run_id` 按时间顺序查询。
+
+当前实现状态：表结构和 `SimulationEvent` dataclass 已存在，`SimulationExecutor` 会生成事件；但 `biz/repo.py` 尚无 `save_simulation_event` / `list_simulation_events`，`task_registry.py` 尚未写入，因此该事实目前不会在新业务链路中保存。旧 `repositories/backend_domain.py` / `services/simulation_service.py` 的事件实现属于另一套历史服务，不能作为新 `biz` 链路完成证明。
+
+验收至少覆盖 `DATA_GAP`、`SIGNAL_GENERATED`、`ORDER_REJECTED`、`FILLED`、`END_OF_PERIOD` 和执行异常时已产生事件的处理策略。
+
 ### 4.4 观察与账户
 
 | 实体 | 表 |

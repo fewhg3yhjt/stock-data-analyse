@@ -54,7 +54,7 @@ Phase 4 的目标是把“功能集合”升级为“可运营的投资工作台
 output/data/warehouse/
 ├── daily/          全市场天级行情，按月 Parquet
 ├── indicators/     天级指标分区
-├── factors/        因子宽表
+├── factors/        历史因子归档（目标并入 indicators，不再新增）
 ├── fundamentals/  单标的基本面历史
 ├── online/         观察池低频在线快照
 └── minute/         观察池腾讯分钟数据，按交易日保存

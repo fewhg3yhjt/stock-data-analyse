@@ -38,7 +38,7 @@
 ├ 指标层    indicators/      表达式引擎（基础/组合/代码指标）
 ├ 数据层    warehouse/       Parquet 月分区 + management.db（生产）/meta.db（旧回退）+ DuckDB 扫描
 │           datasource/      baostock(长连接+自愈) / AkShare / 腾讯行情
-└ 前端      web/static/      3 个 ECharts JS + 16 个模板
+└ 前端      web/static/      多个业务 JS + 多个 Jinja 模板；精确数量以自动检查为准
 ```
 
 ---
@@ -74,14 +74,14 @@
 | 指标 | `indicators/engine.py` | 254 | 表达式引擎（基础/组合/代码指标） |
 | 仓库 | `warehouse/storage.py` | 约 390 | Parquet 月分区 + 生产 management.db / 旧 meta.db 回退 |
 | 通知 | `notifier/notify.py` + `web/scheduler.py` | 391+469 | 消息构造 + 定时调度 |
-| 前端 | `web/static/*.js` | 3 文件 | echarts.min.js(1MB) + stock-chart + stock-detail |
+| 前端 | `web/static/*.js` | 当前多个文件 | 具体文件和数量以自动检查为准 |
 
 ---
 
 ## 五、设计亮点（值得保留）
 
 1. **配置驱动策略抽象正确**：`type + params` 声明式 + `strategy_spec` 纯文档段分离，把「人能读懂的说明书」与「机器执行的参数」分开。
-2. **数据层分层清晰**：`raw/daily/factors/indicators/fundamentals/online` 职责边界明确（见 DESIGN.md）。
+2. **数据层分层正在收口**：`raw/daily/indicators/fundamentals/online` 是目标正式链路；`factors` 已确定废弃但历史文件、术语和兼容入口仍残留（见 DESIGN.md 和指标归一 backlog）。
 3. **工程化细节扎实**：baostock 连接自愈（死循环补丁/看门狗/退避）是真实踩坑产物。
 4. **回测双引擎同口径对齐** + 状态机不变量断言，有防回归意识。
 5. **知识沉淀**：DESIGN.md / HANDOVER.md 的会话交接习惯，优于多数个人项目。
@@ -129,6 +129,11 @@
 | B5 | **旧 `job_runs.db` 收敛缺少专项迁移方案** | `ops/job_runs.py`、`ops/management_db.py` | 旧库仍可能承载 TaskCenter 运行表；缺少 Legacy ID 映射、重复记录处理、只读切换和独立验收，不能证明 `management.db` 已成为唯一数据任务事实源 |
 | B6 | **领域运行状态与 BusinessJobRun 状态未收敛** | `biz/task_registry.py:206-213`、`biz/repo.py:341-354` | 模拟执行在 executor 前创建 `running` 领域对象，异常时只由任务层标记 JobRun failed；领域运行可能永久停留 `running`，筛选失败还会留下已保存的 ScreenVersion/UniverseSnapshot 孤儿记录 |
 | B7 | **业务队列领取不是原子 claim** | `biz/tasks.py:161-172`、`biz/tasks.py:196-203` | `run_next()` 先查询 requested 行，再由 `execute_run()` 单独校验和更新；并发 Worker 可能选中同一 Run，锁竞争被 API 转成 500，而不是可预期的 claim 失败/重试结果 |
+| B8 | **新 biz 模拟事件未形成持久化事实** | `biz/simulation.py:77,287`、`biz/db.py:292-299`、`biz/repo.py` | `SimulationExecutor` 生成 `SimulationEvent` 并暂存内存，但新 biz repository 和 task handler 没有写入/查询事件的方法；模拟信号、拒单、成交和数据缺口在任务结束后丢失 |
+| B9 | **DataContext 公共契约与实现字段漂移** | `docs/DOMAIN_MODEL_AND_CONTRACTS.md:182-201`、`biz/models.py:48-78`、`warehouse/datasets.py:78-87` | 文档、`DataContext` 和 `DatasetResult.context` 分别使用不同的版本、日期和 fallback 字段；下游无法稳定依赖同一数据上下文 |
+| B10 | **旧 RuleContext 仍是正式旧链路依赖** | `strategy/context.py:23-52`、`core/engine.py:220-232`、`portfolio/advisor.py` | 新契约已指定 `StrategyContext`，但旧 core/portfolio/strategy 链路仍直接使用 `RuleContext`；若按文档误删会破坏旧入口 |
+| B11 | **数据源统一完成标记不实** | `core/engine.py:21`、`portfolio/*`、`web/app.py` | 新 biz 链路已使用统一数据访问，但旧 Fetcher 和在线 fallback 仍被多个正式入口引用，尚未完成全量收口 |
+| B12 | **Factors 废弃后的运行时残留未清理** | `config/datasets/stock_daily.yaml:120-125`、`ops/terminology.py:17-36`、相关文档/配置 | 目标已将研究因子并入 indicators，但 Factors consumer、任务类型、产物术语和历史链路仍残留，可能被误作为正式输入 |
 
 ### 6.5 产品 / 配置与扩展性（用户视角核心痛点）
 
@@ -137,7 +142,7 @@
 | U1 | **管理模块极其薄弱，基本不支持自定义配置** | `settings.html` = 4 个 YAML 文本编辑框（方案/初筛/通知规则/通知策略）+ webhook 输入 + 本金 + 数据重置 | 可视化/表单化配置，无需手写 YAML |
 | U2 | **策略无「基于指标」的可视化配置，也无策略管理能力** | `schemes/*.yaml` 的 buy_rules 用 `support_level` 等**写死 type**，参数是 `support_sources:[dividend_anchor, ma_60, ...]` 写死名字；与 `schemes/indicators.yaml` 定义的指标**完全脱节**（两套平行体系） | 能「选择指标 → 组合成策略 → 保存/版本/启用停用」 |
 | U3 | **通知能力薄弱** | 通知靠 3 个 YAML 手写：`rules.yaml`(自选阈值/资金流/每日汇总)、`notify_settings.yaml`(盘中频率/盘后时间/email)、`.env`(webhook)；触发条件固定为「价格突破/跌破/涨跌幅/资金流持续流入/操作建议」；**邮件 `to:` 为空未配好**；改调度需**重启容器**生效 | 定义「何时通知（时间/频率）、通过什么渠道（邮件/飞书/企微）、触发什么条件（任意指标/阈值组合）」 |
-| U4 | **UI 不规整，像未完成品** | 16 个模板各自内联 `<style>`，`_nav.html` 用 include 内联一套 header/nav 样式对齐（注释明说「保证所有页面渲染一致」）；无统一 base template + 统一 CSS | 统一的布局/组件/设计系统 |
+| U4 | **UI 局部历史样式和命名仍有残留** | 模板已统一继承 `base.html`，公共 CSS 和导航已建立；仍需清理局部内联样式、历史命名和页面组件差异 | 完整的布局/组件/设计系统收口 |
 | U5 | **想到一点做一点，不系统** | 路由/页面/字段命名混杂（旧 `/portfolio` 重定向到 `/dashboard/warroom`、`portfolio.html` 与 `warroom.html` 并存等） | 成体系的信息架构与交互规范 |
 
 ---
@@ -145,7 +150,7 @@
 ## 七、关键数据指标（现状快照）
 
 - 数据仓库：全市场日线 6435 只 × 3 年；指标分区 37 月；财务史 4551 只；PE/PB 回补 4799 只。
-- 前端：17 个模板（新增 strategy_composer / notify_composer）；3 个 JS（echarts 1MB + chart 8K + detail 24K）+ base.css 设计系统。
+- 前端：模板和 JS 数量以自动检查为准；已建立 `base.html`、`base.css` 和公共导航。
 - 策略：3 个内置方案（default_value / aggressive_growth / v6_si_wei）+ 指标配置 indicators.yaml。
 - 通知：触发器模型 notify_rules.yaml + 渠道 feishu/wecom/email，邮件收件人可配置。
 
@@ -176,6 +181,6 @@
 | 指标中心 | ✅（第一版） | `indicators/store.py` `indicator_center.html` | 指标浏览/预览；自定义 base/composite CRUD；内置和代码指标保护 |
 | FR-2 策略编排器 | 部分 | `core/composer.py` `scheme_store.py` `strategy_composer.html` | 结构化参数、实时预览、schema 校验、样本回测预检、默认/版本/回滚 UI 已完成；发布策略与全量引擎迁移仍进行中 |
 | FR-3 通知编排器 | 部分 | `notifier/core.py` `triggers.py` `notifier/outbox.py` | action/price/indicator + AND/OR、发送后去重、持久化 outbox、重试、死信、投递台账和每日 Digest 已完成；历史兼容管线仍待清理 |
-| FR-4 UI 统一 | ✅ | `web/static/base.css` `base.html` `_nav.html` | 19 个业务模板全部继承 base.html；导航、组件和移动端基座统一 |
+| FR-4 UI 统一 | ✅（基础完成） | `web/static/base.css` `base.html` `_nav.html` | 模板已统一继承 base.html；局部样式和组件细节仍需继续收口 |
 | FR-5 性能 | 部分 | `datasource/base.py` | 个股图表 DuckDB 单查询和分钟分区已完成；未建立 P95 基准，ECharts 尚未拆包 |
 | 回归 | 待重新核验 | `tests/` | 历史文档中的 116 例统计已过时；以当前实际测试结果为准 |

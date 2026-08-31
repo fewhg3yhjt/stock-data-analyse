@@ -48,7 +48,7 @@ sudo docker inspect stock-invest --format '{{.State.Status}} {{.State.Health.Sta
 
 当前已知基线：
 
-- 完整测试：116 个通过；
+- 测试通过数量以当前测试收集结果和 CI 为准；本文件不维护固定历史数字。
 - 核心业务模板均继承 `base.html`；
 - `daily` 分区约 37 个；
 - `minute` 分区按交易日存储；

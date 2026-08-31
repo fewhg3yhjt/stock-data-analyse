@@ -122,7 +122,7 @@ config_hash
 
 ### 4.4 StrategyContext
 
-策略、选股、研究和模拟统一使用 `StrategyContext` 作为运行时输入。不得再创建 `RuleContext` 或 `EvaluationContext` 作为平行公共类型。
+新 `biz/` 业务平面中的策略、选股、研究和模拟统一使用 `StrategyContext` 作为 canonical 运行时输入。旧 `strategy/`、`core/`、`portfolio/` 链路当前仍使用 `RuleContext`，该类型在旧链路迁移完成前保留；不得在新的 `biz/` 功能中继续扩展或新建另一套公共上下文。旧链路清理完成后，才可删除 `RuleContext`。
 
 ```text
 symbol
@@ -182,16 +182,25 @@ DatasetResult(stock_daily/indicators)
 ### DataContext
 
 ```text
-dataset_versions
-indicator_versions
-data_as_of
 requested_start
 requested_end
+returned_start
+returned_end
+data_as_of
+dataset_refs
+indicator_refs
 quality_status
 source
 fallback_used
+fallback_reason
 is_stale
 ```
+
+`DataContext` 的 canonical 实现仍在收敛：当前 `biz/models.py` 使用 `dataset_refs`、`indicator_refs`、`returned_start`、`returned_end`，而部分数据访问结果仍使用 `partition_versions`、`max_date` 等内部字段。`dataset_versions`、`indicator_versions` 是概念字段，不应继续作为与实现并列的第二套结构。
+
+字段语义：`data_as_of` 是本次业务判断采用的事实截止日；`returned_start/returned_end` 是实际返回数据边界；`dataset_refs/indicator_refs` 保存数据集及分区版本引用；`fallback_reason` 在 `fallback_used=true` 时必须提供。新业务模块最终统一通过 canonical `DataContext` 传递这些信息，旧字段只允许存在于适配层。
+
+当前状态：该契约尚未完全落地，不能在实现状态中标记为“已统一”。迁移完成前，必须同时更新 `DatasetAccess`、Screen、Research、Simulation、StrategyDecision 以及 API DTO，并增加字段完整性和版本引用测试。
 
 ### StrategyDecision
 
@@ -353,7 +362,7 @@ ScreenCandidate
 
 ## 实现状态与记录
 
-### 实现状态：P0 核心完成（统一契约落地 biz/ 包）
+### 实现状态：P0 核心部分落地，公共契约与旧链路仍在收敛
 
 ### 已完成交付物
 
@@ -368,6 +377,11 @@ ScreenCandidate
 ### 关键决策
 
 - 统一公共类型名：策略/选股/研究/模拟统一使用 `StrategyContext`（不再出现 RuleContext/EvaluationContext 平行类型）。
+
+上述“统一公共类型名”仅适用于新 `biz/` 业务平面；旧 `strategy/`、`core/`、`portfolio/` 当前仍使用 `RuleContext`，属于待迁移兼容链路。
+
+- `SimulationEvent` 表和模型已定义，但新 `biz` 模拟 repository 尚未持久化事件。
+- `DataContext` canonical 字段仍需同步到 DatasetAccess、各业务服务和 API DTO。
 - 决策轨迹：`decision_trace` 含 evaluated/triggered/suppressed/final_action（§7 决策解释轨迹落地）。
 - MarketRegime 由业务平面 `MarketRegimeService` 生产（§4.5 落地）。
 

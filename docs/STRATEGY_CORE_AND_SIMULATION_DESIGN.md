@@ -604,7 +604,11 @@ close > ma60
 
 ## 实现状态与记录
 
-### 实现状态：P0 核心完成（进行中，P1-P3 待开发）
+### 实现状态：P0 核心部分实现，持久化与生产接入仍在进行
+
+状态说明：下表只表示 `biz/` 代码和部分测试已存在，不表示持久化、API、生产任务接入和旧链路迁移全部完成。
+
+业务库表数量不在本文件手工维护；以运行时 schema 检查结果为准。
 
 ### 已完成交付物（biz/ 包）
 
@@ -618,7 +622,7 @@ close > ma60
 | `biz/screen.py` | ScreenExecutor + ConditionCompiler：精确评估 + SQL 超集约束标记（保守超集） | `tests/test_biz_screen.py`（7） |
 | `biz/research.py` | ResearchService：技术/市场可用、估值降级、基本面 deferred、生成 StrategyDecision/Evidence | `tests/test_biz_research.py`（5） |
 | `biz/regime.py` | MarketRegimeService：六态市场状态统一计算 | `tests/test_biz_regime.py`（6） |
-| `biz/db.py` + `biz/repo.py` | business.db 37 表 schema + BusinessRepository 持久化 | `tests/test_biz_repo.py`（7） |
+| `biz/db.py` + `biz/repo.py` | business.db schema + 部分 BusinessRepository 持久化；实际表数量以运行时 schema 检查为准 | `tests/test_biz_repo.py` |
 | `scripts/biz_p0_smoke.py` | P0 集成冒烟（容器内真实数据） | 冒烟 PASS |
 
 ### P0 集成冒烟结果（容器内真实 stock_daily/indicators）
@@ -637,12 +641,12 @@ P0-Smoke: PASS
 2. **MarketRegime.to_dict 位置**：初版误放 MarketRegimeService，应为 MarketRegime dataclass 方法。已修正。
 3. **ScreenExecutor 行定位**：历史 as_of 需按 symbol 历史定位目标日期行，不能直接用 reset 索引；日期比较统一取前 10 位避免 Timestamp 格式差异。已修正。
 4. **StrategyContext 缺 position_state_avg_cost**：硬止损需要持仓成本，已在 StrategyContext 补充字段。
+5. **SimulationEvent 持久化缺口**：`SimulationExecutor` 会生成内存事件，`biz/db.py` 已建 `simulation_events` 表，但新 `biz/repo.py` 尚无事件写入/查询方法，`task_registry.py` 也未保存事件；旧 `services/simulation_service.py` 的事件测试不代表新 `biz` 模拟链路已完成。
 
-### 后续待开发
+### 后续待开发与未闭环项
 
-- P1：观察池（Observation 状态机）、账户持仓（PositionCycle/Execution/CashLedger FIFO）、PositionValuationService
-- P2：Performance（权益曲线/三线对比/Review）、Advice/Notification（Outbox/Email）
-- P3：业务任务框架、Health、Backup
+- P1/P2：继续完善 Observation、账户持仓、Performance、Advice/Notification 的生产接入和状态收敛；相关 `biz/` 代码、表和基础 API 已部分存在，不应再统一标记为“尚未实现”。
+- P3：业务任务框架、Health、Backup 的生产接入和完整验收。
 
 ### 已补充
 
@@ -663,7 +667,10 @@ P0-Smoke: PASS
 
 - `tests/test_biz_simulation.py`：7 项通过，覆盖 FIFO/费用税费滑点、多标的、现金约束、确定性和权益曲线。
 - 尚未完成：ParameterSearchRun、完整策略版本管理生命周期、复杂组合级仓位分配和异步任务正式接管。
-- 当前业务专项/页面回归：`171 passed`；全量回归：`428 passed`。
+- 测试数量以当前测试收集结果和 CI 为准；本文件不再维护易过时的业务专项/全量通过数。
+- 尚未完成：`simulation_events` 的新业务持久化、查询 API 和异常路径验收。
+- `DataContext` canonical 字段仍需同步到所有数据访问、业务服务和 API DTO。
+- 旧 `RuleContext`、旧数据源和旧 Factors 兼容链路尚未完成迁移或退役。
 - 策略决策生成已强制要求持久化 `strategy_version_id`，规则 priority 和 suppression trace 已加入测试。
 - 业务任务 registry 已提供 simulation handler，但正式 API 仍需统一改为创建 requested JobRun 后由 Worker 执行。
 - 正式模拟 API 已遵循 requested JobRun → Worker → SimulationRun/Result 查询链路，不在 HTTP 请求线程执行模拟。

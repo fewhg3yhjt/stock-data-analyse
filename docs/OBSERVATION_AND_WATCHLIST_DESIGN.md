@@ -768,6 +768,8 @@ simulation snapshot → ObservationSnapshot
 
 ### 实现状态：P1-1 基础能力完成
 
+状态说明：业务服务、持久化、API 和生产主链路分别核验；基础测试通过不等于最终 Web 入口或生产切换已完成。
+
 ### 已完成交付物
 
 | 文件 | 能力 | 测试 |
@@ -794,11 +796,6 @@ simulation snapshot → ObservationSnapshot
 
 ### 跨模块验证
 
-- `tests/test_biz_end_to_end.py` 已覆盖 ScreenRun/ScreenCandidate → ResearchRun/StrategyDecision → Observation → SimulationPlan/SimulationRun → PositionCycle/Execution → PositionValuation → Performance/Review → Advice/NotificationDelivery。
-- `tests/test_biz_workflow.py` 已覆盖 ScreenCandidate → Observation → SimulationPlan → EntryContext → PositionCycle/Execution，并验证建仓前确认、现金不足回滚和幂等重放。
-- 当前测试已通过，但业务 API 和最终 Web 入口尚未接入。
-
-### 跨模块验证
-
-- `tests/test_biz_end_to_end.py` 已覆盖 ScreenRun/ScreenCandidate → ResearchRun/StrategyDecision → Observation → SimulationPlan/SimulationRun → PositionCycle/Execution → PositionValuation → Performance/Review → Advice/NotificationDelivery。
-- 当前测试已通过，但部分跨模块关联仍由测试编排代码显式设置，正式 Application Service 尚未完全收口。
+- `tests/test_biz_end_to_end.py` 已覆盖主要业务对象的隔离链路，但不代表生产页面、业务 Worker 和最终 Web 主链路已经接入。
+- `tests/test_biz_workflow.py` 已覆盖候选 → Observation → SimulationPlan → EntryContext → PositionCycle/Execution，并验证建仓前确认、现金不足回滚和幂等重放。
+- 部分跨模块关联仍由测试编排代码显式设置；正式 Application Service、生产接入和完整状态收敛仍待完成。
