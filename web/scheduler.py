@@ -455,6 +455,8 @@ def init_scheduler(app) -> None:
     # 通知触发器（FR-3.4 免重启：按触发器配置挂载，保存后重挂即可）
     _schedule_from_triggers(scheduler)
 
+    _recover_stale_task_state()
+
     scheduler.start()
     app.extensions["scheduler"] = scheduler
     app.extensions["scheduler_state"] = {"running": True, "reason": "registered", "startup_at": startup_boundary.isoformat(timespec="seconds")}
@@ -510,6 +512,35 @@ def _schedule_configured_data_tasks(scheduler) -> None:
             coalesce=True, max_instances=1, replace_existing=True,
         )
         logger.info("配置任务已注册: %s (%s %s)", key, frequency, spec)
+
+
+def _recover_stale_task_state() -> int:
+    """启动时回收遗留任务状态（进程重启后的残留在途状态）。
+
+    回收 running JobRun、过期任务锁、running SourceBatch，并标记残留
+    publishing 版本，避免重启后重复写入或永久卡死。
+    """
+    recovered = 0
+    from datetime import datetime
+    from StockInvestmentTool.ops.job_runs import JobRunStore
+    store = JobRunStore()
+    boundary = datetime.now() - timedelta(minutes=5)
+    recovered += store.reclaim_data_running(before=boundary)
+    recovered += store.recover_stale_locks()
+    try:
+        from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
+        center = TaskCenter(management_db_path())
+        recovered += center.recover_inflight_requests()
+    except Exception as exc:
+        logger.warning("任务中心遗留状态回收失败: %s", exc)
+    try:
+        from StockInvestmentTool.warehouse.pipeline_state import recover_inflight_publishing
+        recovered += recover_inflight_publishing()
+    except Exception as exc:
+        logger.warning("publishing 版本回收失败: %s", exc)
+    if recovered:
+        logger.info("启动回收遗留任务状态 %d 项", recovered)
+    return recovered
 
 
 def _reload_data_scheduler_jobs(app) -> None:

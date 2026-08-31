@@ -204,7 +204,8 @@ def worker(task_key: str, warehouse: Warehouse, request: dict, run_id: int) -> d
     raise ValueError(f"未注册的任务: {task_key}")
 
 
-def execute_task(db_path: Path, task_key: str, payload: dict) -> dict:
+def execute_task(db_path: Path, task_key: str, payload: dict,
+                 request_id: str | None = None) -> dict:
     center = TaskCenter(db_path, db_path)
     task = center.task(task_key)
     if task is None:
@@ -222,18 +223,32 @@ def execute_task(db_path: Path, task_key: str, payload: dict) -> dict:
     if not symbols:
         raise ValueError(f"任务 {task_key} 没有可执行的证券范围")
     payload = {**payload, "symbols": symbols}
-    request_id = center.create_request(task_key, payload.get("trigger_type", "manual"),
-                                       period_start=payload.get("period_start"), period_end=payload.get("period_end"),
-                                       symbols=symbols, requested_by=payload.get("requested_by", "admin"),
-                                       input_versions=payload.get("input_versions") or {})
+    if request_id is None:
+        request_id = center.create_request(task_key, payload.get("trigger_type", "manual"),
+                                           period_start=payload.get("period_start"), period_end=payload.get("period_end"),
+                                           symbols=symbols, requested_by=payload.get("requested_by", "admin"),
+                                           input_versions=payload.get("input_versions") or {})
     from StockInvestmentTool.ops.task_runner import TaskRunner
     warehouse = Warehouse()
     warehouse.meta_db_path = db_path
     runner = TaskRunner(db_path, db_path)
-    return runner.execute(task_key, lambda run_id, request: worker(task_key, warehouse, {**request, **payload}, run_id),
-                          request_id=request_id, input_dataset=payload.get("input_dataset", ""),
-                          output_dataset=payload.get("output_dataset", ""),
-                          parent_run_id=payload.get("parent_run_id"))
+    result = runner.execute(task_key, lambda run_id, request: worker(task_key, warehouse, {**request, **payload}, run_id),
+                            request_id=request_id, input_dataset=payload.get("input_dataset", ""),
+                            output_dataset=payload.get("output_dataset", ""),
+                            parent_run_id=payload.get("parent_run_id"))
+    result["request_id"] = request_id
+    result["status_url"] = f"/api/data/jobs/{result.get('run_id')}"
+    return result
+
+
+def precreate_request(db_path: Path, task_key: str, payload: dict) -> str:
+    """202 返回前同步持久化 Request（不创建 run，由后台线程执行时创建）。"""
+    center = TaskCenter(db_path, db_path)
+    symbols = payload.get("symbols") or []
+    return center.create_request(task_key, payload.get("trigger_type", "manual"),
+                                 period_start=payload.get("period_start"), period_end=payload.get("period_end"),
+                                 symbols=symbols, requested_by=payload.get("requested_by", "admin"),
+                                 input_versions=payload.get("input_versions") or {})
 
 
 def execute_pipeline(db_path: Path, task_keys: list[str], payload: dict | None = None) -> dict:

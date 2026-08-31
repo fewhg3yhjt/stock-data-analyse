@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -39,6 +40,21 @@ class TaskRunner:
         self.center.update_request(request_id, "running")
         self.center.event(run_id, "任务开始", phase="start", event_type="start",
                           payload={"request_id": request_id, "task_key": task_key})
+        # 任务锁：Scheduler 与手工/Retry 共用，防止同一任务并发执行
+        lock_key = self.jobs.lock_key(task_key, period_start=request["period_start"],
+                                      period_end=request["period_end"])
+        if not self.jobs.acquire_lock(lock_key, run_id):
+            self.jobs.finish(run_id, "skipped", {"reason": f"任务锁被占用: {lock_key}"})
+            self.center.update_request(request_id, "skipped")
+            return {"run_id": run_id, "request_id": request_id, "status": "skipped",
+                    "result": {"reason": f"任务锁被占用: {lock_key}"}}
+        stop_heartbeat = threading.Event()
+        lease_seconds = 600
+        heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop, args=(lock_key, run_id, stop_heartbeat, lease_seconds),
+            daemon=True,
+        )
+        heartbeat_thread.start()
         try:
             result = worker(run_id, request) or {}
             status = self.jobs.result_status(result)
@@ -49,6 +65,19 @@ class TaskRunner:
             self.jobs.finish(run_id, "failed", error=str(exc))
             self.center.update_request(request_id, "failed")
             raise
+        finally:
+            stop_heartbeat.set()
+            heartbeat_thread.join(timeout=1)
+            self.jobs.release_lock(lock_key, run_id)
+
+    def _heartbeat_loop(self, lock_key: str, run_id: int, stop: threading.Event,
+                        lease_seconds: int = 600) -> None:
+        interval = max(1.0, lease_seconds / 3)
+        while not stop.wait(interval):
+            try:
+                self.jobs.heartbeat_lock(lock_key, run_id, lease_seconds=lease_seconds)
+            except Exception:
+                return
 
     def execute_pipeline(self, stages: list[tuple[str, Callable[[int, dict], dict]]], *,
                          trigger_type: str = "manual", period_start: str | None = None,

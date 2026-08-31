@@ -682,9 +682,13 @@ def api_task_center_task_config_activate(task_key, version):
 
 @web_app.route("/api/task-center/tasks/<task_key>/execute", methods=["POST"])
 def api_task_center_task_execute(task_key):
-    """Start a configured task through the new task runner."""
+    """Start a configured task through the new task runner.
+
+    202 返回前先同步持久化 Request，返回 request_id/status_url，
+    真正的执行放在 daemon 线程中（不占用 Waitress 请求线程）。
+    """
     payload = flask.request.get_json(silent=True) or {}
-    from StockInvestmentTool.ops.task_execution import execute_task
+    from StockInvestmentTool.ops.task_execution import precreate_request
     from StockInvestmentTool.ops.task_center_service import TaskCenterService
     task = TaskCenterService(management_db_path()).task(task_key)
     if task is None:
@@ -695,17 +699,20 @@ def api_task_center_task_execute(task_key):
         latest = task.get("latest_run") or {}
         payload["period_start"] = latest.get("period_start") or (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
         payload["period_end"] = payload.get("period_end") or latest.get("period_end") or (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    # The unified worker creates the request and run itself; execute it in a
-    # daemon thread so the UI receives a run acknowledgement immediately.
+    # 202 返回前持久化 Request，保证请求可查、可重试
+    request_id = precreate_request(management_db_path(), task_key, payload)
     result_holder = {}
     def execute():
         try:
-            result_holder["result"] = execute_task(management_db_path(), task_key, payload)
+            from StockInvestmentTool.ops.task_execution import execute_task
+            result_holder["result"] = execute_task(management_db_path(), task_key, payload, request_id=request_id)
         except Exception as exc:
             result_holder["error"] = str(exc)
     thread = threading.Thread(target=execute, daemon=True, name=f"task-center-{task_key}")
     thread.start()
     return flask.jsonify({"status": "success", "task_key": task_key,
+                          "request_id": request_id,
+                          "status_url": f"/api/task-center/requests/{request_id}",
                           "message": "任务已提交"}), 202
 
 
@@ -3070,7 +3077,6 @@ def create_app():
     app.register_blueprint(web_app, url_prefix="/")
     from StockInvestmentTool.web.biz_api import biz_api
     app.register_blueprint(biz_api, url_prefix="/api/biz")
-    app.register_blueprint(biz_api, url_prefix="/api", name="business_contract_api")
 
     # 基础安全响应头（S-03）：当前页面仍有内联脚本与 CDN 静态资源，
     # CSP 分阶段启用：允许内联脚本与已知 CDN，后续内联脚本治理完成后收紧。

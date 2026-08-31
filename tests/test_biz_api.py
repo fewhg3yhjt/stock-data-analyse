@@ -21,12 +21,14 @@ def test_biz_blueprint_registered(app):
     assert "/api/biz/screens/preview" in routes
     assert "/api/biz/observations/<observation_id>" in routes
     assert "/api/biz/observations/<observation_id>/entry" in routes
-    assert "/api/screens" in routes
-    assert "/api/screen-candidates/<candidate_id>/observe" in routes
-    assert "/api/observations/<observation_id>/simulation-plan" in routes
-    assert "/api/watch-subscriptions" in routes
-    assert "/api/portfolios/<portfolio_id>/positions" in routes
-    assert "/api/position-cycles/<cycle_id>" in routes
+    assert "/api/biz/screens" in routes
+    assert "/api/biz/screen-candidates/<candidate_id>/observe" in routes
+    assert "/api/biz/observations/<observation_id>/simulation-plan" in routes
+    assert "/api/biz/watch-subscriptions" in routes
+    assert "/api/biz/portfolios/<portfolio_id>/positions" in routes
+    assert "/api/biz/position-cycles/<cycle_id>" in routes
+    # 业务 Blueprint 不得同时注册到 /api 命名空间
+    assert "/api/screens" not in routes
 
 
 def test_preview_requires_condition(app):
@@ -44,7 +46,7 @@ def test_preview_requires_date_range(app):
 
 
 def test_create_screen_validates_and_persists_definition(app):
-    response = app.test_client().post("/api/screens", json={
+    response = app.test_client().post("/api/biz/screens", json={
         "name": "API筛选", "condition_spec": {"type": "comparison",
         "left": {"field": "close"}, "operator": ">", "right": {"value": 10}},
     })
@@ -52,11 +54,11 @@ def test_create_screen_validates_and_persists_definition(app):
     payload = response.get_json()["data"]
     assert payload["status"] == "draft"
     validated = app.test_client().post(
-        f"/api/screens/{payload['screen_id']}/versions/{payload['screen_version_id']}/validate"
+        f"/api/biz/screens/{payload['screen_id']}/versions/{payload['screen_version_id']}/validate"
     )
     assert validated.status_code == 200
     published = app.test_client().post(
-        f"/api/screens/{payload['screen_id']}/versions/{payload['screen_version_id']}/publish"
+        f"/api/biz/screens/{payload['screen_id']}/versions/{payload['screen_version_id']}/publish"
     )
     assert published.status_code == 200
     assert published.get_json()["data"]["status"] == "published"
@@ -64,10 +66,10 @@ def test_create_screen_validates_and_persists_definition(app):
 
 def test_position_and_subscription_not_found_contracts(app):
     client = app.test_client()
-    position = client.get("/api/position-cycles/no-such")
+    position = client.get("/api/biz/position-cycles/no-such")
     assert position.status_code == 404
     assert position.get_json()["error"]["code"] == "POSITION_CYCLE_NOT_FOUND"
-    portfolio = client.get("/api/portfolios/no-such/positions")
+    portfolio = client.get("/api/biz/portfolios/no-such/positions")
     assert portfolio.status_code == 404
     assert portfolio.get_json()["error"]["code"] == "PORTFOLIO_NOT_FOUND"
 

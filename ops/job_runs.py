@@ -84,6 +84,13 @@ class JobRunStore:
                 updated_at TEXT NOT NULL,
                 UNIQUE(run_date, task_key)
             )""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS task_locks (
+                lock_key TEXT PRIMARY KEY,
+                owner_run_id INTEGER,
+                acquired_at TEXT,
+                heartbeat_at TEXT,
+                expires_at TEXT
+            )""")
 
     @staticmethod
     def _ensure_columns(conn):
@@ -196,6 +203,70 @@ class JobRunStore:
         if job_name == "notification_outbox" or job_name.startswith("notification"):
             return "notification"
         return "business"
+
+    @staticmethod
+    def _now_utc() -> str:
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def acquire_lock(self, lock_key: str, run_id: int, lease_seconds: int = 600) -> bool:
+        """原子获取任务锁（BEGIN IMMEDIATE + 条件写），避免重复执行。"""
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        expires = (datetime.now(timezone.utc) + timedelta(seconds=lease_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute("SELECT owner_run_id, expires_at FROM task_locks WHERE lock_key=?", (lock_key,)).fetchone()
+                if row and row["expires_at"] and row["expires_at"] > now:
+                    return False
+                conn.execute(
+                    "INSERT INTO task_locks(lock_key,owner_run_id,acquired_at,heartbeat_at,expires_at) "
+                    "VALUES(?,?,?,?,?) ON CONFLICT(lock_key) DO UPDATE SET "
+                    "owner_run_id=excluded.owner_run_id, acquired_at=excluded.acquired_at, "
+                    "heartbeat_at=excluded.heartbeat_at, expires_at=excluded.expires_at",
+                    (lock_key, run_id, now, now, expires),
+                )
+                conn.commit()
+                return True
+            except Exception:
+                conn.rollback()
+                raise
+
+    def heartbeat_lock(self, lock_key: str, run_id: int, lease_seconds: int = 600) -> None:
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        expires = (datetime.now(timezone.utc) + timedelta(seconds=lease_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._connect() as conn:
+            conn.execute("UPDATE task_locks SET heartbeat_at=?, expires_at=? WHERE lock_key=? AND owner_run_id=?",
+                         (now, expires, lock_key, int(run_id)))
+
+    def release_lock(self, lock_key: str, run_id: int | None = None) -> None:
+        with self._connect() as conn:
+            if run_id is not None:
+                conn.execute("DELETE FROM task_locks WHERE lock_key=? AND owner_run_id=?", (lock_key, int(run_id)))
+            else:
+                conn.execute("DELETE FROM task_locks WHERE lock_key=?", (lock_key,))
+
+    def recover_stale_locks(self) -> int:
+        """回收超过租约的锁（进程重启遗留）。"""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM task_locks WHERE expires_at < ?", (now,))
+            return cur.rowcount
+
+    @staticmethod
+    def lock_key(task_key: str, *, period_start: str | None = None,
+                 period_end: str | None = None, partition: str | None = None) -> str:
+        parts = ["task", task_key]
+        if period_start:
+            parts.append(f"start:{period_start}")
+        if period_end:
+            parts.append(f"end:{period_end}")
+        if partition:
+            parts.append(f"partition:{partition}")
+        return ":".join(parts)
 
     def query(self, *, limit: int = 50, offset: int = 0,
               job_names: Optional[list[str]] = None, status: Optional[str] = None,

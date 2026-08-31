@@ -52,7 +52,7 @@ def _enqueue_business_task(task_key: str, payload: dict) -> tuple[dict, int]:
         "request_id": request.request_id,
         "run_id": run.run_id,
         "status": run.status,
-        "status_url": f"/api/business-runs/{run.run_id}",
+        "status_url": f"/api/biz/business-runs/{run.run_id}",
     }, 202
 
 

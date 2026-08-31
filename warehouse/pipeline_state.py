@@ -184,3 +184,18 @@ class PipelineState:
         with sqlite3.connect(self.db_path) as conn:
             return conn.execute("SELECT version_id FROM dataset_current WHERE dataset_name=? AND partition_key=?",
                                 (dataset_name, partition)).fetchone()
+
+
+def recover_inflight_publishing(db_path: Path | str | None = None) -> int:
+    """启动时回收遗留 publishing 版本（进程重启时发布中断）。
+
+    将 publish_status='publishing' 的版本标记为 'publish_failed'，
+    避免恢复后误以为正式文件已就绪。
+    """
+    if db_path is None:
+        from StockInvestmentTool.config import Config
+        db_path = Config.DATA_DIR / "management.db"
+    with sqlite3.connect(str(db_path)) as conn:
+        cur = conn.execute(
+            "UPDATE dataset_versions SET publish_status='publish_failed' WHERE publish_status='publishing'")
+        return cur.rowcount

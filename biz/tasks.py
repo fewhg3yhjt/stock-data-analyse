@@ -157,19 +157,47 @@ class BusinessTaskService:
         return run
 
     def execute_run(self, run_id: str) -> BusinessJobRun:
-        """Worker 执行已创建的 requested JobRun，并在执行期间持有租约锁。"""
-        row = self.repo.db.fetchone("SELECT * FROM business_job_runs WHERE run_id=?", (run_id,))
-        if not row:
-            raise KeyError(f"unknown run: {run_id}")
-        if row["status"] != JOB_REQUESTED:
-            raise TaskStateError(f"run is not requested: {row['status']}")
-        run = self._row_to_job(row)
-        lock_key = run.lock_key or self.make_lock_key(run.task_key)
-        if not self.acquire_lock(lock_key, run_id=run.run_id):
-            raise TaskStateError(f"任务冲突: {run.task_key} 正在运行")
-        self.repo.db.update("business_job_runs", {
-            "status": JOB_RUNNING, "started_at": now_utc(), "heartbeat_at": now_utc(),
-        }, "run_id=?", (run_id,))
+        """Worker 执行已创建的 requested JobRun，并在执行期间持有租约锁。
+
+        claim 是原子操作：同一个事务内验证 requested → 占用锁 → 置 running。
+        两个并发 Worker 竞争同一 run 时只有一个能成功，另一个抛出
+        TaskStateError（可重试），不会伪装成任务执行失败。
+        """
+        import datetime
+        from datetime import timezone
+        lock_key = None
+        with self.repo.db.transaction() as conn:
+            row = conn.execute(
+                "SELECT * FROM business_job_runs WHERE run_id=?", (run_id,)
+            ).fetchone()
+            if not row:
+                raise KeyError(f"unknown run: {run_id}")
+            if row["status"] != JOB_REQUESTED:
+                raise TaskStateError(f"run is not requested: {row['status']}")
+            run = self._row_to_job(row)
+            lock_key = run.lock_key or self.make_lock_key(run.task_key)
+            now = now_utc()
+            expires = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=300)
+            expires_text = expires.strftime("%Y-%m-%dT%H:%M:%SZ")
+            existing = conn.execute(
+                "SELECT owner_run_id, expires_at FROM business_task_locks WHERE lock_key=?",
+                (lock_key,),
+            ).fetchone()
+            if existing and existing["expires_at"] and existing["expires_at"] > now:
+                raise TaskStateError(f"任务冲突: {run.task_key} 正在运行")
+            conn.execute(
+                "INSERT INTO business_task_locks(lock_key,owner_run_id,acquired_at,heartbeat_at,expires_at) "
+                "VALUES(?,?,?,?,?) ON CONFLICT(lock_key) DO UPDATE SET owner_run_id=excluded.owner_run_id, "
+                "acquired_at=excluded.acquired_at, heartbeat_at=excluded.heartbeat_at, expires_at=excluded.expires_at",
+                (lock_key, run.run_id, now, now, expires_text),
+            )
+            conn.execute(
+                "UPDATE business_job_runs SET status=?, started_at=?, heartbeat_at=? WHERE run_id=?",
+                (JOB_RUNNING, now, now, run_id),
+            )
+            run.status = JOB_RUNNING
+            run.started_at = now
+            run.heartbeat_at = now
         stop_heartbeat = threading.Event()
         heartbeat_thread = threading.Thread(
             target=self._heartbeat_loop,
@@ -194,13 +222,20 @@ class BusinessTaskService:
         return run
 
     def run_next(self) -> BusinessJobRun | None:
-        """领取最早 requested JobRun 并执行一个，供轻量 Worker 调用。"""
+        """领取最早 requested JobRun 并执行一个，供轻量 Worker 调用。
+
+        竞争失败（另一 Worker 已领取同一 run）返回 None，不伪装成任务失败。
+        """
         row = self.repo.db.fetchone(
             "SELECT * FROM business_job_runs WHERE status=? ORDER BY rowid LIMIT 1", (JOB_REQUESTED,)
         )
         if not row:
             return None
-        return self.execute_run(row["run_id"])
+        try:
+            return self.execute_run(row["run_id"])
+        except TaskStateError as exc:
+            logger.warning("run_next 竞争领取失败: %s", exc)
+            return None
 
     def run(self, task_key: str, *, trigger_type: str = "manual",
             input_data: dict | None = None, request_id: str | None = None) -> BusinessJobRun:
@@ -311,11 +346,19 @@ class BusinessTaskService:
     # ── 重启恢复 ──────────────────────────────────────────
 
     def recover_stale_runs(self) -> int:
-        """回收 stale running 任务（PROCESS_RESTARTED）。"""
+        """回收 stale running 任务（PROCESS_RESTARTED）。
+
+        heartbeat_at 使用 RFC3339 UTC（YYYY-MM-DDTHH:MM:SSZ），阈值必须同格式，
+        否则 TEXT 字典序比较与 SQLite datetime()（空格格式）混用会恒假。
+        """
+        import datetime
+        from datetime import timezone
+        cutoff = (datetime.datetime.now(timezone.utc) - datetime.timedelta(minutes=5))
+        cutoff_text = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
         rows = self.repo.db.fetchall(
             "SELECT * FROM business_job_runs WHERE status='running' "
             "AND heartbeat_at IS NOT NULL AND heartbeat_at != '' "
-            "AND heartbeat_at < datetime('now','-5 minutes')"
+            "AND heartbeat_at < ?", (cutoff_text,)
         )
         count = 0
         for row in rows:

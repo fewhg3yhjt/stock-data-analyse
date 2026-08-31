@@ -425,6 +425,13 @@ class TaskCenter:
         with self._connect() as conn:
             conn.execute("UPDATE task_execution_requests SET status=? WHERE request_id=?", (status, request_id))
 
+    def recover_inflight_requests(self) -> int:
+        """启动时回收遗留 running 执行请求（进程重启）。"""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE task_execution_requests SET status='failed' WHERE status='running'")
+        return cur.rowcount
+
     def event(self, run_id: int, message: str, *, level="INFO", phase="", event_type="log",
               processed=None, total=None, current_item=None, payload=None):
         now = _now()
