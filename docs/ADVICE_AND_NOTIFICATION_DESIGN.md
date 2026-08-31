@@ -426,4 +426,5 @@ Email 是第一版完整验收渠道；Feishu 和 WeCom 不删除，继续作为
 - `web/biz_api.py` 已提供 Advice、NotificationEvent 和 NotificationDelivery 查询入口。
 - Outbox claim 已改为数据库事务内条件更新，租约未过期时并发 Worker 不能重复领取。
 - Advice 已保存 `strategy_decision_id`，区分 `quantity_ratio`、实际 `quantity` 和 `amount`；投递 deliver 会校验 lease owner，失败会写入 `next_attempt_at` 做退避。
+- NotificationEvent 去重已使用事务内 `ON CONFLICT DO NOTHING`，NotificationDelivery claim/deliver 已校验租约和 worker owner。
 - `LiveAdviceEvaluator`、Advice 状态转换、实际执行数量回写和日报/系统告警基础服务已完成并通过专项测试。

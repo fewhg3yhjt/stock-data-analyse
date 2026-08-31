@@ -107,6 +107,7 @@ class NotificationDelivery:
     status: str = DELIVERY_PENDING
     attempts: int = 0
     last_error: str = ""
+    next_attempt_at: str | None = None
     sent_at: str | None = None
     claimed_by: str = ""
     claimed_at: str | None = None
@@ -210,32 +211,47 @@ class NotificationService:
         """创建通知事件。dedupe_key 由业务信号 + 出现指纹组成。"""
         business_key = f"{subject_type or symbol}|{symbol}|{strategy_version_id}|{event_type}|{action}"
         occurrence_key = f"{business_key}|{data_as_of}|{trigger_fingerprint}"
-        dup = self.repo.db.fetchone(
-            "SELECT * FROM notification_events WHERE dedupe_key=?", (occurrence_key,))
-        if dup:
-            return NotificationEvent(
+        with self.repo.db.transaction() as conn:
+            dup = conn.execute(
+                "SELECT * FROM notification_events WHERE dedupe_key=?", (occurrence_key,)
+            ).fetchone()
+            if dup:
+                return NotificationEvent(
                 event_id=dup["event_id"], event_type=dup["event_type"], dedupe_key=dup["dedupe_key"],
                 subject_type=dup["subject_type"], subject_id=dup["subject_id"],
                 symbol=dup["symbol"], advice_id=dup["advice_id"], strategy_decision_id=dup["strategy_decision_id"],
                 report_id=dup["report_id"], priority=dup["priority"],
                 payload=_loads(dup["payload_json"]), created_at=dup["created_at"],
-            )
+                )
         event = NotificationEvent(
             event_id=new_id("ne"), event_type=event_type, dedupe_key=occurrence_key,
             subject_type=subject_type, subject_id=subject_id, symbol=symbol,
             advice_id=advice_id, strategy_decision_id=strategy_decision_id,
             report_id=report_id, priority=priority, payload=payload or {},
         )
-        self.repo.db.insert("notification_events", {
-            "event_id": event.event_id, "event_type": event.event_type,
-            "subject_type": event.subject_type, "subject_id": event.subject_id,
-            "symbol": event.symbol, "advice_id": event.advice_id or "",
-            "strategy_decision_id": event.strategy_decision_id or "",
-            "report_id": event.report_id or "", "priority": event.priority,
-            "dedupe_key": event.dedupe_key, "payload_json": _dumps(event.payload),
-            "created_at": event.created_at,
-        })
-        return event
+        with self.repo.db.transaction() as conn:
+            conn.execute("""
+                INSERT INTO notification_events
+                (event_id,event_type,subject_type,subject_id,symbol,advice_id,
+                 strategy_decision_id,report_id,priority,dedupe_key,payload_json,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(dedupe_key) DO NOTHING
+            """, (
+            event.event_id, event.event_type, event.subject_type, event.subject_id,
+            event.symbol, event.advice_id or "", event.strategy_decision_id or "",
+            event.report_id or "", event.priority, event.dedupe_key,
+            _dumps(event.payload), event.created_at,
+            ))
+            row = conn.execute(
+                "SELECT * FROM notification_events WHERE dedupe_key=?", (occurrence_key,)
+            ).fetchone()
+        return NotificationEvent(
+            event_id=row["event_id"], event_type=row["event_type"], dedupe_key=row["dedupe_key"],
+            subject_type=row["subject_type"], subject_id=row["subject_id"], symbol=row["symbol"],
+            advice_id=row["advice_id"], strategy_decision_id=row["strategy_decision_id"],
+            report_id=row["report_id"], priority=row["priority"], payload=_loads(row["payload_json"]),
+            created_at=row["created_at"],
+        )
 
     # ── Advice 转换 ───────────────────────────────────────
 
@@ -339,6 +355,7 @@ class NotificationService:
             "channel": delivery.channel, "recipient": delivery.recipient,
             "template": delivery.template, "status": delivery.status,
             "attempts": delivery.attempts, "last_error": delivery.last_error,
+            "next_attempt_at": delivery.next_attempt_at or "",
             "sent_at": delivery.sent_at or "", "claimed_by": delivery.claimed_by,
             "claimed_at": delivery.claimed_at or "", "lease_expires_at": delivery.lease_expires_at or "",
             "created_at": delivery.created_at,
@@ -358,15 +375,26 @@ class NotificationService:
                    SET status=?, claimed_by=?, claimed_at=?, lease_expires_at=?
                    WHERE delivery_id=?
                      AND status NOT IN (?, ?)
-                     AND (status != ? OR lease_expires_at IS NULL OR lease_expires_at <= ?)""",
+                     AND (status != ? OR lease_expires_at IS NULL OR lease_expires_at <= ?)
+                     AND (next_attempt_at IS NULL OR next_attempt_at = '' OR next_attempt_at <= ?)""",
                 (DELIVERY_PROCESSING, worker, now, expires_text, delivery_id,
-                 DELIVERY_SENT, DELIVERY_DEAD, DELIVERY_PROCESSING, now),
+                 DELIVERY_SENT, DELIVERY_DEAD, DELIVERY_PROCESSING, now, now),
             ).rowcount
         return updated == 1
 
     def deliver(self, delivery_id: str, channel: Any, *, subject: str, body: str,
-                recipient: str) -> bool:
+                recipient: str, worker: str | None = None) -> bool:
         """发送并更新投递状态。成功才标记 sent；失败重试，超限 dead。"""
+        row = self.repo.db.fetchone(
+            "SELECT * FROM notification_deliveries WHERE delivery_id=?", (delivery_id,)
+        )
+        if not row:
+            return False
+        if worker is not None and (
+            row["status"] != DELIVERY_PROCESSING or row["claimed_by"] != worker
+            or (row["lease_expires_at"] and row["lease_expires_at"] <= now_utc())
+        ):
+            return False
         ok = channel.send(subject, body, recipient)
         if ok:
             self.repo.db.update("notification_deliveries", {
@@ -378,9 +406,16 @@ class NotificationService:
             "SELECT * FROM notification_deliveries WHERE delivery_id=?", (delivery_id,))
         attempts = int(row["attempts"]) + 1 if row else 1
         status = DELIVERY_DEAD if attempts >= MAX_ATTEMPTS else DELIVERY_PENDING
+        import datetime
+        from datetime import timezone
+        next_attempt = ""
+        if status == DELIVERY_PENDING:
+            delay = BASE_BACKOFF_SECONDS * (2 ** max(attempts - 1, 0))
+            next_attempt = (datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=delay)).strftime("%Y-%m-%dT%H:%M:%SZ")
         self.repo.db.update("notification_deliveries", {
             "status": status, "attempts": attempts,
             "last_error": f"send failed (attempt {attempts})",
+            "next_attempt_at": next_attempt,
         }, "delivery_id=?", (delivery_id,))
         return False
 

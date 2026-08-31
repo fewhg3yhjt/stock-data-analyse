@@ -109,6 +109,22 @@ class TestTaskService:
         completed = svc.execute_run(run.run_id)
         assert completed.status == JOB_SUCCESS
 
+    def test_requested_run_is_not_recovered_as_stale(self, svc):
+        register_task("health.reconcile", run_ok)
+        request = svc.enqueue("health.reconcile", input_data={})
+        run = svc.create_run_for_request(request.request_id)
+        assert run.status == "requested"
+        assert svc.recover_stale_runs() == 0
+        assert svc.repo.db.fetchone(
+            "SELECT status FROM business_job_runs WHERE run_id=?", (run.run_id,)
+        )["status"] == "requested"
+
+    def test_lock_key_contains_execution_scope(self, svc):
+        key = svc.make_lock_key("simulation.run", period="2026-08", partition="2026-08", write_group="simulation")
+        assert "period:2026-08" in key
+        assert "partition:2026-08" in key
+        assert "write:simulation" in key
+
     def test_lock_is_held_until_handler_finishes(self, svc):
         entered = threading.Event()
         release = threading.Event()

@@ -151,3 +151,16 @@ class TestEvaluate:
         assert spec.config_hash() == spec.config_hash()
         spec2 = make_spec()
         assert spec.config_hash() == spec2.config_hash()
+
+    def test_triggered_lower_priority_rule_is_suppressed(self):
+        spec = make_spec()
+        spec.entry_rules.append({
+            "rule_id": "lower", "action": "BUY_MORE", "priority": 1,
+            "when": {"type": "comparison", "left": {"field": "close"},
+                     "operator": ">", "right": {"value": 11}},
+        })
+        spec.entry_rules[0]["priority"] = 100
+        decision = compile_strategy(spec, strategy_version_id="sv_test").evaluate(make_ctx())
+        suppressed = decision.decision_trace["suppressed_rules"]
+        assert any(item.get("rule_id") == "lower" and item.get("suppressed_by") == "pullback_entry"
+                   for item in suppressed)

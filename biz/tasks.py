@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -69,6 +70,7 @@ class BusinessExecutionRequest:
 class BusinessJobRun:
     run_id: str
     task_key: str
+    lock_key: str = ""
     request_id: str | None = None
     trigger_type: str = "manual"
     config_version: str = ""
@@ -111,6 +113,10 @@ class BusinessTaskService:
     def enqueue(self, task_key: str, *, trigger_type: str = "manual",
                 config_version_id: str | None = None, input_data: dict | None = None) -> BusinessExecutionRequest:
         """创建持久化请求（HTTP 返回 202 前必须已持久化）。"""
+        if not self.repo.db.fetchone(
+            "SELECT task_key FROM business_task_definitions WHERE task_key=?", (task_key,)
+        ):
+            self.register_definition(BusinessTaskDefinition(task_key=task_key, name=task_key))
         request = BusinessExecutionRequest(
             request_id=new_id("req"), task_key=task_key, trigger_type=trigger_type,
             config_version_id=config_version_id, input=input_data or {},
@@ -137,10 +143,12 @@ class BusinessTaskService:
             return self._row_to_job(existing)
         run = BusinessJobRun(
             run_id=new_id("job"), task_key=request["task_key"], request_id=request_id,
+            lock_key=self.make_lock_key(request["task_key"], **_lock_parts(_loads(request["input_json"]))),
             trigger_type=request["trigger_type"], status=JOB_REQUESTED,
         )
         self.repo.db.insert("business_job_runs", {
             "run_id": run.run_id, "request_id": run.request_id, "task_key": run.task_key,
+            "lock_key": run.lock_key,
             "config_version": "", "trigger_type": run.trigger_type,
             "input_versions_json": "{}", "output_versions_json": "{}",
             "attempt": 1, "status": JOB_REQUESTED, "started_at": "", "heartbeat_at": "",
@@ -156,12 +164,19 @@ class BusinessTaskService:
         if row["status"] != JOB_REQUESTED:
             raise TaskStateError(f"run is not requested: {row['status']}")
         run = self._row_to_job(row)
-        lock_key = f"task:{run.task_key}"
+        lock_key = run.lock_key or self.make_lock_key(run.task_key)
         if not self.acquire_lock(lock_key, run_id=run.run_id):
             raise TaskStateError(f"任务冲突: {run.task_key} 正在运行")
         self.repo.db.update("business_job_runs", {
             "status": JOB_RUNNING, "started_at": now_utc(), "heartbeat_at": now_utc(),
         }, "run_id=?", (run_id,))
+        stop_heartbeat = threading.Event()
+        heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop,
+            args=(lock_key, run.run_id, stop_heartbeat),
+            daemon=True,
+        )
+        heartbeat_thread.start()
         try:
             request = self.repo.db.fetchone(
                 "SELECT input_json FROM business_execution_requests WHERE request_id=?",
@@ -173,6 +188,8 @@ class BusinessTaskService:
             logger.exception("business worker failed: %s", run.task_key)
             self._finish(run, JOB_FAILED, error_code="TASK_EXECUTION_FAILED", error_message=str(exc))
         finally:
+            stop_heartbeat.set()
+            heartbeat_thread.join(timeout=1)
             self.release_lock(lock_key, owner_run_id=run.run_id)
         return run
 
@@ -195,38 +212,11 @@ class BusinessTaskService:
             "SELECT task_key FROM business_task_definitions WHERE task_key=?", (task_key,)
         ):
             self.register_definition(BusinessTaskDefinition(task_key=task_key, name=task_key))
-        lock_key = f"task:{task_key}"
         if request_id is None:
             request = self.enqueue(task_key, trigger_type=trigger_type, input_data=input_data)
             request_id = request.request_id
-        run = BusinessJobRun(
-            run_id=new_id("job"), task_key=task_key,
-            request_id=request_id or new_id("req"), trigger_type=trigger_type,
-            status=JOB_RUNNING, started_at=now_utc(),
-        )
-        if not self.acquire_lock(lock_key, run_id=run.run_id):
-            raise TaskStateError(f"任务冲突: {task_key} 正在运行")
-
-        try:
-            self.repo.db.insert("business_job_runs", {
-                "run_id": run.run_id, "request_id": run.request_id, "task_key": run.task_key,
-                "config_version": run.config_version, "trigger_type": run.trigger_type,
-                "input_versions_json": _dumps(run.input_versions),
-                "output_versions_json": _dumps(run.output_versions),
-                "attempt": run.attempt, "status": run.status,
-                "started_at": run.started_at, "heartbeat_at": run.heartbeat_at or "",
-                "finished_at": run.finished_at or "", "error_code": run.error_code,
-                "error_message": run.error_message,
-            })
-            handler = TASK_HANDLERS[task_key]
-            result = handler(input_data or {})
-            self._finish(run, JOB_SUCCESS, output_versions=result.get("output_versions", {}))
-        except Exception as e:  # noqa: BLE001
-            logger.exception("business task failed: %s", task_key)
-            self._finish(run, JOB_FAILED, error_code="TASK_EXECUTION_FAILED", error_message=str(e))
-        finally:
-            self.release_lock(lock_key, owner_run_id=run.run_id)
-        return run
+        run = self.create_run_for_request(request_id)
+        return self.execute_run(run.run_id)
 
     def _finish(self, run: BusinessJobRun, status: str, *, output_versions: dict | None = None,
                 error_code: str = "", error_message: str = "") -> None:
@@ -297,6 +287,17 @@ class BusinessTaskService:
                              "expires_at": expires.strftime("%Y-%m-%dT%H:%M:%SZ")},
                             "lock_key=?", (lock_key,))
 
+    def _heartbeat_loop(self, lock_key: str, owner_run_id: str, stop: threading.Event,
+                        lease_seconds: int = 300) -> None:
+        interval = max(1.0, lease_seconds / 3)
+        while not stop.wait(interval):
+            row = self.repo.db.fetchone(
+                "SELECT owner_run_id FROM business_task_locks WHERE lock_key=?", (lock_key,)
+            )
+            if not row or row["owner_run_id"] != owner_run_id:
+                return
+            self.heartbeat(lock_key, lease_seconds=lease_seconds)
+
     # ── 重启恢复 ──────────────────────────────────────────
 
     def recover_stale_runs(self) -> int:
@@ -334,6 +335,7 @@ class BusinessTaskService:
     def _row_to_job(row) -> BusinessJobRun:
         return BusinessJobRun(
             run_id=row["run_id"], task_key=row["task_key"], request_id=row["request_id"],
+            lock_key=row["lock_key"] if "lock_key" in row.keys() else "",
             trigger_type=row["trigger_type"], config_version=row["config_version"],
             input_versions=_loads(row["input_versions_json"]),
             output_versions=_loads(row["output_versions_json"]), attempt=row["attempt"],
@@ -355,3 +357,11 @@ def _loads(value: str | None) -> dict:
         return loaded if isinstance(loaded, dict) else {}
     except (TypeError, ValueError):
         return {}
+
+
+def _lock_parts(input_data: dict) -> dict[str, str]:
+    return {
+        "period": str(input_data.get("period", "")),
+        "partition": str(input_data.get("partition", "")),
+        "write_group": str(input_data.get("write_group", "")),
+    }

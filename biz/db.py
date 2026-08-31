@@ -766,6 +766,7 @@ CREATE TABLE IF NOT EXISTS business_job_runs (
     run_id TEXT PRIMARY KEY,
     request_id TEXT,
     task_key TEXT NOT NULL,
+    lock_key TEXT NOT NULL DEFAULT '',
     config_version TEXT,
     trigger_type TEXT NOT NULL DEFAULT 'manual',
     input_versions_json TEXT NOT NULL DEFAULT '{}',
@@ -870,6 +871,9 @@ class BusinessDB:
             delivery_columns = {row[1] for row in conn.execute("PRAGMA table_info(notification_deliveries)")}
             if "next_attempt_at" not in delivery_columns:
                 conn.execute("ALTER TABLE notification_deliveries ADD COLUMN next_attempt_at TEXT")
+            job_columns = {row[1] for row in conn.execute("PRAGMA table_info(business_job_runs)")}
+            if "lock_key" not in job_columns:
+                conn.execute("ALTER TABLE business_job_runs ADD COLUMN lock_key TEXT NOT NULL DEFAULT ''")
             conn.execute(
                 "INSERT OR IGNORE INTO schema_migrations(migration_id, applied_at) VALUES('v1_initial', datetime('now'))"
             )

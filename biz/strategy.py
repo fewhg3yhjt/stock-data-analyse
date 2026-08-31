@@ -126,6 +126,13 @@ class StrategyEvaluator:
             triggered, risk_action, context
         )
 
+        if used_trigger is not None:
+            for item in triggered:
+                if item is not used_trigger:
+                    item["suppressed_by"] = used_trigger.get("rule_id", "")
+                    item["suppression_reason"] = "被更高优先级规则或动作覆盖"
+                    suppressed.append(item)
+
         decision_trace = {
             "evaluated_rules": evaluated,
             "triggered_rules": triggered,
