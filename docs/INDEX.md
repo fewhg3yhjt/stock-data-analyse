@@ -42,6 +42,7 @@
 ## 前端
 
 - [前端工程整改清单](FRONTEND_ENGINEERING_BACKLOG.md)：颜色语义、XSS/CSP、toast/公共函数收敛、CDN 本地化、静态资源版本等工程实现问题与验收标准。
+- [前端实现状态](UI_IMPLEMENTATION_STATUS.md)：当前页面落地范围、公共资源接入、验证基线和已知限制。
 
 ## 运维
 
