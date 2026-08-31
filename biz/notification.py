@@ -337,7 +337,9 @@ class NotificationService:
         else:
             target = ADVICE_EXECUTED
         current = row["status"]
-        if target != current and target in ADVICE_TRANSITIONS.get(current, set()):
+        if target != current:
+            if target not in ADVICE_TRANSITIONS.get(current, set()):
+                raise AdviceStateError(f"Advice 当前状态不能记录执行: {current} -> {target}")
             self.transition_advice(advice_id, target)
         return {"advice_id": advice_id, "status": target,
                 "requested_quantity": requested, "executed_quantity": executed_quantity}
@@ -383,15 +385,16 @@ class NotificationService:
         return updated == 1
 
     def deliver(self, delivery_id: str, channel: Any, *, subject: str, body: str,
-                recipient: str, worker: str | None = None) -> bool:
+                recipient: str, worker: str) -> bool:
         """发送并更新投递状态。成功才标记 sent；失败重试，超限 dead。"""
         row = self.repo.db.fetchone(
             "SELECT * FROM notification_deliveries WHERE delivery_id=?", (delivery_id,)
         )
         if not row:
             return False
-        if worker is not None and (
-            row["status"] != DELIVERY_PROCESSING or row["claimed_by"] != worker
+        if (
+            not worker or row["status"] != DELIVERY_PROCESSING
+            or row["claimed_by"] != worker
             or (row["lease_expires_at"] and row["lease_expires_at"] <= now_utc())
         ):
             return False

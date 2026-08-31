@@ -164,7 +164,7 @@ class TestNotificationService:
         delivery = svc.create_delivery(event, "email", "test@example.com")
         svc.claim(delivery.delivery_id, "worker")
         assert svc.deliver(delivery.delivery_id, FakeChannel(True), subject="s", body="b",
-                           recipient="test@example.com")
+                           recipient="test@example.com", worker="worker")
         assert svc.repo.db.fetchone(
             "SELECT status FROM advices WHERE advice_id=?", (advice.advice_id,)
         )["status"] == "accepted"

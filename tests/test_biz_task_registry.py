@@ -19,3 +19,39 @@ def test_health_task_runs_through_business_runner(tmp_path):
     run = service.run("health.reconcile", input_data={})
     assert run.status == "success"
     assert service.list_runs("health.reconcile")[0]["status"] == "success"
+
+
+def test_screen_handler_runs_through_worker_with_injected_data(tmp_path, monkeypatch):
+    import pandas as pd
+
+    from StockInvestmentTool.warehouse.datasets import DatasetResult
+
+    data = pd.DataFrame({
+        "date": pd.to_datetime(["2026-08-14"]), "code": ["sh600908"],
+        "open": [10.0], "high": [12.0], "low": [9.0], "close": [11.0],
+        "volume": [1000], "amount": [10000],
+    })
+    monkeypatch.setattr(
+        "StockInvestmentTool.biz.task_registry.load_market_data",
+        lambda *args, **kwargs: DatasetResult(data=data, context={"quality_status": "PASS"}),
+        raising=False,
+    )
+    # The handler imports load_market_data locally, so patch its data module.
+    monkeypatch.setattr(
+        "StockInvestmentTool.biz.data_access.load_market_data",
+        lambda *args, **kwargs: DatasetResult(data=data, context={"quality_status": "PASS"}),
+    )
+    service = BusinessTaskService(BusinessRepository(BusinessDB(tmp_path / "screen.db")))
+    register_business_tasks(service)
+    request = service.enqueue("screen.run", input_data={
+        "name": "task screen", "start_date": "2026-08-01", "as_of": "2026-08-14",
+        "condition_spec": {"type": "comparison", "left": {"field": "close"},
+                           "operator": ">", "right": {"value": 10}},
+    })
+    service.create_run_for_request(request.request_id)
+    run = service.run_next()
+    assert run.status == "success"
+    screen_run_id = service.repo.db.fetchone(
+        "SELECT output_versions_json FROM business_job_runs WHERE run_id=?", (run.run_id,)
+    )["output_versions_json"]
+    assert "screen_run_id" in screen_run_id

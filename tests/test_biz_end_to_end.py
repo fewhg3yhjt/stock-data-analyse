@@ -170,7 +170,7 @@ def test_full_business_flow(tmp_path):
     assert notification.claim(delivery.delivery_id, "e2e-worker")
     assert notification.deliver(
         delivery.delivery_id, type("Channel", (), {"send": lambda *_: True})(),
-        subject="E2E", body="E2E", recipient="test@example.com",
+        subject="E2E", body="E2E", recipient="test@example.com", worker="e2e-worker",
     )
     assert repo.db.fetchone(
         "SELECT status FROM notification_deliveries WHERE delivery_id=?", (delivery.delivery_id,)
