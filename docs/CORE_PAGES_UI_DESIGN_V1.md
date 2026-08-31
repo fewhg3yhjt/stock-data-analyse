@@ -849,6 +849,7 @@ POST /settings/reset
 - 个股研究详情页 `/research/detail` 已实现并通过页面结构测试。
 - 新业务正式契约 API 已在容器内注册，覆盖筛选、研究、模拟、观察、建仓、持仓、收益、通知、健康和任务入口。
 - 当前业务专项测试与页面测试共 `151 passed`；工作台、市场发现、观察池、持仓和复盘页面的正式新 API 切换仍未完成。
+- 当前 `workbench.html/workbench.js` 已完成视觉改版，但仍消费旧的 `/api/workbench/*` 和 `/api/watch-pool` 聚合接口，属于页面改版，不属于新业务 API 主链路切换。
 
 ## 12. 全量页面设计基线
 
