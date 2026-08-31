@@ -36,12 +36,15 @@
 
 - 属于一次具体筛选运行；
 - 有明确的数据日期；
+- 如果来自区间信号扫描，保存扫描窗口和命中摘要，但仍然是一只股票一条候选；
 - 有命中条件和实际指标值；
 - 可以自动过期；
 - 不代表用户决定关注；
 - 不代表产生买入信号。
 
 来源：`ScreenRun` / `ScreenCandidate`。
+
+Observation 只承接证券级候选引用，不承接筛选窗口内的多条行情记录。`DiscoveryLink` 至少保留 `screen_run_id`、`screen_candidate_id`、候选代表日期和命中原因摘要；需要查看完整行情或指标时，根据 `symbol` 通过统一数据访问层按需读取。
 
 ### 2.2 WatchSubscription：用户关注关系
 
@@ -166,6 +169,19 @@ created_at
 ```
 
 原始链接不可覆盖，只能新增关系或新增事件。
+
+当来源是区间信号扫描时，`reason_snapshot` 应包含：
+
+```text
+scan_start
+scan_end
+first_signal_date
+last_signal_date
+signal_count
+representative_signal_date
+```
+
+这些字段描述“为什么进入观察视野”，不表示当前仍然满足筛选条件。观察池、研究和建议不能直接把历史命中当作当前买入信号。
 
 ### 5.2 WatchSubscription
 

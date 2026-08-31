@@ -24,6 +24,8 @@
 
 本模块消费数据模块真实返回的 `DatasetResult.data/context`，通过 `DatasetAccess.load_dataset()` 获取 Published `stock_daily`/`indicators`，再消费策略核心的条件评估协议，向观察池、个股研究和回测/模拟模块输出标准结果。
 
+筛选结果的业务粒度是证券，而不是交易日记录。日期是条件评估的计算维度：系统可以在一个有限日期窗口内逐交易日评估条件，但最终必须按 `symbol` 聚合，同一运行中一只证券只生成一条 `ScreenCandidate`。命中证券的历史行情和指标属于后续数据展开，不直接嵌入候选记录。
+
 条件配置使用新定义的 `ConditionSpec`，实际执行必须通过新 `RuleRegistry`；走势图必须通过 `DatasetAccess` 读取 Published Dataset，不由本模块自行选择 DataSource 或在线回退。
 
 ## 2. 在产品主流程中的位置
@@ -142,6 +144,25 @@ finished_at
 error
 ```
 
+筛选运行必须显式声明日期执行模式：
+
+```text
+execution_mode
+  snapshot     # 只在一个基准交易日评估
+  signal_scan  # 在有限窗口内逐交易日评估，再按 symbol 聚合
+```
+
+日期字段语义：
+
+```text
+as_of / requested_as_of       snapshot 模式的目标日期
+scan_start / scan_end         signal_scan 模式的扫描窗口
+lookback_start                条件计算所需的历史起点，可早于扫描窗口
+actual_data_as_of             本次实际使用数据的最晚日期
+```
+
+`start_date` 不得同时承担扫描窗口起点和指标历史起点两个语义。新接口优先使用 `scan_start/scan_end`；保留旧字段时必须在运行快照中转换为明确的上述字段。
+
 `run_type` 第一版支持：
 
 ```text
@@ -171,6 +192,12 @@ condition_results
 display_values
 data_as_of
 expires_at
+scan_start
+scan_end
+first_signal_date
+last_signal_date
+signal_count
+representative_signal_date
 ```
 
 其中：
@@ -180,7 +207,42 @@ expires_at
 - `score` 如果没有明确评分模型必须为空，不能用排序位置伪造评分；
 - `expires_at` 用于候选有效期，不代表观察对象自动删除。
 
-### 4.4 ChartQuery
+当 `execution_mode=signal_scan` 时，候选仍然是一证券一条，并额外保存命中摘要：
+
+```text
+scan_start
+scan_end
+first_signal_date
+last_signal_date
+signal_count
+representative_signal_date
+```
+
+如果需要查看该证券在窗口内的每次命中，使用独立的 `ScreenSignal` 明细，不把多条日期记录展开为多个候选：
+
+```text
+ScreenCandidate       一次运行中一只证券一条
+ScreenSignal          一只候选在窗口内每次命中一条
+```
+
+`representative_signal_date` 仅是默认展示或后续首次研究的锚点，不等于当前交易信号。
+
+### 4.4 命中证券数据展开
+
+筛选完成后，可以使用命中候选的证券集合读取更大范围的行情和指标：
+
+```text
+ScreenRun
+  → matched symbols
+  → DatasetAccess(symbols, data_start, data_end, fields)
+  → DatasetResult(data, context)
+```
+
+该阶段只扩大数据查看范围，不重新决定候选集合。`ScreenCandidate` 只保存候选摘要、来源和筛选时的数据上下文，不保存该证券的完整历史 DataFrame 或指标序列。
+
+数据展开应支持单只命中证券的走势、研究和详情查询，以及命中证券集合的批量分析或导出。查询接口必须限制日期范围、证券数量、字段数量和最大返回行数；超过限制时使用异步导出。默认返回命中证券在请求范围内的完整数据，不能将“全量数据”解释为无边界读取上市以来全部数据。
+
+### 4.5 ChartQuery
 
 走势图查询不是筛选运行，但必须使用同样的数据上下文。
 
@@ -333,19 +395,54 @@ watchlist_symbols
 ## 7. 筛选执行流程
 
 ```text
-接收 ScreenDefinition + 请求日期
+接收 ScreenDefinition + 执行模式 + 日期范围
 → 解析并校验条件
 → 固化 Universe
 → 固化 Dataset/Indicator Version
-→ 批量加载行情和指标
-→ 按 symbol/as_of 构建 StrategyContext，并读取统一 MarketRegime
+→ 计算条件依赖和最小读取范围
+→ 按日期/证券/字段过滤读取行情和指标
+→ 按 symbol + date 构建评估上下文
 → 评估条件树
-→ 保存每个条件结果
-→ 生成 ScreenCandidate
+→ signal_scan 模式按 symbol 聚合命中日期
+→ 生成一证券一条 ScreenCandidate
 → 按明确 SortSpec 排序
 → 保存 ScreenRun 和候选明细
 → 返回结果和 DataContext
 ```
+
+筛选和数据展开是两个阶段：
+
+```text
+筛选阶段：确定哪些 symbol 命中
+展开阶段：根据命中 symbol 获取指定范围的完整行情和指标
+```
+
+展开阶段不得反向修改筛选结果；如需使用新的日期或条件重新判断，必须创建新的 `ScreenRun`。
+
+### 7.0.1 日期执行语义
+
+`snapshot` 模式只评估目标交易日：
+
+```text
+as_of = T
+→ 取 T 及之前最近有效交易日
+→ 每个 symbol 评估一次
+→ 输出一证券一候选
+```
+
+`signal_scan` 模式评估扫描窗口内的每个有效交易日：
+
+```text
+scan_start <= signal_date <= scan_end
+→ 每个 symbol/date 评估一次完整条件树
+→ 先得到命中事实
+→ 再按 symbol 聚合
+→ 输出一证券一候选
+```
+
+同一条件树必须在同一 `symbol + signal_date` 上完整判断，不能把不同日期的条件结果拼接成一次命中。`cross`、`consecutive`、`count` 等条件可以依赖 `lookback_start` 之前的数据，但不得使用未来数据。
+
+第一版普通 `signal_scan` 的扫描窗口最多 31 个自然日，实际计算按交易日进行。复杂历史扫描、参数搜索和回测不属于普通筛选接口。
 
 ### 7.0 执行引擎
 
@@ -592,10 +689,25 @@ POST /api/screens/{screen_id}/runs
 ```json
 {
   "version": 1,
+  "execution_mode": "snapshot",
   "as_of": "YYYY-MM-DD",
   "universe": {"type": "all_active_stocks"}
 }
 ```
+
+区间信号扫描示例：
+
+```json
+{
+  "version": 1,
+  "execution_mode": "signal_scan",
+  "scan_start": "YYYY-MM-DD",
+  "scan_end": "YYYY-MM-DD",
+  "universe": {"type": "all_active_stocks"}
+}
+```
+
+两种模式的返回结果都按证券去重。`signal_scan` 结果至少应包含 `first_signal_date`、`last_signal_date`、`signal_count` 和 `representative_signal_date`。
 
 返回必须包含：
 
@@ -637,7 +749,24 @@ POST /api/screen-candidates/{candidate_id}/observe
 
 后端必须从 Candidate 记录读取来源和上下文，不能只接受前端传入的裸股票代码。
 
-### 13.6 创建模拟计划
+### 13.6 命中证券数据
+
+```text
+GET /api/screen-runs/{run_id}/candidates/{candidate_id}/data
+```
+
+参数：
+
+```text
+start_date
+end_date
+fields
+include_indicators
+```
+
+服务端必须从候选记录取得 `symbol`，校验候选属于该运行后，通过统一 `DatasetAccess` 返回该证券指定范围内的 `DatasetResult.data/context`。该接口是数据详情，不重新执行筛选。
+
+### 13.7 创建模拟计划
 
 ```text
 POST /api/screen-runs/{run_id}/simulation-plan
@@ -805,9 +934,9 @@ close > ma60
 
 ### 实现要点
 
-1. **执行引擎**：第一阶段采用精确评估（RuleRegistry 单行/历史序列评估），`compile_mode` 输出 `conservative_sql`/`fully_equivalent_sql`/`exact_only` 标记；SQL 超集约束（`RuleRegistry exact ⊆ SQL candidate`）已定义，SQL 优化引擎接入时校验。
+1. **执行引擎**：第一阶段采用精确评估（RuleRegistry 单行/历史序列评估），`compile_mode` 输出 `conservative_sql`/`fully_equivalent_sql`/`exact_only` 标记；SQL 超集约束（`RuleRegistry exact ⊆ SQL candidate`）已定义，SQL 优化引擎接入时校验。当前正式实现是 `snapshot` 语义，`signal_scan` 为待实现的区间聚合能力。
 2. **数据来源**：ScreenExecutor 接收调用方已通过 `load_dataset` 加载的合并宽表（stock_daily+indicators），不自行读数据文件。
-3. **as_of 历史筛选**：目标日取 `<= as_of` 的最后一个交易日，逐 symbol 历史定位评估，防未来数据。
+3. **as_of 历史筛选**：目标日取 `<= as_of` 的最后一个交易日，逐 symbol 历史定位评估，防未来数据。`start_date` 当前主要提供条件历史上下文，并不表示会对区间内每个交易日分别生成候选。
 
 ### 开发中遇到的问题与决策
 
@@ -817,6 +946,8 @@ close > ma60
 ### 后续待开发
 
 - SQL 批量缩小阶段（DuckDB）与保守超集等价性测试
+- `signal_scan`：最多 31 个自然日的逐交易日评估、按 symbol 聚合及 ScreenSignal 明细
+- 命中证券数据展开：根据 candidate symbol 读取指定范围行情和指标，不把历史数据嵌入候选
 - ChartService（走势图查询，依赖 DatasetAccess）
 - 行业筛选（`industry_membership` 契约完成后启用）、PE/PB 降级筛选
 
@@ -824,7 +955,7 @@ close > ma60
 
 - `web/biz_api.py` 已提供 `/api/biz/screens/preview` 和 `/api/biz/screen-runs`，正式运行会固化 ScreenVersion、UniverseSnapshot、ScreenRun 和 ScreenCandidate。
 - `biz/data_access.py` 已统一提供 Published 日线与指标宽表，API 要求明确日期边界。
-- API 要求明确 `start_date/end_date/as_of`，避免无边界读取大批量历史数据。
+- API 要求明确执行模式和日期边界，避免无边界读取大批量历史数据；普通 `signal_scan` 窗口最多 31 个自然日。
 - 筛选方案创建已改为 `draft`，通过显式 validate 后才能 publish，避免创建接口跳过版本生命周期。
 
 ### 跨模块验证

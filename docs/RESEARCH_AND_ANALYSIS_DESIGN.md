@@ -14,6 +14,8 @@ ScreenCandidate / Observation
 
 研究不是一次性页面拼装，也不是回测本身。研究负责形成判断和计划，回测/模拟负责验证策略在历史交易过程中的表现。
 
+固定策略只固化条件、指标依赖、规则优先级和执行规则，不隐含本次运行的日期范围。研究运行必须显式指定自己的 `data_as_of` 和历史数据范围；不能因为来源筛选在一个月窗口内执行，就自动把研究范围或研究基准日解释为该窗口。
+
 ## 2. 第一版范围
 
 必须支持：
@@ -55,8 +57,20 @@ data_context
 indicator_versions
 requested_start
 requested_as_of
+research_anchor
 research_config
 ```
+
+当研究从筛选候选发起时，`research_anchor` 必须明确：
+
+```text
+last_match       默认使用候选最近一次命中日期
+first_match      回溯首次命中日期
+current          使用当前最新可用数据日期
+custom           调用方显式指定日期
+```
+
+候选的 `representative_signal_date` 只能作为默认锚点，不能覆盖研究自己的数据上下文。研究保存后必须固化实际 `data_as_of`、数据版本和指标版本。
 
 第一版 `subject_type`：
 
@@ -186,6 +200,9 @@ POST /api/research-runs/{run_id}/observation-snapshot
 screen_run_id
 candidate_id
 observation_id
+research_anchor
+requested_start
+requested_as_of
 ```
 
 ## 8. 验收标准
@@ -200,6 +217,7 @@ observation_id
 6. 从研究结果保存观察快照。
 7. LLM 失败不影响核心结构化研究。
 8. 历史研究结果不因再次研究而被覆盖。
+9. 从区间筛选候选发起研究时，研究必须明确使用首次命中、最近命中、当前数据或自定义日期之一，不能隐式继承整个筛选窗口。
 
 第一版不以完整基本面研究作为通过条件；不得用旧文件、未公告数据或在线 fallback 伪造基本面完成。估值能力按降级标准验收。
 
