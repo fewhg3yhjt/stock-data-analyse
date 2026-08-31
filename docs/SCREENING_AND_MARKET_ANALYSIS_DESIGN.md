@@ -823,6 +823,7 @@ close > ma60
 ### 已补充
 
 - `web/biz_api.py` 已提供 `/api/biz/screens/preview` 和 `/api/biz/screen-runs`，正式运行会固化 ScreenVersion、UniverseSnapshot、ScreenRun 和 ScreenCandidate。
+- `biz/data_access.py` 已统一提供 Published 日线与指标宽表，API 要求明确日期边界。
 - API 要求明确 `start_date/end_date/as_of`，避免无边界读取大批量历史数据。
 
 ### 跨模块验证

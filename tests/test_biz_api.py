@@ -54,7 +54,7 @@ def test_screen_run_api_persists_run_and_candidates(app, monkeypatch):
         "volume": [1000], "amount": [10000],
     })
     monkeypatch.setattr(
-        "StockInvestmentTool.warehouse.datasets.load_dataset",
+        "StockInvestmentTool.web.biz_api.load_market_data",
         lambda *args, **kwargs: DatasetResult(data=data, context={"quality_status": "PASS"}),
     )
     response = app.test_client().post("/api/biz/screen-runs", json={

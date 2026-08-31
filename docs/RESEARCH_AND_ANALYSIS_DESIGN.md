@@ -236,6 +236,7 @@ observation_id
 ### 已补充
 
 - `web/biz_api.py` 已提供 `/api/biz/research-runs`，通过 DatasetAccess 加载明确日期范围的数据并持久化 ResearchRun、ResearchEvidence 和 StrategyDecision。
+- 研究 API 通过 `biz/data_access.py` 同时加载 Published `stock_daily`/`indicators`，保留各自数据上下文。
 - `ResearchService` 生成的 Evidence/Decision 对象已由调用方统一持久化，避免只保存 ID 而丢失实际对象。
 
 ### 跨模块验证

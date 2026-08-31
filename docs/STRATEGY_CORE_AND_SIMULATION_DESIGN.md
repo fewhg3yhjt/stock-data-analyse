@@ -647,6 +647,7 @@ P0-Smoke: PASS
 ### 已补充
 
 - `web/biz_api.py` 已提供正式研究、模拟运行入口；模拟接口要求明确日期范围，并将 Plan、Run、Fill、Result 写入 business.db。
+- `biz/data_access.py` 已统一组合 Published `stock_daily` 和 `indicators`，业务 API 不再只读取日线而遗漏指标上下文。
 - `tests/test_biz_end_to_end.py` 已验证 StrategyDecision 可被 Research、Simulation、Advice 消费。
 
 ### 已知遗留问题（非阻塞）

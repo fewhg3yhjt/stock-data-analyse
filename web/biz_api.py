@@ -22,6 +22,7 @@ from StockInvestmentTool.biz.research import ResearchService
 from StockInvestmentTool.biz.regime import MarketRegimeService
 from StockInvestmentTool.biz.simulation import execute_simulation
 from StockInvestmentTool.biz.strategy import StrategySpec, compile_strategy
+from StockInvestmentTool.biz.data_access import load_market_data
 
 biz_api = flask.Blueprint("biz_api", __name__, url_prefix="/api/biz")
 
@@ -47,12 +48,11 @@ def preview_screen():
     if not isinstance(condition, dict):
         return _error("SCREEN_INVALID", "condition_spec 必须是对象")
     try:
-        from StockInvestmentTool.warehouse.datasets import load_dataset
         from StockInvestmentTool.warehouse.storage import Warehouse
-        data = load_dataset(
-            Warehouse(), "stock_daily", start_date=payload.get("start_date"),
+        data = load_market_data(
+            Warehouse(), start_date=payload.get("start_date"),
             end_date=payload.get("end_date"), symbols=payload.get("symbols"),
-            required_quality="WARNING", allow_legacy=False,
+            required_quality="WARNING",
         )
         definition = ScreenDefinition(
             screen_id=payload.get("screen_id", "preview"), name=payload.get("name", "预览"),
@@ -78,12 +78,11 @@ def create_screen_run():
     if not isinstance(condition, dict) or not as_of or not payload.get("start_date"):
         return _error("SCREEN_INVALID", "condition_spec 和 as_of 必填")
     try:
-        from StockInvestmentTool.warehouse.datasets import load_dataset
         from StockInvestmentTool.warehouse.storage import Warehouse
-        dataset = load_dataset(
-            Warehouse(), "stock_daily", start_date=payload.get("start_date"),
+        dataset = load_market_data(
+            Warehouse(), start_date=payload.get("start_date"),
             end_date=as_of, symbols=payload.get("symbols"),
-            required_quality="WARNING", allow_legacy=False,
+            required_quality="WARNING",
         )
         definition = ScreenDefinition(
             screen_id=payload.get("screen_id") or new_id("screen"),
@@ -146,15 +145,14 @@ def create_research_run():
     if not symbol or not payload.get("start_date") or not payload.get("as_of"):
         return _error("RESEARCH_INVALID", "symbol、start_date 和 as_of 必填")
     try:
-        from StockInvestmentTool.warehouse.datasets import load_dataset
         from StockInvestmentTool.warehouse.storage import Warehouse
         from StockInvestmentTool.indicators.engine import IndicatorRegistry
         from StockInvestmentTool.indicators.context import IndicatorContext
         symbol = __import__("StockInvestmentTool.biz.code", fromlist=["normalize"]).normalize(symbol)
-        dataset = load_dataset(
-            Warehouse(), "stock_daily", start_date=payload.get("start_date"),
+        dataset = load_market_data(
+            Warehouse(), start_date=payload.get("start_date"),
             end_date=payload.get("as_of"), symbols=[symbol],
-            required_quality="WARNING", allow_legacy=False,
+            required_quality="WARNING",
         )
         strategy = None
         strategy_version_id = payload.get("strategy_version_id", "")
@@ -213,14 +211,13 @@ def create_simulation_run():
             or not payload.get("start_date") or not payload.get("end_date")):
         return _error("SIMULATION_INVALID", "strategy、symbol、start_date 和 end_date 必填")
     try:
-        from StockInvestmentTool.warehouse.datasets import load_dataset
         from StockInvestmentTool.warehouse.storage import Warehouse
         from StockInvestmentTool.biz.code import normalize
         symbol = normalize(payload["symbol"])
-        dataset = load_dataset(
-            Warehouse(), "stock_daily", start_date=payload.get("start_date"),
+        dataset = load_market_data(
+            Warehouse(), start_date=payload.get("start_date"),
             end_date=payload.get("end_date"), symbols=[symbol],
-            required_quality="WARNING", allow_legacy=False,
+            required_quality="WARNING",
         )
         strategy = compile_strategy(StrategySpec(**strategy_data))
         repo = _repo()
