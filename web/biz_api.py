@@ -287,9 +287,10 @@ def get_portfolio_summary(portfolio_id: str):
 
 @biz_api.get("/advices")
 def list_advices():
-    repo = _repo()
-    rows = repo.db.fetchall("SELECT * FROM advices ORDER BY created_at DESC LIMIT 200")
-    return flask.jsonify({"data": {"items": [dict(row) for row in rows]},
+    from StockInvestmentTool.biz.notification import NotificationService
+    status = flask.request.args.get("status")
+    items = NotificationService(_repo()).list_advices(status)
+    return flask.jsonify({"data": {"items": items},
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
@@ -437,6 +438,30 @@ def get_observation(observation_id: str):
     return flask.jsonify({"data": obs.__dict__, "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/observations")
+def list_observations():
+    service = ObservationService(_repo())
+    status = flask.request.args.get("status")
+    return flask.jsonify({"data": {"items": [o.__dict__ for o in service.list_observations(status)]},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.post("/watch-subscriptions")
+def create_watch_subscription():
+    payload = flask.request.get_json(silent=True) or {}
+    if not payload.get("symbol"):
+        return _error("SUBSCRIPTION_INVALID", "symbol 必填")
+    service = ObservationService(_repo())
+    subscription = service.create_subscription(
+        payload["symbol"], name=payload.get("name", ""),
+        purpose=payload.get("purpose", "research"), notes=payload.get("notes", ""),
+        target_amount=payload.get("target_amount"),
+    )
+    service.save_subscription(subscription)
+    return flask.jsonify({"data": subscription.__dict__,
+                          "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+
+
 @biz_api.post("/observations/<observation_id>/ready-for-entry")
 def ready_for_entry(observation_id: str):
     service = ObservationService(_repo())
@@ -469,3 +494,21 @@ def record_entry(observation_id: str):
     except WorkflowError as exc:
         status = 409 if str(exc) in {"ENTRY_CONFIRMATION_REQUIRED", "INSUFFICIENT_CASH"} else 400
         return _error(str(exc), str(exc), status)
+
+
+@biz_api.post("/observations/<observation_id>/<action>")
+def observation_action(observation_id: str, action: str):
+    actions = {"pause": "paused", "resume": "observing", "abandon": "abandoned",
+               "archive": "archived"}
+    if action not in actions:
+        return _error("OBSERVATION_ACTION_INVALID", "不支持的观察操作")
+    service = ObservationService(_repo())
+    obs = service.get_observation(observation_id)
+    if not obs:
+        return _error("OBSERVATION_NOT_FOUND", "观察对象不存在", 404)
+    try:
+        event = service.transition_and_save(obs, actions[action], reason=f"用户操作: {action}")
+        return flask.jsonify({"data": {"observation": obs.__dict__, "event": event.__dict__},
+                              "request_id": flask.request.headers.get("X-Request-ID", "")})
+    except ValueError as exc:
+        return _error("OBSERVATION_INVALID_TRANSITION", str(exc), 409)

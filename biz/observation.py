@@ -278,9 +278,31 @@ class ObservationService:
                             purpose: str = "research", notes: str = "",
                             target_amount: float | None = None) -> WatchSubscription:
         return WatchSubscription(
-            subscription_id=new_id("sub"), symbol=symbol, name=name,
+            subscription_id=new_id("sub"), symbol=normalize(symbol), name=name,
             purpose=purpose, notes=notes, target_amount=target_amount,
         )
+
+    def save_subscription(self, subscription: WatchSubscription) -> WatchSubscription:
+        """保存用户关注关系；结束关系不删除历史观察数据。"""
+        self.repo.db.upsert("watch_subscriptions", {
+            "subscription_id": subscription.subscription_id,
+            "symbol": normalize(subscription.symbol), "name": subscription.name,
+            "asset_type": subscription.asset_type, "purpose": subscription.purpose,
+            "target_amount": subscription.target_amount, "notes": subscription.notes,
+            "status": subscription.status, "started_at": subscription.started_at,
+            "paused_at": subscription.paused_at or "", "ended_at": subscription.ended_at or "",
+            "created_at": subscription.created_at, "updated_at": now_utc(),
+        }, "subscription_id")
+        return subscription
+
+    def list_observations(self, status: str | None = None) -> list[Observation]:
+        if status:
+            rows = self.repo.db.fetchall(
+                "SELECT * FROM observations WHERE status=? ORDER BY updated_at DESC", (status,)
+            )
+        else:
+            rows = self.repo.db.fetchall("SELECT * FROM observations ORDER BY updated_at DESC")
+        return [Observation(**self._row_to_obs_dict(row)) for row in rows]
 
     # ── 持久化 ────────────────────────────────────────────
 

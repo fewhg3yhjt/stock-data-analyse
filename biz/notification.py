@@ -373,6 +373,21 @@ class NotificationService:
             "ORDER BY rowid LIMIT 100")
         return [dict(r) for r in rows]
 
+    def list_advices(self, status: str | None = None) -> list[dict]:
+        sql = "SELECT * FROM advices"
+        params = ()
+        if status:
+            sql += " WHERE status=?"
+            params = (status,)
+        sql += " ORDER BY created_at DESC LIMIT 200"
+        rows = self.repo.db.fetchall(sql, params)
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["triggered_rules"] = _loads(item.pop("triggered_rules_json"))
+            result.append(item)
+        return result
+
     def list_events(self) -> list[dict]:
         rows = self.repo.db.fetchall("SELECT * FROM notification_events ORDER BY rowid DESC LIMIT 200")
         out = []
