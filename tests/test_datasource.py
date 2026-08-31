@@ -125,3 +125,45 @@ def test_warehouse_rejects_invalid_range(temp_warehouse):
         WarehouseSource(warehouse=temp_warehouse).fetch_kline(
             "sh600900", "2025-01-01", "2024-01-01"
         )
+
+
+def _publish_stock_daily(warehouse) -> str:
+    from StockInvestmentTool.warehouse.pipeline_state import PipelineState
+    from StockInvestmentTool.warehouse.publish import Publisher
+    from StockInvestmentTool.warehouse.quality import check_stock_daily
+    from StockInvestmentTool.warehouse.source_capture import capture_frames
+    from StockInvestmentTool.warehouse.daily_build import DailyBuilder
+
+    warehouse.metadata.register_stock_daily()
+    frame = pd.DataFrame({
+        "date": pd.to_datetime(["2026-08-03", "2026-08-04"]), "code": ["sh600900", "sh600900"],
+        "open": [20.0, 20.5], "high": [21.0, 21.2], "low": [19.8, 20.0], "close": [20.5, 20.8],
+        "volume": [1000, 1100], "amount": [1e6, 1.1e6], "turn": [0.5, 0.6],
+        "pe_ttm": [11, 11], "pb_mrq": [1.1, 1.1],
+    })
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[frame], expected_symbols=1, success_symbols=1,
+        universe_id="u", request_context={"fixture": True},
+    )
+    build = DailyBuilder(warehouse).build_partition("2026-08", [("tencent", source["raw"]["path"])], include_current=False)
+    state = PipelineState(warehouse.meta_db_path)
+    version = state.create_version(build, source_batches=[source["batch_id"]])
+    quality = check_stock_daily(build["path"], expected_symbols=1)
+    state.quality(version, status=quality["status"], checks=quality["checks"],
+                  publish_allowed=quality["publish_allowed"])
+    Publisher(warehouse).publish(version)
+    return version
+
+
+def test_warehouse_source_reads_published_dataset(tmp_path):
+    """有治理版本时，WarehouseSource 走 Published Dataset（版本/质量/checksum 治理）。"""
+    w = Warehouse(base_dir=Path(tmp_path))
+    _publish_stock_daily(w)
+    src = WarehouseSource(warehouse=w)
+    df = src.fetch_kline("sh.600900", "2026-08-01", "2026-08-31")
+    assert not df.empty
+    assert set(df.columns) == set(KLINE_COLUMNS)
+    assert df["close"].tolist() == [20.5, 20.8]
+    # 治理路径应返回发布时间范围的数据，而非直读分区
+    assert len(df) == 2

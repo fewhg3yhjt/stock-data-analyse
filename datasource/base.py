@@ -166,21 +166,54 @@ class WarehouseSource:
         if start > end:
             raise ValueError("开始日期不能晚于结束日期")
 
-        files = self._daily_files(start)
-        if not files:
-            return pd.DataFrame()
-        return self._select_daily(files, code_nodot, start, end)
+        df = self._load_published_daily(code_nodot, start, end)
+        return self._finalize(df)
 
     def fetch_daily_series(self, code: str, days: int = 750) -> pd.DataFrame:
         """个股图表单查询：取最近 N 个交易日的原始日线（tail(days)）。"""
+        from datetime import datetime, timedelta
+
         code_nodot = self._validated_code(code)
         days = int(days)
         if days < 1 or days > 5000:
             raise ValueError("days 必须在 1 到 5000 之间")
-        files = self._daily_files(None)
-        if not files:
-            return pd.DataFrame()
-        return self._select_daily(files, code_nodot, None, None, days=days)
+        end = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        df = self._load_published_daily(code_nodot, None, end, days=days)
+        return df.tail(days)
+
+    def _load_published_daily(self, code: str, start: str, end: str,
+                              days: int | None = None) -> pd.DataFrame:
+        """从 Published Dataset 读取日线（统一访问层，含版本/质量/checksum 治理）。
+
+        无治理版本时回退直读分区（legacy，quality_status=LEGACY 由上层标记），
+        契约校验仍由 _select_daily 保证。
+        """
+        from StockInvestmentTool.warehouse.datasets import DatasetAccessError, load_dataset
+
+        try:
+            result = load_dataset(
+                self._warehouse, "stock_daily",
+                start_date=start, end_date=end, symbols=[code],
+                required_quality="WARNING", allow_legacy=False,
+            )
+            df = result.data
+            if df is None or df.empty:
+                return pd.DataFrame()
+            df = df.drop(columns=["code"], errors="ignore")
+            keep = [c for c in self.RETURN_DAILY_COLUMNS if c in df.columns]
+            df = df[keep]
+            for c in self.OPTIONAL_DAILY_COLUMNS:
+                if c not in df.columns:
+                    df[c] = None
+            if days:
+                return df.tail(days)
+            return df
+        except DatasetAccessError as exc:
+            logger.info("WarehouseSource 无治理版本(%s)，回退直读分区: %s", code, exc)
+            files = self._daily_files(start)
+            if not files:
+                return pd.DataFrame()
+            return self._select_daily(files, code, start, end, days=days)
 
     def fetch_snapshot(self, code: str) -> dict:
         """从在线源退化为空快照；仓库源不持实时快照。"""
