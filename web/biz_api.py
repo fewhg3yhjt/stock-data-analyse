@@ -191,8 +191,14 @@ def create_research_run():
         )
         strategy = None
         strategy_version_id = payload.get("strategy_version_id", "")
-        if isinstance(payload.get("strategy"), dict):
-            strategy = compile_strategy(StrategySpec(**payload["strategy"]))
+        if strategy_version_id:
+            stored = _repo().get_strategy_version(strategy_version_id)
+            if not stored:
+                return _error("STRATEGY_VERSION_NOT_FOUND", "策略版本不存在", 404)
+            config = __import__("StockInvestmentTool.biz.db", fromlist=["loads_json"]).loads_json(stored["config_json"])
+            strategy = compile_strategy(StrategySpec(**config), strategy_version_id=strategy_version_id)
+        elif isinstance(payload.get("strategy"), dict):
+            return _error("STRATEGY_VERSION_REQUIRED", "正式研究必须使用已持久化策略版本")
         regime = MarketRegimeService(dataset.data, dataset.context).compute(
             payload.get("as_of") or str(dataset.data["date"].iloc[-1])[:10]
         )
@@ -357,11 +363,19 @@ def create_simulation_run():
             end_date=payload.get("end_date"), symbols=[symbol],
             required_quality="WARNING",
         )
-        strategy = compile_strategy(StrategySpec(**strategy_data))
         repo = _repo()
-        strategy_version_id = payload.get("strategy_version_id") or repo.save_strategy_version(
-            strategy.spec.strategy_id, int(strategy.spec.version), strategy_data, strategy.config_hash,
-        )
+        strategy_version_id = payload.get("strategy_version_id")
+        if strategy_version_id:
+            stored = repo.get_strategy_version(strategy_version_id)
+            if not stored:
+                return _error("STRATEGY_VERSION_NOT_FOUND", "策略版本不存在", 404)
+            strategy = compile_strategy(StrategySpec(**__import__("StockInvestmentTool.biz.db", fromlist=["loads_json"]).loads_json(stored["config_json"])), strategy_version_id=strategy_version_id)
+        else:
+            strategy = compile_strategy(StrategySpec(**strategy_data))
+            strategy_version_id = repo.save_strategy_version(
+                strategy.spec.strategy_id, int(strategy.spec.version), strategy_data, strategy.config_hash,
+            )
+            strategy = compile_strategy(strategy.spec, strategy_version_id=strategy_version_id)
         plan = SimulationPlan(
             plan_id=new_id("plan"), strategy_version_id=strategy_version_id,
             name=payload.get("name", "模拟运行"), start_date=payload["start_date"],

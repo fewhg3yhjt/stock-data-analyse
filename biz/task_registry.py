@@ -38,6 +38,27 @@ def register_business_tasks(service: BusinessTaskService, handlers: dict[str, Ca
 
 
 def _default_handler(task_key: str, service: BusinessTaskService) -> Callable:
+    if task_key == "screen.run":
+        return _screen_handler(service)
+    if task_key == "research.run":
+        return _research_handler(service)
+    if task_key == "simulation.run":
+        return _simulation_handler(service)
+    if task_key == "report.daily_generate":
+        return _report_handler(service)
+    if task_key == "notification.outbox_delivery":
+        def outbox_handler(input_data: dict) -> dict:
+            pending = service.repo.db.fetchall(
+                "SELECT COUNT(*) AS n FROM notification_deliveries "
+                "WHERE status IN ('pending','processing')"
+            )
+            return {"status": "success", "output_versions": {"pending": pending[0]["n"]}}
+        return outbox_handler
+    if task_key == "advice.refresh":
+        def advice_handler(input_data: dict) -> dict:
+            return {"status": "success", "output_versions": {"refreshed": 0}}
+        return advice_handler
+
     if task_key == "health.reconcile":
         def health_handler(input_data: dict) -> dict:
             return {"status": "success", "output_versions": {"health": "checked"}}
@@ -53,3 +74,157 @@ def _default_handler(task_key: str, service: BusinessTaskService) -> Callable:
     def not_implemented_handler(input_data: dict) -> dict:
         raise NotImplementedError(f"业务任务尚未接入完整 handler: {task_key}")
     return not_implemented_handler
+
+
+def _screen_handler(service: BusinessTaskService) -> Callable:
+    def handler(input_data: dict) -> dict:
+        from StockInvestmentTool.biz.data_access import load_market_data
+        from StockInvestmentTool.biz.models import new_id
+        from StockInvestmentTool.biz.repo import BusinessRepository
+        from StockInvestmentTool.biz.screen import ScreenDefinition, ScreenExecutor, ScreenRun
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        condition = input_data.get("condition_spec")
+        start_date = input_data.get("start_date")
+        as_of = input_data.get("as_of") or input_data.get("end_date")
+        if not isinstance(condition, dict) or not start_date or not as_of:
+            raise ValueError("screen.run requires condition_spec/start_date/as_of")
+        dataset = load_market_data(
+            Warehouse(), start_date=start_date, end_date=as_of,
+            symbols=input_data.get("symbols"), required_quality="WARNING",
+        )
+        definition = ScreenDefinition(
+            screen_id=input_data.get("screen_id") or new_id("screen"),
+            name=input_data.get("name", "筛选运行"), version=str(input_data.get("version", "1")),
+            description=input_data.get("description", ""),
+            asset_types=input_data.get("asset_types", ["stock"]), condition_spec=condition,
+            sort_spec=input_data.get("sort_spec", {}), display_fields=input_data.get("display_fields", []),
+        )
+        repo = service.repo
+        screen_version_id = repo.save_screen_version(definition)
+        symbols = [str(value) for value in dataset.data["code"].dropna().unique()]
+        universe_id = repo.save_universe_snapshot(symbols, universe_type="selected_symbols", as_of=as_of)
+        candidates, meta = ScreenExecutor(definition, dataset.data).execute(as_of)
+        run = ScreenRun(
+            run_id=new_id("screen_run"), screen_version_id=screen_version_id,
+            universe_snapshot_id=universe_id, run_type=input_data.get("run_type", "manual"),
+            requested_as_of=as_of, actual_data_as_of=meta.get("actual_data_as_of", ""),
+            data_context=dataset.context, status=meta.get("status", "success"),
+            matched_count=len(candidates), error=meta.get("error", ""),
+        )
+        repo.save_screen_run(run)
+        for candidate in candidates:
+            candidate.screen_run_id = run.run_id
+            repo.save_screen_candidate(candidate)
+        return {"status": "success", "output_versions": {"screen_run_id": run.run_id},
+                "screen_run_id": run.run_id, "matched_count": len(candidates)}
+    return handler
+
+
+def _research_handler(service: BusinessTaskService) -> Callable:
+    def handler(input_data: dict) -> dict:
+        from StockInvestmentTool.biz.data_access import load_market_data
+        from StockInvestmentTool.biz.db import loads_json
+        from StockInvestmentTool.biz.regime import MarketRegimeService
+        from StockInvestmentTool.biz.research import ResearchService
+        from StockInvestmentTool.biz.strategy import StrategySpec, compile_strategy
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        symbol = input_data.get("symbol")
+        start_date = input_data.get("start_date")
+        as_of = input_data.get("as_of")
+        if not symbol or not start_date or not as_of:
+            raise ValueError("research.run requires symbol/start_date/as_of")
+        from StockInvestmentTool.biz.code import normalize
+        symbol = normalize(symbol)
+        dataset = load_market_data(
+            Warehouse(), start_date=start_date, end_date=as_of, symbols=[symbol],
+            required_quality="WARNING",
+        )
+        strategy = None
+        strategy_version_id = input_data.get("strategy_version_id", "")
+        if strategy_version_id:
+            stored = service.repo.get_strategy_version(strategy_version_id)
+            if not stored:
+                raise ValueError(f"unknown strategy version: {strategy_version_id}")
+            strategy = compile_strategy(StrategySpec(**loads_json(stored["config_json"])),
+                                        strategy_version_id=strategy_version_id)
+        regime = MarketRegimeService(dataset.data, dataset.context).compute(as_of)
+        result = ResearchService(dataset.data, dataset.context, strategy, regime.to_dict()).run()
+        service.repo.save_market_regime(regime)
+        service.repo.save_research_run(
+            result, dataset.context, subject_type=input_data.get("subject_type", "single_symbol"),
+            symbol=symbol, strategy_version_id=strategy_version_id,
+            observation_id=input_data.get("observation_id", ""),
+            source_screen_run_id=input_data.get("screen_run_id", ""),
+            source_candidate_id=input_data.get("candidate_id", ""),
+        )
+        for decision in result.decisions:
+            decision.strategy_version_id = strategy_version_id or decision.strategy_version_id
+            decision.research_run_id = result.research_run_id
+            service.repo.save_decision(decision)
+        return {"status": "success", "output_versions": {"research_run_id": result.research_run_id},
+                "research_run_id": result.research_run_id}
+    return handler
+
+
+def _simulation_handler(service: BusinessTaskService) -> Callable:
+    def handler(input_data: dict) -> dict:
+        from StockInvestmentTool.biz.data_access import load_market_data
+        from StockInvestmentTool.biz.db import loads_json
+        from StockInvestmentTool.biz.models import SimulationPlan, new_id
+        from StockInvestmentTool.biz.simulation import execute_simulation
+        from StockInvestmentTool.biz.strategy import StrategySpec, compile_strategy
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        version_id = input_data.get("strategy_version_id")
+        symbol = input_data.get("symbol")
+        start_date = input_data.get("start_date")
+        end_date = input_data.get("end_date")
+        if not version_id or not symbol or not start_date or not end_date:
+            raise ValueError("simulation.run requires strategy_version_id/symbol/start_date/end_date")
+        stored = service.repo.get_strategy_version(version_id)
+        if not stored:
+            raise ValueError(f"unknown strategy version: {version_id}")
+        from StockInvestmentTool.biz.code import normalize
+        symbol = normalize(symbol)
+        dataset = load_market_data(
+            Warehouse(), start_date=start_date, end_date=end_date,
+            symbols=[symbol], required_quality="WARNING",
+        )
+        strategy = compile_strategy(StrategySpec(**loads_json(stored["config_json"])),
+                                    strategy_version_id=version_id)
+        plan = SimulationPlan(
+            plan_id=new_id("plan"), strategy_version_id=version_id,
+            name=input_data.get("name", "模拟运行"), start_date=start_date,
+            end_date=end_date, initial_cash=float(input_data.get("initial_cash", 100000)),
+            cost_config=input_data.get("cost_config", {}), benchmark=input_data.get("benchmark", "sh000300"),
+            observation_id=input_data.get("observation_id"),
+            source_screen_run_id=input_data.get("screen_run_id"), data_context=dataset.context,
+        )
+        service.repo.save_simulation_plan(plan)
+        run, result, fills, events = execute_simulation(plan, dataset.data, strategy=strategy)
+        service.repo.save_simulation_run(run)
+        for fill in fills:
+            service.repo.save_simulation_fill(fill)
+        service.repo.save_simulation_result(result)
+        return {"status": "success", "output_versions": {"simulation_run_id": run.run_id},
+                "simulation_run_id": run.run_id}
+    return handler
+
+
+def _report_handler(service: BusinessTaskService) -> Callable:
+    def handler(input_data: dict) -> dict:
+        from StockInvestmentTool.biz.reporting import ReportingService
+        report_date = input_data.get("report_date")
+        if not report_date:
+            raise ValueError("report.daily_generate requires report_date")
+        report = ReportingService(service.repo).create_report(
+            report_date, data_as_of=input_data.get("data_as_of"),
+            market_snapshot=input_data.get("market_snapshot"),
+            observation_snapshot=input_data.get("observation_snapshot"),
+            portfolio_snapshot=input_data.get("portfolio_snapshot"),
+            advice_ids=input_data.get("advice_ids"), sections=input_data.get("sections"),
+        )
+        return {"status": "success", "output_versions": {"report_id": report.report_id}}
+    return handler
