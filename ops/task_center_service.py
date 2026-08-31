@@ -66,7 +66,9 @@ class TaskCenterService:
                 "running_run": running,
                 "current_status": (running or latest or {}).get("status") or ("scheduled" if item.get("enabled") else "disabled"),
                 "configured": True,
-                "registered": bool(item.get("enabled")),
+                # Scheduler registration is not implied by a run history record.
+                # The management DB only knows configuration and execution facts.
+                "registered": False,
                 "enabled": bool(item.get("enabled")),
                 "running": bool(running),
                 "has_history": bool(latest),

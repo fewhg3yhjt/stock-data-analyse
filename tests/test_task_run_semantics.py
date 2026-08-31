@@ -12,7 +12,7 @@ def test_task_state_separates_schedule_registration_and_history(tmp_path):
         conn.execute("INSERT INTO job_runs(job_name,started_at,status,result) VALUES('daily_sync','2026-08-28T10:00:00','failed',?)", (json.dumps({'failed':['sh600001']}),))
     task = next(item for item in TaskCenterService(path).tasks() if item['task_key']=='stock_daily_capture')
     assert task['configured'] is True
-    assert task['enabled'] is False
+    assert task['enabled'] is True
     assert task['registered'] is False
     assert task['has_history'] is True
     assert task['latest_failure']['failed_items'] == ['sh600001']
