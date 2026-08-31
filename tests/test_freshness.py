@@ -18,7 +18,10 @@ def test_classify_trade_day_lag():
 
 def test_daily_expected_date_is_last_completed_trade_day():
     from StockInvestmentTool.ops.freshness import latest_completed_trade_day
-    assert latest_completed_trade_day(datetime(2026, 8, 27, 21)) == datetime(2026, 8, 26).date()
+    # 交易日 15:35 之后视为当天已收盘
+    assert latest_completed_trade_day(datetime(2026, 8, 27, 21)) == datetime(2026, 8, 27).date()
+    # 交易日盘前（早于 15:35）返回上一交易日
+    assert latest_completed_trade_day(datetime(2026, 8, 27, 10)) == datetime(2026, 8, 26).date()
 
 
 def test_data_status_reads_actual_files_and_job_failure(tmp_path, monkeypatch):
@@ -36,4 +39,4 @@ def test_data_status_reads_actual_files_and_job_failure(tmp_path, monkeypatch):
     assert datasets["daily"]["status"] == "failed"
     assert datasets["daily"]["last_error"] == "provider timeout"
     assert datasets["indicators"]["latest_value"] == "2026-08-26"
-    assert result["expected_trade_day"] == "2026-08-26"
+    assert result["expected_trade_day"] == "2026-08-27"

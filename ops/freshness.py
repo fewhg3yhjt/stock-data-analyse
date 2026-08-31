@@ -34,29 +34,35 @@ class DatasetStatus:
         return asdict(self)
 
 
+def _daily_close_time() -> time:
+    """日线任务计划时间（DAILY_RUN_TIME，默认 15:35）作为交易日收盘判定时刻。"""
+    spec = os.getenv("DAILY_RUN_TIME", "15:35")
+    try:
+        hour, minute = (int(part) for part in spec.split(":", 1))
+        return time(hour, minute)
+    except (TypeError, ValueError):
+        return time(15, 35)
+
+
 def latest_expected_trade_day(now: Optional[datetime] = None) -> date:
     """Return the latest weekday expected to have daily data.
 
-    This deliberately does not pretend to be an exchange holiday calendar.
-    Holidays can be added later without changing the status model.
+    Delegates to the unified trade-day service (weekend + configurable holidays).
     """
-    current = (now or datetime.now()).date()
-    while current.weekday() >= 5:
-        current -= timedelta(days=1)
-    return current
+    from StockInvestmentTool.ops.trade_calendar import latest_closed_trade_day
+
+    return latest_closed_trade_day(now, close_time=_daily_close_time())
 
 
 def latest_completed_trade_day(now: Optional[datetime] = None) -> date:
     """Return the latest full daily bar expected by the warehouse pipeline.
 
-    The daily collector intentionally ends at yesterday because today's bar is
-    not complete until the next trading session. Intraday minute data is tracked
+    Delegates to the unified trade-day service. Intraday minute data is tracked
     separately and may use today's date.
     """
-    current = (now or datetime.now()).date() - timedelta(days=1)
-    while current.weekday() >= 5:
-        current -= timedelta(days=1)
-    return current
+    from StockInvestmentTool.ops.trade_calendar import latest_closed_trade_day
+
+    return latest_closed_trade_day(now, close_time=_daily_close_time())
 
 
 def _date_value(value) -> Optional[date]:
@@ -115,12 +121,8 @@ def _classify_daily_task(item: DatasetStatus, latest_job: Optional[dict], curren
             return
         _apply_job_state(item, latest_job, latest_job if latest_job.get("status") == "success" else None)
         return
-    spec = os.getenv("DAILY_RUN_TIME", "15:35")
-    try:
-        hour, minute = (int(part) for part in spec.split(":", 1))
-    except (TypeError, ValueError):
-        hour, minute = 15, 35
-    scheduled = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    close = _daily_close_time()
+    scheduled = current.replace(hour=close.hour, minute=close.minute, second=0, microsecond=0)
     if current < scheduled:
         item.status = "waiting_close"
         item.last_error = f"等待今日收盘及 {spec} 日线任务计划时间"
