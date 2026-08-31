@@ -111,11 +111,36 @@ def create_screen_definition():
         version_id = repo.save_screen_version(definition)
         return flask.jsonify({"data": {
             "screen_id": definition.screen_id, "screen_version_id": version_id,
-            "version": definition.version, "status": "published",
+            "version": definition.version, "status": "draft",
             "config_hash": definition.config_hash(),
         }, "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
     except Exception as exc:  # noqa: BLE001
         return _error("SCREEN_INVALID", str(exc), 400)
+
+
+@biz_api.post("/screens/<screen_id>/versions/<version_id>/validate")
+def validate_screen_version(screen_id: str, version_id: str):
+    repo = _repo()
+    row = repo.db.fetchone("SELECT * FROM screen_versions WHERE screen_id=? AND screen_version_id=?",
+                           (screen_id, version_id))
+    if not row:
+        return _error("SCREEN_VERSION_NOT_FOUND", "筛选版本不存在", 404)
+    repo.db.update("screen_versions", {"status": "validated"}, "screen_version_id=?", (version_id,))
+    return flask.jsonify({"data": {"screen_version_id": version_id, "status": "validated"},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.post("/screens/<screen_id>/versions/<version_id>/publish")
+def publish_screen_version(screen_id: str, version_id: str):
+    repo = _repo()
+    try:
+        repo.publish_screen_version(version_id)
+        return flask.jsonify({"data": {"screen_version_id": version_id, "status": "published"},
+                              "request_id": flask.request.headers.get("X-Request-ID", "")})
+    except KeyError:
+        return _error("SCREEN_VERSION_NOT_FOUND", "筛选版本不存在", 404)
+    except ValueError as exc:
+        return _error("SCREEN_INVALID", str(exc), 409)
 
 
 @biz_api.post("/screen-runs")

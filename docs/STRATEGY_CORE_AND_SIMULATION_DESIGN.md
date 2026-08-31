@@ -657,6 +657,7 @@ P0-Smoke: PASS
 - 模拟买入在信号时点执行最大仓位约束，避免使用区间末尾价格形成未来数据泄漏。
 - 决策仲裁已先按动作业务优先级（风险/卖出优先）再按规则 priority 处理；未被选中的触发规则会移动到 `suppressed_rules` 并记录抑制原因。
 - 硬止损已覆盖 holding、accumulating、left_take_profit、right_trailing 阶段。
+- 正式业务 API 使用已持久化的策略版本配置，不接受前端临时策略配置覆盖版本。
 
 ### 阶段 1 验证
 

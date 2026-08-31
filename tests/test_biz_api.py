@@ -49,7 +49,17 @@ def test_create_screen_validates_and_persists_definition(app):
         "left": {"field": "close"}, "operator": ">", "right": {"value": 10}},
     })
     assert response.status_code == 201
-    assert response.get_json()["data"]["status"] == "published"
+    payload = response.get_json()["data"]
+    assert payload["status"] == "draft"
+    validated = app.test_client().post(
+        f"/api/screens/{payload['screen_id']}/versions/{payload['screen_version_id']}/validate"
+    )
+    assert validated.status_code == 200
+    published = app.test_client().post(
+        f"/api/screens/{payload['screen_id']}/versions/{payload['screen_version_id']}/publish"
+    )
+    assert published.status_code == 200
+    assert published.get_json()["data"]["status"] == "published"
 
 
 def test_position_and_subscription_not_found_contracts(app):

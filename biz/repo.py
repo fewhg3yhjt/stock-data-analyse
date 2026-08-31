@@ -48,6 +48,18 @@ class BusinessRepository:
         }, "strategy_version_id")
         return vid
 
+    def publish_strategy_version(self, strategy_version_id: str) -> None:
+        row = self.get_strategy_version(strategy_version_id)
+        if not row:
+            raise KeyError(f"unknown strategy version: {strategy_version_id}")
+        if row["status"] not in {"validated", "published", "enabled"}:
+            raise ValueError("strategy version must be validated before publish")
+        self.db.update("strategy_versions", {"status": "published", "published_at": now_utc()},
+                       "strategy_version_id=?", (strategy_version_id,))
+        self.db.update("strategies", {"status": "published", "current_version_id": strategy_version_id,
+                                      "updated_at": now_utc()},
+                       "strategy_id=?", (row["strategy_id"],))
+
     def get_strategy_version(self, strategy_version_id: str) -> dict | None:
         row = self.db.fetchone(
             "SELECT * FROM strategy_versions WHERE strategy_version_id=?", (strategy_version_id,))
@@ -135,15 +147,27 @@ class BusinessRepository:
         }
         self.db.upsert("screens", {
             "screen_id": definition.screen_id, "name": definition.name,
-            "status": "published", "current_version_id": svid, "created_at": ts, "updated_at": ts,
+            "status": "draft", "current_version_id": "", "created_at": ts, "updated_at": ts,
         }, "screen_id")
         self.db.upsert("screen_versions", {
             "screen_version_id": svid, "screen_id": definition.screen_id,
             "version_no": int(definition.version or 1), "config_json": dumps_json(config),
-            "config_hash": definition.config_hash(), "status": "published",
-            "published_at": ts, "created_at": ts,
+            "config_hash": definition.config_hash(), "status": "draft",
+            "published_at": "", "created_at": ts,
         }, "screen_version_id")
         return svid
+
+    def publish_screen_version(self, screen_version_id: str) -> None:
+        row = self.db.fetchone("SELECT * FROM screen_versions WHERE screen_version_id=?", (screen_version_id,))
+        if not row:
+            raise KeyError(f"unknown screen version: {screen_version_id}")
+        if row["status"] not in {"validated", "published"}:
+            raise ValueError("screen version must be validated before publish")
+        self.db.update("screen_versions", {"status": "published", "published_at": now_utc()},
+                       "screen_version_id=?", (screen_version_id,))
+        self.db.update("screens", {"status": "published", "current_version_id": screen_version_id,
+                                   "updated_at": now_utc()},
+                       "screen_id=?", (row["screen_id"],))
 
     def save_universe_snapshot(self, symbols: list[str], universe_type: str = "selected_symbols",
                                as_of: str = "") -> str:
