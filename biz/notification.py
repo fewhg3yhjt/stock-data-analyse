@@ -289,6 +289,23 @@ class NotificationService:
             if advice and advice["status"] == ADVICE_GENERATED:
                 self.transition_advice(event["advice_id"], ADVICE_NOTIFIED)
 
+    def record_execution(self, advice_id: str, *, executed_quantity: float,
+                         requested_quantity: float | None = None) -> dict:
+        """将实际 Execution 结果回写 Advice，不修改交易事实。"""
+        row = self.repo.db.fetchone("SELECT * FROM advices WHERE advice_id=?", (advice_id,))
+        if not row:
+            raise KeyError(f"unknown advice: {advice_id}")
+        requested = requested_quantity if requested_quantity is not None else row["quantity"]
+        if requested is not None and executed_quantity < float(requested):
+            target = ADVICE_PARTIALLY_EXECUTED
+        else:
+            target = ADVICE_EXECUTED
+        current = row["status"]
+        if target != current and target in ADVICE_TRANSITIONS.get(current, set()):
+            self.transition_advice(advice_id, target)
+        return {"advice_id": advice_id, "status": target,
+                "requested_quantity": requested, "executed_quantity": executed_quantity}
+
     # ── 投递 ──────────────────────────────────────────────
 
     def create_delivery(self, event: NotificationEvent, channel: str,

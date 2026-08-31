@@ -75,3 +75,18 @@ class TestValuation:
                                       context={"fallback_used": True})
         v = vs.valuate_cycle(cid)
         assert v.price_source == "fallback"
+
+    def test_snapshot_is_persisted_and_idempotent(self, pf_setup):
+        svc, pid, cid = pf_setup
+        svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-14",
+                             quantity=1000, price=10.0, idempotency_key="b1")
+        vs = PositionValuationService(portfolio_service=svc, df=make_price_df(close=11.5))
+        vs.valuate_cycle(cid)
+        vs.valuate_cycle(cid)
+        snapshot = vs.get_snapshot(cid, "2026-08-24")
+        assert snapshot is not None
+        assert snapshot["quantity"] == 1000
+        assert svc.repo.db.fetchone(
+            "SELECT COUNT(*) AS n FROM position_snapshots WHERE position_cycle_id=?",
+            (cid,),
+        )["n"] == 1

@@ -611,6 +611,27 @@ CREATE TABLE IF NOT EXISTS daily_reports (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS system_alerts (
+    alert_id TEXT PRIMARY KEY,
+    alert_type TEXT NOT NULL,
+    resource TEXT NOT NULL DEFAULT '',
+    failure_code TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'detected',
+    priority INTEGER NOT NULL DEFAULT 0,
+    message TEXT NOT NULL DEFAULT '',
+    details_json TEXT NOT NULL DEFAULT '{}',
+    detected_at TEXT NOT NULL,
+    notified_at TEXT,
+    acknowledged_at TEXT,
+    recovered_at TEXT,
+    closed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_system_alerts_status ON system_alerts(status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_system_alert_active
+    ON system_alerts(alert_type, resource, failure_code, status);
+
 CREATE TABLE IF NOT EXISTS performance_snapshots (
     snapshot_id TEXT PRIMARY KEY,
     query_id TEXT NOT NULL,

@@ -449,5 +449,5 @@ Route
 
 - `tests/test_biz_end_to_end.py` 作为业务闭环验收测试已通过，验证业务对象可以在隔离 business.db 中串联。
 - `tests/test_biz_tasks.py` 已验证锁覆盖 handler 执行期、非 owner 不得释放锁和 stale run 回收。
-- 容器内已确认新业务蓝图注册 10 个业务 API 路由；完整业务页面、正式 Scheduler、持久化 Worker 队列和生产切换流程仍待接入。
+- 容器内已确认新业务蓝图注册 24 个业务 API 路由；完整业务页面、正式 Scheduler、持久化 Worker 队列和生产切换流程仍待接入。
 - `web/biz_api.py` 已接入新业务蓝图，当前提供筛选预览、正式筛选运行、研究运行、模拟运行、观察查询、建仓确认和建仓录入基础入口；完整业务页面、Scheduler 和 Worker 仍待接入。

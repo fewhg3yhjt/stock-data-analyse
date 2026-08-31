@@ -304,6 +304,66 @@ def list_notification_deliveries():
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
+@biz_api.get("/position-cycles/<cycle_id>/snapshots/<as_of>")
+def get_position_snapshot(cycle_id: str, as_of: str):
+    from StockInvestmentTool.biz.portfolio import PortfolioService
+    from StockInvestmentTool.biz.valuation import PositionValuationService
+    repo = _repo()
+    snapshot = PositionValuationService(PortfolioService(repo)).get_snapshot(cycle_id, as_of)
+    if not snapshot:
+        return _error("POSITION_SNAPSHOT_NOT_FOUND", "持仓估值快照不存在", 404)
+    return flask.jsonify({"data": snapshot, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.post("/advices/<advice_id>/execution")
+def record_advice_execution(advice_id: str):
+    payload = flask.request.get_json(silent=True) or {}
+    if payload.get("executed_quantity") is None:
+        return _error("INVALID_EXECUTION", "executed_quantity 必填")
+    from StockInvestmentTool.biz.notification import NotificationService
+    try:
+        result = NotificationService(_repo()).record_execution(
+            advice_id, executed_quantity=float(payload["executed_quantity"]),
+            requested_quantity=float(payload["requested_quantity"])
+            if payload.get("requested_quantity") is not None else None,
+        )
+        return flask.jsonify({"data": result, "request_id": flask.request.headers.get("X-Request-ID", "")})
+    except KeyError as exc:
+        return _error("ADVICE_NOT_FOUND", str(exc), 404)
+
+
+@biz_api.post("/reports/daily")
+def create_daily_report():
+    payload = flask.request.get_json(silent=True) or {}
+    if not payload.get("report_date"):
+        return _error("REPORT_INVALID", "report_date 必填")
+    from StockInvestmentTool.biz.reporting import ReportingService
+    report = ReportingService(_repo()).create_report(
+        payload["report_date"], data_as_of=payload.get("data_as_of"),
+        market_snapshot=payload.get("market_snapshot"),
+        observation_snapshot=payload.get("observation_snapshot"),
+        portfolio_snapshot=payload.get("portfolio_snapshot"),
+        advice_ids=payload.get("advice_ids"), sections=payload.get("sections"),
+    )
+    return flask.jsonify({"data": report.__dict__, "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+
+
+@biz_api.get("/reports/daily/<report_date>")
+def get_daily_report(report_date: str):
+    from StockInvestmentTool.biz.reporting import ReportingService
+    report = ReportingService(_repo()).get_daily_report(report_date)
+    if not report:
+        return _error("REPORT_NOT_FOUND", "日报不存在", 404)
+    return flask.jsonify({"data": report, "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/system/alerts")
+def list_system_alerts():
+    from StockInvestmentTool.biz.reporting import SystemAlertService
+    return flask.jsonify({"data": {"items": SystemAlertService(_repo()).list_active()},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
 @biz_api.post("/candidates/<candidate_id>/observation")
 def candidate_observation(candidate_id: str):
     try:

@@ -421,3 +421,5 @@ Email 是第一版完整验收渠道；Feishu 和 WeCom 不删除，继续作为
 - `LiveAdviceEvaluator` 已实现 `StrategyContext → StrategyDecision → Advice`。
 - Advice 状态转换已集中到 `NotificationService.transition_advice()`。
 - 成功投递可推进关联 Advice，失败投递不会伪造通知成功。
+- `record_execution` 已支持按实际执行数量推进 Advice 的 `partially_executed/executed` 状态。
+- `biz/reporting.py` 已提供结构化 DailyReport 和 SystemAlert 生命周期基础服务，并接入业务 API。

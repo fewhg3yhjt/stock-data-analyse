@@ -414,6 +414,7 @@ assumptions
 - 严格按 T 日回放 Execution、Lot 和公司行为。
 - 实际/模拟/基准统一日期轴和收益口径。
 - PerformanceSnapshot/Comparison 持久化与导出 API。
+- 业务 API 已提供持仓快照、日报和复盘基础查询，但 PerformanceSnapshot/Comparison 的正式落库仍待完成。
 
 ### 跨模块验证
 

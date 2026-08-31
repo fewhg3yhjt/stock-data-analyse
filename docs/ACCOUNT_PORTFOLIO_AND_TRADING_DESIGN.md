@@ -498,6 +498,7 @@ idempotent_replay
 - `tests/test_biz_portfolio.py` 已通过故障注入验证 Execution 插入后继续处理失败时，Execution/Lot/CashLedger 均不残留。
 - `biz/workflow.py` 与 `tests/test_biz_workflow.py` 已将 EntryContext → PositionCycle → Execution → CashLedger → Observation promoted 收口为应用服务事务。
 - 正式 Web 建仓入口、公司行为完整规则和 PositionSnapshot 读模型仍待完成。
+- `PositionValuationService` 已持久化 `PositionSnapshot`，并由 `/api/biz/position-cycles/<cycle_id>/snapshots/<as_of>` 提供查询。
 
 ### 后续待开发
 

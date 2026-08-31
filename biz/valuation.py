@@ -112,6 +112,19 @@ class PositionValuationService:
             "market_price_as_of": valuations[0].market_price_as_of if valuations else None,
         }
 
+    def get_snapshot(self, position_cycle_id: str, as_of: str) -> dict | None:
+        """读取已持久化的估值快照。"""
+        row = self.pf.repo.db.fetchone(
+            "SELECT * FROM position_snapshots WHERE position_cycle_id=? AND as_of=?",
+            (position_cycle_id, as_of),
+        )
+        if not row:
+            return None
+        from StockInvestmentTool.biz.db import loads_json
+        result = dict(row)
+        result["data_context"] = loads_json(result.pop("data_context_json"))
+        return result
+
     # ── 内部 ──────────────────────────────────────────────
 
     def _latest_price(self, symbol: str) -> tuple[float | None, str | None]:
