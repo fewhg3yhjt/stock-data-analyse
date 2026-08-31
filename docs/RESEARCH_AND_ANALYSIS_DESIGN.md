@@ -239,6 +239,7 @@ observation_id
 - 已补齐正式 `/api/research-runs` 的 evidence、decision、report 和 observation-snapshot 查询/创建入口。
 - 研究 API 通过 `biz/data_access.py` 同时加载 Published `stock_daily`/`indicators`，保留各自数据上下文。
 - ResearchEvidence 已保存标的、数据日期、数据上下文、市场状态、实际输入字段和评估结果快照。
+- 研究 API 已改为持久化 BusinessRequest/JobRun 后返回 202；研究页面轮询业务运行状态，完成后查询 ResearchRun。
 - `ResearchService` 生成的 Evidence/Decision 对象已由调用方统一持久化，避免只保存 ID 而丢失实际对象。
 
 ### 跨模块验证
