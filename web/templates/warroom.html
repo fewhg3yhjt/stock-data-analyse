@@ -18,8 +18,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
 .header .nav a.active{font-weight:700;border-bottom:2px solid var(--color-info);padding-bottom:2px;}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
-.card-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.card-title i{color:var(--color-info);}
+.ui-card-header{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.ui-card-header i{color:var(--color-info);}
 .btn{padding:9px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;text-decoration:none;}
 .btn-primary{background:var(--color-info);color:#fff;}
 .btn-outline{background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-subtle);}
@@ -82,15 +82,15 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   {% endif %}
 
   {% if data %}
-  <div class="card">
-    <div class="card-title">
+  <div class="ui-card">
+    <div class="ui-card-header">
       <span><i class="fas fa-chart-pie"></i> 账户全局总览</span>
       <span class="note">{{ data.data_date }} · {{ data.data_note }}
-        <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+        <a class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
            href="/portfolio/add"><i class="fas fa-plus"></i> 新建持仓</a>
-        <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+        <a class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
            href="/portfolio/export" title="下载 xlsx 模板（自选/持仓/加仓/操作笔记）"><i class="fas fa-file-excel"></i> 导出模板</a>
-        <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+        <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
            onclick="openImport()" title="批量导入 xlsx 模板"><i class="fas fa-file-import"></i> 批量导入</button>
       </span>
     </div>
@@ -107,15 +107,15 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title" style="cursor:pointer;" onclick="toggleHist()">
+  <div class="ui-card">
+    <div class="ui-card-header" style="cursor:pointer;" onclick="toggleHist()">
       <span><i class="fas fa-clock-rotate-left"></i> 账户历史操作记录 <span class="tag gray">{{ data.history_txns|length }} 笔</span></span>
       <span class="chevron" style="font-size:12px;color:var(--color-text-subtle);"><i class="fas fa-chevron-down"></i></span>
     </div>
     <div id="history-box" style="display:none;">
       {% if data.history_txns %}
-      <div class="table-wrap" style="overflow-x:auto;">
-        <table>
+      <div class="ui-table-wrap" style="overflow-x:auto;">
+        <table class="ui-table">
           <thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>盈亏</th><th>说明</th></tr></thead>
           <tbody>
           {% for t in data.history_txns %}
@@ -137,10 +137,10 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">
+  <div class="ui-card">
+    <div class="ui-card-header">
       <span><i class="fas fa-list-check"></i> 个股今日指令</span>
-      <a class="btn btn-outline" href="#" onclick="refreshAll();return false;"><i class="fas fa-rotate"></i> 刷新行情+建议</a>
+      <a class="ui-button ui-button-secondary" href="#" onclick="refreshAll();return false;"><i class="fas fa-rotate"></i> 刷新行情+建议</a>
     </div>
     {% if data.positions %}
       {% for p in data.positions %}
@@ -151,21 +151,21 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
             <span class="tag gray">{{ p.scheme_name }}</span>
             <span class="tag blue">类型{{ p.stock_type }}</span>
             <span class="tag {% if (p.unrealized_pnl_pct or 0)>=0 %}red{% else %}green{% endif %}">{{ "%+.2f"|format(p.unrealized_pnl_pct or 0) }}%</span>
-            <a class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+            <a class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                href="/portfolio/{{ p.id }}" title="加仓/减仓/平仓操作"><i class="fas fa-arrows-rotate"></i> 操作</a>
-            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                data-action="toggleDetail" data-code="{{ p.stock_code }}"
                title="基础指标 + 天级K线 + 盘中实时 + 实际收益"><i class="fas fa-chart-simple"></i> 详情</button>
-            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                data-action="toggleReturn" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}" data-cost="{{ p.avg_cost }}"
                title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
-            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-success);"
+            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-success);"
                data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="buy" title="加仓"><i class="fas fa-plus"></i> 加仓</button>
-            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-warning);"
+            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-warning);"
                data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="sell" title="减仓"><i class="fas fa-minus"></i> 减仓</button>
-            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#9c27b0;"
+            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#9c27b0;"
                data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="dividend" title="分红"><i class="fas fa-coins"></i> 分红</button>
-            <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-danger);"
+            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-danger);"
                data-action="deletePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
           </span>
         </div>
@@ -221,15 +221,15 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   <div style="background:#fff;border-radius:10px;padding:20px 24px;width:380px;max-width:92%;box-shadow:0 8px 30px rgba(0,0,0,.2);">
     <div style="font-size:16px;font-weight:700;margin-bottom:14px;" id="op-title">操作</div>
     <div id="op-stock" style="font-size:13px;color:#6b7280;margin-bottom:12px;"></div>
-    <div class="form-group" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">成交价格</label>
+    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">成交价格</label>
       <input id="op-price" type="number" step="any" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="成交价"></div>
-    <div class="form-group" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">份额（分红填每股分红）</label>
+    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">份额（分红填每股分红）</label>
       <input id="op-shares" type="number" step="any" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="股数"></div>
-    <div class="form-group" style="margin-bottom:14px;"><label style="font-size:13px;color:#6b7280;">备注</label>
+    <div class="ui-field" style="margin-bottom:14px;"><label style="font-size:13px;color:#6b7280;">备注</label>
       <input id="op-reason" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="操作理由（可选）"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button class="btn" style="padding:8px 16px;border:1px solid #e0e4ea;border-radius:6px;background:#f8f9fb;color:#6b7280;cursor:pointer;" onclick="closeOp()">取消</button>
-      <button class="btn" style="padding:8px 16px;border:none;border-radius:6px;background:var(--color-info);color:#fff;cursor:pointer;" onclick="submitOp()">确认</button>
+      <button class="ui-button" style="padding:8px 16px;border:1px solid #e0e4ea;border-radius:6px;background:#f8f9fb;color:#6b7280;cursor:pointer;" onclick="closeOp()">取消</button>
+      <button class="ui-button" style="padding:8px 16px;border:none;border-radius:6px;background:var(--color-info);color:#fff;cursor:pointer;" onclick="submitOp()">确认</button>
     </div>
   </div>
 </div>
@@ -277,9 +277,9 @@ async function toggleReturn(btn){
   const cost = box.dataset.cost;
   box.innerHTML =
     '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">' +
-    '<button class="btn btn-outline pbtn" data-p="day" style="padding:4px 12px;font-size:12px;background:var(--color-info);color:#fff;" onclick="loadStockChart(this)">日线</button>' +
-    '<button class="btn btn-outline pbtn" data-p="week" style="padding:4px 12px;font-size:12px;" onclick="loadStockChart(this)">周线</button>' +
-    '<button class="btn btn-outline pbtn" data-p="month" style="padding:4px 12px;font-size:12px;" onclick="loadStockChart(this)">月线</button>' +
+    '<button class="ui-button ui-button-secondary pbtn" data-p="day" style="padding:4px 12px;font-size:12px;background:var(--color-info);color:#fff;" onclick="loadStockChart(this)">日线</button>' +
+    '<button class="ui-button ui-button-secondary pbtn" data-p="week" style="padding:4px 12px;font-size:12px;" onclick="loadStockChart(this)">周线</button>' +
+    '<button class="ui-button ui-button-secondary pbtn" data-p="month" style="padding:4px 12px;font-size:12px;" onclick="loadStockChart(this)">月线</button>' +
     '<span style="font-size:12px;color:#6b7280;align-self:center;">收盘+指标 | 双线收益率</span>' +
     '</div>' +
     '<div class="chart" style="width:100%;height:300px;"></div>';

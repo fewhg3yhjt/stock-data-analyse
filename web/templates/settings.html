@@ -24,9 +24,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .btn-primary:hover{background:var(--color-info);}
 .btn-danger{background:#fbe9e7;color:var(--color-danger);}
 .btn-danger:hover{background:var(--color-danger);color:#fff;}
-.form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
-.form-group label{font-size:13px;color:var(--color-text-subtle);font-weight:500;}
-.form-group input,.form-group select{background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:9px 12px;color:var(--color-text);font-size:14px;outline:none;}
+.ui-field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.ui-field label{font-size:13px;color:var(--color-text-subtle);font-weight:500;}
+.ui-field input,.ui-field select{background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:9px 12px;color:var(--color-text);font-size:14px;outline:none;}
 textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier New',monospace;font-size:13px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:12px;color:var(--color-text);line-height:1.6;}
 textarea.code.mini{min-height:200px;}
 .hint{font-size:12px;color:var(--color-text-subtle);}
@@ -52,7 +52,7 @@ textarea.code.mini{min-height:200px;}
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   {% endif %}
 
-  <div class="card">
+  <div class="ui-card">
     <div class="tabs">
       <div class="tab active" data-tab="scheme">📦 策略方案</div>
       <div class="tab" data-tab="screener">📡 初筛规则</div>
@@ -62,80 +62,80 @@ textarea.code.mini{min-height:200px;}
 
     <!-- 策略方案 -->
     <div class="panel active" id="panel-scheme">
-      <div class="form-group">
+      <div class="ui-field">
         <label>选择方案</label>
         <select id="scheme-select">
           {% for s in schemes %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
         </select>
       </div>
-      <div class="form-group"><label>YAML 内容（保存前自动校验）</label>
+      <div class="ui-field"><label>YAML 内容（保存前自动校验）</label>
         <textarea class="code" id="scheme-content"></textarea></div>
-      <button class="btn btn-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
+      <button class="ui-button ui-button-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
     </div>
 
     <!-- 初筛规则 -->
     <div class="panel" id="panel-screener">
-      <div class="form-group"><label>screen_rules.yaml（板块/价格/ST/估值阈值）</label>
+      <div class="ui-field"><label>screen_rules.yaml（板块/价格/ST/估值阈值）</label>
         <textarea class="code" id="screen-content">{{ screen_rules }}</textarea></div>
-      <button class="btn btn-primary" onclick="saveScreen()"><i class="fas fa-save"></i> 保存初筛规则</button>
+      <button class="ui-button ui-button-primary" onclick="saveScreen()"><i class="fas fa-save"></i> 保存初筛规则</button>
     </div>
 
     <!-- 通知配置 -->
     <div class="panel" id="panel-notify">
       <div class="form-row" style="display:flex;gap:24px;flex-wrap:wrap;">
-        <div class="form-group" style="flex:1;min-width:260px;">
+        <div class="ui-field" style="flex:1;min-width:260px;">
           <label>渠道</label>
           <select id="notify-channel">
             <option value="feishu" {% if webhook.channel=='feishu' %}selected{% endif %}>飞书 feishu</option>
             <option value="wecom" {% if webhook.channel=='wecom' %}selected{% endif %}>企业微信 wecom</option>
           </select>
         </div>
-        <div class="form-group" style="flex:1;min-width:260px;">
+        <div class="ui-field" style="flex:1;min-width:260px;">
           <label>飞书 webhook 状态：<span class="status-tag {% if webhook.feishu_configured %}status-healthy{% else %}status-empty{% endif %}">{{ '已配置 ✓' if webhook.feishu_configured else '未配置' }}</span></label>
           <label>企微 webhook 状态：<span class="status-tag {% if webhook.wecom_configured %}status-healthy{% else %}status-empty{% endif %}">{{ '已配置 ✓' if webhook.wecom_configured else '未配置' }}</span></label>
           <span class="hint">配置位置：{{ webhook.env_file }}</span>
         </div>
       </div>
       <div class="form-row" style="display:flex;gap:24px;flex-wrap:wrap;">
-        <div class="form-group" style="flex:1;min-width:320px;"><label>飞书 webhook URL（留空=不修改）</label>
+        <div class="ui-field" style="flex:1;min-width:320px;"><label>飞书 webhook URL（留空=不修改）</label>
           <input id="notify-feishu-url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"></div>
-        <div class="form-group" style="flex:1;min-width:320px;"><label>企微 webhook URL（留空=不修改）</label>
+        <div class="ui-field" style="flex:1;min-width:320px;"><label>企微 webhook URL（留空=不修改）</label>
           <input id="notify-wecom-url" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx"></div>
       </div>
-      <button class="btn btn-primary" style="margin-bottom:16px;" onclick="saveWebhook()"><i class="fas fa-save"></i> 保存 webhook</button>
-      <div class="form-group"><label>notifier/rules.yaml（自选阈值 / 资金流信号 / 每日汇总）</label>
+      <button class="ui-button ui-button-primary" style="margin-bottom:16px;" onclick="saveWebhook()"><i class="fas fa-save"></i> 保存 webhook</button>
+      <div class="ui-field"><label>notifier/rules.yaml（自选阈值 / 资金流信号 / 每日汇总）</label>
         <textarea class="code mini" id="notify-rules">{{ notify_rules }}</textarea></div>
-      <button class="btn btn-primary" onclick="saveNotifyRules()"><i class="fas fa-save"></i> 保存通知规则</button>
+      <button class="ui-button ui-button-primary" onclick="saveNotifyRules()"><i class="fas fa-save"></i> 保存通知规则</button>
 
-      <div class="card-title" style="font-weight:600;margin:22px 0 12px;"><i class="fas fa-clock"></i> 通知策略（盘中检测 / 盘后汇总 / 收件人）</div>
-      <div class="form-group"><label>notifier/notify_settings.yaml（调度策略；盘中仅当持仓触发操作建议才发）</label>
+      <div class="ui-card-header" style="font-weight:600;margin:22px 0 12px;"><i class="fas fa-clock"></i> 通知策略（盘中检测 / 盘后汇总 / 收件人）</div>
+      <div class="ui-field"><label>notifier/notify_settings.yaml（调度策略；盘中仅当持仓触发操作建议才发）</label>
         <textarea class="code mini" id="notify-settings" rows="14">{{ notify_settings }}</textarea></div>
-      <button class="btn btn-primary" onclick="saveNotifySettings()"><i class="fas fa-save"></i> 保存通知策略</button>
+      <button class="ui-button ui-button-primary" onclick="saveNotifySettings()"><i class="fas fa-save"></i> 保存通知策略</button>
       <span class="hint" style="display:block;margin-top:6px;">保存后需重启容器生效（改的是调度配置）。盘中每 N 分钟检测，仅止盈/止损/加仓触发才发；盘后每日发送全部持仓汇总。</span>
     </div>
 
     <!-- 账户与数据管理 -->
     <div class="panel" id="panel-account">
-      <div class="card-title" style="font-weight:600;margin-bottom:12px;"><i class="fas fa-wallet"></i> 初始本金</div>
+      <div class="ui-card-header" style="font-weight:600;margin-bottom:12px;"><i class="fas fa-wallet"></i> 初始本金</div>
       <div class="form-row" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px;">
-        <div class="form-group" style="flex:1;min-width:220px;"><label>当前现金余额（元）</label>
+        <div class="ui-field" style="flex:1;min-width:220px;"><label>当前现金余额（元）</label>
           <input id="acc-cash" type="number" step="1000" placeholder="如 100000"></div>
-        <button class="btn btn-primary" onclick="saveAccount()"><i class="fas fa-save"></i> 设置本金</button>
+        <button class="ui-button ui-button-primary" onclick="saveAccount()"><i class="fas fa-save"></i> 设置本金</button>
         <span class="hint">首次使用或重置后，在此填入计划投入的本金</span>
       </div>
 
-      <div class="card-title" style="font-weight:600;margin-bottom:12px;"><i class="fas fa-trash"></i> 数据管理（不可恢复，谨慎操作）</div>
+      <div class="ui-card-header" style="font-weight:600;margin-bottom:12px;"><i class="fas fa-trash"></i> 数据管理（不可恢复，谨慎操作）</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button class="btn btn-danger" onclick="resetData('watchlist')"><i class="fas fa-star"></i> 清空自选</button>
-        <button class="btn btn-danger" onclick="resetData('simulations')"><i class="fas fa-flask"></i> 清空模拟</button>
-        <button class="btn btn-danger" onclick="resetData('positions')"><i class="fas fa-briefcase"></i> 清空持仓+流水</button>
-        <button class="btn btn-danger" onclick="resetData('all')"><i class="fas fa-broom"></i> 全部重置（含本金）</button>
+        <button class="ui-button ui-button-danger" onclick="resetData('watchlist')"><i class="fas fa-star"></i> 清空自选</button>
+        <button class="ui-button ui-button-danger" onclick="resetData('simulations')"><i class="fas fa-flask"></i> 清空模拟</button>
+        <button class="ui-button ui-button-danger" onclick="resetData('positions')"><i class="fas fa-briefcase"></i> 清空持仓+流水</button>
+        <button class="ui-button ui-button-danger" onclick="resetData('all')"><i class="fas fa-broom"></i> 全部重置（含本金）</button>
       </div>
       <p class="hint" style="margin-top:10px;">⚠️ 清空持仓/全部重置会同时清空：复盘统计看板、全量交易流水、操作日志。建议先在「复盘」页导出 Excel 备份。</p>
 
-      <div class="card-title" style="font-weight:600;margin:22px 0 12px;"><i class="fas fa-rotate"></i> 每日自动任务</div>
+      <div class="ui-card-header" style="font-weight:600;margin:22px 0 12px;"><i class="fas fa-rotate"></i> 每日自动任务</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-        <button class="btn btn-primary" onclick="runDaily()"><i class="fas fa-play"></i> 立即运行每日任务</button>
+        <button class="ui-button ui-button-primary" onclick="runDaily()"><i class="fas fa-play"></i> 立即运行每日任务</button>
         <span class="hint" id="daily-status">{{ scheduler_status }}</span>
       </div>
       <p class="hint" style="margin-top:8px;">每日任务：持仓刷新(现价/点位/建议) → 持仓进自选 → 观察池重算 → 生成晨报 → 消息推送。时间由 DAILY_RUN_TIME 环境变量配置（默认 15:35）。</p>

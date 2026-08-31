@@ -17,18 +17,18 @@ body {
 .header .nav { font-size: 14px; }
 .header .nav a { color: var(--color-info); text-decoration: none; margin-left: 16px; }
 .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 22px 26px; margin-bottom: 18px; box-shadow: var(--shadow); }
-.card-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-.card-title i { color: var(--color-info); width: 18px; }
+.ui-card-header { font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.ui-card-header i { color: var(--color-info); width: 18px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-row.three { grid-template-columns: 1fr 1fr 1fr; }
-.form-group { display: flex; flex-direction: column; gap: 5px; }
-.form-group label { font-size: 14px; color: var(--color-text-subtle); font-weight: 500; }
-.form-group input, .form-group select {
+.ui-field { display: flex; flex-direction: column; gap: 5px; }
+.ui-field label { font-size: 14px; color: var(--color-text-subtle); font-weight: 500; }
+.ui-field input, .ui-field select {
   background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: 6px;
   padding: 10px 14px; color: var(--color-text); font-size: 15px; outline: none; transition: .2s;
 }
-.form-group input:focus { border-color: var(--color-info); box-shadow: 0 0 0 2px rgba(26,115,232,.12); }
-.form-group .hint { font-size: 13px; color: var(--color-text-subtle); margin-top: 2px; }
+.ui-field input:focus { border-color: var(--color-info); box-shadow: 0 0 0 2px rgba(26,115,232,.12); }
+.ui-field .hint { font-size: 13px; color: var(--color-text-subtle); margin-top: 2px; }
 .scheme-pick { display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 0 4px; }
 .scheme-pick label { display: flex; align-items: flex-start; gap: 9px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: 6px; padding: 10px 14px; cursor: pointer; transition: .2s; flex: 1 1 260px; }
 .scheme-pick label:hover { border-color: var(--color-info); }
@@ -98,29 +98,29 @@ td.best { font-weight: 700; color: var(--color-success); }
   </div>
 
   <!-- 对比表单 -->
-  <div class="card">
-    <div class="card-title"><i class="fas fa-search"></i> 对比参数</div>
+  <div class="ui-card">
+    <div class="ui-card-header"><i class="fas fa-search"></i> 对比参数</div>
     <form id="compare-form" autocomplete="off">
       <div class="form-row">
-        <div class="form-group">
+        <div class="ui-field">
           <label>股票代码</label>
           <input type="text" name="code" placeholder="sh.600900 / 600900" value="sh.600900" required>
         </div>
-        <div class="form-group">
+        <div class="ui-field">
           <label>股票名称</label>
           <input type="text" name="name" placeholder="如 长江电力" value="长江电力" required>
         </div>
       </div>
       <div class="form-row three" style="margin-top:12px;">
-        <div class="form-group">
+        <div class="ui-field">
           <label>开始日期</label>
           <input type="date" name="start_date" value="{{ last_year }}">
         </div>
-        <div class="form-group">
+        <div class="ui-field">
           <label>结束日期</label>
           <input type="date" name="end_date" value="{{ yesterday }}">
         </div>
-        <div class="form-group">
+        <div class="ui-field">
           <label>股票类型</label>
           <select name="stock_type">
             <option value="B" selected>B 价值白马</option>
@@ -130,7 +130,7 @@ td.best { font-weight: 700; color: var(--color-success); }
           </select>
         </div>
       </div>
-      <div class="form-group" style="margin-top:14px;">
+      <div class="ui-field" style="margin-top:14px;">
         <label>选择对比方案（至少 2 个）</label>
         <div class="scheme-pick">
           {% for s in schemes %}
@@ -146,8 +146,8 @@ td.best { font-weight: 700; color: var(--color-success); }
         </div>
       </div>
       <div class="form-actions">
-        <button type="submit" class="btn btn-primary" id="run-btn"><i class="fas fa-scale-balanced"></i> 开始对比</button>
-        <a href="/compare" class="btn btn-outline"><i class="fas fa-undo"></i> 重置</a>
+        <button type="submit" class="ui-button ui-button-primary" id="run-btn"><i class="fas fa-scale-balanced"></i> 开始对比</button>
+        <a href="/compare" class="ui-button ui-button-secondary"><i class="fas fa-undo"></i> 重置</a>
       </div>
     </form>
     <div id="loading" style="margin-top:16px;">
@@ -161,19 +161,19 @@ td.best { font-weight: 700; color: var(--color-success); }
   <!-- 结果 -->
   <div class="result-section" id="result-section">
     <!-- 排名 -->
-    <div class="card" id="ranking-card" style="display:none;">
-      <div class="card-title"><i class="fas fa-trophy"></i> 收益率排名</div>
-      <table><thead><tr><th>排名</th><th>方案</th><th>总收益率</th><th>相对最佳</th></tr></thead><tbody id="ranking-tbody"></tbody></table>
+    <div class="ui-card" id="ranking-card" style="display:none;">
+      <div class="ui-card-header"><i class="fas fa-trophy"></i> 收益率排名</div>
+      <table class="ui-table"><thead><tr><th>排名</th><th>方案</th><th>总收益率</th><th>相对最佳</th></tr></thead><tbody id="ranking-tbody"></tbody></table>
     </div>
 
     <!-- 指标明细 -->
-    <div class="card" id="metrics-card" style="display:none;">
-      <div class="card-title"><i class="fas fa-table"></i> 指标明细</div>
-      <table><thead id="metrics-head"></thead><tbody id="metrics-body"></tbody></table>
+    <div class="ui-card" id="metrics-card" style="display:none;">
+      <div class="ui-card-header"><i class="fas fa-table"></i> 指标明细</div>
+      <table class="ui-table"><thead id="metrics-head"></thead><tbody id="metrics-body"></tbody></table>
     </div>
 
     <!-- 图表 + 报告 -->
-    <div class="card">
+    <div class="ui-card">
       <div class="tabs" id="result-tabs">
         <div class="tab active" data-tab="charts">📊 图表</div>
         <div class="tab" data-tab="report">📄 报告</div>

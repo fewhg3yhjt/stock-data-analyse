@@ -14,8 +14,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
 .header .nav a.active{font-weight:700;color:var(--color-info);}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow);}
-.card-title{font-size:16px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
-.card-title i{color:var(--color-info);}
+.ui-card-header{font-size:16px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.ui-card-header i{color:var(--color-info);}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;}
 .stat-card{background:var(--color-surface-subtle);border-radius:6px;padding:14px 12px;text-align:center;border:1px solid var(--color-border);}
 .stat-card .value{font-size:22px;font-weight:700;color:var(--color-info);}
@@ -95,10 +95,10 @@ table.mini td.v{color:var(--color-text);font-weight:500;}
   </div>
 
   {% if recent_txns %}
-  <div class="card" style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:16px 20px;margin-bottom:16px;">
-    <div class="card-title" style="font-weight:600;margin-bottom:12px;"><i class="fas fa-exchange-alt"></i> 最近实际操作（最近 {{ recent_txns|length }} 笔）</div>
+  <div class="ui-card" style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:16px 20px;margin-bottom:16px;">
+    <div class="ui-card-header" style="font-weight:600;margin-bottom:12px;"><i class="fas fa-exchange-alt"></i> 最近实际操作（最近 {{ recent_txns|length }} 笔）</div>
     <div style="overflow-x:auto;">
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <table class="ui-table">
       <thead><tr style="color:var(--color-text-subtle);text-align:left;border-bottom:1px solid var(--color-border);">
         <th style="padding:6px 8px;">日期</th><th style="padding:6px 8px;">证券</th><th style="padding:6px 8px;">方向</th>
         <th style="padding:6px 8px;">价格</th><th style="padding:6px 8px;">数量</th><th style="padding:6px 8px;">金额</th>
@@ -227,7 +227,7 @@ table.mini td.v{color:var(--color-text);font-weight:500;}
     </div>
     {% endfor %}
   {% else %}
-    <div class="card">
+    <div class="ui-card">
       <div class="empty">
         <i class="fas fa-inbox"></i>
         <p style="margin-top:8px;">暂无操作日志记录</p>

@@ -241,13 +241,13 @@ window.StockDetail = (function(){
       const volData = kDates.map((_, i) => {
         const o = kOpens[i], c = kCloses[i];
         const up = (c !== null && c !== undefined && o !== null && o !== undefined) ? (Number(c) >= Number(o)) : true;
-        return { value: kVolumes[i], itemStyle:{ color: up ? '#ef5350' : '#26a69a' } };
+        return { value: kVolumes[i], itemStyle:{ color: up ? '#dc3545' : '#28a745' } };
       });
 
       const series = [];
       if (hasOHLC){
         series.push({ name:'K线', type:'candlestick', xAxisIndex:0, yAxisIndex:0, data:klineData,
-          itemStyle:{ color:'#ef5350', color0:'#26a69a', borderColor:'#ef5350', borderColor0:'#26a69a' } });
+          itemStyle:{ color:'#dc3545', color0:'#28a745', borderColor:'#dc3545', borderColor0:'#28a745' } });
       } else {
         series.push({ name:'收盘', type:'line', xAxisIndex:0, yAxisIndex:0, data:kCloses, showSymbol:false,
           lineStyle:{width:1.5,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'} });

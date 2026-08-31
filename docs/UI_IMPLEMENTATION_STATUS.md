@@ -18,7 +18,7 @@
 | 反馈机制 | 过渡完成 | 普通 `alert` 被页面提示接管；`confirm/prompt` 仍有残留 |
 | 设计 Token | 已迁移 | `base.css` 与全部页面/脚本已改用 `--color-*` 语义 Token；旧变量（`--red/green/orange/accent/surface/border/text` 等）及模板内联 `:root` 已删除，全库 `var()` 引用均有定义 |
 | 状态 CSS 类 | 已迁移 | `ui-status.js` `cls` 已返回完整 `status-*` canonical class；任务中心、数据中心、数据资产、个股研究、通知、设置已改用 `.status-tag.status-<key>`，旧 `.tag.status-*`/`.dm-health.*`/`.status-tag.ok` 已删除 |
-| 公共组件类名 | 部分落地 | `.ui-card`、`.ui-input-panel` 等契约类已在 `base.css` 落地，业务页仍用旧 `card/btn/tag/table`，待逐页替换为 `.ui-*` 后删除旧类 |
+| 公共组件类名 | 已迁移 | `.btn*→.ui-button*`（180 处）、`.card→.ui-card`（+`.ui-card-header`）、`.form-group→.ui-field`、裸 `table→.ui-table`、`.table-wrap→.ui-table-wrap` 已全量替换；`.ui-card` 保留默认内边距保证视觉连续；wb-*/dm-* 独立体系与 `.tag` 彩色标签保留 |
 | 页面级 Adapter | 部分完成 | 核心系统页面有独立脚本，许多业务页仍是模板内联脚本 |
 | 安全治理 | 完成 | 内联事件注入已清零并改事件委托；Markdown 已净化（`ui-sanitize.js`）；CSP 与基础安全头已启用（分阶段，仍允许内联脚本与 CDN） |
 | 资源治理 | 未完成 | CDN、本地库、手写版本号和构建策略尚未完全统一 |

@@ -38,23 +38,23 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
   <div class="mode-row">
-    <button class="btn btn-ghost btn-sm" onclick="loadSchemeList()"><i class="fas fa-list"></i> 方案列表</button>
-    <button class="btn btn-ghost btn-sm" onclick="newScheme()"><i class="fas fa-file-plus"></i> 新建方案</button>
-    <button class="btn btn-ghost btn-sm" onclick="loadFromExisting()"><i class="fas fa-copy"></i> 从现有复制</button>
+    <button class="ui-button ui-button-ghost ui-button-sm" onclick="loadSchemeList()"><i class="fas fa-list"></i> 方案列表</button>
+    <button class="ui-button ui-button-ghost ui-button-sm" onclick="newScheme()"><i class="fas fa-file-plus"></i> 新建方案</button>
+    <button class="ui-button ui-button-ghost ui-button-sm" onclick="loadFromExisting()"><i class="fas fa-copy"></i> 从现有复制</button>
   </div>
 
   <div class="layout">
     <!-- 左：表单 -->
-    <div class="card">
+    <div class="ui-card">
       <h2><i class="fas fa-pen-ruler"></i> 方案配置</h2>
 
-      <div class="form-group"><label>方案名</label>
+      <div class="ui-field"><label>方案名</label>
         <input id="f-name" placeholder="如 my_growth"></div>
-      <div class="form-group"><label>版本</label>
+      <div class="ui-field"><label>版本</label>
         <input id="f-version" value="1.0"></div>
-      <div class="form-group"><label>描述</label>
+      <div class="ui-field"><label>描述</label>
         <input id="f-desc" placeholder="方案说明"></div>
-      <div class="form-group"><label>适用类型</label>
+      <div class="ui-field"><label>适用类型</label>
         <div id="f-types" style="display:flex;gap:8px;flex-wrap:wrap;">
           <span class="tag" data-t="A">A</span><span class="tag" data-t="B">B</span>
           <span class="tag" data-t="C">C</span><span class="tag" data-t="D">D</span>
@@ -66,51 +66,51 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
       <div id="buy-rules"></div>
       <div style="margin-bottom:16px;">
         <select id="add-buy-type" style="max-width:320px;"></select>
-        <button class="btn btn-ghost btn-sm" onclick="addRule('buy')"><i class="fas fa-plus"></i> 添加买点规则</button>
+        <button class="ui-button ui-button-ghost ui-button-sm" onclick="addRule('buy')"><i class="fas fa-plus"></i> 添加买点规则</button>
       </div>
 
       <div style="margin:6px 0 4px;font-weight:600;font-size:14px;"><i class="fas fa-cart-arrow-down"></i> 卖点规则</div>
       <div id="sell-rules"></div>
       <div style="margin-bottom:16px;">
         <select id="add-sell-type" style="max-width:320px;"></select>
-        <button class="btn btn-ghost btn-sm" onclick="addRule('sell')"><i class="fas fa-plus"></i> 添加卖点规则</button>
+        <button class="ui-button ui-button-ghost ui-button-sm" onclick="addRule('sell')"><i class="fas fa-plus"></i> 添加卖点规则</button>
       </div>
 
       <div style="font-weight:600;font-size:14px;margin-bottom:8px;"><i class="fas fa-shield"></i> 风控</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div class="form-group"><label>回撤止盈阈值</label><input id="r-drawdown" type="number" step="0.01" value="0.08"></div>
-        <div class="form-group"><label>回撤保护最小利润</label><input id="r-minprof" type="number" step="0.01" value="0.06"></div>
-        <div class="form-group"><label>放量倍数</label><input id="r-surge" type="number" step="0.1" value="1.8"></div>
-        <div class="form-group"><label>技术止损</label><select id="r-tech"><option value="true">启用</option><option value="false">停用</option></select></div>
+        <div class="ui-field"><label>回撤止盈阈值</label><input id="r-drawdown" type="number" step="0.01" value="0.08"></div>
+        <div class="ui-field"><label>回撤保护最小利润</label><input id="r-minprof" type="number" step="0.01" value="0.06"></div>
+        <div class="ui-field"><label>放量倍数</label><input id="r-surge" type="number" step="0.1" value="1.8"></div>
+        <div class="ui-field"><label>技术止损</label><select id="r-tech"><option value="true">启用</option><option value="false">停用</option></select></div>
       </div>
 
       <div style="font-weight:600;font-size:14px;margin-bottom:8px;"><i class="fas fa-flask"></i> 回测</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div class="form-group"><label>初始资金</label><input id="b-cash" type="number" value="100000"></div>
-        <div class="form-group"><label>网格优化</label><select id="b-opt"><option value="true">启用</option><option value="false">停用(固定参数)</option></select></div>
+        <div class="ui-field"><label>初始资金</label><input id="b-cash" type="number" value="100000"></div>
+        <div class="ui-field"><label>网格优化</label><select id="b-opt"><option value="true">启用</option><option value="false">停用(固定参数)</option></select></div>
       </div>
 
       <div style="display:flex;gap:10px;margin-top:6px;">
-         <button class="btn btn-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
-         <button class="btn btn-outline" onclick="validateRun()"><i class="fas fa-flask"></i> 样本验证</button>
+         <button class="ui-button ui-button-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
+         <button class="ui-button ui-button-secondary" onclick="validateRun()"><i class="fas fa-flask"></i> 样本验证</button>
          <input id="validate-code" value="sh.600900" placeholder="样本股票代码" style="width:130px;">
-        <button class="btn btn-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
+        <button class="ui-button ui-button-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
         <span class="help" id="save-hint"></span>
       </div>
     </div>
 
     <!-- 右：指标列表 + YAML 预览 -->
     <div>
-      <div class="card">
+      <div class="ui-card">
         <h2><i class="fas fa-chart-simple"></i> 指标库（可引用）</h2>
-        <div class="form-group"><label>搜索</label><input id="ind-search" placeholder="输入指标名过滤…" oninput="renderIndicators()"></div>
+        <div class="ui-field"><label>搜索</label><input id="ind-search" placeholder="输入指标名过滤…" oninput="renderIndicators()"></div>
         <div id="ind-list" style="max-height:320px;overflow:auto;"></div>
       </div>
-      <div class="card">
+      <div class="ui-card">
         <h2><i class="fas fa-file-code"></i> YAML 预览</h2>
         <textarea class="code" id="yaml-preview" placeholder="配置表单后，点击「生成预览」…"></textarea>
         <div style="display:flex;gap:8px;margin-top:10px;">
-          <button class="btn btn-ghost btn-sm" onclick="copyYaml()"><i class="fas fa-copy"></i> 复制</button>
+          <button class="ui-button ui-button-ghost ui-button-sm" onclick="copyYaml()"><i class="fas fa-copy"></i> 复制</button>
           <span class="help" id="validate-hint"></span>
         </div>
       </div>
@@ -124,7 +124,7 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
     <h3 id="modal-title" style="margin-bottom:14px;"></h3>
     <div id="modal-body" style="max-height:480px;overflow:auto;"></div>
     <div style="text-align:right;margin-top:16px;">
-      <button class="btn btn-ghost btn-sm" onclick="closeModal()">关闭</button>
+      <button class="ui-button ui-button-ghost ui-button-sm" onclick="closeModal()">关闭</button>
     </div>
   </div>
 </div>
@@ -223,7 +223,7 @@ function renderRule(kind, rule){
   box.className='rule-box';box.id=id;
   box.innerHTML=`<div class="rule-head">
       <h4><span class="tag ${kindColor}">${kind==='buy'?'买点':'卖点'}</span> ${rule.label} <span class="help">${rule.description||''}</span></h4>
-      <button class="btn btn-danger btn-sm" onclick="this.parentElement.parentElement.remove()"><i class="fas fa-trash"></i></button>
+      <button class="ui-button ui-button-danger ui-button-sm" onclick="this.parentElement.parentElement.remove()"><i class="fas fa-trash"></i></button>
     </div>
     <input type="hidden" data-kind="${kind}" data-type="${rule.type}" data-rule='${JSON.stringify(rule)}'>
     <div class="rule-fields">${fields}</div>`;
@@ -234,20 +234,20 @@ function renderField(f, rule){
   const key=f.key,label=f.label,type=f.type,def=(rule.params&&rule.params[key]!==undefined)?rule.params[key]:f.default;
   if(type==='map_list'||type==='list'){
     const rows=(Array.isArray(def)?def:[]).map(item=>listRowHtml(type,item)).join('');
-    return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
+    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
       <div data-f="${key}" data-list-type="${type}" class="custom-list">${rows}</div>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 加一行</button></div>`;
+      <button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 加一行</button></div>`;
   }
   if(type==='select'){
     const opts=(f.options||[]).map(o=>`<option value="${JSON.stringify(o)}" ${JSON.stringify(o)===JSON.stringify(def)?'selected':''}>${o}</option>`).join('');
-    return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
+    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
       <select data-f="${key}">${opts}<option value="" selected>默认</option></select></div>`;
   }
   if(type==='map'){
-    return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
+    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
       <textarea data-f="${key}" placeholder='JSON 键值，如 {"A":0.15,"B":0.15}'>${JSON.stringify(def||{})}</textarea></div>`;
   }
-  return `<div class="form-group"><label>${label} <span class="help">${f.help||''}</span></label>
+  return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
     <input data-f="${key}" type="${type==='number'?'number':'text'}" value="${def!=null?def:''}"></div>`;
 }
 
@@ -262,11 +262,11 @@ function addListRow(btn,key){
 
 function listRowHtml(type, item){
   if(type==='list'){
-    return `<div class="list-row"><input data-list-value value="${escapeAttr(item||'')}" placeholder="指标名或表达式"><button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+    return `<div class="list-row"><input data-list-value value="${escapeAttr(item||'')}" placeholder="指标名或表达式"><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
   }
   const obj=(item&&typeof item==='object')?item:{};
   const keys=Object.keys(obj).length?Object.keys(obj):['label','position_index','ratio'];
-  return `<div class="list-row map-list-row">${keys.map(k=>`<input data-list-key="${escapeAttr(k)}" data-key-name="${escapeAttr(k)}" value="${escapeAttr(Array.isArray(obj[k])?JSON.stringify(obj[k]):obj[k])}" placeholder="${escapeAttr(k)}">`).join('')}<button type="button" class="btn btn-ghost btn-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+  return `<div class="list-row map-list-row">${keys.map(k=>`<input data-list-key="${escapeAttr(k)}" data-key-name="${escapeAttr(k)}" value="${escapeAttr(Array.isArray(obj[k])?JSON.stringify(obj[k]):obj[k])}" placeholder="${escapeAttr(k)}">`).join('')}<button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
 }
 function escapeAttr(value){return String(value==null?'':value).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function collectList(target){
@@ -284,7 +284,7 @@ function collectList(target){
 
 function collectRuleParams(ruleBox){
   const params={};
-  ruleBox.querySelectorAll('.form-group').forEach(g=>{
+  ruleBox.querySelectorAll('.ui-field').forEach(g=>{
     const inp=g.querySelector('[data-f]');
     if(!inp)return;
     const key=inp.dataset.f;if(!key)return;
@@ -397,11 +397,11 @@ async function loadSchemeList(){
      html+=`<tr><td>${s.name}${s.is_builtin?'<span class="help">(内置)</span>':''}${s.default?'<span class="tag tag-buy">默认</span>':''}</td>
        <td>${s.version}</td><td>${s.enabled?'<span class="tag tag-buy">启用</span>':'<span class="tag tag-sell">停用</span>'}</td>
        <td>
-         <button class="btn btn-ghost btn-sm" onclick="editScheme('${s.name}')">编辑</button>
-         ${s.is_builtin?'':'<button class="btn btn-ghost btn-sm" onclick="toggleScheme(\''+s.name+'\','+(!s.enabled)+')">'+(s.enabled?'停用':'启用')+'</button>'}
-         ${s.is_builtin?'':'<button class="btn btn-ghost btn-sm" onclick="setDefaultScheme(\''+s.name+'\')">设默认</button>'}
-         <button class="btn btn-ghost btn-sm" onclick="showVersions('${s.name}')">版本</button>
-         ${s.is_builtin?'':'<button class="btn btn-danger btn-sm" onclick="delScheme(\''+s.name+'\')">删除</button>'}
+         <button class="ui-button ui-button-ghost ui-button-sm" onclick="editScheme('${s.name}')">编辑</button>
+         ${s.is_builtin?'':'<button class="ui-button ui-button-ghost ui-button-sm" onclick="toggleScheme(\''+s.name+'\','+(!s.enabled)+')">'+(s.enabled?'停用':'启用')+'</button>'}
+         ${s.is_builtin?'':'<button class="ui-button ui-button-ghost ui-button-sm" onclick="setDefaultScheme(\''+s.name+'\')">设默认</button>'}
+         <button class="ui-button ui-button-ghost ui-button-sm" onclick="showVersions('${s.name}')">版本</button>
+         ${s.is_builtin?'':'<button class="ui-button ui-button-danger ui-button-sm" onclick="delScheme(\''+s.name+'\')">删除</button>'}
       </td></tr>`;
   }
   html+='</table>';
@@ -456,7 +456,7 @@ async function showVersions(name){
   if(d.status!=='success'){showToast(d.error||'版本读取失败');return;}
   const versions=d.versions||[]; let html='<div class="help" style="margin-bottom:10px">最近版本（回滚会生成一个新版本）</div>';
   if(!versions.length)html+='<div class="empty">暂无历史版本</div>';
-  versions.slice().reverse().forEach(v=>{html+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border);"><span>${v.time||v.ts}</span><button class="btn btn-ghost btn-sm" onclick="rollbackScheme('${name}',${v.ts})">回滚</button></div>`;});
+  versions.slice().reverse().forEach(v=>{html+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border);"><span>${v.time||v.ts}</span><button class="ui-button ui-button-ghost ui-button-sm" onclick="rollbackScheme('${name}',${v.ts})">回滚</button></div>`;});
   document.getElementById('modal-body').innerHTML=html; openModal(name+' 版本历史');
 }
 async function rollbackScheme(name,ts){
@@ -475,8 +475,8 @@ async function loadFromExisting(){
   const body=document.getElementById('modal-body');
   let html='<div class="help" style="margin-bottom:10px">选择一个方案作为模板复制</div><select id="clone-src" style="width:100%;margin-bottom:12px;">';
   for(const s of d.schemes)html+=`<option value="${s.name}">${s.name}</option>`;
-  html+='</select><div class="form-group"><label>新方案名</label><input id="clone-name" placeholder="新方案名"></div>';
-  html+='<button class="btn btn-primary btn-sm" onclick="doClone()">复制</button>';
+  html+='</select><div class="ui-field"><label>新方案名</label><input id="clone-name" placeholder="新方案名"></div>';
+  html+='<button class="ui-button ui-button-primary ui-button-sm" onclick="doClone()">复制</button>';
   body.innerHTML=html;openModal('复制方案');
 }
 async function doClone(){

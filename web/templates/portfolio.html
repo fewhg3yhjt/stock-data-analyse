@@ -13,8 +13,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .header .nav{font-size:14px;}
 .header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
-.card-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.card-title i{color:var(--color-info);}
+.ui-card-header{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.ui-card-header i{color:var(--color-info);}
 .btn{padding:9px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;text-decoration:none;}
 .btn-primary{background:var(--color-info);color:#fff;}
 .btn-primary:hover{background:var(--color-info);}
@@ -57,10 +57,10 @@ tr:last-child td{border-bottom:none;}
 .modal{background:var(--color-surface);border-radius:10px;padding:26px;max-width:560px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.25);}
 .modal h3{font-size:18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
 .modal .close{cursor:pointer;color:var(--color-text-subtle);font-size:24px;background:none;border:none;}
-.form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
-.form-group label{font-size:13px;color:var(--color-text-subtle);font-weight:500;}
-.form-group input,.form-group select{background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:9px 12px;color:var(--color-text);font-size:14px;outline:none;}
-.form-group input:focus{border-color:var(--color-info);}
+.ui-field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.ui-field label{font-size:13px;color:var(--color-text-subtle);font-weight:500;}
+.ui-field input,.ui-field select{background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:9px 12px;color:var(--color-text);font-size:14px;outline:none;}
+.ui-field input:focus{border-color:var(--color-info);}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--color-danger);font-size:14px;margin-bottom:14px;}
 .toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;box-shadow:0 4px 20px rgba(0,0,0,.3);}
@@ -87,14 +87,14 @@ tr:last-child td{border-bottom:none;}
   {% if error %}<div class="error">❌ {{ error }}</div>{% endif %}
 
   <!-- 组合总览 -->
-  <div class="card">
-    <div class="card-title">
+  <div class="ui-card">
+    <div class="ui-card-header">
       <span><i class="fas fa-tachometer-alt"></i> 组合总览</span>
       <span style="display:flex;gap:8px;">
-        <button class="btn btn-outline" onclick="openModal('add-position')"><i class="fas fa-plus"></i> 新建持仓</button>
-        <button class="btn btn-outline" onclick="refreshAll()"><i class="fas fa-sync"></i> 刷新行情</button>
-        <button class="btn btn-outline" onclick="genReport()"><i class="fas fa-newspaper"></i> 生成晨报</button>
-        <a class="btn btn-outline" href="/portfolio/export"><i class="fas fa-file-excel"></i> 导出</a>
+        <button class="ui-button ui-button-secondary" onclick="openModal('add-position')"><i class="fas fa-plus"></i> 新建持仓</button>
+        <button class="ui-button ui-button-secondary" onclick="refreshAll()"><i class="fas fa-sync"></i> 刷新行情</button>
+        <button class="ui-button ui-button-secondary" onclick="genReport()"><i class="fas fa-newspaper"></i> 生成晨报</button>
+        <a class="ui-button ui-button-secondary" href="/portfolio/export"><i class="fas fa-file-excel"></i> 导出</a>
       </span>
     </div>
     <div class="stat-grid">
@@ -108,8 +108,8 @@ tr:last-child td{border-bottom:none;}
   </div>
 
   <!-- 持仓列表 -->
-  <div class="card">
-    <div class="card-title"><i class="fas fa-boxes"></i> 持仓明细 <span style="font-size:13px;color:var(--color-text-subtle);font-weight:400;">{{ positions|length }} 只</span></div>
+  <div class="ui-card">
+    <div class="ui-card-header"><i class="fas fa-boxes"></i> 持仓明细 <span style="font-size:13px;color:var(--color-text-subtle);font-weight:400;">{{ positions|length }} 只</span></div>
     {% if positions %}
       {% for p in positions %}
       <div class="pos" id="pos-{{ p.id }}">
@@ -132,11 +132,11 @@ tr:last-child td{border-bottom:none;}
         </div>
         {% endif %}
         <div class="pos-actions">
-          <a class="btn btn-outline" href="/portfolio/{{ p.id }}"><i class="fas fa-eye"></i> 详情</a>
-          <button class="btn btn-outline" data-action="openTxn" data-id="{{ p.id }}" data-type="buy" data-name="{{ p.stock_name }}"><i class="fas fa-plus-circle"></i> 买入</button>
-          <button class="btn btn-outline" data-action="openTxn" data-id="{{ p.id }}" data-type="sell" data-name="{{ p.stock_name }}"><i class="fas fa-minus-circle"></i> 卖出</button>
-          <button class="btn btn-outline" data-action="openTxn" data-id="{{ p.id }}" data-type="dividend" data-name="{{ p.stock_name }}"><i class="fas fa-coins"></i> 分红</button>
-          <button class="btn btn-danger" data-action="closePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}"><i class="fas fa-times-circle"></i> 平仓</button>
+          <a class="ui-button ui-button-secondary" href="/portfolio/{{ p.id }}"><i class="fas fa-eye"></i> 详情</a>
+          <button class="ui-button ui-button-secondary" data-action="openTxn" data-id="{{ p.id }}" data-type="buy" data-name="{{ p.stock_name }}"><i class="fas fa-plus-circle"></i> 买入</button>
+          <button class="ui-button ui-button-secondary" data-action="openTxn" data-id="{{ p.id }}" data-type="sell" data-name="{{ p.stock_name }}"><i class="fas fa-minus-circle"></i> 卖出</button>
+          <button class="ui-button ui-button-secondary" data-action="openTxn" data-id="{{ p.id }}" data-type="dividend" data-name="{{ p.stock_name }}"><i class="fas fa-coins"></i> 分红</button>
+          <button class="ui-button ui-button-danger" data-action="closePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}"><i class="fas fa-times-circle"></i> 平仓</button>
         </div>
       </div>
       {% endfor %}
@@ -146,12 +146,12 @@ tr:last-child td{border-bottom:none;}
   </div>
 
   <!-- 自选池 -->
-  <div class="card">
-    <div class="card-title"><span><i class="fas fa-star"></i> 自选池</span>
-      <span style="display:flex;gap:8px;"><button class="btn btn-outline" onclick="openModal('add-watch')"><i class="fas fa-plus"></i> 加自选</button></span>
+  <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-star"></i> 自选池</span>
+      <span style="display:flex;gap:8px;"><button class="ui-button ui-button-secondary" onclick="openModal('add-watch')"><i class="fas fa-plus"></i> 加自选</button></span>
     </div>
     {% if watchlist %}
-    <table><thead><tr><th>代码</th><th>名称</th><th>目标仓位</th><th>弱支撑</th><th>备注</th><th></th></tr></thead>
+    <table class="ui-table"><thead><tr><th>代码</th><th>名称</th><th>目标仓位</th><th>弱支撑</th><th>备注</th><th></th></tr></thead>
     <tbody>
       {% for w in watchlist %}
       <tr>
@@ -159,7 +159,7 @@ tr:last-child td{border-bottom:none;}
         <td>{{ '{:,.0f}'.format(w.target_capital) }}</td>
         <td>{{ '%.2f' % w.weak_support if w.weak_support else '—' }}</td>
         <td>{{ w.notes }}</td>
-        <td><button class="btn btn-outline" style="padding:4px 10px;font-size:12px;" data-action="delWatch" data-id="{{ w.id }}">删除</button></td>
+        <td><button class="ui-button ui-button-secondary" style="padding:4px 10px;font-size:12px;" data-action="delWatch" data-id="{{ w.id }}">删除</button></td>
       </tr>
       {% endfor %}
     </tbody></table>
@@ -174,27 +174,27 @@ tr:last-child td{border-bottom:none;}
   <div class="modal">
     <h3>新建持仓 <button class="close" onclick="closeModal('add-position')">&times;</button></h3>
     <div class="form-row">
-      <div class="form-group"><label>股票代码</label><input id="np-code" placeholder="sh.600900"></div>
-      <div class="form-group"><label>股票名称</label><input id="np-name" placeholder="长江电力"></div>
+      <div class="ui-field"><label>股票代码</label><input id="np-code" placeholder="sh.600900"></div>
+      <div class="ui-field"><label>股票名称</label><input id="np-name" placeholder="长江电力"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>持有份额</label><input id="np-shares" type="number" min="0"></div>
-      <div class="form-group"><label>买入均价</label><input id="np-cost" type="number" min="0" step="0.01"></div>
+      <div class="ui-field"><label>持有份额</label><input id="np-shares" type="number" min="0"></div>
+      <div class="ui-field"><label>买入均价</label><input id="np-cost" type="number" min="0" step="0.01"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>买入日期</label><input id="np-date" type="date"></div>
-      <div class="form-group"><label>股票类型</label>
+      <div class="ui-field"><label>买入日期</label><input id="np-date" type="date"></div>
+      <div class="ui-field"><label>股票类型</label>
         <select id="np-type"><option value="B">B 价值白马</option><option value="A">A 高成长</option><option value="C">C 强周期</option><option value="D">D 深度价值</option></select>
       </div>
     </div>
-    <div class="form-group"><label>策略方案</label>
+    <div class="ui-field"><label>策略方案</label>
       <select id="np-scheme">
         <option value="default_value">default_value</option>
         <option value="aggressive_growth">aggressive_growth</option>
       </select>
     </div>
-    <div class="form-group"><label>备注</label><input id="np-notes" placeholder="可选"></div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="addPosition()"><i class="fas fa-check"></i> 确认建仓</button>
+    <div class="ui-field"><label>备注</label><input id="np-notes" placeholder="可选"></div>
+    <button class="ui-button ui-button-primary" style="width:100%;justify-content:center;" onclick="addPosition()"><i class="fas fa-check"></i> 确认建仓</button>
   </div>
 </div>
 
@@ -203,11 +203,11 @@ tr:last-child td{border-bottom:none;}
   <div class="modal">
     <h3>新增自选 <button class="close" onclick="closeModal('add-watch')">&times;</button></h3>
     <div class="form-row">
-      <div class="form-group"><label>股票代码</label><input id="nw-code" placeholder="sh.600519"></div>
-      <div class="form-group"><label>股票名称</label><input id="nw-name" placeholder="贵州茅台"></div>
+      <div class="ui-field"><label>股票代码</label><input id="nw-code" placeholder="sh.600519"></div>
+      <div class="ui-field"><label>股票名称</label><input id="nw-name" placeholder="贵州茅台"></div>
     </div>
-    <div class="form-group"><label>目标仓位（元）</label><input id="nw-capital" type="number" min="0"></div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="addWatch()"><i class="fas fa-check"></i> 确认</button>
+    <div class="ui-field"><label>目标仓位（元）</label><input id="nw-capital" type="number" min="0"></div>
+    <button class="ui-button ui-button-primary" style="width:100%;justify-content:center;" onclick="addWatch()"><i class="fas fa-check"></i> 确认</button>
   </div>
 </div>
 
@@ -216,15 +216,15 @@ tr:last-child td{border-bottom:none;}
   <div class="modal">
     <h3 id="txn-title">记录交易 <button class="close" onclick="closeModal('txn')">&times;</button></h3>
     <div class="form-row">
-      <div class="form-group"><label>价格</label><input id="txn-price" type="number" step="0.01"></div>
-      <div class="form-group"><label>份额</label><input id="txn-shares" type="number" min="0"></div>
+      <div class="ui-field"><label>价格</label><input id="txn-price" type="number" step="0.01"></div>
+      <div class="ui-field"><label>份额</label><input id="txn-shares" type="number" min="0"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>日期</label><input id="txn-date" type="date"></div>
-      <div class="form-group"><label>手续费</label><input id="txn-fee" type="number" min="0" step="0.01" value="0"></div>
+      <div class="ui-field"><label>日期</label><input id="txn-date" type="date"></div>
+      <div class="ui-field"><label>手续费</label><input id="txn-fee" type="number" min="0" step="0.01" value="0"></div>
     </div>
-    <div class="form-group"><label>备注</label><input id="txn-reason" placeholder="可选"></div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="submitTxn()"><i class="fas fa-check"></i> 确认</button>
+    <div class="ui-field"><label>备注</label><input id="txn-reason" placeholder="可选"></div>
+    <button class="ui-button ui-button-primary" style="width:100%;justify-content:center;" onclick="submitTxn()"><i class="fas fa-check"></i> 确认</button>
   </div>
 </div>
 

@@ -15,22 +15,22 @@
       <strong>指标定义工作区</strong> 内置指标只读；自定义基础/组合指标保存到独立的 <code>schemes/custom/indicators.yaml</code>，不会覆盖内置定义或天级行情数据。
   </div>
   <div class="indicator-layout">
-    <section class="card">
-      <div class="card-title"><span><i class="fas fa-book"></i> 可用指标</span><span><button class="btn btn-primary btn-sm" onclick="newIndicator()"><i class="fas fa-plus"></i> 新建指标</button> <span class="tag blue" id="indicator-count">加载中</span></span></div>
-      <div class="form-group"><label for="indicator-search">搜索名称、表达式或说明</label><input id="indicator-search" placeholder="例如 MA20、双均线低点" oninput="renderIndicators()"></div>
+    <section class="ui-card">
+      <div class="ui-card-header"><span><i class="fas fa-book"></i> 可用指标</span><span><button class="ui-button ui-button-primary ui-button-sm" onclick="newIndicator()"><i class="fas fa-plus"></i> 新建指标</button> <span class="tag blue" id="indicator-count">加载中</span></span></div>
+      <div class="ui-field"><label for="indicator-search">搜索名称、表达式或说明</label><input id="indicator-search" placeholder="例如 MA20、双均线低点" oninput="renderIndicators()"></div>
       <div id="indicator-list" class="indicator-list"></div>
     </section>
     <section>
-      <div class="card">
-        <div class="card-title"><span><i class="fas fa-flask"></i> 表达式预览</span></div>
-        <div class="form-group"><label for="preview-code">股票代码</label><input id="preview-code" value="sh.600900" placeholder="sh.600900 / 600900"></div>
-        <div class="form-group"><label for="preview-expr">指标或表达式</label><input id="preview-expr" value="MA20" placeholder="例如 0.95*MIN(MA20,MA240)"></div>
+      <div class="ui-card">
+        <div class="ui-card-header"><span><i class="fas fa-flask"></i> 表达式预览</span></div>
+        <div class="ui-field"><label for="preview-code">股票代码</label><input id="preview-code" value="sh.600900" placeholder="sh.600900 / 600900"></div>
+        <div class="ui-field"><label for="preview-expr">指标或表达式</label><input id="preview-expr" value="MA20" placeholder="例如 0.95*MIN(MA20,MA240)"></div>
         <div class="formula-help">支持：<code>+ - * /</code>、<code>MA(close,20)</code>、<code>MIN</code>、<code>MAX</code>、<code>ABS</code> 和指标名称。</div>
-        <button class="btn btn-primary" onclick="previewExpression()"><i class="fas fa-play"></i> 验证并预览</button>
+        <button class="ui-button ui-button-primary" onclick="previewExpression()"><i class="fas fa-play"></i> 验证并预览</button>
         <span class="preview-result" id="preview-status"></span>
       </div>
-      <div class="card">
-        <div class="card-title"><span><i class="fas fa-chart-line"></i> 最近 180 个交易日</span><span id="latest-value" class="tag gray">未预览</span></div>
+      <div class="ui-card">
+        <div class="ui-card-header"><span><i class="fas fa-chart-line"></i> 最近 180 个交易日</span><span id="latest-value" class="tag gray">未预览</span></div>
         <div id="preview-chart" class="preview-chart"><div class="empty">输入表达式后点击“验证并预览”</div></div>
       </div>
     </section>
@@ -38,13 +38,13 @@
 </main>
 <div class="modal-bg" id="indicator-modal">
   <div class="modal indicator-modal">
-    <div class="card-title"><span id="indicator-modal-title">新建自定义指标</span><button class="btn btn-ghost btn-sm" onclick="closeIndicatorModal()">关闭</button></div>
-    <div class="form-group"><label for="edit-name">指标名</label><input id="edit-name" placeholder="例如 MA17_custom"></div>
-    <div class="form-group"><label for="edit-kind">类型</label><select id="edit-kind"><option value="base">基础指标</option><option value="composite">组合指标</option></select></div>
-    <div class="form-group"><label for="edit-expr">表达式</label><input id="edit-expr" placeholder="例如 MA(close,17) 或 0.95*MA20"></div>
-    <div class="form-group"><label for="edit-description">说明</label><input id="edit-description" placeholder="给策略使用者看的说明"></div>
+    <div class="ui-card-header"><span id="indicator-modal-title">新建自定义指标</span><button class="ui-button ui-button-ghost ui-button-sm" onclick="closeIndicatorModal()">关闭</button></div>
+    <div class="ui-field"><label for="edit-name">指标名</label><input id="edit-name" placeholder="例如 MA17_custom"></div>
+    <div class="ui-field"><label for="edit-kind">类型</label><select id="edit-kind"><option value="base">基础指标</option><option value="composite">组合指标</option></select></div>
+    <div class="ui-field"><label for="edit-expr">表达式</label><input id="edit-expr" placeholder="例如 MA(close,17) 或 0.95*MA20"></div>
+    <div class="ui-field"><label for="edit-description">说明</label><input id="edit-description" placeholder="给策略使用者看的说明"></div>
     <div class="formula-help">仅允许安全表达式和已存在指标；代码指标需由开发者注册，不能从网页注入 Python。</div>
-    <div style="margin-top:14px;display:flex;gap:8px;align-items:center;"><button class="btn btn-primary" onclick="saveIndicator()"><i class="fas fa-save"></i> 保存</button><span id="edit-status" class="preview-result"></span></div>
+    <div style="margin-top:14px;display:flex;gap:8px;align-items:center;"><button class="ui-button ui-button-primary" onclick="saveIndicator()"><i class="fas fa-save"></i> 保存</button><span id="edit-status" class="preview-result"></span></div>
   </div>
 </div>
 <div class="indicator-help" id="indicator-help"></div>
@@ -71,7 +71,7 @@ function renderIndicators(){
       row.onclick=()=>{document.getElementById('preview-expr').value=item.name; previewExpression();};
       if(item.editable){
         const actions=document.createElement('div'); actions.className='indicator-actions';
-        actions.innerHTML=`<button class="btn btn-ghost btn-sm" type="button">编辑</button><button class="btn btn-ghost btn-sm" type="button">${item.enabled===false?'启用':'停用'}</button><button class="btn btn-danger btn-sm" type="button">删除</button>`;
+        actions.innerHTML=`<button class="ui-button ui-button-ghost ui-button-sm" type="button">编辑</button><button class="ui-button ui-button-ghost ui-button-sm" type="button">${item.enabled===false?'启用':'停用'}</button><button class="ui-button ui-button-danger ui-button-sm" type="button">删除</button>`;
         actions.children[0].onclick=(event)=>{event.stopPropagation(); editIndicator(item);};
         actions.children[1].onclick=(event)=>{event.stopPropagation(); toggleIndicator(item);};
         actions.children[2].onclick=(event)=>{event.stopPropagation(); deleteIndicator(item);};

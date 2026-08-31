@@ -14,8 +14,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
 .header .nav a.active{font-weight:700;border-bottom:2px solid var(--color-info);padding-bottom:2px;}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
-.card-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.card-title i{color:var(--color-info);}
+.ui-card-header{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.ui-card-header i{color:var(--color-info);}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
 .stat-card{background:var(--color-surface-subtle);border-radius:6px;padding:16px 12px;text-align:center;border:1px solid var(--color-border);}
 .stat-card .value{font-size:21px;font-weight:700;}
@@ -25,7 +25,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .stat-card.blue .value{color:var(--color-info);}
 .stat-card.orange .value{color:var(--color-warning);}
 table{width:100%;border-collapse:collapse;font-size:14px;}
-.table-wrap{overflow-x:auto;}
+.ui-table-wrap{overflow-x:auto;}
 th{text-align:left;padding:9px 10px;color:var(--color-text-subtle);font-weight:500;border-bottom:1px solid var(--color-border);font-size:13px;white-space:nowrap;}
 td{padding:9px 10px;border-bottom:1px solid var(--color-border);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
@@ -57,14 +57,14 @@ tr:last-child td{border-bottom:none;}
 
   <div class="notice"><strong>复盘摘要</strong> 先看已实现收益和执行结果，再查看逐笔流水；真实交易、模拟结果和建议记录保持区分。</div>
 
-  <div class="page-context"><span class="note">复盘口径：已实现盈亏 · FIFO 配对 · 真实交易记录</span><a class="btn btn-outline btn-sm" href="/dashboard/review/export"><i class="fas fa-download"></i> 导出复盘</a></div>
+  <div class="page-context"><span class="note">复盘口径：已实现盈亏 · FIFO 配对 · 真实交易记录</span><a class="ui-button ui-button-secondary ui-button-sm" href="/dashboard/review/export"><i class="fas fa-download"></i> 导出复盘</a></div>
 
   {% if error %}
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   {% endif %}
 
-  <div class="card">
-    <div class="card-title"><span><i class="fas fa-plus-circle"></i> 手动添加交易记录</span></div>
+  <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-plus-circle"></i> 手动添加交易记录</span></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
       <select id="tx-pos" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 10px;font-size:14px;">
         {% for p in positions %}<option value="{{ p.id }}">{{ p.stock_name }}（{{ p.stock_code }}）</option>{% endfor %}
@@ -79,17 +79,17 @@ tr:last-child td{border-bottom:none;}
       <input id="tx-shares" placeholder="数量" type="number" step="100" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 10px;font-size:14px;width:90px;">
       <input id="tx-date" type="date" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 10px;font-size:14px;">
       <input id="tx-reason" placeholder="备注" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 10px;font-size:14px;flex:1;min-width:120px;">
-      <button class="btn btn-primary" onclick="addTxn()"><i class="fas fa-plus"></i> 添加</button>
+      <button class="ui-button ui-button-primary" onclick="addTxn()"><i class="fas fa-plus"></i> 添加</button>
     </div>
     {% if not positions %}<p class="note" style="margin-top:8px;">当前无持仓 —— 先建仓才能记录买卖交易（分红除外）</p>{% endif %}
   </div>
 
   {% if data %}
-  <div class="card">
-    <div class="card-title"><span><i class="fas fa-chart-simple"></i> 交易统计看板 <span class="note">（已实现盈亏口径，FIFO 配对）</span></span>
+  <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-chart-simple"></i> 交易统计看板 <span class="note">（已实现盈亏口径，FIFO 配对）</span></span>
       <span style="display:flex;gap:8px;">
-        <a class="btn btn-primary" href="/dashboard/review/export" style="padding:5px 14px;font-size:12px;"><i class="fas fa-download"></i> 导出 Excel</a>
-        <a class="btn btn-outline" href="/dashboard/warroom" style="padding:5px 14px;font-size:12px;"><i class="fas fa-briefcase"></i> 持仓</a>
+        <a class="ui-button ui-button-primary" href="/dashboard/review/export" style="padding:5px 14px;font-size:12px;"><i class="fas fa-download"></i> 导出 Excel</a>
+        <a class="ui-button ui-button-secondary" href="/dashboard/warroom" style="padding:5px 14px;font-size:12px;"><i class="fas fa-briefcase"></i> 持仓</a>
       </span>
     </div>
     {% set s = data.stats %}
@@ -106,11 +106,11 @@ tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title"><span><i class="fas fa-receipt"></i> 全量交易流水（FIFO 配对）</span><span class="note">共 {{ data.total }} 笔</span></div>
+  <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-receipt"></i> 全量交易流水（FIFO 配对）</span><span class="note">共 {{ data.total }} 笔</span></div>
     {% if data.txns %}
-    <div class="table-wrap">
-    <table>
+    <div class="ui-table-wrap">
+    <table class="ui-table">
       <thead>
         <tr><th>日期</th><th>证券</th><th>方向</th><th>价格</th><th>数量</th><th>金额</th><th>手续费</th><th>盈亏</th><th>备注</th></tr>
       </thead>

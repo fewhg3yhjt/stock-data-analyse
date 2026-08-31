@@ -60,7 +60,7 @@ section.active{display:block;}
     <button type="button" data-sec="note" onclick="show('note')"><i class="fas fa-pen"></i> 笔记</button>
   </div>
 
-  <div class="card">
+  <div class="ui-card">
     <div class="form-title">选择股票</div>
     <div class="stock-select">
       <select id="code" onchange="codePick()">
@@ -80,7 +80,7 @@ section.active{display:block;}
     <input type="hidden" name="action" id="action" value="buy">
 
     <section id="sec-buy" class="active">
-      <div class="card">
+      <div class="ui-card">
         <div class="form-title"><i class="fas fa-cart-plus"></i> 买入（无持仓自动建仓）</div>
         <div class="row2">
           <div class="field"><label>价格</label><input type="number" step="0.001" name="price" placeholder="买入价"></div>
@@ -88,12 +88,12 @@ section.active{display:block;}
         </div>
         <div class="field"><label>日期</label><input type="date" name="date"></div>
         <div class="field"><label>备注</label><input type="text" name="note" placeholder="选填"></div>
-        <button class="btn buy" type="submit"><i class="fas fa-check"></i> 确认买入 / 加仓</button>
+        <button class="ui-button buy" type="submit"><i class="fas fa-check"></i> 确认买入 / 加仓</button>
       </div>
     </section>
 
     <section id="sec-sell">
-      <div class="card">
+      <div class="ui-card">
         <div class="form-title"><i class="fas fa-cart-arrow-down"></i> 卖出 / 清仓</div>
         <div class="row2">
           <div class="field"><label>价格</label><input type="number" step="0.001" name="price" placeholder="卖出价"></div>
@@ -101,35 +101,35 @@ section.active{display:block;}
         </div>
         <div class="field"><label>日期</label><input type="date" name="date"></div>
         <div class="field"><label>备注</label><input type="text" name="note" placeholder="选填"></div>
-        <button class="btn sell" type="submit"><i class="fas fa-check"></i> 确认卖出</button>
+        <button class="ui-button sell" type="submit"><i class="fas fa-check"></i> 确认卖出</button>
       </div>
     </section>
 
     <section id="sec-dividend">
-      <div class="card">
+      <div class="ui-card">
         <div class="form-title"><i class="fas fa-coins"></i> 记录分红</div>
         <div class="field"><label>分红金额(元)</label><input type="number" step="0.01" name="amount" placeholder="现金分红总额"></div>
         <div class="field"><label>日期</label><input type="date" name="date"></div>
         <div class="field"><label>备注</label><input type="text" name="note" placeholder="选填"></div>
-        <button class="btn orange" type="submit"><i class="fas fa-check"></i> 确认分红</button>
+        <button class="ui-button orange" type="submit"><i class="fas fa-check"></i> 确认分红</button>
       </div>
     </section>
 
     <section id="sec-watch">
-      <div class="card">
+      <div class="ui-card">
         <div class="form-title"><i class="fas fa-star"></i> 加入自选 / 观察</div>
         <div class="field"><label>名称</label><input type="text" name="name" placeholder="股票名称"></div>
         <div class="field"><label>观察起点（默认今天，可回看）</label><input type="date" name="date"></div>
         <div class="field"><label>备注</label><input type="text" name="note" placeholder="选填"></div>
-        <button class="btn accent" type="submit"><i class="fas fa-check"></i> 加入自选</button>
+        <button class="ui-button accent" type="submit"><i class="fas fa-check"></i> 加入自选</button>
       </div>
     </section>
 
     <section id="sec-note">
-      <div class="card">
+      <div class="ui-card">
         <div class="form-title"><i class="fas fa-pen"></i> 追加笔记</div>
         <div class="field"><label>笔记内容</label><textarea name="note" placeholder="记录想法/操作依据…"></textarea></div>
-        <button class="btn accent" type="submit"><i class="fas fa-check"></i> 保存笔记</button>
+        <button class="ui-button accent" type="submit"><i class="fas fa-check"></i> 保存笔记</button>
       </div>
     </section>
   </form>

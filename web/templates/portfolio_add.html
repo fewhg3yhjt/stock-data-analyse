@@ -10,11 +10,11 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
 .header h1{font-size:22px;font-weight:700;}
 .header a{color:var(--color-info);text-decoration:none;font-size:14px;}
 .card{background:var(--color-surface);border:1px solid #e0e4ea;border-radius:var(--radius);padding:22px 26px;box-shadow:0 1px 3px rgba(0,0,0,.07);}
-.card-title{font-size:16px;font-weight:600;margin-bottom:16px;}
-.form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:14px;}
-.form-group label{font-size:13px;color:var(--color-text-subtle);font-weight:500;}
-.form-group input,.form-group select{background:var(--color-surface-subtle);border:1px solid #e0e4ea;border-radius:6px;padding:10px 14px;color:var(--color-text);font-size:15px;outline:none;}
-.form-group input:focus{border-color:var(--color-info);}
+.ui-card-header{font-size:16px;font-weight:600;margin-bottom:16px;}
+.ui-field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px;}
+.ui-field label{font-size:13px;color:var(--color-text-subtle);font-weight:500;}
+.ui-field input,.ui-field select{background:var(--color-surface-subtle);border:1px solid #e0e4ea;border-radius:6px;padding:10px 14px;color:var(--color-text);font-size:15px;outline:none;}
+.ui-field input:focus{border-color:var(--color-info);}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .btn{padding:11px 32px;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:8px;}
 .btn-primary{background:var(--color-info);color:#fff;width:100%;justify-content:center;}
@@ -30,21 +30,21 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
     <h1><i class="fas fa-plus-circle"></i> 新建持仓</h1>
       <a href="/dashboard/warroom"><i class="fas fa-arrow-left"></i> 返回持仓</a>
   </div>
-  <div class="card">
-    <div class="card-title">录入已买入的持仓</div>
+  <div class="ui-card">
+    <div class="ui-card-header">录入已买入的持仓</div>
     <form id="add-form" autocomplete="off">
       <div class="form-row">
-        <div class="form-group"><label>股票代码 *</label><input name="code" id="add-code" value="{{ prefill.code }}" placeholder="sh.600900" required onblur="classifyStock();lookupName()">
+        <div class="ui-field"><label>股票代码 *</label><input name="code" id="add-code" value="{{ prefill.code }}" placeholder="sh.600900" required onblur="classifyStock();lookupName()">
           <span class="hint" id="classify-hint">6xx/9xx 沪市 · 0xx/2xx/3xx 深市 · 输入代码后自动识别类型</span></div>
-        <div class="form-group"><label>股票名称 *</label><input name="name" value="{{ prefill.name }}" placeholder="长江电力" required></div>
+        <div class="ui-field"><label>股票名称 *</label><input name="name" value="{{ prefill.name }}" placeholder="长江电力" required></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>持有份额 *</label><input name="shares" type="number" min="0" step="100" required></div>
-        <div class="form-group"><label>买入均价 *</label><input name="cost" type="number" min="0" step="any" required></div>
+        <div class="ui-field"><label>持有份额 *</label><input name="shares" type="number" min="0" step="100" required></div>
+        <div class="ui-field"><label>买入均价 *</label><input name="cost" type="number" min="0" step="any" required></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>买入日期</label><input name="buy_date" type="date" onchange="fillPriceByDate()"></div>
-        <div class="form-group"><label>类型</label>
+        <div class="ui-field"><label>买入日期</label><input name="buy_date" type="date" onchange="fillPriceByDate()"></div>
+        <div class="ui-field"><label>类型</label>
           <select name="stock_type" id="add-stock-type">
             <option value="B" {% if prefill.stock_type=='B' %}selected{% endif %}>B 价值白马</option>
             <option value="A" {% if prefill.stock_type=='A' %}selected{% endif %}>A 高成长</option>
@@ -54,14 +54,14 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
           </select>
           <span class="hint">支持场内 ETF/LOF（5xx/15x 代码），自动识别类型</span></div>
       </div>
-      <div class="form-group"><label>策略方案</label>
+      <div class="ui-field"><label>策略方案</label>
         <select name="scheme">
           {% for s in schemes %}
           <option value="{{ s.name }}">{{ s.name }} — {{ s.description }}</option>
           {% endfor %}
         </select></div>
-      <div class="form-group"><label>备注</label><input name="notes" placeholder="可选"></div>
-      <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> 确认建仓</button>
+      <div class="ui-field"><label>备注</label><input name="notes" placeholder="可选"></div>
+      <button type="submit" class="ui-button ui-button-primary"><i class="fas fa-check"></i> 确认建仓</button>
     </form>
   </div>
 </div>

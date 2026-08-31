@@ -12,10 +12,10 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .header h1 i{color:var(--color-info);}
 .header .sub{font-size:14px;color:var(--color-text-subtle);margin-top:3px;}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:18px 22px;margin-bottom:16px;box-shadow:var(--shadow);}
-.card-title{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.card-title i{color:var(--color-info);}
+.ui-card-header{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.ui-card-header i{color:var(--color-info);}
 table{width:100%;border-collapse:collapse;font-size:14px;}
-.table-wrap{overflow-x:auto;}
+.ui-table-wrap{overflow-x:auto;}
 th{text-align:left;padding:9px 10px;color:var(--color-text-subtle);font-weight:500;border-bottom:1px solid var(--color-border);font-size:13px;white-space:nowrap;}
 td{padding:9px 10px;border-bottom:1px solid var(--color-border);vertical-align:middle;cursor:pointer;}
 tr:last-child td{border-bottom:none;}
@@ -56,8 +56,8 @@ label{font-size:13px;color:var(--color-text-subtle);display:block;margin-bottom:
     {% set active='strategy' %}{% include '_nav.html' %}
   </div>
 
-  <div class="card">
-    <div class="card-title"><i class="fas fa-sliders"></i> 策略条件</div>
+  <div class="ui-card">
+    <div class="ui-card-header"><i class="fas fa-sliders"></i> 策略条件</div>
     <div class="form-grid">
       <div><label>基准日(空=最新交易日)</label><input id="as_of" placeholder="2026-08-21"></div>
       <div><label>10日涨停次数 ≥</label><input id="limit_up" value="1" type="number" min="1"></div>
@@ -65,8 +65,8 @@ label{font-size:13px;color:var(--color-text-subtle);display:block;margin-bottom:
       <div><label>持有天数(回测):</label><input id="hold_days" value="10" type="number" min="1"></div>
     </div>
     <div style="display:flex;gap:10px;">
-      <button class="btn btn-primary" onclick="doScan()"><i class="fas fa-magnifying-glass"></i> 扫描选股</button>
-      <button class="btn btn-secondary" onclick="doBacktest()"><i class="fas fa-chart-line"></i> 历史回测</button>
+      <button class="ui-button ui-button-primary" onclick="doScan()"><i class="fas fa-magnifying-glass"></i> 扫描选股</button>
+      <button class="ui-button ui-button-secondary" onclick="doBacktest()"><i class="fas fa-chart-line"></i> 历史回测</button>
     </div>
     <div class="hint" style="margin-top:8px;">条件: 股价>MA60 | 10日涨停≥N | 偏离MA20&lt;X%（创业板/科创板涨停阈值自动按20%处理）。点击结果行可查看该股票交互式图表。</div>
   </div>
@@ -74,25 +74,25 @@ label{font-size:13px;color:var(--color-text-subtle);display:block;margin-bottom:
   <div id="loading"><i class="fas fa-spinner fa-spin"></i> 计算中，请稍候（全市场约 15-30 秒）...</div>
 
   <div id="backtest_result" style="display:none;">
-    <div class="card">
-      <div class="card-title"><i class="fas fa-chart-line"></i> 回测结果（历史选股 → 持有N天） <span class="hint">收益曲线=信号平均收益累积(非真实资金净值)</span></div>
+    <div class="ui-card">
+      <div class="ui-card-header"><i class="fas fa-chart-line"></i> 回测结果（历史选股 → 持有N天） <span class="hint">收益曲线=信号平均收益累积(非真实资金净值)</span></div>
       <div class="metric-grid" id="bt_metrics"></div>
       <div class="chart" id="chart_backtest"></div>
     </div>
   </div>
 
   <div id="scan_result" style="display:none;">
-    <div class="card">
-      <div class="card-title"><i class="fas fa-list"></i> 扫描结果 <span class="tag blue" id="scan_count"></span></div>
-      <div class="table-wrap">
-        <table>
+    <div class="ui-card">
+      <div class="ui-card-header"><i class="fas fa-list"></i> 扫描结果 <span class="tag blue" id="scan_count"></span></div>
+      <div class="ui-table-wrap">
+        <table class="ui-table">
           <thead><tr><th>代码</th><th>现价</th><th>MA20</th><th>MA60</th><th>偏离%</th><th>10日涨停</th><th>操作</th></tr></thead>
           <tbody id="scan_rows"></tbody>
         </table>
       </div>
     </div>
-    <div class="card" id="chart_card" style="display:none;">
-      <div class="card-title">
+    <div class="ui-card" id="chart_card" style="display:none;">
+      <div class="ui-card-header">
         <span><i class="fas fa-image"></i> <span id="chart_title">交互式图表</span></span>
       </div>
       <div class="checkbox-group" id="metric_selector"></div>
@@ -132,7 +132,7 @@ async function doScan(){
       tr.innerHTML=`<td>${h.code}<span style="color:var(--color-text-subtle);font-size:12px;"> ${h.name||''}</span></td><td>${h.price}</td><td>${h.ma20}</td><td>${h.ma60}</td>
         <td><span class="tag ${h.deviation_pct<3?'green':'blue'}">${h.deviation_pct}%</span></td>
         <td><span class="tag orange">${h.limit_up_10d}</span></td>
-        <td><button class="btn btn-secondary" onclick="showChart('${h.code}')"><i class="fas fa-chart-line"></i> 图表</button></td>`;
+        <td><button class="ui-button ui-button-secondary" onclick="showChart('${h.code}')"><i class="fas fa-chart-line"></i> 图表</button></td>`;
       tb.appendChild(tr);
     });
     document.getElementById('scan_result').style.display='';

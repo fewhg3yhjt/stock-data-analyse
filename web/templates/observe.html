@@ -18,13 +18,13 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
 .header .nav a.active{font-weight:700;border-bottom:2px solid var(--color-info);padding-bottom:2px;}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
-.card-title{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.card-title i{color:var(--color-info);}
+.ui-card-header{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.ui-card-header i{color:var(--color-info);}
 .btn{padding:9px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;text-decoration:none;}
 .btn-primary{background:var(--color-info);color:#fff;}
 .btn-outline{background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-subtle);}
 table{width:100%;border-collapse:collapse;font-size:14px;}
-.table-wrap{overflow-x:auto;}
+.ui-table-wrap{overflow-x:auto;}
 th{text-align:left;padding:9px 10px;color:var(--color-text-subtle);font-weight:500;border-bottom:1px solid var(--color-border);font-size:13px;white-space:nowrap;}
 td{padding:9px 10px;border-bottom:1px solid var(--color-border);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
@@ -62,14 +62,14 @@ tr:last-child td{border-bottom:none;}
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   {% endif %}
 
-  <div class="card">
-    <div class="card-title">
+  <div class="ui-card">
+    <div class="ui-card-header">
       <span><i class="fas fa-list"></i> 今日观察清单</span>
       <span class="note"><i class="fas fa-circle-info"></i> 现价实时（腾讯报价） · 技术指标截至最近收盘 · 数据时刻 {{ data_time }}</span>
     </div>
     {% if rows %}
-    <div class="table-wrap">
-    <table>
+    <div class="ui-table-wrap">
+    <table class="ui-table">
       <thead>
         <tr>
           <th>代码</th><th>名称</th><th>现价</th><th>涨跌幅</th><th>成交量</th><th>成交额</th>
@@ -112,11 +112,11 @@ tr:last-child td{border-bottom:none;}
           </td>
           <td style="white-space:nowrap;">
             {% if r.ok %}
-            <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;margin-right:4px;"
+            <button class="ui-button ui-button-secondary" style="padding:4px 10px;font-size:12px;margin-right:4px;"
                     data-action="simulate" title="跑分析存模拟快照"><i class="fas fa-flask"></i> 模拟</button>
-            <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;margin-right:4px;"
+            <button class="ui-button ui-button-secondary" style="padding:4px 10px;font-size:12px;margin-right:4px;"
                     data-action="addWatch" title="加入自选"><i class="fas fa-star"></i> 自选</button>
-            <a class="btn btn-primary" style="padding:4px 12px;font-size:12px;"
+            <a class="ui-button ui-button-primary" style="padding:4px 12px;font-size:12px;"
                href="/portfolio/add?code={{ r.code }}&name={{ r.name }}"
                title="录入已买入的持仓"><i class="fas fa-plus"></i> 建仓</a>
             {% endif %}
@@ -136,9 +136,9 @@ tr:last-child td{border-bottom:none;}
     {% endif %}
   </div>
 
-  <div class="card">
-    <div class="card-title"><span><i class="fas fa-book"></i> 开仓指令对照表</span></div>
-    <table>
+  <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-book"></i> 开仓指令对照表</span></div>
+    <table class="ui-table">
       <thead><tr><th>市场状态</th><th>买入指令</th></tr></thead>
       <tbody>
         <tr><td><span class="tag green">强多</span></td><td>🔥 规则C激活：现价立即建仓 20%</td></tr>

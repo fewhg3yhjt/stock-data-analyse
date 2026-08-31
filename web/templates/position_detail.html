@@ -12,9 +12,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
 .header a{color:var(--color-info);text-decoration:none;font-size:14px;margin-left:14px;}
 .header .nav a.active{font-weight:700;color:var(--color-info);}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.07);}
-.card-title{font-size:16px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.card-title i{color:var(--color-info);}
-.card-title .count{font-size:13px;color:var(--color-text-subtle);font-weight:400;}
+.ui-card-header{font-size:16px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.ui-card-header i{color:var(--color-info);}
+.ui-card-header .count{font-size:13px;color:var(--color-text-subtle);font-weight:400;}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;}
 .stat-card{background:var(--color-surface-subtle);border-radius:6px;padding:14px 10px;text-align:center;border:1px solid var(--color-border);}
 .stat-card .v{font-size:18px;font-weight:700;}
@@ -78,8 +78,8 @@ table.mini td.v{color:var(--color-text);font-weight:500;}
   {% set cr = (advice.check_results if advice else {}) or {} %}
   {% set ctx = cr.get('context') or {} %}
 
-  <div class="card">
-    <div class="card-title"><i class="fas fa-tachometer-alt"></i> 持仓概览</div>
+  <div class="ui-card">
+    <div class="ui-card-header"><i class="fas fa-tachometer-alt"></i> 持仓概览</div>
     <div class="stat-grid">
       <div class="stat-card"><div class="l">当前价</div><div class="v">{{ '%.2f' % p.current_price }}</div></div>
       <div class="stat-card"><div class="l">持仓均价</div><div class="v">{{ '%.2f' % p.avg_cost }}</div></div>
@@ -99,36 +99,36 @@ table.mini td.v{color:var(--color-text);font-weight:500;}
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title"><i class="fas fa-sliders"></i> 切换策略方案</div>
+  <div class="ui-card">
+    <div class="ui-card-header"><i class="fas fa-sliders"></i> 切换策略方案</div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
       <select id="scheme-select" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;">
         {% for s in schemes %}<option value="{{ s.name }}" {% if s.name == detail.position.scheme_name %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
       </select>
-      <button class="btn btn-primary" onclick="changeScheme()"><i class="fas fa-rotate"></i> 应用并重算止盈止损</button>
+      <button class="ui-button ui-button-primary" onclick="changeScheme()"><i class="fas fa-rotate"></i> 应用并重算止盈止损</button>
       <span class="hint">当前方案：{{ detail.position.scheme_name }}</span>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title"><i class="fas fa-arrows-rotate"></i> 执行操作</div>
+  <div class="ui-card">
+    <div class="ui-card-header"><i class="fas fa-arrows-rotate"></i> 执行操作</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px;">
-      <div class="form-group"><label>方向</label>
+      <div class="ui-field"><label>方向</label>
         <select id="op-type">
           <option value="buy">加仓</option>
           <option value="sell">减仓</option>
           <option value="sell_all">清仓</option>
           <option value="dividend">分红</option>
         </select></div>
-      <div class="form-group"><label>价格(元)</label><input id="op-price" type="number" step="any" placeholder="成交价"></div>
-      <div class="form-group"><label>份额(股)</label><input id="op-shares" type="number" step="100" placeholder="清仓可留空=全平"></div>
+      <div class="ui-field"><label>价格(元)</label><input id="op-price" type="number" step="any" placeholder="成交价"></div>
+      <div class="ui-field"><label>份额(股)</label><input id="op-shares" type="number" step="100" placeholder="清仓可留空=全平"></div>
     </div>
-    <div class="form-group"><label>备注</label><input id="op-reason" placeholder="操作理由（可选）"></div>
-    <button class="btn btn-primary" onclick="execOp()"><i class="fas fa-check"></i> 提交操作</button>
+    <div class="ui-field"><label>备注</label><input id="op-reason" placeholder="操作理由（可选）"></div>
+    <button class="ui-button ui-button-primary" onclick="execOp()"><i class="fas fa-check"></i> 提交操作</button>
   </div>
 
-  <div class="card">
-    <div class="card-title"><i class="fas fa-robot"></i> 最新操作建议</div>
+  <div class="ui-card">
+    <div class="ui-card-header"><i class="fas fa-robot"></i> 最新操作建议</div>
     {% if advice %}
     <div class="advice {{ 'urgent' if advice.urgency == 'urgent' else ('hold' if advice.advice_type == 'hold' else '') }}">
       <strong>{{ advice.advice_type }}</strong> [{{ advice.urgency }}]<br>{{ advice.reason }}
@@ -199,8 +199,8 @@ table.mini td.v{color:var(--color-text);font-weight:500;}
     {% else %}<div class="empty">暂无建议，请先刷新行情</div>{% endif %}
   </div>
 
-  <div class="card">
-    <div class="card-title"><i class="fas fa-history"></i> 历史建议日志 <span class="count">{{ detail.advice_history|length }} 条</span></div>
+  <div class="ui-card">
+    <div class="ui-card-header"><i class="fas fa-history"></i> 历史建议日志 <span class="count">{{ detail.advice_history|length }} 条</span></div>
     {% if detail.advice_history %}
       {% for a in detail.advice_history %}
         {% set a_cr = (a.check_results or {}) %}
@@ -274,10 +274,10 @@ table.mini td.v{color:var(--color-text);font-weight:500;}
     {% endif %}
   </div>
 
-  <div class="card">
-    <div class="card-title"><i class="fas fa-exchange-alt"></i> 交易历史 <span class="count">{{ detail.transactions|length }} 笔</span></div>
+  <div class="ui-card">
+    <div class="ui-card-header"><i class="fas fa-exchange-alt"></i> 交易历史 <span class="count">{{ detail.transactions|length }} 笔</span></div>
     {% if detail.transactions %}
-    <table><thead><tr><th>日期</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>盈亏</th><th>说明</th></tr></thead>
+    <table class="ui-table"><thead><tr><th>日期</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>盈亏</th><th>说明</th></tr></thead>
     <tbody>
       {% for t in detail.transactions %}
       <tr>
@@ -295,8 +295,8 @@ table.mini td.v{color:var(--color-text);font-weight:500;}
   </div>
 
   <div style="display:flex;gap:10px;">
-    <a class="btn btn-outline" href="/dashboard/warroom"><i class="fas fa-arrow-left"></i> 返回持仓</a>
-    <a class="btn btn-outline" href="/log"><i class="fas fa-book-open"></i> 查看全部操作日志</a>
+    <a class="ui-button ui-button-secondary" href="/dashboard/warroom"><i class="fas fa-arrow-left"></i> 返回持仓</a>
+    <a class="ui-button ui-button-secondary" href="/log"><i class="fas fa-book-open"></i> 查看全部操作日志</a>
   </div>
 </div>
 

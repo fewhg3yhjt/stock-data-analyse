@@ -8,34 +8,34 @@
     {% set active='research' %}{% include '_nav.html' %}
   </header>
 
-  <section class="card research-toolbar">
+  <section class="ui-card research-toolbar">
     <form id="research-form">
       <label>证券代码<input id="symbol" name="symbol" placeholder="sh600908" value="{{ prefill_symbol }}" required></label>
       <label>开始日期<input id="start-date" name="start_date" type="date" required></label>
       <label>截至日期<input id="as-of" name="as_of" type="date" required></label>
       <label>策略版本 ID<input id="strategy-version-id" name="strategy_version_id" placeholder="可选"></label>
-      <button class="btn primary" type="submit"><i class="fas fa-play"></i>开始研究</button>
-      {% if prefill_run_id %}<button class="btn" type="button" id="load-run">加载运行</button>{% endif %}
+      <button class="ui-button primary" type="submit"><i class="fas fa-play"></i>开始研究</button>
+      {% if prefill_run_id %}<button class="ui-button" type="button" id="load-run">加载运行</button>{% endif %}
     </form>
     <div id="form-message" class="note">研究结果会保存为新的 ResearchRun，不覆盖历史记录。</div>
   </section>
 
-  <section id="empty-state" class="card empty-state">输入证券代码和日期范围后开始研究，或通过 URL 的 <code>run_id</code> 加载历史研究。</section>
+  <section id="empty-state" class="ui-card empty-state">输入证券代码和日期范围后开始研究，或通过 URL 的 <code>run_id</code> 加载历史研究。</section>
   <section id="research-content" hidden>
     <section class="research-header card">
       <div><div class="eyebrow">研究运行</div><h2 id="run-title">--</h2><p id="run-meta" class="note">--</p></div>
       <div id="run-status" class="status-badge">--</div>
     </section>
-    <section class="card data-context-card"><div class="card-title">数据可信上下文</div><dl id="data-context" class="data-context"><dt>数据日期</dt><dd>暂无</dd></dl><p class="note">研究结论只对当前数据日期、版本和质量状态负责。</p></section>
+    <section class="ui-card data-context-card"><div class="ui-card-header">数据可信上下文</div><dl id="data-context" class="data-context"><dt>数据日期</dt><dd>暂无</dd></dl><p class="note">研究结论只对当前数据日期、版本和质量状态负责。</p></section>
     <section class="research-grid">
-      <article class="card assessment"><div class="card-title">技术面</div><div id="technical"></div></article>
-      <article class="card assessment"><div class="card-title">市场面</div><div id="market"></div></article>
-      <article class="card assessment"><div class="card-title">估值面</div><div id="valuation"></div></article>
-      <article class="card assessment"><div class="card-title">基本面</div><div id="fundamental"></div></article>
+      <article class="ui-card assessment"><div class="ui-card-header">技术面</div><div id="technical"></div></article>
+      <article class="ui-card assessment"><div class="ui-card-header">市场面</div><div id="market"></div></article>
+      <article class="ui-card assessment"><div class="ui-card-header">估值面</div><div id="valuation"></div></article>
+      <article class="ui-card assessment"><div class="ui-card-header">基本面</div><div id="fundamental"></div></article>
     </section>
-    <section class="card"><div class="card-title">策略决策</div><div id="decision"></div></section>
-    <section class="card"><div class="card-title">研究证据</div><div class="table-wrap"><table><thead><tr><th>类型</th><th>指标/规则</th><th>实际值</th><th>阈值</th><th>判断</th><th>解释</th><th>数据日期</th></tr></thead><tbody id="evidence"></tbody></table></div></section>
-    <section class="card technical-detail"><div class="card-title">技术详情</div><pre id="raw-result"></pre></section>
+    <section class="ui-card"><div class="ui-card-header">策略决策</div><div id="decision"></div></section>
+    <section class="ui-card"><div class="ui-card-header">研究证据</div><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>类型</th><th>指标/规则</th><th>实际值</th><th>阈值</th><th>判断</th><th>解释</th><th>数据日期</th></tr></thead><tbody id="evidence"></tbody></table></div></section>
+    <section class="ui-card technical-detail"><div class="ui-card-header">技术详情</div><pre id="raw-result"></pre></section>
   </section>
 </main>
 <script>window.RESEARCH_PREFILL_RUN_ID={{ prefill_run_id|tojson }};</script>

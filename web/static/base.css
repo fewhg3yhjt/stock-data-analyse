@@ -141,7 +141,7 @@ tr:last-child td{border-bottom:none;}
    主类在此定义，子元素类（如 .ui-message-title、.ui-drawer-close）一并落地。 */
 
 /* 卡片 */
-.ui-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden;}
+.ui-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;padding:20px 24px;overflow:hidden;}
 .ui-card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:15px 20px;border-bottom:1px solid var(--color-border);}
 .ui-card-header h2{font-size:16px;margin:0;}
 .ui-card-meta{font-size:12px;color:var(--color-muted);}
@@ -167,7 +167,7 @@ tr:last-child td{border-bottom:none;}
 
 /* 表单 */
 .ui-form{display:grid;gap:14px;}
-.ui-field{display:grid;gap:5px;}
+.ui-field{display:grid;gap:5px;margin-bottom:12px;}
 .ui-field label{font-size:13px;color:var(--color-text-subtle);font-weight:500;}
 .ui-field input,.ui-field select,.ui-field textarea{background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;color:var(--color-text);font-size:14px;outline:none;}
 .ui-field input:focus,.ui-field select:focus,.ui-field textarea:focus{border-color:var(--color-info);box-shadow:0 0 0 2px #e7f0ff;}

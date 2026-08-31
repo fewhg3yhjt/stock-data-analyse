@@ -53,31 +53,31 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   {% endif %}
 
-  <div class="card">
-    <div class="card-title"><span><i class="fas fa-plus-circle"></i> 手动添加自选</span></div>
+  <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-plus-circle"></i> 手动添加自选</span></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <input id="wl-code" placeholder="代码 sh600519 / 600519" onblur="lookupStock()" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:180px;">
       <input id="wl-name" placeholder="名称（可留空自动识别）" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:180px;">
       <input id="wl-added" type="date" title="观察起点（默认今天，可回看）" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;">
-      <button class="btn btn-primary" onclick="addManual()"><i class="fas fa-plus"></i> 添加</button>
+      <button class="ui-button ui-button-primary" onclick="addManual()"><i class="fas fa-plus"></i> 添加</button>
     </div>
   </div>
 
   {% if items %}
     {% for w in items %}
-    <div class="card">
+    <div class="ui-card">
       <div class="wl-head" data-action="toggle" data-code="{{ w.stock_code }}" data-id="{{ w.id }}"
            data-sim-date="{{ w.sim_entry.date if w.sim_entry and w.sim_entry.date else '' }}"
            data-sim-price="{{ w.sim_entry.price if w.sim_entry and w.sim_entry.price else '' }}">
         <span class="name">{{ w.stock_name }} <span class="code">{{ w.stock_code }}</span>
-          <button class="btn btn-outline" style="font-size:11px;padding:2px 8px;margin-left:6px;" data-action="editAddedTime" data-id="{{ w.id }}" data-added="{{ w.added_time or '' }}" title="点击修改观察起点">
+          <button class="ui-button ui-button-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" data-action="editAddedTime" data-id="{{ w.id }}" data-added="{{ w.added_time or '' }}" title="点击修改观察起点">
             <i class="fas fa-clock"></i> {{ w.added_time or '设观察起点' }}
           </button>
         </span>
         <div class="wl-actions">
-          <button class="btn btn-outline" data-action="simulate" data-code="{{ w.stock_code }}" data-name="{{ w.stock_name }}"><i class="fas fa-flask"></i> 模拟</button>
-          <a class="btn btn-primary" href="/portfolio/add?code={{ w.stock_code }}&name={{ w.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
-          <button class="btn btn-danger" data-action="delWatch" data-id="{{ w.id }}"><i class="fas fa-trash"></i></button>
+          <button class="ui-button ui-button-secondary" data-action="simulate" data-code="{{ w.stock_code }}" data-name="{{ w.stock_name }}"><i class="fas fa-flask"></i> 模拟</button>
+          <a class="ui-button ui-button-primary" href="/portfolio/add?code={{ w.stock_code }}&name={{ w.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
+          <button class="ui-button ui-button-danger" data-action="delWatch" data-id="{{ w.id }}"><i class="fas fa-trash"></i></button>
         </div>
       </div>
       <div class="wl-detail" id="detail-{{ w.stock_code }}">

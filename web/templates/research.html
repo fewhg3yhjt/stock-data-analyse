@@ -3,14 +3,14 @@
 {% block head %}<style>.hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.hub-card{display:block;color:var(--color-text);min-height:150px}.hub-card:hover{border-color:var(--color-info);transform:translateY(-1px)}.hub-card h2{font-size:17px;margin-bottom:8px}.flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.flow span{background:var(--color-surface-subtle);border:1px solid var(--color-border);padding:6px 10px;border-radius:6px;font-size:13px}</style>{% endblock %}
 {% block body %}
 <main class="app"><header class="header"><div><h1><i class="fas fa-flask-vial"></i> 研究中心</h1><div class="sub">从指标定义到策略验证、回测和发布</div></div>{% set active='research' %}{% include '_nav.html' %}</header>
-<section class="card"><div class="card-title">研究流程</div><div class="flow"><span>1. 个股分析</span>→<span>2. 指标定义</span>→<span>3. 策略组装</span>→<span>4. 回测验证</span>→<span>5. 发布使用</span></div></section>
+<section class="ui-card"><div class="ui-card-header">研究流程</div><div class="flow"><span>1. 个股分析</span>→<span>2. 指标定义</span>→<span>3. 策略组装</span>→<span>4. 回测验证</span>→<span>5. 发布使用</span></div></section>
 <div class="hub-grid">
-<a class="card hub-card" href="/analyze"><h2><i class="fas fa-magnifying-glass-chart"></i> 个股分析</h2><p class="note">查看行情、技术指标、估值、买入计划和历史回测。</p></a>
-<a class="card hub-card" href="/indicator-center"><h2><i class="fas fa-chart-area"></i> 指标中心</h2><p class="note">查看内置指标，创建组合指标，验证指标表达式。</p></a>
-<a class="card hub-card" href="/strategy-composer"><h2><i class="fas fa-diagram-project"></i> 策略编排</h2><p class="note">选择指标和规则，配置参数，验证并发布方案。</p></a>
-<a class="card hub-card" href="/strategy"><h2><i class="fas fa-vial"></i> 策略实验</h2><p class="note">运行固定扫描实验和样本回测，查看收益表现。</p></a>
-<a class="card hub-card" href="/market-discovery"><h2><i class="fas fa-filter-circle-dollar"></i> 个股发现</h2><p class="note">用本地日线数据筛选涨跌、量能和价量信号，再进入观察池。</p></a>
-<a class="card hub-card" href="/operation-points"><h2><i class="fas fa-crosshairs"></i> 操作点位</h2><p class="note">按状态、价格位置、结构止损和盈亏比识别日线操作点。</p></a>
-<a class="card hub-card" href="/api/schemes/list"><h2><i class="fas fa-code-branch"></i> 方案状态</h2><p class="note">查看内置与用户方案、启停状态和发布生命周期。</p></a>
+<a class="ui-card hub-card" href="/analyze"><h2><i class="fas fa-magnifying-glass-chart"></i> 个股分析</h2><p class="note">查看行情、技术指标、估值、买入计划和历史回测。</p></a>
+<a class="ui-card hub-card" href="/indicator-center"><h2><i class="fas fa-chart-area"></i> 指标中心</h2><p class="note">查看内置指标，创建组合指标，验证指标表达式。</p></a>
+<a class="ui-card hub-card" href="/strategy-composer"><h2><i class="fas fa-diagram-project"></i> 策略编排</h2><p class="note">选择指标和规则，配置参数，验证并发布方案。</p></a>
+<a class="ui-card hub-card" href="/strategy"><h2><i class="fas fa-vial"></i> 策略实验</h2><p class="note">运行固定扫描实验和样本回测，查看收益表现。</p></a>
+<a class="ui-card hub-card" href="/market-discovery"><h2><i class="fas fa-filter-circle-dollar"></i> 个股发现</h2><p class="note">用本地日线数据筛选涨跌、量能和价量信号，再进入观察池。</p></a>
+<a class="ui-card hub-card" href="/operation-points"><h2><i class="fas fa-crosshairs"></i> 操作点位</h2><p class="note">按状态、价格位置、结构止损和盈亏比识别日线操作点。</p></a>
+<a class="ui-card hub-card" href="/api/schemes/list"><h2><i class="fas fa-code-branch"></i> 方案状态</h2><p class="note">查看内置与用户方案、启停状态和发布生命周期。</p></a>
 </div></main>
 {% endblock %}

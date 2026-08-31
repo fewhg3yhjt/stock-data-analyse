@@ -37,9 +37,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
     </div>
     {% set active = '' %}{% include '_nav.html' %}
   </div>
-  <div class="card">
+  <div class="ui-card">
     <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
-      <button class="btn btn-primary" onclick="genReport()"><i class="fas fa-sync"></i> 重新生成（刷新行情）</button>
+      <button class="ui-button ui-button-primary" onclick="genReport()"><i class="fas fa-sync"></i> 重新生成（刷新行情）</button>
     </div>
     {% if content %}
     <div id="content"></div>

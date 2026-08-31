@@ -14,10 +14,10 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
 .header .nav a.active{font-weight:700;border-bottom:2px solid var(--color-info);padding-bottom:2px;}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:18px 22px;margin-bottom:16px;box-shadow:var(--shadow);}
-.card-title{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.card-title i{color:var(--color-info);}
+.ui-card-header{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
+.ui-card-header i{color:var(--color-info);}
 table{width:100%;border-collapse:collapse;font-size:14px;}
-.table-wrap{overflow-x:auto;}
+.ui-table-wrap{overflow-x:auto;}
 th{text-align:left;padding:9px 10px;color:var(--color-text-subtle);font-weight:500;border-bottom:1px solid var(--color-border);font-size:13px;white-space:nowrap;}
 td{padding:9px 10px;border-bottom:1px solid var(--color-border);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
@@ -63,23 +63,23 @@ select{background:var(--color-surface-subtle);border:1px solid var(--color-borde
   <div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   {% endif %}
 
-  <div class="card">
-    <div class="card-title"><span><i class="fas fa-plus-circle"></i> 手动添加模拟</span></div>
+  <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-plus-circle"></i> 手动添加模拟</span></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
       <input id="sim-code" placeholder="代码 sh600519 / 600519" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:160px;">
       <input id="sim-name" placeholder="名称（可留空自动识别）" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:160px;">
       <select id="sim-scheme" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;">
         {% for sc in schemes %}<option value="{{ sc }}">{{ sc }}</option>{% endfor %}
       </select>
-      <button class="btn btn-primary" onclick="addManual()"><i class="fas fa-flask"></i> 跑模拟</button>
+      <button class="ui-button ui-button-primary" onclick="addManual()"><i class="fas fa-flask"></i> 跑模拟</button>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title"><span><i class="fas fa-table-list"></i> 模拟清单（点位口径：假设按现价建仓）</span></div>
+  <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-table-list"></i> 模拟清单（点位口径：假设按现价建仓）</span></div>
     {% if items %}
-    <div class="table-wrap">
-    <table>
+    <div class="ui-table-wrap">
+    <table class="ui-table">
       <thead>
         <tr>
           <th>证券</th><th>现价</th><th>市场状态</th><th>🚨硬止损</th><th>💡止盈线(预警~上限)</th>
@@ -105,11 +105,11 @@ select{background:var(--color-surface-subtle);border:1px solid var(--color-borde
             <select id="scheme-{{ s.id }}">
               {% for sc in schemes %}<option value="{{ sc }}" {% if sc==s.scheme_name %}selected{% endif %}>{{ sc }}</option>{% endfor %}
             </select>
-<button class="btn btn-outline" data-action="reanalyze" data-code="{{ s.stock_code }}" data-name="{{ s.stock_name }}" data-id="{{ s.id }}"><i class="fas fa-rotate"></i> 重新分析</button>
-            <button class="btn btn-outline" data-action="toggleReturn" data-code="{{ s.stock_code }}" title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
-            <a class="btn btn-primary" href="/portfolio/add?code={{ s.stock_code }}&name={{ s.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
-            <a class="btn btn-outline" href="/analyze?code={{ s.stock_code }}&name={{ s.stock_name }}" title="进入完整分析/回测"><i class="fas fa-chart-line"></i> 完整分析</a>
-            <button class="btn btn-danger" data-action="delSim" data-id="{{ s.id }}"><i class="fas fa-trash"></i></button>
+<button class="ui-button ui-button-secondary" data-action="reanalyze" data-code="{{ s.stock_code }}" data-name="{{ s.stock_name }}" data-id="{{ s.id }}"><i class="fas fa-rotate"></i> 重新分析</button>
+            <button class="ui-button ui-button-secondary" data-action="toggleReturn" data-code="{{ s.stock_code }}" title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
+            <a class="ui-button ui-button-primary" href="/portfolio/add?code={{ s.stock_code }}&name={{ s.stock_name }}"><i class="fas fa-plus"></i> 建仓</a>
+            <a class="ui-button ui-button-secondary" href="/analyze?code={{ s.stock_code }}&name={{ s.stock_name }}" title="进入完整分析/回测"><i class="fas fa-chart-line"></i> 完整分析</a>
+            <button class="ui-button ui-button-danger" data-action="delSim" data-id="{{ s.id }}"><i class="fas fa-trash"></i></button>
           </td>
         </tr>
         <tr class="return-row" id="return-{{ s.stock_code }}" style="display:none;">

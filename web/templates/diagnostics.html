@@ -5,8 +5,8 @@
 <main class="app">
   <header class="header"><div><h1><i class="fas fa-stethoscope"></i> 运行诊断</h1><div class="sub">应用、调度、数据、通知与安全开关的当前状态</div></div>{% set active='system' %}{% include '_nav.html' %}</header>
   <div class="notice"><strong>运行诊断</strong> 这里只读展示系统状态，异常项请进入数据中心、任务中心或通知中心处理。</div>
-  <section class="card"><div class="card-title">诊断摘要 <button class="btn btn-outline btn-sm" onclick="load()">重新检查</button></div><div id="summary" class="empty">加载中...</div></section>
-  <section class="card"><div class="table-wrap"><table><thead><tr><th>类别</th><th>状态</th><th>说明</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+  <section class="ui-card"><div class="ui-card-header">诊断摘要 <button class="ui-button ui-button-secondary ui-button-sm" onclick="load()">重新检查</button></div><div id="summary" class="empty">加载中...</div></section>
+  <section class="ui-card"><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>类别</th><th>状态</th><th>说明</th></tr></thead><tbody id="rows"></tbody></table></div></section>
 </main>
 <script>
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}

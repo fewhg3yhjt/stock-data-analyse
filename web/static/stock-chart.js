@@ -91,7 +91,7 @@ window.StockChart = (function(){
     opt.series = [];
     if(data.ohlc && data.ohlc.length){
       opt.series.push({name:'K线', type:'candlestick', data:data.ohlc,
-        itemStyle:{color:'#ef5350',color0:'#26a69a',borderColor:'#ef5350',borderColor0:'#26a69a'}});
+        itemStyle:{color:'#dc3545',color0:'#28a745',borderColor:'#dc3545',borderColor0:'#28a745'}});
     }
     (data.series||[]).forEach(s=>{
       opt.series.push({name:s.name,type:'line',data:s.data,showSymbol:false,
