@@ -504,6 +504,7 @@ idempotent_replay
 - `web/biz_api.py` 已提供 `/api/portfolios/{portfolio_id}/positions` 和 `/api/position-cycles/{cycle_id}` 正式查询入口。
 - 真实卖出已记录 `execution_lot_allocations`，按 FIFO 保存 Lot 消耗数量、成本、买入费用、卖出费用、税费和 realized_pnl。
 - 观察晋级已要求关联 PositionCycle 和真实 BUY Execution；卖出原因可驱动止盈、移动止盈和止损 phase。
+- 持仓汇总 API 已通过 PositionValuationService 读取当前持仓标的的 Published 行情，返回估值状态；无持仓或数据不可用时不伪造资产值。
 
 ### 后续待开发
 

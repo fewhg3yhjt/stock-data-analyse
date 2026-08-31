@@ -215,6 +215,20 @@ class ResearchService:
         }
 
     def _add_evidence(self, etype: str, assessment: dict, symbol: str) -> None:
+        snapshot = {
+            "symbol": symbol,
+            "data_as_of": self._as_of(),
+            "dataset_context": self.context,
+            "market_regime": self.market_regime,
+            "assessment": assessment,
+        }
+        if not self.df.empty:
+            latest = self.df.iloc[-1]
+            snapshot["indicator_values"] = {
+                key: (float(value) if isinstance(value, (int, float)) and pd.notna(value) else None)
+                for key, value in latest.items()
+                if key not in {"date", "code"}
+            }
         self.evidences.append(ResearchEvidence(
             evidence_id=new_id("ev"),
             research_run_id="",
@@ -225,5 +239,5 @@ class ResearchService:
             assessment=str(assessment.get("status", "")),
             explanation=str(assessment),
             data_as_of=self._as_of(),
-            input_snapshot={"symbol": symbol},
+            input_snapshot=snapshot,
         ))

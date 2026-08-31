@@ -315,6 +315,19 @@ class ReviewService:
             "result_summary": review.result_summary, "lessons": review.lessons,
             "status": review.status, "created_at": review.created_at, "updated_at": review.updated_at,
         })
+        # Persist a stable evidence index at creation time; detailed snapshots
+        # remain owned by their source modules.
+        cycle = self.repo.db.fetchone(
+            "SELECT observation_id, simulation_run_id FROM position_cycles WHERE position_cycle_id=?",
+            (position_cycle_id,),
+        )
+        if cycle:
+            for source_type, source_id in (
+                ("observation", cycle["observation_id"]),
+                ("simulation_run", simulation_run_id or cycle["simulation_run_id"]),
+            ):
+                if source_id:
+                    self.add_evidence(review.review_id, source_type=source_type, source_id=source_id)
         return review
 
     def update_review(self, review: PositionCycleReview) -> None:

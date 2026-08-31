@@ -335,12 +335,12 @@ def get_simulation_run(run_id: str):
 def get_portfolio_summary(portfolio_id: str):
     from StockInvestmentTool.biz.portfolio import PortfolioService
     from StockInvestmentTool.biz.valuation import PositionValuationService
+    from StockInvestmentTool.biz.data_access import load_market_data
 
     repo = _repo()
     portfolio = PortfolioService(repo).get_portfolio(portfolio_id)
     if not portfolio:
         return _error("PORTFOLIO_NOT_FOUND", "组合不存在", 404)
-    # API 调用方应传入已通过 DatasetAccess 获取的行情；没有行情时返回事实层摘要。
     summary = {
         "portfolio_id": portfolio_id,
         "cash_balance": PortfolioService(repo).cash_balance(portfolio_id),
@@ -348,6 +348,23 @@ def get_portfolio_summary(portfolio_id: str):
         "total_assets": None,
         "valuation_status": "unavailable",
     }
+    try:
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        cycles = PortfolioService(repo).list_cycles(portfolio_id)
+        symbols = [cycle.symbol for cycle in cycles if cycle.status == "open"]
+        if not symbols:
+            return flask.jsonify({"data": summary, "request_id": flask.request.headers.get("X-Request-ID", "")})
+        from datetime import timedelta
+        end = datetime.utcnow().date()
+        latest = load_market_data(
+            Warehouse(), start_date=(end - timedelta(days=90)).isoformat(),
+            end_date=end.isoformat(), symbols=symbols, required_quality="WARNING",
+        )
+        valuation = PositionValuationService(PortfolioService(repo), latest.data, latest.context).valuate_portfolio(portfolio_id)
+        summary.update(valuation)
+        summary["valuation_status"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        summary["valuation_reason"] = str(exc)
     return flask.jsonify({"data": summary, "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
