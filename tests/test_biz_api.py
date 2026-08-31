@@ -76,7 +76,7 @@ def test_task_api_returns_persisted_requested_run(app):
     assert response.get_json()["data"]["status"] == "requested"
 
 
-def test_screen_run_api_persists_run_and_candidates(app, monkeypatch):
+def test_screen_run_api_persists_run_and_candidates(app, tmp_path, monkeypatch):
     import pandas as pd
 
     from StockInvestmentTool.warehouse.datasets import DatasetResult
@@ -96,8 +96,22 @@ def test_screen_run_api_persists_run_and_candidates(app, monkeypatch):
         "condition_spec": {"type": "comparison", "left": {"field": "close"},
                            "operator": ">", "right": {"value": 10}},
     })
-    assert response.status_code == 201
+    assert response.status_code == 202
     payload = response.get_json()["data"]
-    assert payload["run"]["status"] == "success"
-    assert len(payload["candidates"]) == 1
-    assert payload["candidates"][0]["symbol"] == "sh600908"
+    assert payload["status"] == "requested"
+    assert payload["run_id"]
+    assert payload["status_url"].endswith(payload["run_id"])
+
+    # API 只入队；模拟 Worker 执行后才产生 ScreenRun。
+    from StockInvestmentTool.biz.repo import BusinessRepository
+    from StockInvestmentTool.biz.db import BusinessDB
+    from StockInvestmentTool.biz.task_registry import register_business_tasks
+    from StockInvestmentTool.biz.tasks import BusinessTaskService
+    repo = BusinessRepository(BusinessDB(str(tmp_path / "business.db")))
+    service = BusinessTaskService(repo)
+    register_business_tasks(service, handlers={
+        "screen.run": lambda input_data: {"status": "success", "output_versions": {"screen_run_id": "sr1"}},
+    })
+    completed = service.run_next()
+    assert completed.run_id == payload["run_id"]
+    assert completed.status == "success"
