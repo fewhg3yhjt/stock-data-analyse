@@ -649,6 +649,14 @@ P0-Smoke: PASS
 - `web/biz_api.py` 已提供正式研究、模拟运行入口；模拟接口要求明确日期范围，并将 Plan、Run、Fill、Result 写入 business.db。
 - `biz/data_access.py` 已统一组合 Published `stock_daily` 和 `indicators`，业务 API 不再只读取日线而遗漏指标上下文。
 - `tests/test_biz_end_to_end.py` 已验证 StrategyDecision 可被 Research、Simulation、Advice 消费。
+- `biz/simulation.py` 已改为虚拟 Lot + FIFO 核算，统一计算成交费用、税费、滑点和已实现收益，并按信号时点执行最大仓位约束。
+- `SimulationExecutor` 已支持同一 SimulationPlan 下多标的独立 StrategyContext、持仓和成交。
+- `CompiledStrategy` 已支持携带 `strategy_version_id`，规则评估结果包含 `priority` 并参与动作仲裁。
+
+### 阶段 1 验证
+
+- `tests/test_biz_simulation.py`：7 项通过，覆盖 FIFO/费用税费滑点、多标的、现金约束、确定性和权益曲线。
+- 尚未完成：所有正式策略版本的强制加载、max_position_ratio 的完整组合级风控、ParameterSearchRun 和 Web 异步任务接入。
 
 ### 已知遗留问题（非阻塞）
 

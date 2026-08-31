@@ -1,13 +1,8 @@
 # -*- coding: utf-8 -*-
-"""SimulationExecutor：统一回测/模拟内核（单边 SimulationFill）。
+"""统一回测/模拟内核。
 
-依据 docs/STRATEGY_CORE_AND_SIMULATION_DESIGN.md §6/§7。
-- 收盘计算信号 → 下一交易日开盘成交（第一版默认）
-- 单边成交：SimulationFill（BUY/SELL 各一条记录）
-- 手续费、滑点进入现金与收益
-- 每日权益曲线
-- 基准：index_daily 未发布前 comparison_status=unavailable
-- 数据缺口记录 DATA_GAP
+模拟成交使用单边 ``SimulationFill``，持仓使用内存 Lot 并按 FIFO 消耗。
+所有收益指标都从同一批 fills/lots 推导，避免平均成本与 FIFO 并存。
 """
 
 from __future__ import annotations
@@ -33,30 +28,49 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class SimulationAccount:
-    """虚拟账户状态。"""
+class SimulationLotState:
+    lot_id: str
+    symbol: str
+    opened_at: str
+    quantity: float
+    remaining_quantity: float
+    entry_price: float
+    entry_fee: float
+    source_fill_id: str
 
+
+@dataclass
+class ClosedTrade:
+    symbol: str
+    quantity: float
+    proceeds: float
+    cost: float
+    fees: float
+    tax: float
+    pnl: float
+    opened_at: str
+    closed_at: str
+
+
+@dataclass
+class SimulationAccount:
     cash: float
-    positions: dict = field(default_factory=dict)   # symbol -> {"qty": float, "avg_cost": float}
+    positions: dict[str, list[SimulationLotState]] = field(default_factory=dict)
     equity: float = 0.0
     total_fees: float = 0.0
+    total_tax: float = 0.0
     total_slippage: float = 0.0
+    closed_trades: list[ClosedTrade] = field(default_factory=list)
 
 
 class SimulationExecutor:
-    """单标的多日模拟执行器。"""
+    """按交易日推进一个或多个标的的模拟账户。"""
 
-    def __init__(
-        self,
-        plan: SimulationPlan,
-        df: pd.DataFrame,            # 已按 symbol 过滤的行情 DataFrame（含 date/ohlcv）
-        registry: Any = None,
-        strategy=None,               # CompiledStrategy
-        run_id: str | None = None,
-    ):
+    def __init__(self, plan: SimulationPlan, df: pd.DataFrame,
+                 registry: Any = None, strategy=None, run_id: str | None = None):
         self.plan = plan
         self.run_id = run_id or plan.plan_id
-        self.df = df.reset_index(drop=True)
+        self.df = self._prepare(df)
         self.registry = registry
         self.strategy = strategy
         self.fills: list[SimulationFill] = []
@@ -64,270 +78,244 @@ class SimulationExecutor:
         self.account = SimulationAccount(cash=plan.initial_cash)
         self.equity_curve: list[dict] = []
 
-    # ── 执行 ──────────────────────────────────────────────
+    @staticmethod
+    def _prepare(df: pd.DataFrame) -> pd.DataFrame:
+        result = df.copy()
+        if "date" in result.columns:
+            result["date"] = pd.to_datetime(result["date"])
+        if "code" not in result.columns:
+            raise ValueError("simulation data requires code column")
+        return result.sort_values(["date", "code"]).reset_index(drop=True)
 
     def run(self) -> SimulationResult:
         if self.strategy is None:
             raise ValueError("SimulationExecutor 需要 CompiledStrategy")
         if self.df.empty:
-            self.events.append(SimulationEvent(
-                event_id=new_id("se"), simulation_run_id=self.run_id,
-                event_type="DATA_GAP", payload={"reason": "无行情数据"}))
+            self._event("DATA_GAP", payload={"reason": "无行情数据"})
             return self._result()
 
-        close = self.df["close"].astype(float)
-        dates = self.df["date"]
+        dates = sorted(self.df["date"].dropna().unique())
+        symbols = sorted(self.df["code"].astype(str).unique())
+        for date in dates:
+            date_text = pd.Timestamp(date).strftime("%Y-%m-%d")
+            for symbol in symbols:
+                history = self.df[(self.df["code"].astype(str) == symbol)
+                                  & (self.df["date"] <= date)]
+                if history.empty:
+                    continue
+                current = history.iloc[-1]
+                indicator_ctx = self._build_indicator_ctx(history)
+                context = self._build_strategy_ctx(symbol, history, indicator_ctx)
+                decision = self.strategy.evaluate(context)
+                row_index = self._row_index(symbol, date)
+                if decision.action in {"BUY", "BUY_MORE"} and row_index is not None:
+                    self._execute_next_open(symbol, row_index, "BUY", decision)
+                elif decision.action == "SELL_ALL" and row_index is not None:
+                    self._execute_next_open(symbol, row_index, "SELL", decision)
+                elif decision.action == "SELL_PARTIAL" and row_index is not None:
+                    self._execute_next_open(symbol, row_index, "SELL_PARTIAL", decision)
+            self._record_equity(date)
 
-        for i in range(len(self.df)):
-            date_i = dates.iloc[i]
-            # 信号日收盘计算
-            sub = self.df.iloc[: i + 1]
-            indicator_ctx = self._build_indicator_ctx(sub)
-            ctx = self._build_strategy_ctx(sub, indicator_ctx)
-            decision = self.strategy.evaluate(ctx)
-
-            if decision.action in {"BUY", "BUY_MORE"} and self._has_next_bar(i):
-                self._execute_next_open(i, "BUY", decision)
-            elif decision.action in {"SELL_ALL"} and self._has_next_bar(i) and self.account.positions:
-                self._execute_next_open(i, "SELL", decision)
-            elif decision.action == "SELL_PARTIAL" and self._has_next_bar(i) and self.account.positions:
-                self._execute_next_open(i, "SELL_PARTIAL", decision)
-
-            # 每日权益（用当日收盘价估值）
-            self._record_equity(i, close.iloc[i], dates.iloc[i])
-
-        self.events.append(SimulationEvent(
-            event_id=new_id("se"), simulation_run_id=self.run_id,
-            event_type="END_OF_PERIOD", payload={"end_date": str(dates.iloc[-1])}))
+        self._event("END_OF_PERIOD", payload={"end_date": pd.Timestamp(dates[-1]).strftime("%Y-%m-%d")})
         return self._result()
 
-    # ── 内部 ──────────────────────────────────────────────
-
-    def _has_next_bar(self, i: int) -> bool:
-        return i + 1 < len(self.df)
-
-    def _build_indicator_ctx(self, sub: pd.DataFrame):
-        if self.registry is None:
+    def _row_index(self, symbol: str, date) -> int | None:
+        rows = self.df[(self.df["code"].astype(str) == symbol) & (self.df["date"] == date)]
+        if rows.empty:
             return None
+        return int(rows.index[0])
+
+    def _build_indicator_ctx(self, history: pd.DataFrame):
         from StockInvestmentTool.indicators.context import IndicatorContext
-        return IndicatorContext(df=sub, registry=self.registry)
+        from StockInvestmentTool.indicators.engine import IndicatorRegistry
+        return IndicatorContext(df=history.reset_index(drop=True), registry=self.registry or IndicatorRegistry())
 
-    def _build_strategy_ctx(self, sub: pd.DataFrame, indicator_ctx):
-        from StockInvestmentTool.biz.models import StrategyContext, DataContext
-
-        pos_qty = sum(p["qty"] for p in self.account.positions.values())
-        avg_cost = None
-        if pos_qty > 0:
-            total = sum(p["qty"] * p["avg_cost"] for p in self.account.positions.values())
-            avg_cost = total / pos_qty
-
+    def _build_strategy_ctx(self, symbol: str, history: pd.DataFrame, indicator_ctx):
+        from StockInvestmentTool.biz.models import DataContext, StrategyContext
+        lots = self.account.positions.get(symbol, [])
+        quantity = sum(lot.remaining_quantity for lot in lots)
+        avg_cost = self._average_cost(lots)
+        as_of = pd.Timestamp(history["date"].iloc[-1]).strftime("%Y-%m-%d")
         return StrategyContext(
-            symbol=self._symbol(),
-            evaluation_time=str(sub["date"].iloc[-1]) + "T15:00:00Z",
-            data_as_of=str(sub["date"].iloc[-1]),
-            market_data=sub,
-            indicator_context=indicator_ctx,
-            position_state="holding" if pos_qty > 0 else "none",
-            position_quantity=pos_qty,
-            position_state_avg_cost=avg_cost,
+            symbol=symbol, evaluation_time=f"{as_of}T15:00:00Z", data_as_of=as_of,
+            market_data=history.reset_index(drop=True), indicator_context=indicator_ctx,
+            position_state="holding" if quantity > 0 else "none",
+            position_quantity=quantity, position_state_avg_cost=avg_cost,
             cash_available=self.account.cash,
             data_context=DataContext(requested_start=str(self.plan.start_date),
                                      requested_end=str(self.plan.end_date)),
         )
 
-    def _symbol(self) -> str:
-        return str(self.df["code"].iloc[0]) if "code" in self.df.columns else self.plan.universe_snapshot_id or ""
-
-    def _execute_next_open(self, i: int, side: str, decision) -> None:
-        """在 i 日的下一交易日开盘执行。"""
-        if not self._has_next_bar(i):
+    def _execute_next_open(self, symbol: str, row_index: int, side: str, decision) -> None:
+        rows = self.df[self.df["code"].astype(str) == symbol]
+        positions = rows.index.tolist()
+        try:
+            pos = positions.index(row_index)
+        except ValueError:
             return
-        next_row = self.df.iloc[i + 1]
+        if pos + 1 >= len(rows):
+            return
+        next_row = rows.iloc[pos + 1]
         exec_price = float(next_row["open"])
-        signal_date = str(self.df["date"].iloc[i])
-        exec_date = str(next_row["date"])
-        signal_price = float(self.df["close"].iloc[i])
+        signal_row = rows.iloc[pos]
+        signal_date = pd.Timestamp(signal_row["date"]).strftime("%Y-%m-%d")
+        exec_date = pd.Timestamp(next_row["date"]).strftime("%Y-%m-%d")
+        signal_price = float(signal_row["close"])
+        costs = self.plan.cost_config or {}
+        slippage_rate = float(costs.get("slippage", 0.0) or 0.0)
+        fee_rate = float(costs.get("fee_rate", costs.get("commission_rate", 0.001)) or 0.0)
+        stamp_tax_rate = float(costs.get("stamp_tax_rate", 0.0) or 0.0)
 
-        cost = self._cost_config()
-        slippage = float(cost.get("slippage", 0.0) or 0.0)
-        fee_rate = float(cost.get("fee_rate", 0.001) or 0.001)
-
-        if side in {"BUY", "BUY_MORE"}:
-            ratio = decision.quantity_ratio or 0.2
-            max_buy = (self.account.cash * ratio) / (exec_price * (1 + slippage))
-            qty = self._round_lot(max_buy)
+        if side == "BUY":
+            signal_close = float(signal_row["close"])
+            qty = self._buy_quantity(symbol, signal_close, exec_price,
+                                     decision.quantity_ratio or 0.2,
+                                     slippage_rate, fee_rate)
             if qty <= 0:
-                self.events.append(SimulationEvent(
-                    event_id=new_id("se"), simulation_run_id=self.run_id,
-                    event_type="ORDER_REJECTED", symbol=self._symbol(),
-                    payload={"reason": "现金不足" if self.account.cash < exec_price else "数量为0",
-                             "exec_price": exec_price}))
+                self._event("ORDER_REJECTED", symbol, {"reason": "现金或最大仓位不足"})
                 return
-            gross = qty * exec_price * (1 + slippage)
+            effective = exec_price * (1 + slippage_rate)
+            gross = qty * effective
             fee = gross * fee_rate
-            if gross + fee > self.account.cash:
-                # 可买数量按现金约束收缩
-                qty = self._round_lot(self.account.cash / (exec_price * (1 + slippage) * (1 + fee_rate)))
-                if qty <= 0:
-                    return
-                gross = qty * exec_price * (1 + slippage)
-                fee = gross * fee_rate
-            self.account.cash -= (gross + fee)
-            pos = self.account.positions.setdefault(self._symbol(), {"qty": 0.0, "avg_cost": 0.0})
-            new_qty = pos["qty"] + qty
-            pos["avg_cost"] = (pos["avg_cost"] * pos["qty"] + gross) / new_qty if new_qty else 0.0
-            pos["qty"] = new_qty
+            self.account.cash -= gross + fee
             self.account.total_fees += fee
+            slip = qty * exec_price * slippage_rate
+            self.account.total_slippage += slip
             fill = SimulationFill(
-                fill_id=new_id("fill"), simulation_run_id=self.run_id,
-                symbol=self._symbol(), side="BUY",
-                signal_time=signal_date, execution_time=exec_date,
-                signal_price=signal_price, execution_price=exec_price,
-                quantity=qty, gross_amount=gross, fee=fee, slippage=gross * slippage,
-                decision_id=decision.decision_id, reason=decision.reason)
+                fill_id=new_id("fill"), simulation_run_id=self.run_id, symbol=symbol,
+                side="BUY", signal_time=signal_date, execution_time=exec_date,
+                signal_price=signal_price, execution_price=effective, quantity=qty,
+                gross_amount=gross, fee=fee, tax=0.0, slippage=slip,
+                decision_id=decision.decision_id, reason=decision.reason,
+            )
             self.fills.append(fill)
-            self.events.append(SimulationEvent(
-                event_id=new_id("se"), simulation_run_id=self.run_id,
-                event_type="FILLED", symbol=self._symbol(),
-                payload={"side": "BUY", "qty": qty, "price": exec_price}))
+            self.account.positions.setdefault(symbol, []).append(SimulationLotState(
+                lot_id=new_id("slot"), symbol=symbol, opened_at=exec_date,
+                quantity=qty, remaining_quantity=qty, entry_price=effective,
+                entry_fee=fee, source_fill_id=fill.fill_id,
+            ))
+            self._event("FILLED", symbol, {"side": "BUY", "quantity": qty, "price": effective})
+            return
 
-        elif side == "SELL":
-            pos = self.account.positions.get(self._symbol())
-            if not pos or pos["qty"] <= 0:
-                return
-            qty = pos["qty"]
-            gross = qty * exec_price * (1 - slippage)
-            fee = gross * fee_rate
-            pnl = gross - fee - (pos["avg_cost"] * qty)
-            self.account.cash += (gross - fee)
-            self.account.total_fees += fee
-            pos["qty"] = 0.0
-            fill = SimulationFill(
-                fill_id=new_id("fill"), simulation_run_id=self.run_id,
-                symbol=self._symbol(), side="SELL",
-                signal_time=signal_date, execution_time=exec_date,
-                signal_price=signal_price, execution_price=exec_price,
-                quantity=qty, gross_amount=gross, fee=fee, slippage=0.0,
-                decision_id=decision.decision_id, reason=decision.reason)
-            self.fills.append(fill)
-            self.events.append(SimulationEvent(
-                event_id=new_id("se"), simulation_run_id=self.run_id,
-                event_type="FILLED", symbol=self._symbol(),
-                payload={"side": "SELL", "qty": qty, "price": exec_price, "pnl": pnl}))
+        lots = self.account.positions.get(symbol, [])
+        quantity = sum(lot.remaining_quantity for lot in lots)
+        if quantity <= 0:
+            return
+        if side == "SELL_PARTIAL":
+            quantity = min(quantity, self._round_lot(quantity * (decision.quantity_ratio or 0.5)))
+            if quantity <= 0:
+                quantity = sum(lot.remaining_quantity for lot in lots)
+        effective = exec_price * (1 - slippage_rate)
+        gross = quantity * effective
+        fee = gross * fee_rate
+        tax = gross * stamp_tax_rate
+        proceeds = gross
+        self.account.cash += proceeds
+        self.account.total_fees += fee
+        self.account.total_tax += tax
+        slip = quantity * exec_price * slippage_rate
+        self.account.total_slippage += slip
+        remaining = quantity
+        cost = 0.0
+        entry_fees = 0.0
+        opened_at = exec_date
+        for lot in lots:
+            if remaining <= 0:
+                break
+            consume = min(remaining, lot.remaining_quantity)
+            cost += consume * lot.entry_price
+            entry_fees += lot.entry_fee * consume / lot.quantity if lot.quantity else 0.0
+            opened_at = lot.opened_at
+            lot.remaining_quantity -= consume
+            remaining -= consume
+        allocated_exit_costs = fee + tax
+        pnl = proceeds - cost - entry_fees - fee - tax
+        self.account.closed_trades.append(ClosedTrade(
+            symbol=symbol, quantity=quantity, proceeds=proceeds,
+            cost=cost, fees=entry_fees + fee, tax=tax, pnl=pnl,
+            opened_at=opened_at, closed_at=exec_date,
+        ))
+        self.account.positions[symbol] = [lot for lot in lots if lot.remaining_quantity > 0]
+        fill = SimulationFill(
+            fill_id=new_id("fill"), simulation_run_id=self.run_id, symbol=symbol,
+            side="SELL", signal_time=signal_date, execution_time=exec_date,
+            signal_price=signal_price, execution_price=effective, quantity=quantity,
+            gross_amount=gross, fee=fee, tax=tax, slippage=slip,
+            decision_id=decision.decision_id, reason=decision.reason,
+        )
+        self.fills.append(fill)
+        event = "STOP_TRIGGERED" if "止损" in decision.reason else "TAKE_PROFIT_TRIGGERED" if "止盈" in decision.reason else "FILLED"
+        self._event(event, symbol, {"side": "SELL", "quantity": quantity, "price": effective, "pnl": pnl})
 
-        elif side == "SELL_PARTIAL":
-            pos = self.account.positions.get(self._symbol())
-            if not pos or pos["qty"] <= 0:
-                return
-            ratio = decision.quantity_ratio or 0.5
-            qty = self._round_lot(pos["qty"] * ratio)
-            if qty <= 0:
-                qty = pos["qty"]
-            gross = qty * exec_price * (1 - slippage)
-            fee = gross * fee_rate
-            self.account.cash += (gross - fee)
-            self.account.total_fees += fee
-            pos["qty"] -= qty
-            fill = SimulationFill(
-                fill_id=new_id("fill"), simulation_run_id=self.run_id,
-                symbol=self._symbol(), side="SELL",
-                signal_time=signal_date, execution_time=exec_date,
-                signal_price=signal_price, execution_price=exec_price,
-                quantity=qty, gross_amount=gross, fee=fee, slippage=0.0,
-                decision_id=decision.decision_id, reason=decision.reason)
-            self.fills.append(fill)
+    def _buy_quantity(self, symbol: str, signal_price: float, execution_price: float, ratio: float,
+                      slippage: float, fee_rate: float) -> float:
+        current_value = sum(lot.remaining_quantity for lot in self.account.positions.get(symbol, [])) * signal_price
+        equity = self.account.cash + current_value
+        max_position = float((self.plan.position_sizing or {}).get(
+            "max_position_ratio", (self.strategy.spec.risk if self.strategy else {}).get("max_position_ratio", 1.0)))
+        budget = min(self.account.cash * max(float(ratio), 0.0),
+                     max(0.0, equity * max_position - current_value))
+        unit_cost = execution_price * (1 + slippage) * (1 + fee_rate)
+        return self._round_lot(budget / unit_cost if unit_cost else 0.0)
 
-    def _round_lot(self, qty: float) -> float:
-        """A股 100 股一手取整（向下）。"""
-        return float(np.floor(qty / 100.0) * 100)
+    @staticmethod
+    def _average_cost(lots: list[SimulationLotState]) -> float | None:
+        quantity = sum(lot.remaining_quantity for lot in lots)
+        if quantity <= 0:
+            return None
+        return sum(lot.remaining_quantity * lot.entry_price for lot in lots) / quantity
 
-    def _record_equity(self, i: int, close_price: float, date) -> None:
-        pos_qty = sum(p["qty"] for p in self.account.positions.values())
-        mv = pos_qty * close_price
-        equity = self.account.cash + mv
-        self.equity_curve.append({
-            "date": str(date),
-            "cash": self.account.cash,
-            "market_value": mv,
-            "equity": equity,
-        })
+    @staticmethod
+    def _round_lot(quantity: float) -> float:
+        return float(np.floor(max(quantity, 0.0) / 100.0) * 100)
 
-    def _cost_config(self) -> dict:
-        return self.plan.cost_config or {}
+    def _record_equity(self, date) -> None:
+        date_text = pd.Timestamp(date).strftime("%Y-%m-%d")
+        day = self.df[self.df["date"] == date]
+        market_value = 0.0
+        for symbol, lots in self.account.positions.items():
+            rows = day[day["code"].astype(str) == symbol]
+            if not rows.empty and pd.notna(rows.iloc[-1]["close"]):
+                market_value += sum(lot.remaining_quantity for lot in lots) * float(rows.iloc[-1]["close"])
+        self.account.equity = self.account.cash + market_value
+        self.equity_curve.append({"date": date_text, "cash": self.account.cash,
+                                  "market_value": market_value, "equity": self.account.equity})
 
-    # ── 结果 ──────────────────────────────────────────────
+    def _event(self, event_type: str, symbol: str = "", payload: dict | None = None) -> None:
+        self.events.append(SimulationEvent(
+            event_id=new_id("se"), simulation_run_id=self.run_id,
+            event_type=event_type, symbol=symbol, payload=payload or {},
+        ))
 
     def _result(self) -> SimulationResult:
         initial = self.plan.initial_cash
-        final_equity = self.equity_curve[-1]["equity"] if self.equity_curve else initial
-        total_return = (final_equity - initial) / initial if initial else 0.0
-        max_dd = self._max_drawdown()
-        win_rate = self._win_rate()
-        profit_factor = self._profit_factor()
-
+        final = self.equity_curve[-1]["equity"] if self.equity_curve else initial
+        total_return = (final - initial) / initial if initial else 0.0
+        trades = self.account.closed_trades
+        wins = [trade for trade in trades if trade.pnl > 0]
+        losses = [trade for trade in trades if trade.pnl < 0]
+        gross_profit = sum(trade.pnl for trade in wins)
+        gross_loss = -sum(trade.pnl for trade in losses)
+        profit_factor = gross_profit / gross_loss if gross_loss else (gross_profit if gross_profit else None)
         return SimulationResult(
-            run_id=self.run_id,
-            initial_cash=initial,
-            final_equity=final_equity,
-            total_return=total_return,
-            benchmark_return=None,
-            excess_return=None,
-            max_drawdown=max_dd,
-            win_rate=win_rate,
-            profit_factor=profit_factor,
-            trade_count=self._round_trips(),
-            fees=self.account.total_fees,
-            slippage=self.account.total_slippage,
-            equity_curve=self.equity_curve,
-            comparison_status="unavailable",
+            run_id=self.run_id, initial_cash=initial, final_equity=final,
+            total_return=total_return, max_drawdown=self._max_drawdown(),
+            win_rate=len(wins) / len(trades) if trades else None,
+            profit_factor=profit_factor, trade_count=len(trades),
+            fees=self.account.total_fees, slippage=self.account.total_slippage,
+            equity_curve=self.equity_curve, comparison_status="unavailable",
         )
 
     def _max_drawdown(self) -> float:
         if not self.equity_curve:
             return 0.0
-        eq = pd.Series([p["equity"] for p in self.equity_curve])
-        peak = eq.cummax()
-        dd = (peak - eq) / peak
-        return float(dd.max()) if len(dd) else 0.0
-
-    def _win_rate(self) -> float:
-        # 统计已平仓的 BUY→SELL 对
-        wins = 0
-        trades = 0
-        buys = [(f.execution_price, f.quantity) for f in self.fills if f.side == "BUY"]
-        for f in self.fills:
-            if f.side == "SELL" and buys:
-                bp = buys.pop(0)
-                trades += 1
-                if f.execution_price > bp[0]:
-                    wins += 1
-        return wins / trades if trades else None
-
-    def _profit_factor(self) -> float:
-        gross_profit = 0.0
-        gross_loss = 0.0
-        buys = [(f.execution_price, f.quantity) for f in self.fills if f.side == "BUY"]
-        for f in self.fills:
-            if f.side == "SELL" and buys:
-                bp = buys.pop(0)
-                pnl = (f.execution_price - bp[0]) * f.quantity - f.fee
-                if pnl > 0:
-                    gross_profit += pnl
-                else:
-                    gross_loss += -pnl
-        if gross_loss == 0:
-            return gross_profit if gross_profit > 0 else None
-        return gross_profit / gross_loss
-
-    def _round_trips(self) -> int:
-        buys = sum(1 for f in self.fills if f.side == "BUY")
-        sells = sum(1 for f in self.fills if f.side == "SELL")
-        return min(buys, sells)
+        values = pd.Series([point["equity"] for point in self.equity_curve])
+        peak = values.cummax()
+        return float(((peak - values) / peak).max())
 
 
 def execute_simulation(plan: SimulationPlan, df: pd.DataFrame, strategy=None,
                        registry=None) -> tuple[SimulationRun, SimulationResult, list, list]:
-    """便捷执行入口：返回 (run, result, fills, events)。"""
     run = SimulationRun(run_id=new_id("run"), plan_id=plan.plan_id, status="running")
     executor = SimulationExecutor(plan, df, registry=registry, strategy=strategy, run_id=run.run_id)
     result = executor.run()

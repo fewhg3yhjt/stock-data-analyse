@@ -309,6 +309,19 @@ class SimulationFill:
 
 
 @dataclass
+class SimulationLot:
+    lot_id: str
+    simulation_run_id: str
+    symbol: str
+    opened_at: str
+    quantity: float
+    remaining_quantity: float
+    entry_price: float
+    entry_fee: float = 0.0
+    source_fill_id: str | None = None
+
+
+@dataclass
 class SimulationEvent:
     event_id: str
     simulation_run_id: str

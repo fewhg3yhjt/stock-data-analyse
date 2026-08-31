@@ -74,6 +74,7 @@ class CompiledStrategy:
 
     spec: StrategySpec
     config_hash: str = ""
+    strategy_version_id: str | None = None
 
     def __post_init__(self):
         if not self.config_hash:
@@ -133,7 +134,7 @@ class StrategyEvaluator:
             decision_id=new_id("dec"),
             strategy_id=self.spec.strategy_id,
             strategy_version=self.spec.version,
-            strategy_version_id=None,
+            strategy_version_id=self.strategy.strategy_version_id,
             symbol=context.symbol,
             decision_time=context.evaluation_time,
             data_as_of=context.data_as_of,
@@ -163,6 +164,7 @@ class StrategyEvaluator:
             "explanation": res.explanation,
             "evaluation_status": res.evaluation_status,
             "position_ratio": rule.get("position_ratio"),
+            "priority": int(rule.get("priority", 0)),
         }
 
     def _eval_risk(self, context: StrategyContext) -> dict | None:
@@ -184,7 +186,11 @@ class StrategyEvaluator:
         if not triggered:
             return "NO_ACTION", "无规则触发", None
 
-        best = min(triggered, key=lambda r: ACTION_PRIORITY.get(r["action"], 99))
+        best = min(
+            enumerate(triggered),
+            key=lambda item: (-int(item[1].get("priority", 0)),
+                              ACTION_PRIORITY.get(item[1]["action"], 99), item[0]),
+        )[1]
         action = best["action"]
 
         # 首次买入/加仓需现金；无仓位时 BUY，有仓位时 BUY_MORE 需有仓位
@@ -311,9 +317,10 @@ def validate_strategy(spec: StrategySpec) -> dict:
     }
 
 
-def compile_strategy(spec: StrategySpec) -> CompiledStrategy:
+def compile_strategy(spec: StrategySpec, strategy_version_id: str | None = None) -> CompiledStrategy:
     """校验并编译策略。校验失败抛 ValueError。"""
     result = validate_strategy(spec)
     if not result["valid"]:
         raise ValueError(f"策略校验失败: {'; '.join(result['errors'])}")
-    return CompiledStrategy(spec=spec, config_hash=result["config_hash"])
+    return CompiledStrategy(spec=spec, config_hash=result["config_hash"],
+                            strategy_version_id=strategy_version_id)

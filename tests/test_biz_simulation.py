@@ -111,5 +111,34 @@ class TestSimulation:
         assert r1[1].final_equity == pytest.approx(r2[1].final_equity)
         assert r1[1].equity_curve == r2[1].equity_curve
 
+    def test_fifo_lots_and_fee_tax_slippage_are_consistent(self):
+        # Explicitly exercise the private fill path so the accounting test is
+        # independent of signal timing.
+        plan = make_plan()
+        executor = __import__(
+            "StockInvestmentTool.biz.simulation", fromlist=["SimulationExecutor"]
+        ).SimulationExecutor(plan, make_df(), strategy=make_strategy())
+        decision = type("Decision", (), {"quantity_ratio": 0.2, "decision_id": "d1", "reason": ""})()
+        executor.df = make_df()
+        executor._execute_next_open("sh600908", 0, "BUY", decision)
+        executor._execute_next_open("sh600908", 1, "BUY", decision)
+        executor._execute_next_open("sh600908", 2, "SELL_PARTIAL", decision)
+        assert len(executor.account.positions["sh600908"]) >= 1
+        assert executor.account.total_slippage > 0
+        assert executor.account.total_fees > 0
+        assert len(executor.account.closed_trades) == 1
+        trade = executor.account.closed_trades[0]
+        assert trade.cost > 0
+        assert trade.pnl == pytest.approx(trade.proceeds - trade.cost - trade.fees - trade.tax)
+
+    def test_multi_symbol_uses_independent_positions(self):
+        first = make_df()
+        second = make_df().assign(code="sz000001", close=lambda frame: frame["close"] * 2)
+        df = pd.concat([first, second], ignore_index=True)
+        plan = make_plan()
+        _, result, fills, _ = execute_simulation(plan, df, strategy=make_strategy())
+        assert {fill.symbol for fill in fills} == {"sh600908", "sz000001"}
+        assert len(result.equity_curve) == df["date"].nunique()
+
 
 import pytest  # noqa: E402

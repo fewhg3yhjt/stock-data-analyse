@@ -275,6 +275,20 @@ CREATE TABLE IF NOT EXISTS simulation_fills (
 CREATE INDEX IF NOT EXISTS idx_simulation_fills_run_time ON simulation_fills(simulation_run_id, execution_time);
 CREATE INDEX IF NOT EXISTS idx_simulation_fills_run_symbol ON simulation_fills(simulation_run_id, symbol, execution_time);
 
+CREATE TABLE IF NOT EXISTS simulation_lots (
+    lot_id TEXT PRIMARY KEY,
+    simulation_run_id TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    opened_at TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    remaining_quantity REAL NOT NULL,
+    entry_price REAL NOT NULL,
+    entry_fee REAL NOT NULL DEFAULT 0,
+    source_fill_id TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_simulation_lots_run_symbol ON simulation_lots(simulation_run_id, symbol);
+
 CREATE TABLE IF NOT EXISTS simulation_events (
     event_id TEXT PRIMARY KEY,
     simulation_run_id TEXT NOT NULL,
