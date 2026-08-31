@@ -3,14 +3,36 @@ import hashlib
 import sqlite3
 
 import pandas as pd
+import pytest
 
 from StockInvestmentTool.warehouse.daily_build import DailyBuilder
+from StockInvestmentTool.warehouse.datasets import DatasetAccessError
+from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
 from StockInvestmentTool.warehouse.pipeline_state import PipelineState
 from StockInvestmentTool.warehouse.publish import Publisher
-from StockInvestmentTool.warehouse.quality import check_stock_daily
+from StockInvestmentTool.warehouse.quality import check_stock_daily, check_derived_output
 from StockInvestmentTool.warehouse.source_capture import capture_frames
 from StockInvestmentTool.warehouse.storage import Warehouse
 from scripts.convert_legacy_daily import convert
+
+
+def _publish_stock_daily(warehouse: Warehouse) -> str:
+    warehouse.metadata.register_stock_daily()
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[pd.DataFrame({
+            "date": pd.to_datetime(["2026-08-28"]), "code": ["sh600000"],
+            "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+            "volume": [1.0], "amount": [0.1], "turn": [1.0],
+        })], expected_symbols=1, success_symbols=1, universe_id="u", request_context={"fixture": True}
+    )
+    build = DailyBuilder(warehouse).build_partition("2026-08", [("tencent", source["raw"]["path"])], include_current=False)
+    state = PipelineState(warehouse.meta_db_path)
+    version = state.create_version(build, source_batches=[source["batch_id"]])
+    quality = check_stock_daily(build["path"], expected_symbols=1)
+    state.quality(version, status=quality["status"], checks=quality["checks"], publish_allowed=quality["publish_allowed"])
+    Publisher(warehouse).publish(version)
+    return version
 
 
 def test_validation_data_runs_candidate_quality_and_publish(tmp_path):
@@ -178,3 +200,69 @@ def test_builder_applies_yaml_units_once_and_tencent_wins(tmp_path):
     assert result.iloc[0]["close"] == 10.2
     assert result.iloc[0]["volume"] == 100.0
     assert result.iloc[0]["amount"] == 1000.0
+
+
+# ── 阶段三：真实覆盖率与派生数据质量 ─────────────────────────
+
+def test_derived_empty_partition_is_failed(tmp_path):
+    path = tmp_path / "empty.parquet"
+    pd.DataFrame({"date": [], "code": []}).to_parquet(path, index=False)
+    result = check_derived_output(path, "indicators")
+    assert result["status"] == "FAIL"
+    assert result["publish_allowed"] is False
+
+
+def test_derived_missing_required_columns_is_failed(tmp_path):
+    path = tmp_path / "nocol.parquet"
+    pd.DataFrame({"date": [pd.Timestamp("2026-08-28")]}).to_parquet(path, index=False)
+    result = check_derived_output(path, "indicators")
+    assert result["status"] == "FAIL"
+    assert "code" in result["checks"]["missing_columns"]
+
+
+def test_derived_low_coverage_is_failed(tmp_path):
+    path = tmp_path / "low.parquet"
+    rows = [{"date": pd.Timestamp("2026-08-28"), "code": f"sh{i:06d}",
+             "open": 10.0, "high": 10.5, "low": 9.8, "close": 10.2,
+             "volume": 100.0, "amount": 1000.0} for i in range(100)]
+    pd.DataFrame(rows).to_parquet(path, index=False)
+    result = check_derived_output(path, "indicators", expected_symbols=1000)
+    assert result["status"] == "FAIL"
+    assert result["checks"]["coverage"] == 0.1
+
+
+def test_derived_core_columns_all_null_flagged_on_long_history(tmp_path):
+    path = tmp_path / "nann.parquet"
+    import numpy as np
+    rows = [{"date": pd.Timestamp("2026-01-01") + pd.Timedelta(days=i),
+             "code": "sh600000", "ma5": np.nan} for i in range(60)]
+    pd.DataFrame(rows).to_parquet(path, index=False)
+    result = check_derived_output(path, "indicators", core_non_null_columns=["ma5"])
+    assert result["status"] == "WARNING"
+
+
+def test_indicators_builder_blocks_on_missing_published_input(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    with pytest.raises(DatasetAccessError, match="没有 Published Dataset"):
+        IndicatorsBuilder(warehouse, allow_legacy=False).build_all(months=["2026-08"])
+
+
+def test_record_output_versions_leaves_candidate_not_published(tmp_path):
+    from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
+    warehouse = Warehouse(tmp_path / "warehouse")
+    state = PipelineState(warehouse.meta_db_path)
+    path = tmp_path / "ind.parquet"
+    pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
+                  "ma5": [10.2]}).to_parquet(path, index=False)
+    versions = state.record_output_versions(
+        dataset_name="indicators", paths={"2026-08": path},
+        input_dataset="stock_daily", input_versions={},
+        builder_version="test", schema_version="indicators.v1",
+    )
+    with sqlite3.connect(warehouse.meta_db_path) as conn:
+        row = conn.execute("SELECT quality_status,publish_status,published_path FROM dataset_versions WHERE version_id=?",
+                           (versions["2026-08"],)).fetchone()
+    assert row[0] is None          # 质量未经检查
+    assert row[1] == "candidate"   # 不自动发布
+    assert row[2] is None          # 无正式路径
+    assert state.current("indicators", "2026-08") is None

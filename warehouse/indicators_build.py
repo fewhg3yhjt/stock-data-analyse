@@ -247,12 +247,35 @@ class IndicatorsBuilder:
 
         elapsed = time.time() - t0
         from StockInvestmentTool.warehouse.pipeline_state import PipelineState
-        output_versions = PipelineState(self.warehouse.meta_db_path).record_output_versions(
+        from StockInvestmentTool.warehouse.publish import Publisher
+        from StockInvestmentTool.warehouse.quality import check_derived_output
+        state = PipelineState(self.warehouse.meta_db_path)
+        # 派生数据集不得自动登记 PASS —— 先登记 candidate，再独立质量检查 + 发布
+        output_versions = state.record_output_versions(
             dataset_name="indicators",
             paths={ym: self.warehouse.indicator_dir / f"{ym}.parquet" for ym in written_months},
             input_dataset="stock_daily", input_versions=input_versions,
             builder_version="indicators_builder.v1", schema_version="indicators.v1",
         )
+        publisher = Publisher(self.warehouse)
+        quality_summary = {"PASS": 0, "WARNING": 0, "FAIL": 0}
+        for ym, version_id in output_versions.items():
+            path = self.warehouse.indicator_dir / f"{ym}.parquet"
+            result = check_derived_output(
+                path, dataset_name="indicators",
+                expected_symbols=len(symbols),
+                core_non_null_columns=["ma5", "ma20", "ma60", "rsi14"],
+                input_versions={ym: version_id},
+            )
+            quality_summary[result["status"]] = quality_summary.get(result["status"], 0) + 1
+            state.quality(version_id, status=result["status"],
+                          checks=result["checks"], publish_allowed=result["publish_allowed"],
+                          affected_symbols=symbols[:1000])
+            if result["status"] in ("PASS", "WARNING"):
+                try:
+                    publisher.publish(version_id)
+                except Exception as e:
+                    logger.warning("指标发布 %s 失败: %s", ym, e)
         from StockInvestmentTool.ops.task_center import TaskCenter
         center = TaskCenter(self.warehouse.meta_db_path)
         center.sync_metrics()
@@ -264,10 +287,20 @@ class IndicatorsBuilder:
                                         asset_type_counts=asset_type_counts)
         logger.info("指标计算完成: %d 只, 覆盖 %d 个月, 耗时 %.1fs",
                     done, len(written_months), elapsed)
+        if quality_summary["FAIL"]:
+            status = "failed"
+        elif quality_summary["WARNING"]:
+            status = "partial_success"
+        elif failed:
+            status = "partial_success"
+        else:
+            status = "success"
         return {"symbols": done, "months": len(written_months),
                  "rows": output_rows,
                  "failed": failed[:100], "failed_count": len(failed),
-                 "skipped": not symbols, "elapsed_sec": round(elapsed, 1),
+                 "status": status, "skipped": not symbols,
+                 "elapsed_sec": round(elapsed, 1),
+                 "quality_summary": quality_summary,
                  "input_dataset": "stock_daily", "input_versions": input_versions,
                  "input_fallback_used": not bool(input_versions), "output_versions": output_versions,
                  "asset_type_counts": asset_type_counts}

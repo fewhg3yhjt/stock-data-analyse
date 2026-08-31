@@ -70,7 +70,12 @@ class PipelineState:
     def record_output_versions(self, *, dataset_name: str, paths: dict[str, Path],
                                input_dataset: str, input_versions: dict,
                                builder_version: str, schema_version: str) -> dict[str, str]:
-        """Record already-written derived partitions as published outputs."""
+        """Record already-written derived partitions as candidates.
+
+        派生数据集（indicators 等）不再自动登记 PASS/published —— 避免"输入版本自证"。
+        仅登记 candidate 版本（quality_status 为空、publish_status='candidate'），
+        由调用方显式执行质量检查（PipelineState.quality）与发布（publish_current）。
+        """
         import hashlib
         versions = {}
         with sqlite3.connect(self.db_path) as conn:
@@ -93,25 +98,12 @@ class PipelineState:
                 conn.execute("""INSERT OR IGNORE INTO dataset_versions
                     (version_id,dataset_name,partition_key,candidate_path,published_path,previous_version_id,
                      input_versions,source_batches,row_count,symbol_count,min_date,max_date,schema_version,
-                     checksum,builder_version,publish_status,created_at,published_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (version_id, dataset_name, partition, str(path), str(path), previous[0] if previous else None,
+                     checksum,builder_version,quality_status,publish_status,created_at,published_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (version_id, dataset_name, partition, str(path), None, previous[0] if previous else None,
                      json.dumps({input_dataset: input_versions}, ensure_ascii=False), "[]", len(frame),
                      int(frame["code"].nunique()) if "code" in frame else 0, min_date, max_date,
-                     schema_version, checksum, builder_version, "published", _now(), _now()))
-                conn.execute("""INSERT INTO dataset_current (dataset_name,partition_key,version_id,published_at)
-                    VALUES (?,?,?,?) ON CONFLICT(dataset_name,partition_key) DO UPDATE SET
-                    version_id=excluded.version_id,published_at=excluded.published_at""",
-                    (dataset_name, partition, version_id, _now()))
-                conn.execute("""INSERT OR IGNORE INTO dataset_quality_results
-                    (quality_id,dataset_name,partition_key,version_id,status,checks,affected_symbols,
-                     publish_allowed,checked_at,checker_version)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                    (f"quality_{version_id}", dataset_name, partition, version_id, "PASS",
-                     json.dumps({"derived_output": True}, ensure_ascii=False), "[]", 1, _now(),
-                    "derived_output.v1"))
-                conn.execute("UPDATE dataset_versions SET quality_status='PASS',validated_at=? WHERE version_id=?",
-                             (_now(), version_id))
+                     schema_version, checksum, builder_version, None, "candidate", _now(), None))
                 versions[partition] = version_id
         return versions
 
