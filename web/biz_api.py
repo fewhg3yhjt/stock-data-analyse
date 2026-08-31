@@ -309,6 +309,37 @@ def create_research_observation_snapshot(run_id: str):
                           "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
 
 
+@biz_api.post("/research-runs/<run_id>/simulation-plan")
+def create_research_simulation_plan(run_id: str):
+    payload = flask.request.get_json(silent=True) or {}
+    repo = _repo()
+    research = repo.get_research_run(run_id)
+    if not research:
+        return _error("RESEARCH_RUN_NOT_FOUND", "研究运行不存在", 404)
+    if research.get("status") not in {"success", "partial_success"}:
+        return _error("RESEARCH_NOT_READY", "研究尚未完成，不能创建模拟计划", 409)
+    strategy_version_id = payload.get("strategy_version_id") or research.get("strategy_version_id")
+    if not strategy_version_id:
+        return _error("STRATEGY_VERSION_REQUIRED", "strategy_version_id 必填")
+    required = ("start_date", "end_date", "initial_cash")
+    if any(payload.get(key) in (None, "") for key in required):
+        return _error("SIMULATION_INVALID", "start_date/end_date/initial_cash 必填")
+    from StockInvestmentTool.biz.models import SimulationPlan
+    plan = SimulationPlan(
+        plan_id=new_id("plan"), strategy_version_id=strategy_version_id,
+        source_screen_run_id=research.get("source_screen_run_id") or None,
+        observation_id=research.get("observation_id") or payload.get("observation_id"),
+        start_date=payload["start_date"], end_date=payload["end_date"],
+        initial_cash=float(payload["initial_cash"]),
+        benchmark=payload.get("benchmark", "sh000300"),
+        cost_config=payload.get("cost_config", {}),
+        data_context=research.get("data_context", {}),
+    )
+    repo.save_simulation_plan(plan)
+    return flask.jsonify({"data": plan.__dict__,
+                          "request_id": flask.request.headers.get("X-Request-ID", "")}), 201
+
+
 @biz_api.post("/simulation-runs")
 def create_simulation_run():
     """执行并持久化单标的模拟运行。"""

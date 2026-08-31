@@ -243,4 +243,4 @@ observation_id
 ### 跨模块验证
 
 - `tests/test_biz_api.py` 和 `tests/test_biz_end_to_end.py` 已验证研究运行可关联筛选来源并向 Observation/Simulation 传递上下文。
-- 当前报告为结构化结果的 Markdown 渲染，LLM 报告适配器和从研究结果创建 SimulationPlan 的专用入口仍需继续完善。
+- 当前报告为结构化结果的 Markdown 渲染，LLM 报告适配器仍待接入；从研究结果创建 SimulationPlan 的专用入口已补齐基础实现。
