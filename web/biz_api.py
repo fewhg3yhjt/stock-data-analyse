@@ -23,12 +23,16 @@ from StockInvestmentTool.biz.regime import MarketRegimeService
 from StockInvestmentTool.biz.simulation import execute_simulation
 from StockInvestmentTool.biz.strategy import StrategySpec, compile_strategy
 from StockInvestmentTool.biz.data_access import load_market_data
+from StockInvestmentTool.biz.tasks import BusinessTaskService
+from StockInvestmentTool.biz.task_registry import register_business_tasks
 
 biz_api = flask.Blueprint("biz_api", __name__, url_prefix="/api/biz")
 
 
 def _repo() -> BusinessRepository:
-    return BusinessRepository(BusinessDB())
+    repo = BusinessRepository(BusinessDB())
+    register_business_tasks(BusinessTaskService(repo))
+    return repo
 
 
 def _error(code: str, message: str, status: int = 400):
@@ -361,6 +365,32 @@ def get_daily_report(report_date: str):
 def list_system_alerts():
     from StockInvestmentTool.biz.reporting import SystemAlertService
     return flask.jsonify({"data": {"items": SystemAlertService(_repo()).list_active()},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.post("/tasks/<task_key>/runs")
+def create_business_task_run(task_key: str):
+    payload = flask.request.get_json(silent=True) or {}
+    service = BusinessTaskService(_repo())
+    try:
+        register_business_tasks(service)
+        run = service.run(
+            task_key, trigger_type=payload.get("trigger_type", "manual"),
+            input_data=payload.get("input", {}), request_id=payload.get("request_id"),
+        )
+        return flask.jsonify({"data": run.__dict__,
+                              "request_id": flask.request.headers.get("X-Request-ID", "")}), 202
+    except KeyError:
+        return _error("TASK_NOT_FOUND", "业务任务不存在", 404)
+    except Exception as exc:  # noqa: BLE001
+        return _error("TASK_FAILED", str(exc), 500)
+
+
+@biz_api.get("/tasks/runs")
+def list_business_task_runs():
+    task_key = flask.request.args.get("task_key")
+    runs = BusinessTaskService(_repo()).list_runs(task_key=task_key)
+    return flask.jsonify({"data": {"items": runs},
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 
