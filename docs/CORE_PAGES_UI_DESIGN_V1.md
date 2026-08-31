@@ -63,13 +63,13 @@
 |---|---|---|
 | 工作台 | `/workbench` | `/` 无参数时进入工作台，带股票参数进入个股分析 |
 | 市场 | `/market` | `/market-discovery`、`/compare` |
-| 观察池 | `/watch-pool` | `/dashboard/observe`、`/watchlist`、`/simulation` |
-| 持仓 | `/dashboard/warroom` | `/portfolio`、`/portfolio/add`、`/portfolio/{id}`（持仓详情） |
+| 观察池 | `/watch-pool` | `/watch-pool/market`、`/watchlist`、`/simulation` |
+| 持仓 | `/positions` | `/positions/add`、`/positions/{id}`（持仓详情） |
 | 研究 | `/research` | `/analyze`、`/research/detail`、`/indicator-center`、`/strategy-composer`、`/strategy`、`/operation-points` |
-| 复盘 | `/dashboard/review` | `/morning-report`、`/log`、`/quicklog` |
+| 复盘 | `/review` | `/morning-report`、`/log`、`/quicklog` |
 | 系统 | `/system` | `/data-center`、`/data-center/assets`、`/data-center/tasks`、`/notify-center`、`/diagnostics`、`/settings` |
 
-旧路由不属于目标设计。切换时直接下线；如必须处理已有链接，只允许一次性跳转到新入口，不保留旧页面、旧导航或第二套业务流程。用户主导航中只出现主入口。
+旧路由不属于目标设计。切换时直接下线；不为 `/dashboard/*`、`/portfolio` 等旧地址设计兼容页面或长期重定向。用户主导航中只出现新入口。
 
 ### 2.3 最终页面壳层
 
@@ -475,6 +475,23 @@
 
 不再使用 `.tag.status-*`、`.dm-health.*` 或 `.status-tag.ok` 作为目标类名。旧类名不保留兼容别名，迁移时直接替换并删除。
 
+状态 key 与唯一视觉 class 的映射如下：
+
+| 状态 key | 展示文案 | 唯一视觉 class |
+|---|---|---|
+| `healthy` / `ok` / 健康场景 `success` | 正常 | `status-healthy` |
+| `stale` | 待更新 | `status-stale` |
+| `partial` / `partial_success` / `degraded` | 部分可用 | `status-partial` |
+| `critical` / `failed` | 异常/失败 | `status-critical` / `status-failed` |
+| `running` / `requested` | 运行中/等待执行 | `status-running` |
+| `deferred` | 延期 | `status-deferred` |
+| `disabled` | 未启用 | `status-disabled` |
+| `empty` / `unavailable` | 暂无数据 | `status-empty` |
+| `not_applicable` | 不适用 | `status-not-applicable` |
+| `cancelled` | 已取消 | `status-cancelled` |
+| `waiting_close` | 等待收盘 | `status-waiting-close` |
+| 运行场景 `success` | 已完成 | `status-healthy` |
+
 ### 5.2 多维状态
 
 数据可用性、数据新鲜度、任务执行、权限和操作门禁是不同维度，不压成一个状态：
@@ -514,6 +531,20 @@
 | 暂无数据/未知结果 | 允许空态 | 查询后再操作 | 默认阻止 | 按业务规则 |
 
 操作状态使用 `allowed`、`disabled`、`blocked`、`denied`、`pending`、`unknown`；`denied` 仅表示当前操作不可执行，不扩展多用户角色模型。
+
+中文门禁文案与机器状态必须按以下规则映射：
+
+| 中文表现 | 机器状态 | 是否展示按钮 | 说明 |
+|---|---|---|---|
+| 允许 | `allowed` | 是 | 当前上下文可直接执行 |
+| 暂不可用 | `disabled` | 否/禁用 | 条件未满足，但不是规则阻断 |
+| 已阻止 | `blocked` | 否 | 被数据、运行状态或业务规则阻止 |
+| 无权限 | `denied` | 否 | 当前登录状态不允许 |
+| 等待确认 | `pending_confirmation` | 是 | 用户尚未确认，尚未发出请求 |
+| 提交中 | `pending` | 否 | 请求已发出，结果尚未确认 |
+| 结果未知 | `unknown` | 否 | 不得自动重复提交，先查询状态 |
+
+`pending_confirmation` 是用户确认前状态，不能与请求已经发出的 `pending` 混用。
 
 ### 5.4 数值和日期
 
@@ -574,6 +605,8 @@
 --color-danger: #dc3545;
 --color-info: #1a73e8;
 --color-muted: #6b7280;
+--color-text: #1a1a2e;
+--color-text-subtle: #6b7280;
 --color-surface: #ffffff;
 --color-surface-subtle: #f8f9fb;
 --color-border: #e0e4ea;
@@ -593,6 +626,7 @@
 | 表单 | `.ui-form`、`.ui-field`、`.ui-field-error` |
 | 确认面板 | `.ui-confirm`、`.ui-confirm-danger` |
 | 进度 | `.ui-progress`、`.ui-progress-bar` |
+| 按钮 | `.ui-button`、`.ui-button-primary`、`.ui-button-secondary`、`.ui-button-ghost`、`.ui-button-danger`、`.ui-button-sm` |
 
 ### 6.3 Token 与实现映射
 
@@ -601,6 +635,7 @@
 | 契约 | 公共实现位置 | 必须具备 |
 |---|---|---|
 | 语义颜色 | `base.css` | `--color-up/down/success/warning/danger/info/muted` |
+| 正文颜色 | `base.css` | `--color-text`、`--color-text-subtle` |
 | 状态标签 | `base.css`、`ui-status.js` | 每个状态都有文字、CSS 类和对应色调 |
 | 涨跌数值 | `base.css` | `.value-up`、`.value-down`、`.value-flat` |
 | 消息 | `base.css`、`ui-feedback.js` | `.ui-message` 及 success/warning/error/info 变体 |
@@ -608,6 +643,7 @@
 | 表单 | `base.css` | `.ui-form`、`.ui-field`、`.ui-field-error` |
 | 确认/输入 | `base.css`、公共 JS | `.ui-confirm`、`.ui-confirm-danger` |
 | 进度 | `base.css` | `.ui-progress`、`.ui-progress-bar` |
+| 按钮 | `base.css` | `.ui-button` 及 primary/secondary/ghost/danger/sm 变体 |
 
 未完成某项时只能在实现状态文档标记为未落地，不得以旧类名或页面内联样式冒充完成。
 
