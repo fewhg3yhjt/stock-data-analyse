@@ -14,6 +14,7 @@
 - [废弃：旧后台领域设计 V1.0](BACKEND_RESEARCH_SIMULATION_STRATEGY_V1.md)：仅供历史数据评估和一次性迁移，禁止用于新功能和运行时实现。
 - [任务与数据术语](TASK_DATA_GLOSSARY.md)：任务阶段、任务类型、数据产物、状态和数据中心分类的统一用户用词。
 - [任务与数据中心前端设计](TASK_DATA_CENTER_DESIGN.md)：任务中心、数据中心的用户信息架构、操作和 API 契约。
+- [核心页面 UI 设计与后台能力对齐](CORE_PAGES_UI_DESIGN_V1.md)：工作台、个股研究、数据中心的页面结构、表格字段、状态语义和当前后台实现差距。
 - [数据链路与产品状态流转收口实施任务书](DATA_PIPELINE_STATEFLOW_REMEDIATION_PLAN.md)：针对当前双轨数据链路、任务状态、质量门禁和下游消费断点的分阶段实施计划、测试矩阵与验收标准。
 - [指标归一后续改造清单](INDICATOR_NORMALIZATION_BACKLOG.md)：指标口径归一改造中识别出的遗留边界项（数据源契约、数据接管、回测基线重录等）。
 
