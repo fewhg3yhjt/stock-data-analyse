@@ -15,8 +15,29 @@ class JobRunStore:
 
     @staticmethod
     def result_status(result: Optional[dict], *, empty_is_skipped: bool = True) -> str:
-        """Use one conservative status policy for warehouse worker results."""
+        """Use one conservative status policy for warehouse worker results.
+
+        Priority:
+        1. explicit `status` (success/failed/partial_success/skipped/cancelled
+           and PASS/FAIL/WARNING quality outcomes)
+        2. explicit `ok=False` -> failed
+        3. explicit `publish_allowed=False` -> failed (never success)
+        4. legacy inference from failed/rows/up_to_date
+        """
         result = result or {}
+        status = result.get("status")
+        if status in {"success", "failed", "partial_success", "skipped", "cancelled"}:
+            return status
+        if result.get("ok") is False:
+            return "failed"
+        if result.get("publish_allowed") is False:
+            return "failed"
+        if status in {"PASS", "FAIL", "WARNING"}:
+            if status == "FAIL":
+                return "failed"
+            if status == "WARNING":
+                return "partial_success" if result.get("publish_allowed") else "failed"
+            return "success"
         failed = result.get("failed") or result.get("failed_count", 0)
         produced = result.get("rows", result.get("added_rows", 0)) or 0
         if result.get("skipped") or (empty_is_skipped and result.get("up_to_date") and not failed):

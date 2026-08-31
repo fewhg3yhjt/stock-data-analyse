@@ -89,22 +89,39 @@ def _quality(warehouse: Warehouse, request: dict) -> dict:
                 "AND v2.publish_status='candidate')"
             ).fetchall()
         versions = {partition: version for partition, version in rows}
+    # expected_symbols 基准：优先使用执行请求固化 symbols/symbol_count，
+    # 禁止使用候选自身 symbol_count（避免覆盖率自证恒为 1.0）。
+    expected_symbols = request.get("expected_symbols")
+    if expected_symbols is None:
+        symbols = _symbols(request)
+        expected_symbols = len(symbols) if symbols else None
     reports = {}
     allowed = True
+    statuses = []
     for partition, version in versions.items():
         with sqlite3.connect(warehouse.meta_db_path) as conn:
             row = conn.execute("SELECT candidate_path,symbol_count FROM dataset_versions WHERE version_id=?", (version,)).fetchone()
         if not row:
             raise RuntimeError(f"数据版本不存在: {version}")
-        report = check_stock_daily(row[0], expected_symbols=row[1],
+        report = check_stock_daily(row[0], expected_symbols=expected_symbols,
                                    expected_trade_date=request.get("period_end") if partition == str(request.get("period_end", ""))[:7] else None,
                                    source_conflicts=[])
         PipelineState(warehouse.meta_db_path).quality(version, status=report["status"],
                                                        checks=report["checks"], publish_allowed=report["publish_allowed"])
         reports[partition] = report
         allowed = allowed and report["publish_allowed"]
-    return {"rows": len(reports), "status": "PASS" if allowed else "FAIL",
-            "publish_allowed": allowed, "reports": reports,
+        statuses.append(report["status"])
+    # 真实聚合状态：任一 FAIL 则 FAIL；否则按最差质量结论，不得把 WARNING 伪装为 PASS。
+    if "FAIL" in statuses:
+        quality_status = "FAIL"
+    elif "WARNING" in statuses:
+        quality_status = "WARNING"
+    else:
+        quality_status = "PASS"
+    return {"rows": len(reports), "ok": allowed,
+            "status": quality_status, "publish_allowed": allowed,
+            "failed_count": sum(1 for status in statuses if status == "FAIL"),
+            "reports": reports,
             "input_versions": versions, "output_versions": versions if allowed else {}}
 
 
@@ -113,17 +130,21 @@ def _publish(warehouse: Warehouse, request: dict) -> dict:
     versions = {key: value.get("version") if isinstance(value, dict) else value
                 for key, value in versions.items()}
     if not versions:
+        # 禁止隐式历史候选补位：Publish 没有明确版本时必须失败。
+        raise RuntimeError("Publish 缺少明确的 input_versions，禁止隐式选择历史 Candidate")
+    published = {}
+    for partition, version in versions.items():
         with sqlite3.connect(warehouse.meta_db_path) as conn:
-            rows = conn.execute(
-                "SELECT partition_key,version_id FROM dataset_versions v "
-                "WHERE dataset_name='stock_daily' AND quality_status IN ('PASS','WARNING') "
-                "AND publish_status='candidate' AND created_at=(SELECT MAX(v2.created_at) "
-                "FROM dataset_versions v2 WHERE v2.dataset_name=v.dataset_name "
-                "AND v2.partition_key=v.partition_key AND v2.publish_status='candidate')"
-            ).fetchall()
-        versions = {partition: version for partition, version in rows}
-    published = {partition: Publisher(warehouse).publish(version) for partition, version in versions.items()}
+            row = conn.execute("SELECT quality_status,publish_status FROM dataset_versions WHERE version_id=?", (version,)).fetchone()
+        if not row:
+            raise RuntimeError(f"数据版本不存在: {version}")
+        if row[0] not in ("PASS", "WARNING"):
+            raise RuntimeError(f"版本 {version} 质量未通过，禁止发布 (quality={row[0]})")
+        if row[1] != "candidate":
+            raise RuntimeError(f"版本 {version} 不是 candidate，禁止发布 (publish_status={row[1]})")
+        published[partition] = Publisher(warehouse).publish(version)
     return {"rows": len(published), "published": published,
+            "ok": True,
             "input_versions": versions,
             "output_versions": {key: value.get("version_id", versions[key])
                                  for key, value in published.items()}}
