@@ -95,6 +95,20 @@ class TestTaskService:
         runs = svc.list_runs("screen.run")
         assert len(runs) >= 1
 
+    def test_request_and_worker_run_are_separate(self, svc):
+        register_task("health.reconcile", run_ok)
+        svc.register_definition(__import__(
+            "StockInvestmentTool.biz.tasks", fromlist=["BusinessTaskDefinition"]
+        ).BusinessTaskDefinition(task_key="health.reconcile", name="health"))
+        request = svc.enqueue("health.reconcile", input_data={"x": 1})
+        run = svc.create_run_for_request(request.request_id)
+        assert run.status == "requested"
+        assert svc.repo.db.fetchone(
+            "SELECT status FROM business_job_runs WHERE run_id=?", (run.run_id,)
+        )["status"] == "requested"
+        completed = svc.execute_run(run.run_id)
+        assert completed.status == JOB_SUCCESS
+
     def test_lock_is_held_until_handler_finishes(self, svc):
         entered = threading.Event()
         release = threading.Event()

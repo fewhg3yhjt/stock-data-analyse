@@ -122,6 +122,69 @@ class BusinessTaskService:
         })
         return request
 
+    def create_run_for_request(self, request_id: str) -> BusinessJobRun:
+        """将已持久化请求转换为 requested JobRun，不执行 handler。"""
+        request = self.repo.db.fetchone(
+            "SELECT * FROM business_execution_requests WHERE request_id=?", (request_id,)
+        )
+        if not request:
+            raise KeyError(f"unknown request: {request_id}")
+        existing = self.repo.db.fetchone(
+            "SELECT * FROM business_job_runs WHERE request_id=? ORDER BY rowid DESC LIMIT 1",
+            (request_id,),
+        )
+        if existing:
+            return self._row_to_job(existing)
+        run = BusinessJobRun(
+            run_id=new_id("job"), task_key=request["task_key"], request_id=request_id,
+            trigger_type=request["trigger_type"], status=JOB_REQUESTED,
+        )
+        self.repo.db.insert("business_job_runs", {
+            "run_id": run.run_id, "request_id": run.request_id, "task_key": run.task_key,
+            "config_version": "", "trigger_type": run.trigger_type,
+            "input_versions_json": "{}", "output_versions_json": "{}",
+            "attempt": 1, "status": JOB_REQUESTED, "started_at": "", "heartbeat_at": "",
+            "finished_at": "", "error_code": "", "error_message": "",
+        })
+        return run
+
+    def execute_run(self, run_id: str) -> BusinessJobRun:
+        """Worker 执行已创建的 requested JobRun，并在执行期间持有租约锁。"""
+        row = self.repo.db.fetchone("SELECT * FROM business_job_runs WHERE run_id=?", (run_id,))
+        if not row:
+            raise KeyError(f"unknown run: {run_id}")
+        if row["status"] != JOB_REQUESTED:
+            raise TaskStateError(f"run is not requested: {row['status']}")
+        run = self._row_to_job(row)
+        lock_key = f"task:{run.task_key}"
+        if not self.acquire_lock(lock_key, run_id=run.run_id):
+            raise TaskStateError(f"任务冲突: {run.task_key} 正在运行")
+        self.repo.db.update("business_job_runs", {
+            "status": JOB_RUNNING, "started_at": now_utc(), "heartbeat_at": now_utc(),
+        }, "run_id=?", (run_id,))
+        try:
+            request = self.repo.db.fetchone(
+                "SELECT input_json FROM business_execution_requests WHERE request_id=?",
+                (run.request_id,),
+            )
+            result = TASK_HANDLERS[run.task_key](_loads(request["input_json"]) if request else {})
+            self._finish(run, JOB_SUCCESS, output_versions=result.get("output_versions", {}))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("business worker failed: %s", run.task_key)
+            self._finish(run, JOB_FAILED, error_code="TASK_EXECUTION_FAILED", error_message=str(exc))
+        finally:
+            self.release_lock(lock_key, owner_run_id=run.run_id)
+        return run
+
+    def run_next(self) -> BusinessJobRun | None:
+        """领取最早 requested JobRun 并执行一个，供轻量 Worker 调用。"""
+        row = self.repo.db.fetchone(
+            "SELECT * FROM business_job_runs WHERE status=? ORDER BY rowid LIMIT 1", (JOB_REQUESTED,)
+        )
+        if not row:
+            return None
+        return self.execute_run(row["run_id"])
+
     def run(self, task_key: str, *, trigger_type: str = "manual",
             input_data: dict | None = None, request_id: str | None = None) -> BusinessJobRun:
         """同步执行一个任务（同一 Runner，幂等锁保护）。返回 JobRun。"""
@@ -259,7 +322,28 @@ class BusinessTaskService:
                 "SELECT * FROM business_job_runs ORDER BY rowid DESC LIMIT ?", (limit,))
         return [dict(r) for r in rows]
 
+    @staticmethod
+    def _row_to_job(row) -> BusinessJobRun:
+        return BusinessJobRun(
+            run_id=row["run_id"], task_key=row["task_key"], request_id=row["request_id"],
+            trigger_type=row["trigger_type"], config_version=row["config_version"],
+            input_versions=_loads(row["input_versions_json"]),
+            output_versions=_loads(row["output_versions_json"]), attempt=row["attempt"],
+            status=row["status"], started_at=row["started_at"] or None,
+            heartbeat_at=row["heartbeat_at"] or None, finished_at=row["finished_at"] or None,
+            error_code=row["error_code"], error_message=row["error_message"],
+        )
+
 
 def _dumps(value: Any) -> str:
     import json
     return json.dumps(value or {}, ensure_ascii=False, sort_keys=True)
+
+
+def _loads(value: str | None) -> dict:
+    import json
+    try:
+        loaded = json.loads(value or "{}")
+        return loaded if isinstance(loaded, dict) else {}
+    except (TypeError, ValueError):
+        return {}

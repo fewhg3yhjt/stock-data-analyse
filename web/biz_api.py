@@ -374,10 +374,11 @@ def create_business_task_run(task_key: str):
     service = BusinessTaskService(_repo())
     try:
         register_business_tasks(service)
-        run = service.run(
+        request = service.enqueue(
             task_key, trigger_type=payload.get("trigger_type", "manual"),
-            input_data=payload.get("input", {}), request_id=payload.get("request_id"),
+            input_data=payload.get("input", {}),
         )
+        run = service.create_run_for_request(request.request_id)
         return flask.jsonify({"data": run.__dict__,
                               "request_id": flask.request.headers.get("X-Request-ID", "")}), 202
     except KeyError:
@@ -391,6 +392,20 @@ def list_business_task_runs():
     task_key = flask.request.args.get("task_key")
     runs = BusinessTaskService(_repo()).list_runs(task_key=task_key)
     return flask.jsonify({"data": {"items": runs},
+                          "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.post("/tasks/worker/run-next")
+def run_next_business_task():
+    service = BusinessTaskService(_repo())
+    register_business_tasks(service)
+    try:
+        run = service.run_next()
+    except Exception as exc:  # noqa: BLE001
+        return _error("TASK_FAILED", str(exc), 500)
+    if run is None:
+        return flask.jsonify({"data": None, "request_id": flask.request.headers.get("X-Request-ID", "")})
+    return flask.jsonify({"data": run.__dict__,
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
 
 

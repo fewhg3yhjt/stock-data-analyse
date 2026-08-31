@@ -43,6 +43,14 @@ def test_observation_not_found(app):
     assert response.get_json()["error"]["code"] == "OBSERVATION_NOT_FOUND"
 
 
+def test_task_api_returns_persisted_requested_run(app):
+    response = app.test_client().post("/api/biz/tasks/health.reconcile/runs", json={
+        "input": {}, "trigger_type": "manual",
+    })
+    assert response.status_code == 202
+    assert response.get_json()["data"]["status"] == "requested"
+
+
 def test_screen_run_api_persists_run_and_candidates(app, monkeypatch):
     import pandas as pd
 
