@@ -115,7 +115,7 @@
   document.getElementById('task-status').onchange = renderTasks;
   document.getElementById('task-search').oninput = renderTasks;
   document.getElementById('refresh-tasks').onclick = loadTasks;
-  document.getElementById('new-task').onclick = () => alert('新建任务需先注册任务定义；当前支持已有任务的配置管理');
+  document.getElementById('new-task')?.addEventListener('click', () => operation('新建任务需先注册任务定义；当前支持已有任务的配置管理'));
   document.getElementById('close-task').onclick = () => document.getElementById('task-mask').classList.remove('open');
   document.getElementById('task-mask').onclick = event => { if (event.target.id === 'task-mask') document.getElementById('task-mask').classList.remove('open'); };
   loadTasks();
