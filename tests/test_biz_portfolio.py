@@ -128,6 +128,15 @@ class TestPortfolio:
             "SELECT COUNT(*) AS n FROM execution_lot_allocations"
         )["n"] == 1
 
+    def test_exit_reason_drives_position_phase(self, svc, setup):
+        pid, cid = setup
+        svc.record_execution(pid, cid, event_type=EVT_BUY, trade_time="2026-08-01",
+                             quantity=1000, price=10.0, idempotency_key="b1")
+        svc.record_execution(pid, cid, event_type=EVT_SELL, trade_time="2026-08-10",
+                             quantity=500, price=9.0, reason="止损触发",
+                             idempotency_key="s1")
+        assert svc.get_cycle(cid).phase == "stopped"
+
     def test_cash_never_negative_silent(self, svc, setup):
         pid, cid = setup
         with pytest.raises(ValueError):

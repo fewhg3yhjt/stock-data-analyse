@@ -468,7 +468,7 @@ class PortfolioService:
         if not row:
             raise KeyError(f"unknown position cycle: {exe.position_cycle_id}")
         current = row["phase"]
-        new_phase = PHASE_HOLDING if exe.event_type == EVT_BUY else current
+        new_phase = self._phase_for_execution(current, exe)
         if new_phase in PHASE_TRANSITIONS.get(current, set()) or new_phase == current:
             conn.execute(
                 "UPDATE position_cycles SET phase=?, updated_at=? WHERE position_cycle_id=?",
@@ -481,6 +481,21 @@ class PortfolioService:
                     (new_id("pe"), exe.position_cycle_id, exe.event_type, exe.trade_time,
                      current, new_phase, exe.reason, exe.advice_id or "", exe.decision_id or "", now_utc()),
                 )
+
+    @staticmethod
+    def _phase_for_execution(current: str, exe: Execution) -> str:
+        if exe.event_type == EVT_BUY and current == PHASE_ACCUMULATING:
+            return PHASE_HOLDING
+        if exe.event_type != EVT_SELL:
+            return current
+        reason = (exe.reason or "").lower()
+        if any(token in reason for token in ("止损", "stop", "risk")):
+            return PHASE_STOPPED
+        if any(token in reason for token in ("移动止盈", "trailing", "right")):
+            return PHASE_RIGHT_TRAILING
+        if any(token in reason for token in ("止盈", "take_profit", "left")):
+            return PHASE_LEFT_TAKE_PROFIT
+        return current
 
     def _close_cycle(self, cycle_id: str) -> None:
         self.repo.db.update("position_cycles", {

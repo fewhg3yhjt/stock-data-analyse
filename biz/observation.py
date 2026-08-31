@@ -218,6 +218,16 @@ class ObservationService:
 
     def promote(self, obs: Observation, position_cycle_id: str) -> ObservationEvent:
         """真实成交后回写：Observation → promoted。"""
+        cycle = self.repo.db.fetchone(
+            "SELECT observation_id FROM position_cycles WHERE position_cycle_id=?",
+            (position_cycle_id,),
+        )
+        execution = self.repo.db.fetchone(
+            "SELECT execution_id FROM executions WHERE position_cycle_id=? AND event_type='BUY' LIMIT 1",
+            (position_cycle_id,),
+        )
+        if not cycle or cycle["observation_id"] != obs.observation_id or not execution:
+            raise ObservationStateError("Observation 只有在关联真实 BUY Execution 后才能 promoted")
         event = self.transition(obs, OBS_PROMOTED, reason="真实建仓已成交")
         obs.promoted_position_cycle_id = position_cycle_id
         obs.updated_at = now_utc()

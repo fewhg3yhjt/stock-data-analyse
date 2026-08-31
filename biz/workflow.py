@@ -52,7 +52,11 @@ class BusinessWorkflowService:
         )
         if not row:
             raise WorkflowError("CANDIDATE_NOT_FOUND")
-        if row["expires_at"] and str(row["expires_at"])[:10] < str(row["data_as_of"])[:10]:
+        from datetime import datetime, timezone
+        if row["expires_at"] and ObservationService._is_expired(
+            str(row["expires_at"]),
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ):
             raise WorkflowError("CANDIDATE_EXPIRED")
         return self.observations.create_observation(
             row["symbol"], name=row["name"], source_type="screen",

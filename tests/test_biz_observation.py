@@ -56,15 +56,31 @@ class TestObservationService:
             service.transition(obs, OBS_PROMOTED)  # discovered 不能直接 promoted
 
     def test_full_flow(self, service):
-        obs = make_obs()
-        service.transition(obs, OBS_OBSERVING)
-        service.transition(obs, OBS_READY_FOR_ENTRY)
-        service.promote(obs, "cycle1")
+        obs = service.create_observation("sh600908")
+        service.transition_and_save(obs, OBS_OBSERVING)
+        service.transition_and_save(obs, OBS_READY_FOR_ENTRY)
+        # promoted 必须通过真实建仓事务产生关联 BUY Execution。
+        from StockInvestmentTool.biz.portfolio import PortfolioService, EVT_BUY
+        pf_service = PortfolioService(service.repo)
+        _, portfolio = pf_service.ensure_default_account_portfolio()
+        pf_service.initialize_cash(portfolio.portfolio_id, 100000)
+        cycle = pf_service.open_cycle(portfolio.portfolio_id, obs.symbol,
+                                      observation_id=obs.observation_id)
+        pf_service.record_execution(portfolio.portfolio_id, cycle.position_cycle_id,
+                                    event_type=EVT_BUY, trade_time="2026-08-14",
+                                    quantity=1000, price=10, idempotency_key="full-flow-buy")
+        service.promote_and_save(obs, cycle.position_cycle_id)
         assert obs.status == OBS_PROMOTED
-        assert obs.promoted_position_cycle_id == "cycle1"
-        # promoted 只读
+        assert obs.promoted_position_cycle_id == cycle.position_cycle_id
         with pytest.raises(ObservationStateError):
             service.transition(obs, OBS_OBSERVING)
+
+    def test_promote_requires_real_buy_execution(self, service):
+        obs = service.create_observation("sh600908")
+        service.transition_and_save(obs, OBS_OBSERVING)
+        service.transition_and_save(obs, OBS_READY_FOR_ENTRY)
+        with pytest.raises(ObservationStateError):
+            service.promote_and_save(obs, "missing-cycle")
 
     def test_archive(self, service):
         obs = make_obs()
