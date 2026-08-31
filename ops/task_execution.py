@@ -47,7 +47,7 @@ def _capture(warehouse: Warehouse, request: dict, run_id: int) -> dict:
     result = MarketCollector(warehouse=warehouse, query_interval=0.3).sync_daily(
         start_date=request.get("period_start"), end_date=request.get("period_end"), symbols=symbols,
         include_etf=True, source="tencent", target="raw:tencent", capture_raw=True,
-        flush_every=10, job_run_id=run_id, asset_types=["stock", "etf"], force_refresh=True)
+        flush_every=10, job_run_id=run_id, asset_types=["stock", "etf"])
     if not result.get("source_batch_id") or result.get("raw_capture_failed"):
         raise RuntimeError("Raw Batch 未成功落盘")
     return result

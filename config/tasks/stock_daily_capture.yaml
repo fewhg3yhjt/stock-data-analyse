@@ -10,7 +10,7 @@ scope:
   asset_types: [stock, etf]
   universe: active
 schedule:
-  enabled: false
+  enabled: true
   timezone: Asia/Shanghai
   frequency: trading_day
   time: "15:35"

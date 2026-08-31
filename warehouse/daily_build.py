@@ -74,6 +74,29 @@ class DailyBuilder:
         out["code"] = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
         return out[[field["name"] for field in self.config["fields"]]]
 
+    def _read_raw_partition(self, path: Path, source: str, partition: str) -> pd.DataFrame:
+        """Read only one month from a raw batch without materializing the batch.
+
+        Raw batches may contain several years of data.  Reading the complete
+        parquet file for every monthly build can exceed the production
+        container memory limit, so process bounded Arrow batches instead.
+        """
+        import pyarrow.parquet as pq
+
+        month_start = pd.Timestamp(f"{partition}-01")
+        month_end = month_start + pd.offsets.MonthEnd(1)
+        chunks = []
+        parquet = pq.ParquetFile(path)
+        for record_batch in parquet.iter_batches(batch_size=50_000):
+            frame = self._normalize(record_batch.to_pandas(), source)
+            dates = pd.to_datetime(frame["date"], errors="coerce")
+            frame = frame[(dates >= month_start) & (dates <= month_end)]
+            if not frame.empty:
+                chunks.append(frame)
+        if not chunks:
+            return pd.DataFrame(columns=[field["name"] for field in self.config["fields"]])
+        return pd.concat(chunks, ignore_index=True)
+
     def build_partition(self, partition: str, raw_batches: Optional[Iterable[tuple]] = None,
                         *, include_current: bool = True) -> dict:
         selected_batches = self.select_raw_batches(partition) if raw_batches is None else list(raw_batches)
@@ -83,8 +106,10 @@ class DailyBuilder:
         for item in selected_batches:
             source, path = item[:2]
             batch_ids.append(item[2] if len(item) > 2 else str(path))
-            frame = self._normalize(pd.read_parquet(path), source)
-            source_frames[source] = frame
+            frame = self._read_raw_partition(path, source, partition)
+            previous = source_frames.get(source)
+            source_frames[source] = (pd.concat([previous, frame], ignore_index=True)
+                                     if previous is not None and not previous.empty else frame)
             frame["_source"] = source
             frames.append(frame)
         if include_current:
@@ -100,10 +125,9 @@ class DailyBuilder:
         priority = {name: item["priority"] for name, item in self._sources.items()}
         priority["legacy_daily"] = 999
         combined["_priority"] = combined["_source"].map(priority).fillna(999)
-        selected = []
-        for _, group in combined.groupby(["date", "code"], sort=False):
-            selected.append(group.sort_values("_priority", kind="stable").iloc[0])
-        result = pd.DataFrame(selected).drop(columns=["_priority", "_source"], errors="ignore")
+        combined = combined.sort_values(["date", "code", "_priority"], kind="stable")
+        result = combined.drop_duplicates(["date", "code"], keep="first")
+        result = result.drop(columns=["_priority", "_source"], errors="ignore")
         result = result.drop_duplicates(["date", "code"]).sort_values(["date", "code"]).reset_index(drop=True)
         result = result[result["date"].dt.strftime("%Y-%m") == partition].reset_index(drop=True)
 
