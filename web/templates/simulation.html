@@ -129,16 +129,20 @@ select{background:var(--color-surface-subtle);border:1px solid var(--color-borde
 </div>
 <script>
 async function reanalyze(code, name, id){
-  const scheme = document.getElementById('scheme-'+id).value;
-  showUiMessage('重新分析中…', 'info');
-  const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name, scheme})})).json();
-  if (d.status==='success'){ showUiMessage('已更新模拟快照', 'success'); setTimeout(()=>location.reload(),600); }
-  else showUiMessage(d.error||'重新分析失败', 'error');
+  return UI_UTILS.once('simulation:reanalyze:'+id, async () => {
+    const scheme = document.getElementById('scheme-'+id).value;
+    showUiMessage('重新分析中…', 'info');
+    const d = await UI_UTILS.fetchJson('/api/simulation', {method:'POST', body:new URLSearchParams({code, name, scheme})});
+    if (d.status==='success'){ showUiMessage('已更新模拟快照', 'success'); setTimeout(()=>location.reload(),600); }
+    else showUiMessage(d.error||'重新分析失败', 'error');
+  }).catch(error => showUiMessage(error.message || '重新分析失败', 'error'));
 }
 async function delSim(id){
-  if (!await showUiConfirm('删除后将移除该模拟记录。', '删除模拟')) return;
-  const d = await (await fetch('/api/simulation?id='+id, {method:'DELETE'})).json();
-  if (d.status==='success') location.reload(); else showUiMessage(d.error||'删除失败', 'error');
+  return UI_UTILS.once('simulation:delete:'+id, async () => {
+    if (!await showUiConfirm('删除后将移除该模拟记录。', '删除模拟')) return;
+    const d = await UI_UTILS.fetchJson('/api/simulation?id='+id, {method:'DELETE'});
+    if (d.status==='success') location.reload(); else showUiMessage(d.error||'删除失败', 'error');
+  }).catch(error => showUiMessage(error.message || '删除失败', 'error'));
 }
 async function toggleReturn(code){
   const tr = document.getElementById('return-'+code);
@@ -161,14 +165,16 @@ async function toggleReturn(code){
   } catch(e){ box.innerHTML = '<span style="color:#c62828;">请求失败</span>'; }
 }
 async function addManual(){
+  return UI_UTILS.once('simulation:add', async () => {
   const code = document.getElementById('sim-code').value.trim();
   const name = document.getElementById('sim-name').value.trim() || code;
   const scheme = document.getElementById('sim-scheme').value;
   if (!code){ showUiMessage('请填写代码', 'error'); return; }
   showUiMessage('模拟中…', 'info');
-  const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name, scheme})})).json();
+  const d = await UI_UTILS.fetchJson('/api/simulation', {method:'POST', body:new URLSearchParams({code, name, scheme})});
   if (d.status==='success'){ showUiMessage('模拟完成', 'success'); setTimeout(()=>location.reload(),500); }
   else showUiMessage(d.error||'模拟失败', 'error');
+  }).catch(error => showUiMessage(error.message || '模拟失败', 'error'));
 }
 document.addEventListener('click', function(e){
   const el = e.target.closest('[data-action]');

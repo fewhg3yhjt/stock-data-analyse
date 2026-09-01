@@ -125,18 +125,22 @@ document.addEventListener('click', function(e){
   }
 });
 async function simulate(code, name){
-  showUiMessage('模拟中…', 'info');
-  const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name})})).json();
-  if (d.status==='success') location.href = '/simulation';
-  else showUiMessage(d.error||'模拟失败', 'error');
+  return UI_UTILS.once('watchlist:simulate:'+code, async () => {
+    showUiMessage('模拟中…', 'info');
+    const d = await UI_UTILS.fetchJson('/api/simulation', {method:'POST', body:new URLSearchParams({code, name})});
+    if (d.status==='success') location.href = '/simulation';
+    else showUiMessage(d.error||'模拟失败', 'error');
+  }).catch(error => showUiMessage(error.message || '模拟失败', 'error'));
 }
 async function delWatch(id){
-  if (!await showUiConfirm('删除后将移除该自选记录。', '删除自选')) return;
-  const r = await fetch('/watchlist/'+id, {method:'DELETE'});
-  const d = await r.json();
-  if (d.status==='success') location.reload(); else showUiMessage(d.error||'删除失败', 'error');
+  return UI_UTILS.once('watchlist:delete:'+id, async () => {
+    if (!await showUiConfirm('删除后将移除该自选记录。', '删除自选')) return;
+    const d = await UI_UTILS.fetchJson('/watchlist/'+id, {method:'DELETE'});
+    if (d.status==='success') location.reload(); else showUiMessage(d.error||'删除失败', 'error');
+  }).catch(error => showUiMessage(error.message || '删除失败', 'error'));
 }
 async function addManual(){
+  return UI_UTILS.once('watchlist:add', async () => {
   const code = document.getElementById('wl-code').value.trim();
   let name = document.getElementById('wl-name').value.trim();
   if (!code){ showUiMessage('请填写代码', 'error'); return; }
@@ -157,6 +161,7 @@ async function addManual(){
   const d = await (await fetch('/watchlist', {method:'POST', body:new URLSearchParams(body)})).json();
   if (d.status==='success'){ showUiMessage('已加入自选', 'success'); setTimeout(()=>location.reload(),500); }
   else showUiMessage(d.error||'添加失败', 'error');
+  }).catch(error => showUiMessage(error.message || '添加失败', 'error'));
 }
 async function lookupStock(){
   const code = document.getElementById('wl-code').value.trim();

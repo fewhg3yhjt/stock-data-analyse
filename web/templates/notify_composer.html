@@ -248,8 +248,8 @@ async function loadOutbox(){
   document.getElementById('outbox-summary').textContent=`待发送 ${counts.pending||0} · 已发送 ${counts.sent||0} · 死信 ${counts.dead||0}`;
   document.getElementById('outbox-rows').innerHTML=(data.items||[]).map(item=>`<tr><td>${item.id}</td><td>${item.channel}</td><td>${item.status}</td><td>${item.attempts}</td><td>${item.created_at||''}</td><td>${item.last_error||''} ${item.status==='dead'?`<button class="ui-button ui-button-secondary ui-button-sm" onclick="retryOne(${item.id})">重试</button>`:''}</td></tr>`).join('') || '<tr><td colspan="6">暂无投递记录</td></tr>';
 }
-async function retryOne(id){await fetch('/api/notify/outbox/'+id+'/retry',{method:'POST'});loadOutbox();}
-async function retryDead(){await fetch('/api/notify/outbox/retry-dead',{method:'POST'});loadOutbox();}
+async function retryOne(id){return UI_UTILS.once('notify:retry:'+id, async () => {await UI_UTILS.fetchJson('/api/notify/outbox/'+id+'/retry',{method:'POST'});loadOutbox();}).catch(error => showUiMessage(error.message || '重试失败', 'error'));}
+async function retryDead(){return UI_UTILS.once('notify:retry-dead', async () => {await UI_UTILS.fetchJson('/api/notify/outbox/retry-dead',{method:'POST'});loadOutbox();}).catch(error => showUiMessage(error.message || '重试失败', 'error'));}
 async function createSystemAlerts(){const r=await fetch('/api/system/alerts',{method:'POST'});const d=await r.json();showUiMessage('已生成 '+(d.outbox_ids||[]).length+' 条系统告警', 'success');loadOutbox();}
 
 loadRules();

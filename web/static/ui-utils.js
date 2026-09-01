@@ -1,6 +1,13 @@
 /* Shared escaping and small formatting helpers for page adapters. */
 (() => {
   window.UI_UTILS = {
+    _busy: new Set(),
+    async once(key, task) {
+      if (this._busy.has(key)) return null;
+      this._busy.add(key);
+      try { return await task(); }
+      finally { this._busy.delete(key); }
+    },
     esc(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
