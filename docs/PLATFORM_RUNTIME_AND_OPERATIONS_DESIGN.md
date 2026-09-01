@@ -126,14 +126,18 @@ stock_daily_pipeline
 
 ### 4.3 Web 与 Worker
 
-第一版可以继续使用单容器，但必须做到：
+当前生产部署采用 Web 与业务 Worker 分离容器；数据平面 Scheduler 仍由 Web 容器内运行。两者共享代码卷和持久化 `output`，但不共享进程生命周期。
+
+业务 Scheduler 当前只注册已实现的 `observation.expiry_reconcile` 维护任务，默认每 30 分钟运行；`BUSINESS_SCHEDULER_ENABLED=0` 可关闭。`advice.refresh`、`notification.outbox_delivery`、`health.reconcile` 和 `parameter_search.run` 在真实 handler 完成前不自动调度。
+
+必须做到：
 
 1. HTTP 请求只创建并持久化 Request/Run。
 2. 长任务进入持久化执行队列。
 3. Worker 不依赖 daemon thread 状态。
 4. Web 重启后可以恢复、回收或重新接管任务。
 
-Worker 可以先与 Web 同进程运行，也可以部署为独立 `business-worker` 容器；无论采用哪种方式，必须遵守新业务任务接口，不得复用旧业务任务状态和旧业务运行入口。当前两种方式均未完成生产接入，不能把“Worker 代码存在”视为“业务任务自动消费可用”。
+Worker 可以与 Web 同进程运行，也可以部署为独立 `business-worker` 容器；当前采用独立容器。无论采用哪种方式，必须遵守新业务任务接口，不得复用旧业务任务状态和旧业务运行入口。
 
 业务任务接入统一提供：
 
@@ -446,35 +450,35 @@ Route
 
 ### 后续待开发
 
-- BusinessScheduler 与 Web 路由接入。
+- 补齐更多真实业务 handler 后，再逐项开放业务任务调度。
 - 统一业务任务结果 DTO、HTTP 202 和持久化队列。
 - 启动恢复检查、任务影响确认、生产级 ready 依赖检查。
-- 业务 Worker 生产接入，以及 `meta.db` / `job_runs.db` 旧运行路径下线。
+- BusinessScheduler 生产调度接入，以及 `meta.db` / `job_runs.db` 旧运行路径下线。
 
 ### 跨模块验证
 
 - `tests/test_biz_end_to_end.py` 作为业务闭环验收测试已通过，验证业务对象可以在隔离 business.db 中串联。
 - `tests/test_biz_tasks.py` 已验证锁覆盖 handler 执行期、非 owner 不得释放锁和 stale run 回收。
-- 容器内已确认新业务蓝图已注册业务 API；精确路由数量以自动路由检查为准。完整业务页面、正式 Scheduler、持久化 Worker 队列和生产切换流程仍待接入。
+- 容器内已确认新业务蓝图已注册业务 API；精确路由数量以自动路由检查为准。完整业务页面和旧业务主链路切换仍待完成。
 - `biz/task_registry.py` 已注册 Contracts §9 定义的 9 类业务任务，`/api/biz/tasks/<task_key>/runs` 和 `/api/biz/tasks/runs` 已提供基础运行/查询入口。
 - `biz/scheduler.py` 已提供业务 APScheduler 适配器：调度回调只创建 BusinessRequest/BusinessJobRun，Worker 通过 `run_next()` 执行。
-- `web/biz_api.py` 已接入新业务蓝图，当前提供筛选预览、正式筛选运行、研究运行、模拟运行、观察查询、建仓确认和建仓录入基础入口；完整业务页面、Scheduler 和 Worker 仍待接入。
-- 业务任务基础 API 已接入；长任务接口现在先持久化 BusinessRequest/BusinessJobRun，再由 `run-next` Worker 领取执行。业务调度适配器已有单测，尚未挂入生产 Scheduler。
+- `web/biz_api.py` 已接入新业务蓝图，当前提供筛选预览、正式筛选运行、研究运行、模拟运行、观察查询、建仓确认和建仓录入基础入口；完整业务页面和旧业务主链路切换仍待完成。
+- 业务任务基础 API 已接入；长任务接口先持久化 BusinessRequest/BusinessJobRun，再由独立 `business-worker` 领取执行；`observation.expiry_reconcile` 已挂入生产 Scheduler，其余占位任务暂不自动调度。
 - `web/biz_api.py` 已注册业务 API，覆盖运行创建/查询、观察、建仓、估值快照、收益复盘、通知、健康和业务任务入口；精确数量以自动路由检查为准。
 - `web/biz_api.py` 已提供 `/api/biz/health/live`、`/health/ready`、`/health/details`，与平台 HealthService 对齐。
 - BusinessRun 查询接口已返回结构化输入/输出版本信息，供页面和 Worker 状态轮询使用。
 - `tests/test_biz_tasks.py` 已验证 Request/JobRun 分离、Worker 执行、租约锁和失败恢复。
-- `biz/worker.py` 已提供独立业务 Worker 入口：启动回收 stale run，再领取并执行 requested run；默认单次执行，持续轮询需显式指定间隔，尚未挂入生产容器。
+- `biz/worker.py` 已提供独立业务 Worker 入口；`docker-compose.yml` 已增加单实例 `business-worker` 服务，默认每 2 秒轮询，启动时回收 stale run，再领取并执行 requested run。
 - stale 回收设计上只针对 heartbeat 超时的 `running` JobRun，`requested` 队列不会被误判为进程重启失败；但当前实现的 RFC3339 `T...Z` 与 SQLite `datetime()` 文本比较存在格式缺陷，stale 运行可能无法被回收，待修复并通过时间边界测试后才能视为完成。
 - heartbeat 现在同时更新任务锁和 `BusinessJobRun.heartbeat_at`；但恢复逻辑的时间比较仍未完成统一，不能据此宣称不会误判或能够可靠回收。
 - `biz/task_registry.py` 已为 `screen.run`、`research.run`、`simulation.run`、`report.daily_generate`、`notification.outbox_delivery` 和 `advice.refresh` 提供业务 handler；参数搜索和复杂持仓建议仍需继续接入专用执行器。
 - `screen.run`、`research.run`、`simulation.run` 正式 API 已改为只创建 BusinessRequest/JobRun 并返回 202；Worker 执行后通过 BusinessRun/领域结果查询接口获取结果。
-- 新业务正式 API 当前已在容器内注册并通过路由契约检查；现有业务页面和生产 Scheduler 尚未完成主链路切换。
-- 当前容器内正式 API 路由检查通过；业务过渡 API 的精确数量以自动路由检查为准。业务 Worker 仍未作为生产常驻进程挂载。
+- 新业务正式 API 当前已在容器内注册并通过路由契约检查；现有业务页面和旧业务主链路尚未完成切换。
+- 当前容器内正式 API 路由检查通过；业务过渡 API 的精确数量以自动路由检查为准。业务 Worker 已作为单实例生产常驻进程挂载。
 - 生产 `Warehouse` 已通过 `MANAGEMENT_DB_PATH` 使用 `management.db`；`warehouse/meta.db` 仍被默认回退、行业/标的旧读取、测试和迁移脚本引用，只有完成全量引用清理、数据对账、生产只读观察和回归验证后，才允许将其降为归档并在人工确认后删除。
-- 当前已知未闭环缺陷：`biz/tasks.py:318` 的 stale heartbeat SQL 与 UTC `T...Z` 存储格式不一致，回收条件可能恒不成立；`web/app.py:3041-3042` 双注册 `biz_api` 造成 `/api` 与 `/api/biz` 路由冲突；`ops/task_execution.py:99` 使用候选自身 `symbol_count` 作为质量期望基准；`warehouse/publish.py` 尚无同分区并发锁；`job_runs.db` 尚无独立收敛迁移和只读验收。上述问题不能以已有单元测试通过或设计意图描述为已修复。
+- 当前仍未闭环：业务 Worker 尚未生产接入；`DataContext` 尚未完全统一；`web/app.py:3041-3042` 的双 Blueprint 注册已清理；stale 时间格式、质量 Candidate 自证、Publisher 分区锁和模拟事件正常路径已完成代码修复，但仍需完整回归或生产验证；`job_runs.db` 仍需独立只读归档验收。
 - 路由约束：业务 Blueprint 只允许挂载到明确的 `/api/biz` 命名空间；不得同时注册到 `/api`。旧 `/api/health/details`、`/api/system/alerts` 等同路径必须在路由切换表中明确归属，不能依赖 Blueprint 注册顺序解决冲突。
 - stale 回收约束：heartbeat 存储和比较必须使用同一 UTC 可比较格式，或在应用层解析后比较；必须有“未超时不回收”和“超时可回收”的回归测试。
 - 领域状态约束：BusinessJobRun 与 SimulationRun、ScreenRun、ResearchRun 等领域运行实体必须有明确的状态映射和失败收敛策略。任务失败不得留下永久 `running` 的领域记录；执行前创建的 ScreenVersion、UniverseSnapshot 等前置事实必须通过事务边界或显式 orphan/reconciled 状态处理。
-- 队列领取约束：`run_next()` 必须在数据库事务内完成选择、条件更新和领取确认，或使用等价的原子 claim；并发领取失败不得作为 500 业务错误返回，必须返回无可领取任务、可重试冲突或明确的任务状态。
+- 队列领取约束：当前 `_claim_run()` 已在数据库事务内完成选择、条件更新和领取确认；并发领取失败由 `run_next()` 转换为无可领取结果，仍需多 Worker 回归和生产验证。
 - 当前业务专项/页面测试和全量测试均应以当前 CI/测试收集结果为准；历史通过数不作为完成依据。未修改数据模块。

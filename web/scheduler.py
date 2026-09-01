@@ -433,6 +433,7 @@ def init_scheduler(app) -> None:
         id="notification_outbox", misfire_grace_time=600, coalesce=True,
         max_instances=1,
     )
+    _schedule_business_tasks(scheduler, app)
     # 分钟采集优先；只有分钟采集未启用时才启用低频在线快照兜底。
     minute_enabled = os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1"
     if os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1" and not minute_enabled:
@@ -465,6 +466,41 @@ def init_scheduler(app) -> None:
         import atexit
         atexit.register(lock_file.close)
     logger.info("每日定时任务已启动: %02d:%02d (%s)", hour, minute, TZ)
+
+
+def _schedule_business_tasks(scheduler, app=None) -> None:
+    """Schedule only implemented business maintenance tasks.
+
+    The callback persists a BusinessRequest/BusinessJobRun; the dedicated
+    business-worker container performs the actual work.
+    """
+    if os.getenv("BUSINESS_SCHEDULER_ENABLED", "1") != "1":
+        logger.info("业务任务调度已关闭: BUSINESS_SCHEDULER_ENABLED!=1")
+        if app is not None:
+            app.extensions["business_scheduler_state"] = {
+                "enabled": False, "registered": [], "reason": "disabled_by_config",
+            }
+        return
+    try:
+        from StockInvestmentTool.biz.scheduler import BusinessScheduler
+
+        minutes = max(1, int(os.getenv("BUSINESS_EXPIRY_RECONCILE_MINUTES", "30")))
+        business = BusinessScheduler(scheduler)
+        business.register_interval("observation.expiry_reconcile", minutes=minutes)
+        if app is not None:
+            app.extensions["business_scheduler"] = business
+            app.extensions["business_scheduler_state"] = {
+                "enabled": True, "registered": business.registered(),
+                "reason": "registered", "expiry_reconcile_minutes": minutes,
+            }
+        logger.info("业务维护任务已注册: observation.expiry_reconcile 每 %d 分钟", minutes)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("业务任务调度注册失败")
+        if app is not None:
+            app.extensions["business_scheduler_state"] = {
+                "enabled": False, "registered": [],
+                "reason": "registration_failed", "error": str(exc),
+            }
 
 
 def _schedule_configured_data_tasks(scheduler) -> None:

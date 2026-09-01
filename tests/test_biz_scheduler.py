@@ -37,3 +37,37 @@ def test_business_scheduler_only_enqueues(tmp_path):
     assert row is not None
     assert run["status"] == "requested"
     assert service.registered()[0]["registered"] is True
+
+
+def test_web_scheduler_registers_only_real_business_maintenance_task(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from StockInvestmentTool.web.scheduler import _schedule_business_tasks
+
+    monkeypatch.setenv("BUSINESS_DB_PATH", str(tmp_path / "business.db"))
+    monkeypatch.setenv("BUSINESS_EXPIRY_RECONCILE_MINUTES", "5")
+    scheduler = FakeScheduler()
+    app = SimpleNamespace(extensions={})
+
+    _schedule_business_tasks(scheduler, app)
+
+    assert set(scheduler.jobs) == {"biz:observation.expiry_reconcile"}
+    state = app.extensions["business_scheduler_state"]
+    assert state["enabled"] is True
+    assert state["expiry_reconcile_minutes"] == 5
+
+
+def test_web_scheduler_can_be_disabled(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from StockInvestmentTool.web.scheduler import _schedule_business_tasks
+
+    monkeypatch.setenv("BUSINESS_DB_PATH", str(tmp_path / "business.db"))
+    monkeypatch.setenv("BUSINESS_SCHEDULER_ENABLED", "0")
+    scheduler = FakeScheduler()
+    app = SimpleNamespace(extensions={})
+
+    _schedule_business_tasks(scheduler, app)
+
+    assert scheduler.jobs == {}
+    assert app.extensions["business_scheduler_state"]["reason"] == "disabled_by_config"
