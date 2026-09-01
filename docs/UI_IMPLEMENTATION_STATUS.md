@@ -36,7 +36,7 @@
 | 数据中心 | `/data-center` | `dm-*` | 独立 Adapter，资产、健康、链路已接入 | 任务运行编号和安全预览受接口限制 | `in_progress` |
 | 数据资产 | `/data-center/assets` | `dm-*` | 目录、动态分类、详情和管理操作 | 表单校验和脚本模块化仍需收口 | `in_progress` |
 | 任务中心 | `/data-center/tasks` | `dm-*` | 分组、筛选、配置、日志、产物和轮询 | 执行接口部分场景不返回本次 `run_id` | `in_progress` |
-| 市场 | `/market` | `.app` 公共适配 | 指数、板块、持仓图表保留 | 模板内联脚本和 CDN 依赖 | `in_progress` |
+| 市场 | `/market` | `.app` 公共适配 | 指数、板块、持仓图表保留，已使用独立 `market.css/js` | CDN 图标依赖和公共壳层仍待收口 | `in_progress` |
 | 市场发现 | `/market-discovery` | `.app` 公共适配 | 筛选、分页、K 线和观察入口保留 | 候选上下文和内联脚本仍需收口 | `in_progress` |
 | 观察池 | `/watch-pool` | `.app` 公共适配 | 来源、状态、模拟和建仓入口保留 | 入口与观察看板/自选仍有重叠 | `in_progress` |
 | 观察池行情 | `/dashboard/observe` | `.app` 公共适配 | 行情、支撑、指令和详情保留 | 超宽表格仍需移动端收口 | `in_progress` |
@@ -45,8 +45,8 @@
 | 持仓管理 | `/portfolio` | `.app` 公共适配 | 持仓事实、交易、导入导出 | 与持仓主页面仍有入口重叠 | `in_progress` |
 | 持仓详情 | `/portfolio/{id}` | `.app` 公共适配 | 成本、流水、建议和操作 | 页面结构和表单校验仍需收口 | `in_progress` |
 | 模拟 | `/simulation` | `.app` 公共适配 | 模拟清单、重算、收益和建仓入口 | 模拟与观察池页面边界仍需继续收口 | `in_progress` |
-| 复盘 | `/dashboard/review` | `.app` 公共适配 | 统计、FIFO 流水、手动记录和导出 | 仍以服务端渲染和内联脚本为主 | `in_progress` |
-| 晨报 | `/morning-report` | `.app` 公共适配 | Markdown 摘要和生成入口已接入净化 | 页面脚本和资源治理仍需收口 | `in_progress` |
+| 复盘 | `/dashboard/review` | `.app` 公共适配 | 统计、FIFO 流水、手动记录和导出；已使用独立 `review.css/js` | 服务端数据渲染和公共壳层仍待收口 | `in_progress` |
+| 晨报 | `/morning-report` | `.app` 公共适配 | Markdown 摘要和生成入口已接入净化，已使用独立 `morning-report.css/js` | Marked CDN 依赖和公共壳层仍待收口 | `in_progress` |
 | 操作日志 | `/log` | `.app` 公共适配 | 业务操作和成交记录展示 | 记录类型和统一反馈需继续整理 | `in_progress` |
 | 快速记录 | `/quicklog` | `.app` 公共适配 | 快速录入入口 | 页面脚本和交互仍较旧 | `in_progress` |
 | 研究中心 | `/research` | `.app` 公共适配 | 研究工具入口和流程说明 | 入口页，不承载正式研究结果 | `in_progress` |
@@ -55,7 +55,7 @@
 | 指标中心 | `/indicator-center` | `.app` 公共适配 | 指标目录、编辑和预览 | 表单校验和内联脚本仍需收口 | `in_progress` |
 | 策略编排 | `/strategy-composer` | `.app` 公共适配 | 规则、方案、校验、发布和回滚 | 确认面板和脚本拆分未完成 | `in_progress` |
 | 策略实验 | `/strategy` | `.app` 公共适配 | 扫描、回测、曲线和明细 | CDN、内联脚本和运行状态需收口 | `in_progress` |
-| 操作点位 | `/operation-points` | `.app` 公共适配 | 点位、支撑、止损、RR 和回测 | 表单组件契约尚未完全落地 | `in_progress` |
+| 操作点位 | `/operation-points` | `.app` 公共适配 | 点位、支撑、止损、RR 和回测；已使用独立 `operation-points.css/js` | 表单字段校验和公共壳层仍待收口 | `in_progress` |
 | 方案对比 | `/compare` | `.app` 公共适配 | 方案选择、收益对比和报告 | 内联样式和资源治理需整改 | `in_progress` |
 | 通知中心 | `/notify-center` | `.app` 公共适配 | 规则、通道、投递台账、重试 | 业务通知/系统告警尚未完全 Tab 化 | `in_progress` |
 | 运行诊断 | `/diagnostics` | `.app` 公共适配 | 只读健康检查和状态表 | 状态 CSS 和独立脚本仍可继续收口 | `in_progress` |
