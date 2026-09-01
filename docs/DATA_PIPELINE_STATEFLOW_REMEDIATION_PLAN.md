@@ -26,7 +26,7 @@ External Source
 1. 任务中心显示启用不代表 APScheduler 已注册。
 2. 质量失败可能被任务层记录为成功，并继续进入发布阶段。
 3. Publish 可能在缺少本次输出版本时选择历史合格 Candidate。
-4. Indicators 未经过独立质量检查即登记 `PASS/published`；历史 Factors 文件和诊断兼容代码仍保留，但已从 `stock_daily` 正式 consumer 中移除。
+4. Indicators 未经过独立质量检查即登记 `PASS/published`；历史 Factors 文件和诊断兼容代码仍保留，已从 `stock_daily` 正式 consumer 和管理库健康统计中移除。
 5. `management.db`、`warehouse/meta.db`、旧 `job_runs.db` 的事实口径分裂。
 6. 生产文件、数据集配置和消费者之间存在字段契约不一致。
 7. 大量正式业务消费者绕过 `DatasetAccess`，直接读取物理文件或静默在线回退。
@@ -297,7 +297,7 @@ fix: enforce pipeline quality outcomes
 7. 增加日期覆盖：`expected_trade_date`、`symbols_with_expected_date`、`date_coverage`、`stale_symbols`。
 8. 明确停牌证券处理策略，不得简单将所有证券都要求有当日行情。
 9. Indicators 独立检查代码覆盖、日期范围、核心指标非空率、输入版本和失败证券。
-10. Factors 独立检查代码覆盖、日期范围、核心因子非空率、输入版本和失败证券。
+10. 历史 Factors 不再进入新的独立质量链路；新研究因子统一由 Indicators 质量门禁覆盖。
 11. 移除派生版本自动登记 `PASS/published` 的行为。
 12. 数据中心健康基准使用有效 Universe 或上游 Published Dataset，禁止 `8/8=100%` 式自证。
 

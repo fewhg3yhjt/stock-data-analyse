@@ -119,7 +119,7 @@ stock_daily_pipeline
 → quality
 → publish
 → indicators
-→ historical factors archive (no new production build)
+→ indicators (research factors included; historical Factors archive is not scheduled)
 ```
 
 阶段任务可保留人工执行入口，但不能依赖多个独立定时任务按时间碰撞完成链路。
@@ -456,6 +456,7 @@ Route
 - 统一业务任务结果 DTO、HTTP 202 和持久化队列。
 - 启动恢复检查、任务影响确认、生产级 ready 依赖检查。
 - 继续补齐更多真实业务 handler 后，再逐项开放业务任务调度；`meta.db` / `job_runs.db` 旧运行路径仍待下线。
+- Factors 正式 consumer 和管理库健康统计已移除；历史 Factors 文件与兼容诊断仅保留归档用途。
 
 ### 跨模块验证
 
