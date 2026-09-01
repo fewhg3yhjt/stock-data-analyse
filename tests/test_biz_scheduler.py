@@ -54,6 +54,7 @@ def test_web_scheduler_registers_only_real_business_maintenance_task(tmp_path, m
     assert set(scheduler.jobs) == {
         "biz:observation.expiry_reconcile",
         "biz:notification.outbox_delivery",
+        "biz:report.daily_generate",
     }
     state = app.extensions["business_scheduler_state"]
     assert state["enabled"] is True

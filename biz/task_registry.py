@@ -54,50 +54,8 @@ def _default_handler(task_key: str, service: BusinessTaskService) -> Callable:
         return _report_handler(service)
     if task_key == "notification.outbox_delivery":
         def outbox_handler(input_data: dict) -> dict:
-            from StockInvestmentTool.biz.notification import NotificationService, EmailChannel
-            from StockInvestmentTool.biz.db import loads_json
-
-            service = NotificationService(service.repo)
-            pending = service.list_pending_deliveries()
-            delivered = 0
-            failed = 0
-            for item in pending:
-                delivery_id = item["delivery_id"]
-                if not service.claim(delivery_id, "outbox-worker", lease_seconds=120):
-                    continue
-                event = service.repo.db.fetchone(
-                    "SELECT * FROM notification_events WHERE event_id=?", (item["event_id"],)
-                )
-                if event is None:
-                    continue
-                payload = loads_json(event["payload_json"])
-                symbol = event["symbol"] or ""
-                drawdown_pct = (payload.get("drawdown_from_high") or 0) * 100 if payload else 0.0
-                subject = f"[持仓回撤] {symbol} 高点回撤 {drawdown_pct:.2f}%"
-                body = (
-                    f"股票: {symbol}\n"
-                    f"事件: {event['event_type']}\n"
-                    f"回撤: {drawdown_pct:.2f}%\n"
-                    f"数据时间: {event.get('data_as_of') or ''}\n"
-                    f"详情: {payload}\n"
-                )
-                import os
-                host = os.getenv("EMAIL_SMTP_HOST", "smtp.qq.com")
-                port = int(os.getenv("EMAIL_SMTP_PORT", "465"))
-                user = os.getenv("EMAIL_USER", "")
-                password = os.getenv("EMAIL_PASSWORD", "")
-                recipient = item.get("recipient") or os.getenv("EMAIL_TO", "")
-                if not recipient:
-                    failed += 1
-                    continue
-                channel = EmailChannel(host, port, user, username=user, password=password,
-                                       use_tls=str(os.getenv("EMAIL_USE_TLS", "1")) == "1")
-                if service.deliver(delivery_id, channel, subject=subject, body=body,
-                                   recipient=recipient, worker="outbox-worker"):
-                    delivered += 1
-                else:
-                    failed += 1
-            return {"status": "success", "output_versions": {"delivered": delivered, "failed": failed}}
+            from StockInvestmentTool.biz.daily_digest import send_pending_deliveries
+            return send_pending_deliveries(service.repo)
         return outbox_handler
     if task_key == "advice.refresh":
         def advice_handler(input_data: dict) -> dict:
@@ -332,5 +290,13 @@ def _report_handler(service: BusinessTaskService) -> Callable:
             portfolio_snapshot=input_data.get("portfolio_snapshot"),
             advice_ids=input_data.get("advice_ids"), sections=input_data.get("sections"),
         )
-        return {"status": "success", "output_versions": {"report_id": report.report_id}}
+        digest = {}
+        if input_data.get("notify", True):
+            try:
+                from StockInvestmentTool.biz.daily_digest import build_daily_digest
+                digest = build_daily_digest(service.repo)
+            except Exception as exc:  # noqa: BLE001
+                digest = {"error": str(exc)}
+        return {"status": "success",
+                "output_versions": {"report_id": report.report_id, "digest": digest}}
     return handler

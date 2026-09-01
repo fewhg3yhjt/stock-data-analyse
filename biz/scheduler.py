@@ -17,6 +17,12 @@ from StockInvestmentTool.biz.tasks import BusinessTaskService
 
 logger = logging.getLogger(__name__)
 
+TZ = "Asia/Shanghai"
+
+
+def _tz() -> str:
+    return TZ
+
 
 @dataclass
 class BusinessSchedule:
@@ -43,6 +49,19 @@ class BusinessScheduler:
             self.enqueue, trigger=trigger, id=f"biz:{task_key}", replace_existing=True,
             kwargs={"task_key": task_key, "input_data": input_data or {}},
             max_instances=1, coalesce=True, misfire_grace_time=300,
+        )
+        self.schedules[task_key] = BusinessSchedule(task_key, trigger)
+
+    def register_cron(self, task_key: str, *, hour: int, minute: int,
+                      day_of_week: str = "mon-fri", input_data: dict | None = None) -> None:
+        """按 cron 调度业务任务（收盘后/盘中时段）。"""
+        from apscheduler.triggers.cron import CronTrigger
+
+        trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=_tz())
+        self.scheduler.add_job(
+            self.enqueue, trigger=trigger, id=f"biz:{task_key}", replace_existing=True,
+            kwargs={"task_key": task_key, "input_data": input_data or {}},
+            max_instances=1, coalesce=True, misfire_grace_time=3600,
         )
         self.schedules[task_key] = BusinessSchedule(task_key, trigger)
 

@@ -331,14 +331,21 @@ def api_health_details():
         minute_days = warehouse.minute_store().days()
         scheduler = flask.current_app.extensions.get("scheduler")
         jobs = scheduler.get_jobs() if scheduler else []
-        from StockInvestmentTool.notifier.outbox import NotificationOutbox
+        from StockInvestmentTool.biz.notification import NotificationService
         from StockInvestmentTool.ops.job_runs import JobRunStore
-        outbox = NotificationOutbox()
+        service = NotificationService()
+        recent = service.repo.db.fetchall(
+            "SELECT * FROM notification_deliveries ORDER BY rowid DESC LIMIT 5")
+        recent_items = []
+        for r in recent:
+            item = dict(r)
+            item["id"] = r["delivery_id"]
+            recent_items.append(item)
         return flask.jsonify({
             "status": "success",
             "scheduler": {"enabled": bool(scheduler), "jobs": len(jobs)},
             "warehouse": {"daily_partitions": len(daily_months), "minute_days": len(minute_days)},
-            "notifications": {"outbox": outbox.counts(), "recent": outbox.recent(5)},
+            "notifications": {"outbox": _delivery_counts(), "recent": recent_items},
             "jobs": {"recent": JobRunStore().recent(10)},
             "features": {
                 "minute_snapshot": os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1",
@@ -362,8 +369,7 @@ def api_data_status():
     try:
         from StockInvestmentTool.ops.freshness import data_status
         result = data_status()
-        from StockInvestmentTool.notifier.outbox import NotificationOutbox
-        result["notification_health"] = NotificationOutbox().counts()
+        result["notification_health"] = _delivery_counts()
         return flask.jsonify(result)
     except Exception as e:
         logger.exception("数据状态读取失败")
@@ -1020,10 +1026,17 @@ def api_workbench_positions():
 @web_app.route("/api/workbench/notifications", methods=["GET"])
 def api_workbench_notifications():
     try:
-        from StockInvestmentTool.notifier.outbox import NotificationOutbox
-        outbox = NotificationOutbox()
-        return flask.jsonify({"status": "success", "counts": outbox.counts(),
-                              "items": outbox.recent(5)})
+        from StockInvestmentTool.biz.notification import NotificationService
+        service = NotificationService()
+        rows = service.repo.db.fetchall(
+            "SELECT * FROM notification_deliveries ORDER BY rowid DESC LIMIT 5")
+        items = []
+        for r in rows:
+            item = dict(r)
+            item["id"] = r["delivery_id"]
+            items.append(item)
+        return flask.jsonify({"status": "success", "counts": _delivery_counts(),
+                              "items": items})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
@@ -2812,19 +2825,19 @@ def settings_save_notify():
 @web_app.route("/api/notify/rules", methods=["GET", "POST"])
 def api_notify_rules():
     """触发器 CRUD（I4）：GET 列表 / POST 保存。"""
-    from StockInvestmentTool.notifier import triggers
+    from StockInvestmentTool.biz.triggers import load_triggers, save_triggers, SCHEDULE_MODES
     if flask.request.method == "GET":
         try:
             return flask.jsonify({"status": "success",
-                                  "rules": triggers.load_triggers(),
-                                  "schedule_modes": triggers.SCHEDULE_MODES})
+                                  "rules": load_triggers(),
+                                  "schedule_modes": SCHEDULE_MODES})
         except Exception as e:
             return flask.jsonify({"status": "error", "error": str(e)}), 500
     # POST 保存
     try:
         payload = flask.request.get_json(force=True, silent=True) or {}
         rules = payload.get("rules") or []
-        triggers.save_triggers(rules)
+        save_triggers(rules)
         # 免重启：重挂定时任务（见 init_scheduler 读取最新配置）
         try:
             from StockInvestmentTool.web.scheduler import _reload_scheduler_jobs
@@ -2840,29 +2853,52 @@ def api_notify_rules():
 def api_notify_config():
     """渠道 + 邮件收件人配置状态（I5 相关，不回显明文）。"""
     from StockInvestmentTool.portfolio import settings as s
-    from StockInvestmentTool.notifier import triggers
+    from StockInvestmentTool.biz.triggers import mail_config_status
     try:
         webhook = s.webhook_status()
-        mail = triggers.mail_config_status()
+        mail = mail_config_status()
         return flask.jsonify({"status": "success", "webhook": webhook, "mail": mail})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+def _delivery_counts() -> dict:
+    """biz 通知投递状态统计（替代旧 outbox.counts）。"""
+    from StockInvestmentTool.biz.notification import NotificationService
+    service = NotificationService()
+    rows = service.repo.db.fetchall(
+        "SELECT status, COUNT(*) AS n FROM notification_deliveries GROUP BY status")
+    counts = {r["status"]: r["n"] for r in rows}
+    return {"pending": counts.get("pending", 0),
+            "sent": counts.get("sent", 0),
+            "dead": counts.get("dead", 0)}
+
+
 @web_app.route("/api/notify/outbox", methods=["GET"])
 def api_notify_outbox():
     """Notification delivery ledger for the notification center."""
-    from StockInvestmentTool.notifier.outbox import NotificationOutbox
-
     try:
-        outbox = NotificationOutbox()
-        items = outbox.recent(200)
+        from StockInvestmentTool.biz.notification import NotificationService
+        from StockInvestmentTool.biz.db import loads_json
+        service = NotificationService()
+        deliveries = service.list_pending_deliveries()[:50]
+        # 合并最新 200 条，按状态归类
+        all_rows = service.repo.db.fetchall(
+            "SELECT * FROM notification_deliveries ORDER BY rowid DESC LIMIT 200")
+        items = []
+        for r in all_rows:
+            item = dict(r)
+            item["id"] = r["delivery_id"]
+            items.append(item)
         for key in ("topic", "channel", "status"):
             value = flask.request.args.get(key)
             if value:
                 items = [item for item in items if item.get("channel") == value or
-                         (item.get("payload") or {}).get("topic") == value or item.get("status") == value]
-        return flask.jsonify({"status": "success", "counts": outbox.counts(), "items": items[:50]})
+                         item.get("status") == value]
+        counts = {"pending": sum(1 for i in items if i.get("status") == "pending"),
+                  "sent": sum(1 for i in items if i.get("status") == "sent"),
+                  "dead": sum(1 for i in items if i.get("status") == "dead")}
+        return flask.jsonify({"status": "success", "counts": counts, "items": items[:50]})
     except Exception as e:
         logger.exception("通知投递台账读取失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
@@ -2871,13 +2907,13 @@ def api_notify_outbox():
 @web_app.route("/api/notify/mail", methods=["POST"])
 def api_notify_mail():
     """保存邮件收件人 + SMTP 配置（I5，补全 email.to）。"""
-    from StockInvestmentTool.notifier import triggers
+    from StockInvestmentTool.biz.triggers import set_email_recipients
     try:
         payload = flask.request.get_json(force=True, silent=True) or {}
         to = payload.get("to") or []
         if isinstance(to, str):
             to = [x.strip() for x in to.split(",") if x.strip()]
-        triggers.set_email_recipients(to)
+        set_email_recipients(to)
         return flask.jsonify({"status": "success", "to": to})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400
@@ -2886,48 +2922,79 @@ def api_notify_mail():
 @web_app.route("/api/notify/test", methods=["POST"])
 def api_notify_test():
     """测试发送（I5）：按渠道 + 样例条件发一条测试通知。"""
+    import os
     try:
         payload = flask.request.get_json(force=True, silent=True) or {}
-        channel = payload.get("channel", "feishu")
-        to = payload.get("to") or ""
-        from StockInvestmentTool.notifier.core import (
-            Digest, NotificationFragment, TOPIC_SUMMARY, live_send_digest,
-        )
-        digest = Digest(
-            sections=[{"topic": TOPIC_SUMMARY, "title": "📡 测试通知",
-                       "lines": [f"这是一条来自 StockInvestmentTool 的测试消息（渠道 {channel}）。"]}],
-            meta={"subject": " 📡 测试通知"},
-        )
-        result = live_send_digest(digest, channel, url=payload.get("url") or "",
-                                  subject="📡 测试通知", to=to or None)
-        return flask.jsonify({"status": "success", "result": result})
+        channel = payload.get("channel", "email")
+        to = payload.get("to") or os.getenv("EMAIL_TO", "")
+        from StockInvestmentTool.biz.notification import EmailChannel
+        from StockInvestmentTool.biz.notification import NotificationService
+        from StockInvestmentTool.biz.db import loads_json
+        subject = "📡 测试通知"
+        body = f"这是一条来自 StockInvestmentTool 的测试消息（渠道 {channel}）。"
+        if channel in ("email", "mail", "smtp"):
+            if not to:
+                return flask.jsonify({"status": "error",
+                                      "error": "邮件收件人未配置（EMAIL_TO 或 mail 页填写）"}), 400
+            host = os.getenv("EMAIL_SMTP_HOST", "smtp.qq.com")
+            port = int(os.getenv("EMAIL_SMTP_PORT", "465"))
+            user = os.getenv("EMAIL_USER", "")
+            password = os.getenv("EMAIL_PASSWORD", "")
+            sender = EmailChannel(host, port, user, username=user, password=password,
+                                  use_tls=str(os.getenv("EMAIL_USE_TLS", "1")) == "1")
+            ok = sender.send(subject, body, to)
+            result = {"ok": ok}
+            if not ok:
+                result["error"] = "邮件发送失败（检查 SMTP 配置）"
+            return flask.jsonify({"status": "success" if ok else "error",
+                                  "result": result}), 200 if ok else 400
+        return flask.jsonify({"status": "error", "error": f"测试发送暂仅支持 email（收到渠道 {channel}）"}), 400
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400
 
 
-@web_app.route("/api/notify/outbox/<int:item_id>/retry", methods=["POST"])
+@web_app.route("/api/notify/outbox/<path:item_id>/retry", methods=["POST"])
 def api_notify_outbox_retry(item_id):
-    from StockInvestmentTool.notifier.outbox import NotificationOutbox
-    if not NotificationOutbox().retry(item_id):
-        return flask.jsonify({"status": "error", "error": "通知不存在或当前状态不可重试"}), 404
-    return flask.jsonify({"status": "success", "id": item_id, "state": "pending"})
+    from StockInvestmentTool.biz.notification import NotificationService
+    try:
+        service = NotificationService()
+        row = service.repo.db.fetchone(
+            "SELECT * FROM notification_deliveries WHERE delivery_id=?", (str(item_id),))
+        if row is None:
+            return flask.jsonify({"status": "error", "error": "通知不存在或当前状态不可重试"}), 404
+        if row["status"] in ("dead", "failed"):
+            service.repo.db.update(
+                "notification_deliveries", {"status": "pending", "next_attempt_at": ""},
+                "delivery_id=?", (str(item_id),))
+        return flask.jsonify({"status": "success", "id": item_id, "state": "pending"})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
 @web_app.route("/api/notify/outbox/retry-dead", methods=["POST"])
 def api_notify_outbox_retry_dead():
-    from StockInvestmentTool.notifier.outbox import NotificationOutbox
-    outbox = NotificationOutbox()
-    ids = [item["id"] for item in outbox.recent(200) if item.get("status") == "dead"]
-    retried = [item_id for item_id in ids if outbox.retry(item_id)]
+    from StockInvestmentTool.biz.notification import NotificationService
+    service = NotificationService()
+    rows = service.repo.db.fetchall(
+        "SELECT delivery_id FROM notification_deliveries WHERE status IN ('dead','failed')")
+    retried = []
+    for row in rows:
+        service.repo.db.update(
+            "notification_deliveries", {"status": "pending", "next_attempt_at": ""},
+            "delivery_id=?", (row["delivery_id"],))
+        retried.append(row["delivery_id"])
     return flask.jsonify({"status": "success", "retried": retried})
 
 
 @web_app.route("/api/system/alerts", methods=["POST"])
 def api_system_alerts():
     from StockInvestmentTool.ops.freshness import data_status
-    from StockInvestmentTool.notifier.system_alerts import enqueue_alerts
-    ids = enqueue_alerts(data_status())
-    return flask.jsonify({"status": "success", "outbox_ids": ids})
+    from StockInvestmentTool.biz.system_alerts import enqueue_alerts
+    status = data_status()
+    from StockInvestmentTool.biz.notification import NotificationService
+    status["notification_health"] = _delivery_counts()
+    ids = enqueue_alerts(status)
+    return flask.jsonify({"status": "success", "alert_ids": ids})
 
 
 @web_app.route("/notify-center", methods=["GET"])

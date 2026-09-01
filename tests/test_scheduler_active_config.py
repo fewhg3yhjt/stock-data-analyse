@@ -63,11 +63,15 @@ def test_disable_removes_job_and_enable_readds(tmp_path, monkeypatch):
 
 def test_reload_does_not_touch_non_data_jobs(tmp_path, monkeypatch):
     from apscheduler.triggers.cron import CronTrigger
-    from StockInvestmentTool.web.scheduler import TZ, process_notification_outbox
+    from StockInvestmentTool.web.scheduler import TZ
 
     app, sched, center = _make_app(tmp_path)
     monkeypatch.setattr("StockInvestmentTool.ops.task_center.management_db_path", lambda *a, **k: tmp_path / "runs.db")
-    sched.add_job(process_notification_outbox, CronTrigger(minute="*/5", timezone=TZ),
+
+    def marker():
+        pass
+
+    sched.add_job(marker, CronTrigger(minute="*/5", timezone=TZ),
                   id="notification_outbox", coalesce=True, max_instances=1)
     _schedule_configured_data_tasks(sched)
     before = {job.id for job in sched.get_jobs()}

@@ -1,4 +1,4 @@
-"""Notification delivery ledger API tests."""
+"""Notification delivery ledger API tests（迁移到 biz 投递表）。"""
 
 from __future__ import annotations
 
@@ -27,10 +27,18 @@ def test_notify_outbox_api(client):
 
 
 def test_notify_outbox_filter_and_retry(client, tmp_path, monkeypatch):
+    from StockInvestmentTool.biz.db import BusinessDB
+    from StockInvestmentTool.biz.repo import BusinessRepository
+    from StockInvestmentTool.biz.notification import NotificationService
+
     monkeypatch.setattr("StockInvestmentTool.config.Config.DATA_DIR", tmp_path)
-    from StockInvestmentTool.notifier.outbox import NotificationOutbox
-    item_id = NotificationOutbox().enqueue("system", {"topic": "system", "message": "test"})
+    repo = BusinessRepository(BusinessDB())
+    service = NotificationService(repo)
+    event = service.create_event(event_type="SYSTEM_ALERT", symbol="",
+                                 payload={"subject": "测试", "text": "测试"})
+    delivery = service.create_delivery(event, "email", "test@example.com", template="test")
+
     assert client.get("/api/notify/outbox?status=pending").status_code == 200
-    response = client.post(f"/api/notify/outbox/{item_id}/retry")
+    response = client.post(f"/api/notify/outbox/{delivery.delivery_id}/retry")
     assert response.status_code == 200
     assert response.get_json()["state"] == "pending"

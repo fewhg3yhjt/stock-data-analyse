@@ -131,48 +131,8 @@ def run_daily_tasks(run_id: int | None = None) -> dict:
 
 def run_daily_digest(mgr=None) -> dict:
     """Build one post-close digest from price/fundflow/daily/order topics."""
-    from StockInvestmentTool.notifier.core import (
-        MessageAggregator, NotificationFragment, TOPIC_PRICE, TOPIC_FUNDFLOW,
-        TOPIC_SUMMARY, TOPIC_ORDERS, PRIORITY_BATCH,
-    )
-    from StockInvestmentTool.notifier.notify import (
-        NotifyRules, build_price_messages, build_fundflow_messages,
-        build_daily_messages, build_orders_messages,
-    )
-    from StockInvestmentTool.screener.sources import tencent_quotes
-    from StockInvestmentTool.fundflow import analysis, sources
-    from StockInvestmentTool.portfolio.dashboard import DashboardService
-
-    rules = NotifyRules.from_yaml()
-    agg = MessageAggregator()
-    codes = [w["code"] for w in rules.watchlist if w.get("code")]
-    if codes:
-        lines = build_price_messages(rules, tencent_quotes(codes).to_dict("records"))
-        agg.add(NotificationFragment(TOPIC_PRICE, "💰 自选价格提醒", lines, PRIORITY_BATCH))
-
-    stk_now = sources.fetch_stock("now")
-    overview = analysis.market_overview(stk_now)
-    stk_3d = sources.fetch_stock("3d")
-    stock_res = analysis.stock_analysis(stk_now, stk_3d, top=15)
-    ind_now = sources.fetch_sector("industry", "now")
-    ind_3d = sources.fetch_sector("industry", "3d")
-    industries = analysis.merge_trend(ind_now, ind_3d, on="name")
-    sustained = stock_res["持续流入榜"]
-    divergent = stock_res["价涨钱走(背离)榜"]
-    turn = industries[industries["trend"] == "转为流入"].sort_values("net", ascending=False)
-    agg.add(NotificationFragment(TOPIC_FUNDFLOW, "🌊 资金流信号",
-                                 build_fundflow_messages(rules, overview, sustained, divergent, turn), PRIORITY_BATCH))
-    agg.add(NotificationFragment(TOPIC_SUMMARY, "📊 盘后市场汇总",
-                                 build_daily_messages(rules, overview, ind_now, ind_3d), PRIORITY_BATCH))
-    data = DashboardService(mgr or __import__("StockInvestmentTool.portfolio.manager", fromlist=["PortfolioManager"]).PortfolioManager()).war_room()
-    agg.add(NotificationFragment(TOPIC_ORDERS, "⚔️ 今日持仓指令",
-                                 build_orders_messages(data), PRIORITY_BATCH))
-    digest = agg.digest(meta={"subject": f"股票盘后汇总 {datetime.now():%Y-%m-%d}"})
-    if digest is None:
-        return {"ok": True, "skipped": True}
-    channel = rules.channel
-    kwargs = {"subject": digest.meta["subject"]} if channel in ("email", "mail", "smtp") else {}
-    return send_digest_with_outbox(digest, channel, **kwargs)
+    from StockInvestmentTool.biz.daily_digest import build_daily_digest
+    return build_daily_digest()
 
 
 def run_warehouse_daily() -> dict:
@@ -428,11 +388,6 @@ def init_scheduler(app) -> None:
         id="daily_tasks", misfire_grace_time=3600, coalesce=True, max_instances=1,
     )
     _schedule_configured_data_tasks(scheduler)
-    scheduler.add_job(
-        process_notification_outbox, CronTrigger(minute="*/5", timezone=TZ),
-        id="notification_outbox", misfire_grace_time=600, coalesce=True,
-        max_instances=1,
-    )
     _schedule_business_tasks(scheduler, app)
     # 兜底：定期回收过期任务锁/在途状态，防止异常退出后任务永久卡死。
     scheduler.add_job(
@@ -474,6 +429,10 @@ def init_scheduler(app) -> None:
     logger.info("每日定时任务已启动: %02d:%02d (%s)", hour, minute, TZ)
 
 
+def _today_text() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
 def _schedule_business_tasks(scheduler, app=None) -> None:
     """Schedule only implemented business maintenance tasks.
 
@@ -496,15 +455,28 @@ def _schedule_business_tasks(scheduler, app=None) -> None:
         # 通知投递：领取并发送 pending 投递（与旧 outbox 每 5 分钟节奏一致）
         outbox_minutes = max(1, int(os.getenv("NOTIFICATION_OUTBOX_MINUTES", "5")))
         business.register_interval("notification.outbox_delivery", minutes=outbox_minutes)
+        # 每日盘后汇总：收盘后生成日报 + 通知事件
+        digest_time = os.getenv("BUSINESS_DIGEST_TIME", "15:35")
+        try:
+            digest_hh, digest_mm = (int(v) for v in digest_time.split(":"))
+        except (TypeError, ValueError):
+            digest_hh, digest_mm = 15, 35
+        business.register_cron(
+            "report.daily_generate",
+            hour=digest_hh, minute=digest_mm,
+            input_data={"report_date": _today_text(), "notify": True},
+        )
         if app is not None:
             app.extensions["business_scheduler"] = business
             app.extensions["business_scheduler_state"] = {
                 "enabled": True, "registered": business.registered(),
                 "reason": "registered", "expiry_reconcile_minutes": minutes,
                 "outbox_delivery_minutes": outbox_minutes,
+                "digest_time": digest_time,
             }
         logger.info("业务维护任务已注册: observation.expiry_reconcile 每 %d 分钟, "
-                    "notification.outbox_delivery 每 %d 分钟", minutes, outbox_minutes)
+                    "notification.outbox_delivery 每 %d 分钟, report.daily_generate %s",
+                    minutes, outbox_minutes, digest_time)
     except Exception as exc:  # noqa: BLE001
         logger.exception("业务任务调度注册失败")
         if app is not None:
@@ -625,10 +597,10 @@ def _load_notify_settings() -> dict:
 def _schedule_from_triggers(scheduler) -> None:
     """按触发器配置挂载定时任务（免重启生效 FR-3.4）。
 
-    读取最新 triggers（notifier/notify_rules.yaml），每次保存后调用
+    读取最新 triggers（biz/notify_rules.yaml），每次保存后调用
     `_reload_scheduler_jobs` 重建作业，无需重启容器。
     """
-    from StockInvestmentTool.notifier import triggers
+    from StockInvestmentTool.biz.triggers import enabled_triggers, run_trigger_rule
     from apscheduler.triggers.cron import CronTrigger
 
     # 去掉旧的触发器作业（保留 daily_tasks / online_snapshot）
@@ -638,7 +610,7 @@ def _schedule_from_triggers(scheduler) -> None:
         elif job.id.startswith("trigger_"):
             job.remove()
 
-    for rule in triggers.enabled_triggers():
+    for rule in enabled_triggers():
         sched = rule.get("schedule") or {}
         mode = sched.get("mode")
         rid = rule.get("id") or rule.get("name")
@@ -673,242 +645,9 @@ def _schedule_from_triggers(scheduler) -> None:
 
 
 def run_trigger_rule(rule: dict) -> dict:
-    """执行一条触发器规则：按条件过滤持仓/信号，聚合发送。"""
-    from StockInvestmentTool.notifier.core import (
-        NotificationFragment, MessageAggregator, TOPIC_ORDERS,
-        TOPIC_PRICE, TOPIC_SUMMARY, PRIORITY_BATCH, live_send_digest,
-    )
-    from StockInvestmentTool.portfolio.manager import PortfolioManager
-    from StockInvestmentTool.portfolio.dashboard import DashboardService
-
-    logger.info("执行通知触发器: %s", rule.get("name"))
-    try:
-        mgr = PortfolioManager()
-        mgr.refresh_all()
-        data = DashboardService(mgr).war_room()
-    except Exception as e:
-        logger.error("触发器数据获取失败: %s", e)
-        return {"ok": False, "error": str(e)}
-
-    # 组装片段（topic 分节）。每条条件先独立求值，再按 AND/OR 合并；
-    # 不再只看 condition type，从而确保页面配置的参数真正影响通知。
-    agg = MessageAggregator()
-    conditions = [c for c in rule.get("conditions", []) if isinstance(c, dict)]
-    condition_results = [_evaluate_trigger_condition(c, data) for c in conditions]
-    logic = str(rule.get("logic", "AND")).upper()
-    triggered = (all(condition_results) if logic == "AND" else any(condition_results)) if condition_results else True
-    if not triggered:
-        logger.info("触发器 %s 条件未满足: %s", rule.get("name"), condition_results)
-        return {"ok": True, "skipped": True, "conditions": condition_results}
-
-    # 操作建议类条件
-    action_types = set()
-    for condition in conditions:
-        if condition.get("type") == "action":
-            action_types.update((condition.get("params") or {}).get("advice_types") or [])
-    if any(c.get("type") == "action" for c in conditions) or not conditions:
-        orders_lines = _orders_lines(data, action_types or None)
-        if orders_lines:
-            agg.add(NotificationFragment(TOPIC_ORDERS, "⚔️ 今日持仓指令",
-                                         orders_lines, PRIORITY_BATCH))
-
-    # 价格阈值类（自选）
-    if any(c.get("type") == "price_change" for c in conditions):
-        price_lines = _watch_price_lines(
-            next((c.get("params") or {} for c in conditions if c.get("type") == "price_change"), {})
-        )
-        if price_lines:
-            agg.add(NotificationFragment(TOPIC_PRICE, "💰 自选价格提醒",
-                                         price_lines, PRIORITY_BATCH))
-
-    digest = agg.digest(meta={"subject": f"股票通知 {datetime.now():%Y-%m-%d}"})
-    if digest is None:
-        logger.info("触发器 %s 无触发内容，跳过", rule.get("name"))
-        return {"ok": True, "skipped": True}
-
-    # Intraday checks may run every few minutes, but ordinary alerts must not
-    # turn that polling interval into the delivery frequency.
-    cap_state = None
-    if (rule.get("schedule") or {}).get("mode") == "intraday":
-        cap_state = _intraday_trigger_quota(rule)
-        if not cap_state["allowed"]:
-            logger.info("触发器 %s 已达到每日通知上限 %d 次", rule.get("name"), cap_state["limit"])
-            return {"ok": True, "skipped": True, "reason": "daily_limit",
-                    "daily_count": cap_state["count"], "daily_limit": cap_state["limit"]}
-
-    channel = rule.get("channel", "feishu")
-    kwargs = {}
-    if channel in ("email", "mail", "smtp"):
-        kwargs["subject"] = digest.meta.get("subject", "股票通知")
-        if rule.get("use_email_to"):
-            kwargs["to"] = rule.get("use_email_to")
-    result = send_digest_with_outbox(digest, channel, **kwargs)
-    if result.get("ok") and cap_state:
-        _commit_intraday_trigger_quota(cap_state)
-    return result
-
-
-def send_digest_with_outbox(digest, channel: str, **kwargs) -> dict:
-    """Persist a Digest before delivery; mark sent only after success."""
-    from StockInvestmentTool.notifier.outbox import NotificationOutbox
-
-    payload = {"sections": digest.sections, "meta": digest.meta, "kwargs": kwargs}
-    outbox = NotificationOutbox()
-    item_id = outbox.enqueue(channel, payload)
-    result = _deliver_outbox_item({"id": item_id, "channel": channel, "payload": payload, "attempts": 0})
-    if result.get("ok"):
-        outbox.mark_sent(item_id)
-    return result
-
-
-def _deliver_outbox_item(item: dict, worker_id: str | None = None) -> dict:
-    from StockInvestmentTool.notifier.core import Digest, live_send_digest
-    from StockInvestmentTool.notifier.outbox import NotificationOutbox
-
-    payload = item["payload"]
-    try:
-        result = live_send_digest(
-            Digest(sections=payload.get("sections", []), meta=payload.get("meta", {})),
-            item["channel"], **(payload.get("kwargs") or {}),
-        )
-        if not result or result.get("ok", True) is False:
-            raise RuntimeError(str(result))
-        return result
-    except Exception as exc:
-        NotificationOutbox().mark_failed(item["id"], item.get("attempts", 0), str(exc), worker_id)
-        return {"ok": False, "error": str(exc), "outbox_id": item["id"]}
-
-
-def process_notification_outbox() -> dict:
-    """Retry pending notifications after process/container restarts."""
-    from StockInvestmentTool.notifier.outbox import NotificationOutbox
-
-    worker_id = "scheduler"  # 当前无持久 Worker，仅 Scheduler 领取
-    outbox = NotificationOutbox()
-    due = outbox.claim_due(worker_id=worker_id, lease_seconds=300)
-    if not due:
-        return {"sent": 0, "failed": 0, "pending": outbox.counts().get("pending", 0),
-                "dead": outbox.counts().get("dead", 0)}
-    from StockInvestmentTool.ops.job_runs import JobRunStore
-    store = JobRunStore()
-    run_id = store.start("notification_outbox")
-    sent = failed = 0
-    for item in due:
-        result = _deliver_outbox_item(item, worker_id)
-        if result.get("ok"):
-            outbox.mark_sent(item["id"], worker_id)
-            sent += 1
-        else:
-            failed += 1
-    counts = outbox.counts()
-    result = {"sent": sent, "failed": failed, "pending": counts.get("pending", 0),
-              "dead": counts.get("dead", 0)}
-    store.finish(run_id, "success" if not failed else ("partial_success" if sent else "failed"), result)
-    return result
-
-
-def _evaluate_trigger_condition(condition: dict, data: dict) -> bool:
-    """Evaluate one trigger condition against the current portfolio snapshot."""
-    ctype = condition.get("type")
-    params = condition.get("params") or {}
-    if ctype == "action":
-        wanted = set(params.get("advice_types") or [])
-        if not wanted:
-            return bool(data.get("positions"))
-        return any((p.get("advice") or {}).get("advice_type") in wanted for p in data.get("positions") or [])
-    if ctype == "price_change":
-        return bool(_watch_price_lines(params))
-    if ctype == "indicator":
-        return _indicator_condition_matches(params, data)
-    return False
-
-
-def _indicator_condition_matches(params: dict, data: dict) -> bool:
-    """Evaluate an indicator threshold/crossing for any open position."""
-    from StockInvestmentTool.datasource.fetcher import StockDataFetcher
-    from StockInvestmentTool.datasource.base import FallbackDataSource
-    from StockInvestmentTool.indicators.context import IndicatorContext
-
-    name = str(params.get("name") or "").strip()
-    operator = str(params.get("operator") or "above").strip().lower()
-    if not name:
-        return False
-    try:
-        threshold = float(params.get("value"))
-    except (TypeError, ValueError):
-        return False
-    source = FallbackDataSource()
-    for position in data.get("positions") or []:
-        code = position.get("stock_code") or position.get("code")
-        if not code:
-            continue
-        frame = source.fetch_kline(code)
-        if frame is None or len(frame) < 2:
-            continue
-        try:
-            current = IndicatorContext(frame, row_index=len(frame) - 1).eval(name)
-            previous = IndicatorContext(frame, row_index=len(frame) - 2).eval(name)
-        except (ValueError, KeyError):
-            continue
-        if operator == "above" and current > threshold:
-            return True
-        if operator == "below" and current < threshold:
-            return True
-        if operator == "cross_above" and previous <= threshold < current:
-            return True
-        if operator == "cross_below" and previous >= threshold > current:
-            return True
-    return False
-
-
-def _orders_lines(data: dict, advice_types: Optional[set[str]] = None) -> list[str]:
-    """持仓指令 → 文本行（含操作建议/盈亏）。"""
-    positions = data.get("positions") or []
-    if not positions:
-        return []
-    detail_lines = []
-    for p in positions:
-        adv = p.get("advice") or {}
-        if advice_types and adv.get("advice_type") not in advice_types:
-            continue
-        label = p.get("advice_label") or "—"
-        reason = (adv.get("reason") or "")[:60]
-        line = (f"{p.get('stock_name')}({p.get('stock_code')}): {label}"
-                f" 现价{p.get('current_price')} 盈亏{p.get('unrealized_pnl_pct')}%")
-        if reason:
-            line += f"｜{reason}"
-        detail_lines.append(line)
-    if not detail_lines:
-        return []
-    return [f"持仓 {len(detail_lines)} 只 | 总盈亏 {data.get('summary', {}).get('total_pnl_pct', '—')}%", *detail_lines]
-
-
-def _watch_price_lines(params: Optional[dict] = None) -> list[str]:
-    """自选价格阈值触发 → 文本行。"""
-    try:
-        from StockInvestmentTool.notifier.notify import NotifyRules, build_price_messages
-        from StockInvestmentTool.screener.sources import tencent_quotes
-
-        params = params or {}
-        rules = NotifyRules.from_yaml()
-        codes = [w["code"] for w in rules.watchlist if w.get("code")]
-        if not codes:
-            return []
-        quotes = tencent_quotes(codes).to_dict("records")
-        if not params:
-            return build_price_messages(rules, quotes)
-        direction = str(params.get("direction", "up")).lower()
-        threshold = float(params.get("pct", 0))
-        lines = []
-        for quote in quotes:
-            change = float(quote.get("change_pct") or 0)
-            matched = change >= threshold if direction == "up" else change <= -threshold
-            if matched:
-                lines.append(f"{quote.get('name') or quote.get('code')}: 涨跌幅 {change:+.2f}%（阈值 {direction} {threshold:.2f}%）")
-        return lines
-    except Exception as e:
-        logger.warning("价格阈值检查失败: %s", e)
-        return []
+    """执行一条触发器规则：按条件过滤持仓/信号，聚合发送（biz 实现）。"""
+    from StockInvestmentTool.biz.triggers import run_trigger_rule as _biz_run
+    return _biz_run(rule)
 
 
 def _reload_scheduler_jobs(app) -> None:
@@ -921,273 +660,6 @@ def _reload_scheduler_jobs(app) -> None:
         _reload_data_scheduler_jobs(app)
     except Exception as e:
         logger.error("重挂通知触发器失败: %s", e)
-
-
-# ── 通知去重（避免盘中每10分钟重复推送同一建议）──────────────
-_NOTIFY_STATE = os.path.join(os.environ.get("STOCK_OUTPUT_DIR", ""), "data", "notify_state.json") \
-    if os.environ.get("STOCK_OUTPUT_DIR") else None
-# 去重窗口（小时）：同一持仓同一建议类型在此窗口内不重复推送
-_DEDUP_HOURS = 24
-_INTRADAY_DAILY_LIMIT = 3
-
-
-def _intraday_trigger_quota(rule: dict) -> dict:
-    """Return a persistent daily quota for ordinary intraday trigger delivery."""
-    from datetime import datetime as _dt
-
-    state = _load_notify_state()
-    now = _dt.now()
-    limit = max(1, int(os.getenv("INTRADAY_NOTIFY_DAILY_LIMIT", str(_INTRADAY_DAILY_LIMIT))))
-    key = f"trigger_count:{rule.get('id') or rule.get('name') or 'intraday'}:{now:%Y-%m-%d}"
-    count = int(state.get(key, 0) or 0)
-    return {"allowed": count < limit, "state": state, "key": key,
-            "count": count, "limit": limit}
-
-
-def _commit_intraday_trigger_quota(quota: dict) -> None:
-    state = dict(quota["state"])
-    state[quota["key"]] = int(quota["count"]) + 1
-    _save_notify_state(state)
-
-
-def _notify_state_path() -> str:
-    """通知去重状态文件路径（output/data/notify_state.json）。"""
-    global _NOTIFY_STATE
-    if _NOTIFY_STATE:
-        return _NOTIFY_STATE
-    from StockInvestmentTool.config import Config
-    _NOTIFY_STATE = str(Config.DATA_DIR / "notify_state.json")
-    return _NOTIFY_STATE
-
-
-def _load_notify_state() -> dict:
-    path = _notify_state_path()
-    try:
-        import json
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _save_notify_state(state: dict):
-    try:
-        import json
-        from pathlib import Path
-        path = Path(_notify_state_path())
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f".{path.name}.tmp")
-        tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, path)
-    except Exception as e:
-        logger.warning("通知状态保存失败: %s", e)
-
-
-def _filter_unnotified(data: dict) -> dict:
-    """过滤掉去重窗口内已推送过的操作建议。
-
-    返回 {data: 过滤后的 war_room data, messages: 去重后的消息列表}
-    """
-    from datetime import datetime as _dt
-    from StockInvestmentTool.notifier.notify import build_actionable_messages
-
-    state = _load_notify_state()
-    now = _dt.now()
-    day_key = f"intraday_count:{now:%Y-%m-%d}"
-    used = int(state.get(day_key, 0) or 0)
-    positions = data.get("positions") or []
-    kept_positions = []
-    for p in positions:
-        adv = p.get("advice") or {}
-        if not adv.get("is_actionable"):
-            continue
-        key = f"{p.get('id')}:{adv.get('advice_type')}"
-        last = state.get(key)
-        dedup = False
-        if last:
-            try:
-                last_dt = _dt.fromisoformat(last)
-                hours = (now - last_dt).total_seconds() / 3600
-                if hours < _DEDUP_HOURS:
-                    dedup = True
-            except Exception:
-                pass
-        # sell_all is an urgent risk exit and must not be hidden by the normal
-        # intraday daily cap. Other recommendations share one daily quota.
-        urgent = adv.get("advice_type") == "sell_all"
-        if not dedup and (urgent or used < _INTRADAY_DAILY_LIMIT):
-            kept_positions.append(p)
-            if not urgent:
-                used += 1
-            # Do not persist yet. The caller commits only after a successful
-            # channel delivery, otherwise a failed alert would be suppressed.
-    data = dict(data)
-    data["positions"] = kept_positions
-    msgs = build_actionable_messages(data)
-    return {"data": data, "messages": msgs,
-            "pending_keys": [
-                f"{p.get('id')}:{(p.get('advice') or {}).get('advice_type')}"
-                for p in kept_positions
-            ], "state": state, "now": now.isoformat(timespec="seconds"),
-            "day_key": day_key, "daily_count": used}
-
-
-def _commit_notify_dedup(dedup: dict) -> None:
-    """Persist pending notification keys after the channel confirms success."""
-    state = dict(dedup.get("state") or {})
-    stamp = dedup.get("now")
-    for key in dedup.get("pending_keys") or []:
-        state[key] = stamp
-    if dedup.get("day_key"):
-        state[dedup["day_key"]] = int(dedup.get("daily_count", 0))
-    _save_notify_state(state)
-
-
-def run_post_close_summary():
-    """盘后全持仓汇总：发送所有持仓的状态/建议/盈亏邮件。"""
-    try:
-        from StockInvestmentTool.portfolio.manager import PortfolioManager
-        from StockInvestmentTool.portfolio.dashboard import DashboardService
-        from StockInvestmentTool.notifier.notify import (
-            NotifyRules, build_orders_messages, build_orders_html, send_all,
-        )
-        from StockInvestmentTool.notifier.channels import EmailSender
-
-        mgr = PortfolioManager()
-        mgr.refresh_all()
-        data = DashboardService(mgr).war_room()
-        messages = build_orders_messages(data)
-        if not messages:
-            logger.info("盘后汇总: 无持仓")
-            return
-
-        rules = NotifyRules.from_yaml()
-        if rules.channel in ("email", "mail", "smtp"):
-            html = build_orders_html(data)
-            sender = EmailSender()
-            sender.send(html, subject="📊 盘后持仓汇总", is_html=True)
-            logger.info("盘后持仓汇总已推送邮件")
-        else:
-            webhook = rules.webhook_url()
-            send_all(rules.channel, webhook, messages)
-            logger.info("盘后持仓汇总已推送 %d 条", len(messages))
-    except Exception as e:
-        logger.error("盘后持仓汇总异常: %s", e)
-
-
-def run_actionable_monitor():
-    """盘中持仓操作提醒：刷新所有持仓，仅推送「有操作建议」的持仓。
-
-    触发条件: advisor 给出 buy_more/partial_sell/sell_all/adjust_stop
-    （右侧止盈/硬止损/技术止损/加仓/调止损），hold 不推。
-    """
-    try:
-        from StockInvestmentTool.portfolio.manager import PortfolioManager
-        from StockInvestmentTool.portfolio.dashboard import DashboardService
-        from StockInvestmentTool.notifier.notify import (
-            NotifyRules, build_actionable_messages, send_all,
-        )
-
-        mgr = PortfolioManager()
-        # 刷新持仓（现价/点位/建议）
-        mgr.refresh_all()
-        data = DashboardService(mgr).war_room()
-        messages = build_actionable_messages(data)
-        if not messages:
-            logger.info("持仓操作提醒: 无触发（全部 hold 或无持仓）")
-            return
-
-        # 去重：同一持仓同一建议类型短期内(默认24h)不重复推送
-        dedup = _filter_unnotified(data)
-        if not dedup["messages"]:
-            logger.info("持仓操作提醒: 均已在去重期内推送过，跳过")
-            return
-        data = dedup["data"]
-
-        rules = NotifyRules.from_yaml()
-        try:
-            webhook = rules.webhook_url()
-        except RuntimeError as e:
-            logger.error("操作提醒推送配置错误: %s", e)
-            return
-
-        # 邮件渠道：正文用 HTML 摘要卡片 + 外部URL快照图；webhook 渠道用纯文本
-        if rules.channel in ("email", "mail", "smtp"):
-            from StockInvestmentTool.notifier.notify import build_actionable_html
-            from StockInvestmentTool.notifier.channels import EmailSender
-            html_body = build_actionable_html(dedup["data"])
-            # 外部 URL 快照图（避开 CID 内嵌触发 QQ 550 过滤）
-            urls_2d = _build_snapshot_images(dedup["data"]) or []
-            img_tags = "".join(
-                f'<br><img src="{u}" style="max-width:640px;border-radius:8px;">'
-                for group in urls_2d for u in group
-            )
-            sender = EmailSender()
-            sender.send(html_body + img_tags, subject="🔔 持仓操作提醒",
-                        images=None, is_html=True)
-            _commit_notify_dedup(dedup)
-            logger.info("持仓操作提醒已推送邮件（%d 只有操作建议）",
-                        len(dedup["messages"]))
-        else:
-            images = _build_snapshot_images(dedup["data"])
-            sent = send_all(rules.channel, webhook, dedup["messages"], images=images)
-            _commit_notify_dedup(dedup)
-            logger.info("持仓操作提醒已推送 %d 条（%d 只有操作建议）",
-                        sent, len(dedup["messages"]))
-    except Exception as e:
-        logger.error("持仓操作提醒异常: %s", e)
-
-
-def _build_snapshot_images(data: dict) -> Optional[list[list[str]]]:
-    """为有操作建议的持仓生成收益快照图，返回与 messages 对齐的图片列表。
-
-    每只股票一张收益图（存到 CHART_DIR 供外部 URL 访问），
-    返回外部 URL 列表（邮件用 <img src> 引用，避开 CID 内嵌触发邮件过滤）。
-    """
-    channel = os.getenv("NOTIFY_CHANNEL", "")
-    if channel in ("feishu", "wecom", "lark"):
-        return None
-    try:
-        from StockInvestmentTool.analysis.returns import build_snapshot_chart
-        from StockInvestmentTool.portfolio.monitor import PriceMonitor
-        from StockInvestmentTool.config import Config
-        from datetime import datetime as _dt
-
-        out_dir = Config.CHART_DIR
-        out_dir.mkdir(parents=True, exist_ok=True)
-        positions = data.get("positions") or []
-        urls_all = []
-        monitor = PriceMonitor()
-        for p in positions:
-            adv = p.get("advice") or {}
-            if not (adv.get("advice_type") and adv.get("is_actionable")):
-                urls_all.append([])
-                continue
-            code = p.get("stock_code") or ""
-            try:
-                kline, _ = monitor.fetch_context_data(code)
-                if kline is not None and not kline.empty:
-                    name = p.get("stock_name") or code
-                    # 存到 CHART_DIR，文件名带 notify_ 前缀（可被 /charts/ 访问）
-                    fname = f"notify_{_dt.now():%Y%m%d%H%M%S}_{code.replace('.','_')}.png"
-                    path = build_snapshot_chart(kline, name, code,
-                                                out_dir=out_dir,
-                                                filename=fname)
-                    if path:
-                        url = f"https://stock.easyconnect.ltd/charts/{os.path.basename(path)}"
-                        urls_all.append([url])
-                    else:
-                        urls_all.append([])
-                else:
-                    urls_all.append([])
-            except Exception as e:
-                logger.warning("快照图生成失败 %s: %s", code, e)
-                urls_all.append([])
-        return urls_all
-    except Exception as e:
-        logger.warning("快照图生成整体失败: %s", e)
-        return None
 
 
 def run_online_snapshot_job():
@@ -1246,17 +718,6 @@ def _evaluate_position_runtime() -> dict:
     except Exception as exc:  # noqa: BLE001
         logger.error("持仓运行状态评估失败: %s", exc)
         return {"evaluated": 0, "triggered": 0, "error": str(exc)}
-
-
-def run_system_alert_job() -> dict:
-    """Evaluate health and enqueue deduplicated system alerts."""
-    from StockInvestmentTool.ops.freshness import data_status
-    from StockInvestmentTool.notifier.system_alerts import enqueue_alerts
-    status = data_status()
-    from StockInvestmentTool.notifier.outbox import NotificationOutbox
-    status["notification_health"] = NotificationOutbox().counts()
-    ids = enqueue_alerts(status)
-    return {"alerts": len(ids), "outbox_ids": ids, "overall_status": status.get("overall_status")}
 
 
 def scheduler_status(app) -> dict:

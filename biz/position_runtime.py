@@ -217,10 +217,22 @@ class PositionRuntimeService:
     def _emit_drawdown_event(self, state: PositionRuntimeState) -> None:
         """回撤达到阈值时生成去重通知事件 + 投递记录。"""
         from StockInvestmentTool.biz.notification import NotificationService
-        from StockInvestmentTool.biz.models import new_id, now_utc
 
         threshold = drawdown_threshold()
+        subject = f"[持仓回撤] {state.symbol} 高点回撤 {abs(state.drawdown_from_high) * 100:.2f}%"
+        text = (
+            f"股票: {state.symbol}\n"
+            f"事件: 持仓高点回撤\n"
+            f"回撤: {abs(state.drawdown_from_high) * 100:.2f}%（阈值 {threshold * 100:.0f}%）\n"
+            f"现价: {state.current_price}\n"
+            f"买入后最高: {state.highest_since_entry}\n"
+            f"浮动盈亏: {state.unrealized_pnl}\n"
+            f"持仓天数: {state.holding_days}\n"
+            f"数据时间: {state.price_as_of}（来源 {state.price_source}）\n"
+        )
         payload = {
+            "subject": subject,
+            "text": text,
             "symbol": state.symbol,
             "position_cycle_id": state.position_cycle_id,
             "current_price": state.current_price,
@@ -245,8 +257,19 @@ class PositionRuntimeService:
             action="SELL_ALL",
             trigger_fingerprint=trigger_fingerprint,
         )
+        from StockInvestmentTool.biz.notification import NotificationService as _NS
+        recipient = _email_recipient()
+        if recipient:
+            NotificationService(self.repo).create_delivery(
+                event, "email", recipient, template="position_drawdown"
+            )
         logger.info("回撤通知已生成: %s drawdown=%.2f%% (as_of=%s)",
                     state.symbol, state.drawdown_from_high * 100, state.price_as_of)
+
+
+def _email_recipient() -> str:
+    import os
+    return os.getenv("EMAIL_TO", "")
 
 
 class _MinuteFirstPriceLoader:
