@@ -67,7 +67,7 @@
 
 | 资源 | 当前作用 | 当前问题 |
 |---|---|---|
-| `base.css` | 公共 Token 和基础组件 | 语义 Token 和 `.ui-*` 基础组件已存在；旧类和页面内联样式仍并存 |
+| `base.css` | 公共 Token 和基础组件 | 语义 Token、`.ui-*` 基础组件及统一表单禁用/无效/提交中样式已存在；旧类和页面内联样式仍并存 |
 | `ui-shell.css` | 旧 `.app` 页面公共壳层适配 | 仍通过选择器覆盖旧模板结构 |
 | `ui-status.js` | 状态词表和 canonical class 映射 | `cls` 已返回完整 `status-*` 类名；部分旧页面仍需统一调用和展示 |
 | `ui-feedback.js` | 全局页面消息和旧 alert 过渡 | 不应继续劫持 `window.alert` 作为最终方案 |

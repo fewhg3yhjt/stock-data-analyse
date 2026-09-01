@@ -171,6 +171,10 @@ tr:last-child td{border-bottom:none;}
 .ui-field label{font-size:13px;color:var(--color-text-subtle);font-weight:500;}
 .ui-field input,.ui-field select,.ui-field textarea{background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;color:var(--color-text);font-size:14px;outline:none;}
 .ui-field input:focus,.ui-field select:focus,.ui-field textarea:focus{border-color:var(--color-info);box-shadow:0 0 0 2px #e7f0ff;}
+.ui-field input:disabled,.ui-field select:disabled,.ui-field textarea:disabled{background:var(--color-surface-subtle);color:var(--color-muted);cursor:not-allowed;}
+.ui-field input[aria-invalid="true"],.ui-field select[aria-invalid="true"],.ui-field textarea[aria-invalid="true"],.ui-field input:invalid:not(:placeholder-shown),.ui-field select:invalid,.ui-field textarea:invalid:not(:placeholder-shown){border-color:var(--color-danger);box-shadow:0 0 0 2px #fbe9e7;}
+.ui-form.is-submitting{opacity:.75;pointer-events:none;}
+.ui-form-status{min-height:18px;font-size:12px;color:var(--color-muted);}
 .ui-field-help{font-size:12px;color:var(--color-muted);}
 .ui-field-error{font-size:12px;color:var(--color-danger);min-height:0;}
 
