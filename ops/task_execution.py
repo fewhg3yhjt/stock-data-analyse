@@ -155,18 +155,15 @@ def _publish(warehouse: Warehouse, request: dict) -> dict:
 
 def _auxiliary(warehouse: Warehouse, request: dict, task_key: str) -> dict:
     symbols = [code for code in _symbols(request) if code.startswith(("sh6", "sz0", "sz3", "bj4", "bj8"))]
-    if task_key == "industry_capture":
-        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
-        fetcher = StockDataFetcher()
-        frames = []
-        for code in symbols:
-            value = fetcher.get_stock_industry(code)
-            if value:
-                warehouse.update_industry(code, value)
-                frames.append(pd.DataFrame([{"code": code, "industry": value}]))
-        raw = capture_frames(warehouse, dataset_name="industry", source_name="baostock", frames=frames,
-                             expected_symbols=len(symbols), success_symbols=len(frames), universe_id="industry_task")
-        return {"rows": len(frames), "symbols": len(frames), "raw_batch_id": raw["batch_id"]}
+    if task_key in {"industry_capture", "industry_membership_capture"}:
+        from StockInvestmentTool.warehouse.industry import IndustryCollector
+        result = IndustryCollector(warehouse).collect_membership(codes=symbols)
+        return {"rows": result["success"], "symbols": result["success"], "raw_batch_id": result["raw_batch_id"], "failed": result["failed"]}
+    if task_key == "industry_daily_capture":
+        from StockInvestmentTool.warehouse.industry import IndustryCollector
+        result = IndustryCollector(warehouse).collect_daily(
+            start_date=request.get("period_start"), end_date=request.get("period_end"))
+        return result
     if task_key == "fundamentals_capture":
         output = FundamentalsCollector(warehouse=warehouse).collect_fundamentals(codes=symbols, years=5)
         output["rows"] = output.get("done", 0)
@@ -202,7 +199,7 @@ def worker(task_key: str, warehouse: Warehouse, request: dict, run_id: int) -> d
         return IndicatorsBuilder(warehouse, allow_legacy=False).build_all(
             symbols=_symbols(request), asset_types=["stock", "etf"], months=_months(request.get("period_start"), request.get("period_end")),
             partition_versions=request.get("input_versions") or None)
-    if task_key in {"industry_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture"}:
+    if task_key in {"industry_capture", "industry_membership_capture", "industry_daily_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture"}:
         return _auxiliary(warehouse, request, task_key)
     raise ValueError(f"未注册的任务: {task_key}")
 

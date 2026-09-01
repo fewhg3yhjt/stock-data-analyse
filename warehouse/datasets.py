@@ -10,6 +10,8 @@ from typing import Optional
 
 import pandas as pd
 
+from StockInvestmentTool.warehouse.dataset_config import load_dataset_config
+
 
 @dataclass
 class DatasetResult:
@@ -48,6 +50,7 @@ class DatasetAccess:
                      end_date: Optional[str] = None, symbols: Optional[list[str]] = None,
                      required_quality: str = "WARNING", *, allow_legacy: bool = False,
                      partition_versions: dict[str, str] | None = None) -> DatasetResult:
+        partition_type = load_dataset_config(dataset_name)["dataset"]["partition"]["type"]
         months = self._months(start_date, end_date)
         versions = self.get_current_version(dataset_name)
         if partition_versions:
@@ -56,7 +59,17 @@ class DatasetAccess:
             if not allow_legacy:
                 raise DatasetAccessError(f"没有 Published Dataset: {dataset_name}")
             return self._load_legacy(dataset_name, months, start_date, end_date, symbols)
-        if not months:
+        if partition_type == "snapshot":
+            if start_date or end_date:
+                # Snapshot reads are as-of reads: use the newest snapshot that
+                # was available by the requested end date.
+                end = pd.Timestamp(end_date or start_date)
+                available = [key for key in sorted(versions)
+                             if pd.Timestamp(key) <= end]
+                months = [available[-1]] if available else []
+            else:
+                months = sorted(versions)
+        elif not months:
             months = sorted(versions)
         frames = []
         contexts = {}
@@ -86,6 +99,7 @@ class DatasetAccess:
         quality_status = self._overall_quality(contexts)
         returned_start = self._min_date(filtered)
         returned_end = self._max_date(filtered)
+        snapshot_dates = sorted({str(value)[:10] for value in filtered["snapshot_date"]}) if "snapshot_date" in filtered else []
         return DatasetResult(filtered, {
             "dataset": dataset_name,
             "dataset_refs": {dataset_name: {
@@ -101,6 +115,8 @@ class DatasetAccess:
             "returned_start": returned_start,
             "returned_end": returned_end,
             "data_as_of": returned_end,
+            "snapshot_date": snapshot_dates[-1] if snapshot_dates else None,
+            "snapshot_dates": snapshot_dates,
             "quality_status": quality_status,
             "source": "published_dataset",
             "fallback_used": False,
@@ -165,21 +181,28 @@ class DatasetAccess:
     def _filter(frame, start_date, end_date, symbols):
         if frame.empty:
             return frame
-        if start_date and "date" in frame:
-            frame = frame[pd.to_datetime(frame["date"]) >= pd.Timestamp(start_date)]
-        if end_date and "date" in frame:
-            frame = frame[pd.to_datetime(frame["date"]) <= pd.Timestamp(end_date)]
+        date_column = "date" if "date" in frame else "trading_date" if "trading_date" in frame else None
+        if start_date and "snapshot_date" in frame:
+            frame = frame[pd.to_datetime(frame["snapshot_date"]) >= pd.Timestamp(start_date)]
+        if end_date and "snapshot_date" in frame:
+            frame = frame[pd.to_datetime(frame["snapshot_date"]) <= pd.Timestamp(end_date)]
+        if start_date and date_column:
+            frame = frame[pd.to_datetime(frame[date_column]) >= pd.Timestamp(start_date)]
+        if end_date and date_column:
+            frame = frame[pd.to_datetime(frame[date_column]) <= pd.Timestamp(end_date)]
         if symbols and "code" in frame:
             frame = frame[frame["code"].astype(str).isin({str(code) for code in symbols})]
         return frame.reset_index(drop=True)
 
     @staticmethod
     def _max_date(frame):
-        return str(pd.to_datetime(frame["date"]).max())[:10] if not frame.empty and "date" in frame else None
+        column = "date" if "date" in frame else "trading_date" if "trading_date" in frame else "snapshot_date" if "snapshot_date" in frame else None
+        return str(pd.to_datetime(frame[column]).max())[:10] if not frame.empty and column else None
 
     @staticmethod
     def _min_date(frame):
-        return str(pd.to_datetime(frame["date"]).min())[:10] if not frame.empty and "date" in frame else None
+        column = "date" if "date" in frame else "trading_date" if "trading_date" in frame else "snapshot_date" if "snapshot_date" in frame else None
+        return str(pd.to_datetime(frame[column]).min())[:10] if not frame.empty and column else None
 
     @staticmethod
     def _overall_quality(contexts):

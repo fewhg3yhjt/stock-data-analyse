@@ -192,6 +192,29 @@ def cmd_status(args):
     print("=" * 56)
 
 
+def cmd_industry(args):
+    from StockInvestmentTool.warehouse.industry import IndustryCollector, stage_and_publish_industry_batch
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    warehouse = Warehouse()
+    warehouse.metadata.register_dataset("industry_membership")
+    warehouse.metadata.register_dataset("industry_daily")
+    c = IndustryCollector(warehouse, interval=args.interval, retries=args.retries, backoff=args.backoff)
+    if args.kind == "membership":
+        result = c.collect_membership(max_symbols=args.max_symbols, snapshot_date=args.snapshot_date, refresh=args.refresh)
+    else:
+        if not args.start or not args.end:
+            raise ValueError("industry daily 需要 --start 和 --end")
+        result = c.collect_daily(start_date=args.start, end_date=args.end)
+    if result.get("raw_batch_id"):
+        dataset = "industry_membership" if args.kind == "membership" else "industry_daily"
+        published = stage_and_publish_industry_batch(
+            warehouse, dataset_name=dataset, batch_id=result["raw_batch_id"],
+            expected_symbols=result.get("expected_symbols") or result.get("success"),
+        )
+        result["published"] = published
+    print(result)
+
+
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(
         prog="StockInvestmentTool.warehouse",
@@ -252,13 +275,24 @@ def main(argv: list[str] | None = None):
 
     sub.add_parser("status", help="仓库状态")
 
+    p_ind = sub.add_parser("industry", help="低频采集行业数据（默认不执行全市场）")
+    p_ind.add_argument("kind", choices=["membership", "daily"])
+    p_ind.add_argument("--max-symbols", type=int, default=None)
+    p_ind.add_argument("--snapshot-date", default=None)
+    p_ind.add_argument("--start", default=None)
+    p_ind.add_argument("--end", default=None)
+    p_ind.add_argument("--refresh", action="store_true")
+    p_ind.add_argument("--interval", type=float, default=1.0)
+    p_ind.add_argument("--retries", type=int, default=3)
+    p_ind.add_argument("--backoff", type=float, default=2.0)
+
     args = parser.parse_args(argv)
     setup_logging(args.verbose)
 
     handlers = {"init": cmd_init, "sync": cmd_sync, "factors": cmd_factors,
                 "scan": cmd_scan, "online": cmd_online, "status": cmd_status,
                 "reset": cmd_reset, "process": cmd_process, "backfill": cmd_backfill,
-                "fundamentals": cmd_fundamentals}
+                 "fundamentals": cmd_fundamentals, "industry": cmd_industry}
     try:
         handlers[args.cmd](args)
     except Exception as e:

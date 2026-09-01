@@ -1,0 +1,30 @@
+dataset:
+  name: industry_membership
+  display_name: 证监会行业成员关系
+  description: 股票与证监会行业分类的历史快照
+  grain: 一个行业分类快照中的一只股票一条行业归属
+  primary_keys: [snapshot_date, code, industry_classification]
+  partition: {type: snapshot, path: 'warehouse/industry_membership/{partition}.parquet'}
+  update_frequency: 每周一次
+  schema_version: industry_membership.v1
+fields:
+  - {name: snapshot_date, display_name: 快照日期, data_type: date, nullable: false, primary_key: true}
+  - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
+  - {name: industry_code, display_name: 行业代码, data_type: string, nullable: false}
+  - {name: industry_name, display_name: 行业名称, data_type: string, nullable: false}
+  - {name: raw_industry, display_name: 原始行业, data_type: string, nullable: false}
+  - {name: industry_classification, display_name: 分类体系, data_type: string, nullable: false, primary_key: true}
+  - {name: source_update_date, display_name: 来源更新日期, data_type: date, nullable: true}
+  - {name: source, display_name: 来源, data_type: string, nullable: false}
+  - {name: captured_at, display_name: 采集时间, data_type: datetime, nullable: false}
+sources:
+  - name: baostock
+    role: primary
+    priority: 1
+    field_mapping: {}
+    unit_conversions: {}
+consumers:
+  - {name: market_discovery, type: business, purpose: 股票行业筛选和成员统计, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式扫描}
+quality:
+  publish_warning: true
+  coverage: {pass_min: 0.98, warning_min: 0.95}

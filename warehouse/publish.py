@@ -83,7 +83,7 @@ class Publisher:
             raise ValueError("候选文件不存在")
         current = conn.execute("SELECT version_id FROM dataset_current WHERE dataset_name=? AND partition_key=?", (row[0], row[1])).fetchone()
         if row[4] == "published" and current and current[0] == version_id:
-            return {"version_id": version_id, "path": str(self.warehouse.daily_partition(row[1])), "already_published": True}
+            return {"version_id": version_id, "path": str(self.warehouse.daily_partition(row[1]) if row[0] == "stock_daily" else Path(row[2])), "already_published": True}
         version_row = conn.execute("SELECT checksum FROM dataset_versions WHERE version_id=?", (version_id,)).fetchone()
         if hashlib.sha256(candidate.read_bytes()).hexdigest() != version_row[0]:
             raise ValueError("候选文件 checksum 不匹配")

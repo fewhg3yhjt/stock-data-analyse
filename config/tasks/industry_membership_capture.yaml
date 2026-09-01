@@ -1,0 +1,12 @@
+task:
+  key: industry_membership_capture
+  display_name: 证监会行业成员采集
+  stage: CAPTURE
+  type: SOURCE_CAPTURE
+  input_datasets: [universe]
+  output_datasets: [industry_membership]
+  producer_metrics: []
+scope: {asset_types: [stock], universe: active}
+schedule: {enabled: false, timezone: Asia/Shanghai, frequency: weekly, time: "16:00", period_type: week, period_start: null, period_end: null}
+execution: {manual_enabled: true, retry_limit: 3}
+policy: {on_partial_success: continue, on_failure: continue}

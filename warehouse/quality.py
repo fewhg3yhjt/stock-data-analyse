@@ -174,3 +174,34 @@ def check_derived_output(path, dataset_name: str, *, expected_symbols: int | Non
     status = "FAIL" if fail else ("WARNING" if warn else "PASS")
     publish_allowed = status == "PASS" or status == "WARNING"
     return {"status": status, "publish_allowed": publish_allowed, "checks": checks}
+
+
+def _industry_quality(path, dataset_name: str, expected_symbols: int | None = None) -> dict:
+    frame = pd.read_parquet(path)
+    config = load_dataset_config(dataset_name)["quality"]
+    keys = load_dataset_config(dataset_name)["dataset"]["primary_keys"]
+    required = set(keys)
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return {"status": "FAIL", "publish_allowed": False, "checks": {"missing_columns": missing, "row_count": len(frame)}}
+    duplicate = int(frame.duplicated(keys).sum())
+    if dataset_name == "industry_membership":
+        valid = frame["industry_code"].astype(str).ne("") & frame["industry_name"].astype(str).ne("")
+    else:
+        valid = frame["industry_id"].astype(str).ne("") & frame["industry_name"].astype(str).ne("")
+        numeric = {name: pd.to_numeric(frame[name], errors="coerce") for name in ("open", "high", "low", "close", "volume", "amount")}
+        valid &= numeric["close"].gt(0) & numeric["high"].ge(numeric["low"]) & numeric["volume"].ge(0) & numeric["amount"].ge(0)
+    coverage = len(frame[keys[1]].unique()) / expected_symbols if expected_symbols else None
+    fail = duplicate > 0 or int((~valid).sum()) > 0 or (coverage is not None and coverage < config["coverage"]["warning_min"])
+    status = "FAIL" if fail else ("PASS" if coverage is None or coverage >= config["coverage"]["pass_min"] else "WARNING")
+    return {"status": status, "publish_allowed": status != "FAIL" or config["publish_warning"],
+            "checks": {"duplicate_primary_keys": duplicate, "invalid_rows": int((~valid).sum()),
+                       "row_count": len(frame), "coverage": coverage, "expected_symbols": expected_symbols}}
+
+
+def check_industry_membership(path, expected_symbols: int | None = None) -> dict:
+    return _industry_quality(path, "industry_membership", expected_symbols)
+
+
+def check_industry_daily(path, expected_symbols: int | None = None) -> dict:
+    return _industry_quality(path, "industry_daily", expected_symbols)

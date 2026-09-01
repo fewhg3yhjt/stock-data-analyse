@@ -1,0 +1,33 @@
+dataset:
+  name: industry_daily
+  display_name: 同花顺行业指数日线
+  description: 同花顺行业板块指数的历史日线行情
+  grain: 一个行业板块的一个交易日一条指数行情
+  primary_keys: [trading_date, industry_id]
+  partition: {type: month, path: 'warehouse/industry_daily/{partition}.parquet'}
+  update_frequency: 交易日收盘后
+  schema_version: industry_daily.v1
+fields:
+  - {name: trading_date, display_name: 交易日期, data_type: date, nullable: false, primary_key: true}
+  - {name: industry_id, display_name: 行业代码, data_type: string, nullable: false, primary_key: true}
+  - {name: industry_name, display_name: 行业名称, data_type: string, nullable: false}
+  - {name: open, display_name: 开盘价, data_type: float, nullable: false}
+  - {name: high, display_name: 最高价, data_type: float, nullable: false}
+  - {name: low, display_name: 最低价, data_type: float, nullable: false}
+  - {name: close, display_name: 收盘价, data_type: float, nullable: false}
+  - {name: volume, display_name: 成交量, data_type: float, nullable: false}
+  - {name: amount, display_name: 成交额, data_type: float, nullable: false}
+  - {name: source, display_name: 来源, data_type: string, nullable: false}
+  - {name: source_symbol, display_name: 来源代码, data_type: string, nullable: false}
+  - {name: captured_at, display_name: 采集时间, data_type: datetime, nullable: false}
+sources:
+  - name: akshare
+    role: primary
+    priority: 1
+    field_mapping: {}
+    unit_conversions: {}
+consumers:
+  - {name: market_discovery, type: business, purpose: 行业指数涨跌、趋势和排名, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式策略}
+quality:
+  publish_warning: true
+  coverage: {pass_min: 0.98, warning_min: 0.95}
