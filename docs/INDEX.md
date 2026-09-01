@@ -42,6 +42,7 @@
 - [Phase 4 设计](PHASE4_DESIGN.md)
 - [Phase 4 实施记录](PHASE4_IMPLEMENTATION.md)
 - [市场发现待办](MARKET_DISCOVERY_TODO.md)
+- [行业数据与轮动观测规范](DATA_PIPELINE_V1_DESIGN.md#29-行业数据与轮动观测规范)
 
 ## 前端
 

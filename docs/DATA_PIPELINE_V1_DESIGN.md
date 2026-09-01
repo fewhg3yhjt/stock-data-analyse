@@ -2346,7 +2346,262 @@ stock_daily
 
 数据状态为“未完成”的能力不得在产品总览中标记为 healthy/complete；降级能力必须返回限制原因、日期和覆盖范围。
 
-## 29. 文档维护
+## 29. 行业数据与轮动观测规范
+
+本节定义第一阶段行业数据接入的正式口径、数据集边界和采集链路。第一阶段只建设证监会行业股票归属和同花顺行业指数行情，不建设概念板块，不把两个来源强行合并为同一分类体系。
+
+### 29.1 数据集范围与口径
+
+正式建设以下两个数据集：
+
+```text
+industry_membership
+industry_daily
+```
+
+`industry_membership` 表示股票与证监会行业分类的对应关系：
+
+```text
+source: BaoStock query_stock_industry
+classification: 证监会行业分类
+grain: 一个分类快照中的一只股票一条行业归属
+```
+
+`industry_daily` 表示同花顺行业板块指数的日线行情：
+
+```text
+source: AkShare stock_board_industry_name_ths / stock_board_industry_index_ths
+classification: 同花顺行业板块
+grain: 一个行业板块的一个交易日一条指数行情
+```
+
+两者口径不同：
+
+1. `industry_membership` 用于股票行业归属、行业内股票筛选和成员级统计；
+2. `industry_daily` 用于同花顺行业指数的涨跌、趋势、排名和成交额展示；
+3. 不得按行业名称将两者默认为一一对应；
+4. 不得用 `industry_membership` 的成员股票重新计算并覆盖 `industry_daily` 的指数行情；
+5. 行业上涨广度、行业内个股排名等指数接口不提供的成员级统计，才允许使用 `industry_membership + stock_daily` 计算。
+
+### 29.2 `industry_membership` 契约
+
+标准字段：
+
+```text
+snapshot_date
+code
+industry_code
+industry_name
+raw_industry
+industry_classification
+source_update_date
+source
+captured_at
+```
+
+主键：
+
+```text
+snapshot_date + code + industry_classification
+```
+
+规则：
+
+1. `industry_code` 和 `industry_name` 必须由 BaoStock 返回的 `industry` 字段解析得到；
+2. 必须保留完整 `raw_industry`，不得只保存拆分后的名称；
+3. `source_update_date` 使用接口返回的 `updateDate`；
+4. 不得根据股票代码、股票名称或关键词自行推断行业；
+5. 第一阶段只纳入 `stock`，不纳入 ETF、指数和其他资产；
+6. 每次采集都形成带 `snapshot_date` 的事实快照；
+7. `instruments.industry` 只作为当前行业缓存，不作为历史正式数据集；
+8. 行业归属变动通过相邻快照比较识别，不在采集时覆盖历史事实。
+
+Raw 路径：
+
+```text
+warehouse/raw/baostock/industry_membership/{run_date}/
+```
+
+采集频率：每周一次，支持手动全量刷新和对失败股票重试。已有当前行业缓存可以跳过，但正式快照任务必须能够补齐缺失股票，并记录跳过、成功和失败数量。
+
+### 29.3 `industry_daily` 契约
+
+标准字段：
+
+```text
+trading_date
+industry_id
+industry_name
+open
+high
+low
+close
+volume
+amount
+source
+source_symbol
+captured_at
+```
+
+主键：
+
+```text
+trading_date + industry_id
+```
+
+规则：
+
+1. 行业板块代码和名称来自 `stock_board_industry_name_ths`；
+2. OHLC、成交量和成交额直接使用 `stock_board_industry_index_ths` 返回值；
+3. 行业指数涨跌和趋势必须以该指数行情为准，不得使用股票聚合值覆盖；
+4. 原始中文列名只存在于 Raw 层，标准化层使用英文 canonical 字段；
+5. 行业名称是展示字段，不是唯一键；
+6. 单个行业请求失败不得写入 0 值，整体批次标记为 `partial_success` 并保留失败明细；
+7. 首次历史回补按行业和时间区间分批，日常采集只获取增量并允许小范围回溯修复。
+
+Raw 路径：
+
+```text
+warehouse/raw/akshare/industry_daily/{run_date}/
+```
+
+每个行业请求的 `request_context` 至少记录：
+
+```text
+industry_id
+industry_name
+start_date
+end_date
+api_name
+```
+
+### 29.4 采集、构建、发布链路
+
+两类数据都必须遵循统一正式链路：
+
+```text
+Source Adapter
+  -> Raw Batch
+  -> Candidate Build
+  -> Quality Check
+  -> Publish
+  -> DatasetAccess
+```
+
+行业归属链路：
+
+```text
+BaoStock
+  -> industry_membership Raw
+  -> 标准化/去重
+  -> 覆盖率和冲突检查
+  -> Published industry_membership
+  -> 更新 instruments.industry 当前缓存
+```
+
+行业指数链路：
+
+```text
+AkShare
+  -> industry_daily Raw
+  -> 标准化/去重
+  -> 日期、OHLC 和覆盖率检查
+  -> Published industry_daily
+  -> DatasetAccess("industry_daily")
+```
+
+业务模块不得直接读取 Raw、在线接口或物理 Parquet 路径。`DatasetAccess` 返回的 `DatasetResult.data/context` 必须携带来源、版本、质量状态和数据日期。
+
+### 29.5 质量门禁
+
+`industry_membership` 至少检查：
+
+1. 股票代码属于股票 Universe；
+2. `snapshot_date + code + industry_classification` 不重复；
+3. 行业代码和名称非空；
+4. 同一快照中的股票不存在冲突行业归属；
+5. 股票覆盖率和失败明细；
+6. ETF、指数未混入；
+7. `source_update_date` 格式有效。
+
+覆盖率策略：
+
+```text
+>= 98%: PASS
+95% - <98%: WARNING
+< 95%: FAIL
+```
+
+`industry_daily` 至少检查：
+
+1. 行业代码、名称和交易日期非空；
+2. `trading_date + industry_id` 不重复；
+3. 日期属于交易日；
+4. OHLC 合法且 `close > 0`；
+5. 成交量和成交额非负；
+6. 行业覆盖率和最近交易日覆盖率；
+7. 行业历史缺口和请求失败明细。
+
+覆盖率低于 PASS 但达到 WARNING 时只能降级展示，不能作为正式策略必要输入。
+
+### 29.6 业务消费边界
+
+可以直接消费 `industry_daily` 的内容：
+
+```text
+行业指数涨跌
+行业指数收益
+行业指数趋势
+行业指数排名
+行业指数成交量和成交额
+```
+
+可以通过 `industry_membership + stock_daily` 计算的内容：
+
+```text
+行业上涨/下跌家数
+行业上涨比例
+行业内个股排名
+行业内候选股票
+行业内成交额合计
+```
+
+第一阶段行业轮动观测允许并列展示两类结果，但必须标注分类口径：
+
+```text
+同花顺行业指数：industry_daily
+证监会行业成员统计：industry_membership + stock_daily
+```
+
+正式模拟必须固定并保存：
+
+```text
+industry_membership_version
+industry_daily_version
+stock_daily_version
+```
+
+模拟运行不得重新读取当前行业分类或当前板块排名。
+
+### 29.7 第一阶段范围
+
+第一阶段只做：
+
+1. 全市场股票证监会行业归属采集；
+2. 同花顺行业指数历史和增量采集；
+3. 两个数据集的 Raw、Candidate、Quality、Publish 和 DatasetAccess；
+4. 行业轮动观测所需的指数行情和成员级统计；
+5. 数据中心展示覆盖率、日期、来源和失败明细。
+
+第一阶段暂不做：
+
+1. 概念板块；
+2. 同花顺行业成员关系；
+3. 多年前历史成员关系的事后还原；
+4. 将两套行业分类强行映射；
+5. 依赖资金流的正式行业策略输入。
+
+## 30. 文档维护
 
 每个 Phase 完成后，开发者或 AI 必须更新：
 
@@ -2359,7 +2614,7 @@ stock_daily
 
 不得仅通过提交记录判断完成度。实现状态以代码、测试和本文档三者一致为准。
 
-### 29.1 当前实施记录
+### 30.1 当前实施记录
 
 截至 2026-08-30，历史数据已完成接管：生产容器权限下完成全量审计、旧文件适配、隔离 Candidate、候选质量检查和元数据对账；`stock_daily` 37 个分区、`fundamentals` 4574 个文件、`valuation_daily` 37 个分区、现有 `indicators`/`factors`/`industry`/`money_flow_daily` 均已建立版本、质量、current、产物和血缘事实。接管保留源文件和旧版本；重复 fundamentals current 已纠正为 canonical 文件。后续仍需清理已隔离的临时文件、完善辅助数据长期 Builder/Access 和全量性能基线。
 
