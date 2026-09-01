@@ -142,8 +142,13 @@ class SimulationExecutor:
             position_state="holding" if quantity > 0 else "none",
             position_quantity=quantity, position_state_avg_cost=avg_cost,
             cash_available=self.account.cash,
-            data_context=DataContext(requested_start=str(self.plan.start_date),
-                                     requested_end=str(self.plan.end_date)),
+            data_context=DataContext(
+                requested_start=str(self.plan.start_date),
+                requested_end=str(self.plan.end_date),
+                returned_start=str(history["date"].min())[:10] if not history.empty else None,
+                returned_end=as_of,
+                data_as_of=as_of,
+            ),
         )
 
     def _execute_next_open(self, symbol: str, row_index: int, side: str, decision) -> None:

@@ -81,10 +81,30 @@ class DatasetAccess:
                                "input_versions": json.loads(version["input_versions"] or "{}"),
                                "generated_at": version["created_at"]}
         data = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-        return DatasetResult(self._filter(data, start_date, end_date, symbols), {
-            "dataset": dataset_name, "partition_versions": {k: v["version_id"] for k, v in versions.items() if k in months},
-            "partitions": contexts, "max_date": self._max_date(data),
-            "quality_status": self._overall_quality(contexts), "fallback_used": False,
+        filtered = self._filter(data, start_date, end_date, symbols)
+        partition_versions = {k: v["version_id"] for k, v in versions.items() if k in months}
+        quality_status = self._overall_quality(contexts)
+        returned_start = self._min_date(filtered)
+        returned_end = self._max_date(filtered)
+        return DatasetResult(filtered, {
+            "dataset": dataset_name,
+            "dataset_refs": {dataset_name: {
+                "partition_versions": partition_versions,
+                "quality_status": quality_status,
+            }},
+            "indicator_refs": {},
+            "partition_versions": partition_versions,
+            "partitions": contexts,
+            "max_date": returned_end,
+            "requested_start": start_date,
+            "requested_end": end_date,
+            "returned_start": returned_start,
+            "returned_end": returned_end,
+            "data_as_of": returned_end,
+            "quality_status": quality_status,
+            "source": "published_dataset",
+            "fallback_used": False,
+            "fallback_reason": None,
         })
 
     def get_dataset_context(self, dataset_name: str, start_date=None, end_date=None) -> dict:
@@ -112,9 +132,25 @@ class DatasetAccess:
         frames = [self.warehouse.read_daily(month) for month in months]
         frames = [frame for frame in frames if frame is not None and not frame.empty]
         data = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-        return DatasetResult(self._filter(data, start_date, end_date, symbols), {
-            "dataset": dataset_name, "partition_versions": {}, "quality_status": "LEGACY",
-            "sources": [], "generated_at": None, "fallback_used": True,
+        filtered = self._filter(data, start_date, end_date, symbols)
+        returned_start = self._min_date(filtered)
+        returned_end = self._max_date(filtered)
+        return DatasetResult(filtered, {
+            "dataset": dataset_name,
+            "dataset_refs": {dataset_name: {"partition_versions": {}, "quality_status": "LEGACY"}},
+            "indicator_refs": {},
+            "partition_versions": {},
+            "sources": [],
+            "generated_at": None,
+            "requested_start": start_date,
+            "requested_end": end_date,
+            "returned_start": returned_start,
+            "returned_end": returned_end,
+            "data_as_of": returned_end,
+            "quality_status": "LEGACY",
+            "source": "legacy_dataset",
+            "fallback_used": True,
+            "fallback_reason": "published_dataset_unavailable",
         })
 
     @staticmethod
@@ -140,6 +176,10 @@ class DatasetAccess:
     @staticmethod
     def _max_date(frame):
         return str(pd.to_datetime(frame["date"]).max())[:10] if not frame.empty and "date" in frame else None
+
+    @staticmethod
+    def _min_date(frame):
+        return str(pd.to_datetime(frame["date"]).min())[:10] if not frame.empty and "date" in frame else None
 
     @staticmethod
     def _overall_quality(contexts):

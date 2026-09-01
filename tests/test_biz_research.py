@@ -37,7 +37,14 @@ def make_strategy():
 
 class TestResearch:
     def test_full_research(self):
-        ctx = {"partition_versions": {"2026-07": "v1"}, "quality_status": "PASS"}
+        ctx = {
+            "dataset_refs": {"stock_daily": {
+                "partition_versions": {"2026-07": "v1"},
+                "quality_status": "PASS",
+            }},
+            "data_as_of": "2026-07-28",
+            "quality_status": "PASS",
+        }
         svc = ResearchService(make_df(), ctx, strategy=make_strategy(),
                               market_regime={"regime": "weak_bull", "as_of": "2026-07-28"})
         result = svc.run()

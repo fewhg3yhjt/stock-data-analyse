@@ -196,11 +196,11 @@ fallback_reason
 is_stale
 ```
 
-`DataContext` 的 canonical 实现仍在收敛：当前 `biz/models.py` 使用 `dataset_refs`、`indicator_refs`、`returned_start`、`returned_end`，而部分数据访问结果仍使用 `partition_versions`、`max_date` 等内部字段。`dataset_versions`、`indicator_versions` 是概念字段，不应继续作为与实现并列的第二套结构。
+`DataContext` 的 canonical 字段已在 `biz/models.py` 和 `DatasetAccess` 基础输出中建立；为兼容现有数据访问测试和旧调用方，`partition_versions`、`max_date` 等字段仍会暂时出现在底层 context 中，但只允许作为过渡适配字段，不得继续扩展为新业务公共契约。`dataset_versions`、`indicator_versions` 是概念字段，不应继续作为与实现并列的第二套结构。
 
 字段语义：`data_as_of` 是本次业务判断采用的事实截止日；`returned_start/returned_end` 是实际返回数据边界；`dataset_refs/indicator_refs` 保存数据集及分区版本引用；`fallback_reason` 在 `fallback_used=true` 时必须提供。新业务模块最终统一通过 canonical `DataContext` 传递这些信息，旧字段只允许存在于适配层。
 
-当前状态：该契约尚未完全落地，不能在实现状态中标记为“已统一”。迁移完成前，必须同时更新 `DatasetAccess`、Screen、Research、Simulation、StrategyDecision 以及 API DTO，并增加字段完整性和版本引用测试。
+当前状态：基础模型和 DatasetAccess 输出已落地，Research/Simulation 已开始使用 canonical 字段；API DTO、Screen 全链路和旧字段适配清理仍未完成。迁移完成前，必须继续增加字段完整性和版本引用测试。
 
 ### StrategyDecision
 

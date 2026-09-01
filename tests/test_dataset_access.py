@@ -11,7 +11,8 @@ from StockInvestmentTool.warehouse.storage import Warehouse
 from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
 
 
-def test_access_reads_current_only_and_returns_context(tmp_path):
+def test_access_reads_current_only_and_returns_context(tmp_path, monkeypatch):
+    monkeypatch.delenv("MANAGEMENT_DB_PATH", raising=False)
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
     source = capture_frames(
@@ -29,10 +30,14 @@ def test_access_reads_current_only_and_returns_context(tmp_path):
     result = load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-08-28")
     assert result.data["code"].tolist() == ["sh600000"]
     assert result.context["partition_versions"]["2026-08"] == version
+    assert result.context["dataset_refs"]["stock_daily"]["partition_versions"]["2026-08"] == version
+    assert result.context["source"] == "published_dataset"
+    assert result.context["data_as_of"] == result.context["returned_end"]
     assert result.context["fallback_used"] is False
 
 
-def test_access_rejects_candidate_without_current(tmp_path):
+def test_access_rejects_candidate_without_current(tmp_path, monkeypatch):
+    monkeypatch.delenv("MANAGEMENT_DB_PATH", raising=False)
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
     candidate = warehouse.base_dir / "candidate.parquet"
@@ -41,7 +46,8 @@ def test_access_rejects_candidate_without_current(tmp_path):
         load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-08-28")
 
 
-def test_access_legacy_mode_is_explicit(tmp_path):
+def test_access_legacy_mode_is_explicit(tmp_path, monkeypatch):
+    monkeypatch.delenv("MANAGEMENT_DB_PATH", raising=False)
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
     warehouse.write_daily_partition("2026-08", pd.DataFrame({
@@ -52,7 +58,8 @@ def test_access_legacy_mode_is_explicit(tmp_path):
     assert result.context["quality_status"] == "LEGACY"
 
 
-def test_indicators_report_published_input_version(tmp_path):
+def test_indicators_report_published_input_version(tmp_path, monkeypatch):
+    monkeypatch.delenv("MANAGEMENT_DB_PATH", raising=False)
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
     source = capture_frames(

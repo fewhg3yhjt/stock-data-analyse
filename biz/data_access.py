@@ -33,6 +33,7 @@ def load_market_data(warehouse, *, start_date: str, end_date: str,
     if indicators is None or indicators.data.empty:
         context = dict(daily.context)
         context["indicator_dataset_unavailable"] = True
+        context["indicator_refs"] = {}
         return DatasetResult(data=daily.data, context=context)
 
     left = daily.data.copy()
@@ -45,7 +46,14 @@ def load_market_data(warehouse, *, start_date: str, end_date: str,
                         on=["date", "code"], how="left", sort=False)
     context = dict(daily.context)
     context["indicator_context"] = indicators.context
+    context["indicator_refs"] = indicators.context.get("dataset_refs", {})
     context["indicator_dataset_unavailable"] = False
+    context["data_as_of"] = min(
+        value for value in (daily.context.get("data_as_of"), indicators.context.get("data_as_of"))
+        if value
+    ) if daily.context.get("data_as_of") and indicators.context.get("data_as_of") else (
+        daily.context.get("data_as_of") or indicators.context.get("data_as_of")
+    )
     return DatasetResult(data=merged, context=context)
 
 

@@ -187,10 +187,24 @@ class ResearchService:
             position_quantity=0.0,
             cash_available=0.0,
             data_context=DataContext.from_dict({
-                "dataset_refs": self.context.get("partition_versions", {}),
+                "dataset_refs": self.context.get(
+                    "dataset_refs", {"stock_daily": {
+                        "partition_versions": self.context.get("partition_versions", {}),
+                        "quality_status": self.context.get("quality_status", "unknown"),
+                    }}
+                ),
+                "indicator_refs": self.context.get("indicator_refs", {}),
+                "requested_start": self.context.get("requested_start"),
+                "requested_end": self.context.get("requested_end"),
+                "returned_start": self.context.get("returned_start"),
+                "returned_end": self.context.get("returned_end") or self._as_of(),
+                "data_as_of": self.context.get("data_as_of") or self._as_of(),
                 "quality_status": self.context.get("quality_status", "unknown"),
-                "returned_end": self._as_of(),
-            }) if isinstance(self.context, dict) else DataContext(),
+                "source": self.context.get("source", ""),
+                "fallback_used": self.context.get("fallback_used", False),
+                "fallback_reason": self.context.get("fallback_reason"),
+                "is_stale": self.context.get("is_stale", False),
+            }) if isinstance(self.context, dict) else DataContext(data_as_of=self._as_of()),
         )
         return self.strategy.evaluate(ctx)
 

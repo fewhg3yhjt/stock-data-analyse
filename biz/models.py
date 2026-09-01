@@ -57,6 +57,8 @@ class DataContext:
     quality_status: str = "unknown"
     source: str = ""
     fallback_used: bool = False
+    fallback_reason: str | None = None
+    data_as_of: str | None = None
     is_stale: bool = False
 
     def to_dict(self) -> dict:
@@ -70,6 +72,8 @@ class DataContext:
             "quality_status": self.quality_status,
             "source": self.source,
             "fallback_used": self.fallback_used,
+            "fallback_reason": self.fallback_reason,
+            "data_as_of": self.data_as_of or self.returned_end,
             "is_stale": self.is_stale,
         }
 
