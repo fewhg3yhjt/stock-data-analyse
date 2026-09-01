@@ -6,78 +6,76 @@
 
 ## 总体状态
 
+工程进度只使用 `todo`、`in_progress`、`blocked`、`done`、`wont_fix`。页面中的 `healthy`、`running`、`failed` 等仍属于业务运行状态，不表示前端工程进度。
+
 | 项目 | 当前状态 | 说明 |
 |---|---|---|
-| 页面信息架构 | 已完成 V1 基线 | 全部主要页面已归类并有设计目标 |
-| 公共页面壳层 | 基础迁移完成 | `base.html` 已加载公共资源；部分旧模板仍靠 CSS 适配，最终直接替换为统一结构 |
-| 工作台 | 第一版完成 | `wb-*` 独立壳层、摘要、待办、持仓、观察池、数据和通知区域 |
-| 数据中心 | 第一版完成 | `dm-*` 壳层、资产状态、生产链路、操作反馈和详情抽屉 |
-| 任务中心 | 第一版完成 | 任务分组、运行状态、配置、日志和产物展示 |
-| 个股研究详情 | 第一版完成 | ResearchRun 创建/查询、业务运行轮询、四维评估、证据和数据上下文 |
-| 状态词表 | 核心页面已接入 | `ui-status.js` 由基础模板全局加载；旧页面仍有局部文案 |
-| 反馈机制 | 过渡完成 | 普通 `alert` 被页面提示接管；`confirm/prompt` 仍有残留 |
-| 设计 Token | 已迁移 | `base.css` 与全部页面/脚本已改用 `--color-*` 语义 Token；旧变量（`--red/green/orange/accent/surface/border/text` 等）及模板内联 `:root` 已删除，全库 `var()` 引用均有定义 |
-| 状态 CSS 类 | 已迁移 | `ui-status.js` `cls` 已返回完整 `status-*` canonical class；任务中心、数据中心、数据资产、个股研究、通知、设置已改用 `.status-tag.status-<key>`，旧 `.tag.status-*`/`.dm-health.*`/`.status-tag.ok` 已删除 |
-| 公共组件类名 | 已迁移 | `.btn*→.ui-button*`（180 处）、`.card→.ui-card`（+`.ui-card-header`）、`.form-group→.ui-field`、裸 `table→.ui-table`、`.table-wrap→.ui-table-wrap` 已全量替换；`.ui-card` 保留默认内边距保证视觉连续；wb-*/dm-* 独立体系与 `.tag` 彩色标签保留 |
-| 页面级 Adapter | 部分完成 | 核心系统页面有独立脚本，许多业务页仍是模板内联脚本 |
-| 安全治理 | 完成 | 内联事件注入已清零并改事件委托；Markdown 已净化（`ui-sanitize.js`）；CSP 与基础安全头已启用（分阶段，仍允许内联脚本与 CDN） |
-| 资源治理 | 未完成 | CDN、本地库、手写版本号和构建策略尚未完全统一 |
-| 人工浏览器验收 | 未完成 | 已做路由/接口冒烟，尚未完成逐页视觉、移动端和交互验收 |
+| 页面信息架构 | `done` | V1 页面分类和目标已记录在设计文档中 |
+| 公共页面壳层 | `in_progress` | `base.html` 已加载公共资源；部分旧模板仍通过 `.app` 和 CSS 适配，尚未全部改为统一结构 |
+| 工作台 | `in_progress` | `wb-*` 独立壳层、摘要、待办、持仓、观察池、数据和通知区域已实现；仍消费旧聚合接口，市场摘要为空 |
+| 数据中心 | `in_progress` | `dm-*` 壳层、资产状态、生产链路、操作反馈和详情抽屉已实现；部分运行编号和安全预览受接口限制 |
+| 任务中心 | `in_progress` | 分组、运行状态、配置、日志、产物和轮询已实现；部分执行场景不返回本次 `run_id` |
+| 个股研究详情 | `in_progress` | ResearchRun 创建/查询、业务运行轮询、四维评估、证据和数据上下文已接入；报告和后续动作仍按 API 状态收口 |
+| 状态词表 | `in_progress` | `ui-status.js` 已全局加载并提供 canonical class；部分旧页面仍有局部状态文案和样式待收口 |
+| 反馈机制 | `in_progress` | 普通消息已有统一过渡方案；原生 `confirm/prompt` 仍有残留 |
+| 设计 Token | `done` | `base.css` 与页面/脚本已改用 `--color-*` 语义 Token；旧变量及模板内联 `:root` 已删除，全库 `var()` 引用均有定义 |
+| 状态 CSS 类 | `done` | `ui-status.js` 的 `cls` 已返回完整 `status-*` canonical class；核心页面已统一使用 `.status-tag.status-<key>` |
+| 公共组件类名 | `in_progress` | 基础 `.ui-*` 组件和主要类名迁移已完成；旧组件类、页面内联样式及独立 `wb-*`/`dm-*` 体系仍未全部收口 |
+| 页面级 Adapter | `in_progress` | 核心系统页面有独立脚本，许多业务页仍是模板内联脚本 |
+| 安全治理 | `in_progress` | 内联事件注入已清零，Markdown 已通过 `ui-sanitize.js` 净化，CSP 和基础安全头已启用；仍允许内联脚本和 CDN |
+| 资源治理 | `todo` | CDN、本地库、手写版本号和构建策略尚未统一 |
+| 人工浏览器验收 | `todo` | 已做路由/接口冒烟，尚未完成逐页视觉、移动端和交互验收 |
 
 ## 页面实现矩阵
 
-状态含义：
+页面矩阵中的工程进度只使用上述五种状态；业务运行状态和页面数据状态按设计文档中的独立维度记录。
 
-- **第一版完成**：核心结构和主要交互可用，仍可能有工程整改项；
-- **基础迁移**：统一了页面外框和主要视觉语言，业务内部仍保留旧实现；
-- **后台依赖**：页面入口或结构已准备，但完整能力依赖后台契约。
-
-| 页面 | 路由 | 当前壳层 | 当前实现 | 主要限制 |
-|---|---|---|---|---|
-| 工作台 | `/`、`/workbench` | `wb-*` | 独立 JS，摘要和待办已接入 | 仍消费旧聚合接口，市场摘要为空 |
-| 数据中心 | `/data-center` | `dm-*` | 独立 Adapter，资产、健康、链路已接入 | 任务运行编号和安全预览受接口限制 |
-| 数据资产 | `/data-center/assets` | `dm-*` | 目录、动态分类、详情和管理操作 | 管理脚本仍有部分原生确认/输入 |
-| 任务中心 | `/data-center/tasks` | `dm-*` | 分组、筛选、配置、日志、产物和轮询 | 执行接口部分场景不返回本次 `run_id` |
-| 市场 | `/market` | `.app` 公共适配 | 指数、板块、持仓图表保留 | 模板内联脚本和 CDN 依赖 |
-| 市场发现 | `/market-discovery` | `.app` 公共适配 | 筛选、分页、K线和观察入口保留 | 事件属性、内联脚本、候选上下文仍需收口 |
-| 观察池 | `/watch-pool` | `.app` 公共适配 | 来源、状态、模拟和建仓入口保留 | 入口与观察看板/自选仍有重叠 |
-| 观察池行情 | `/dashboard/observe` | `.app` 公共适配 | 行情、支撑、指令和详情保留 | 超宽表格和内联事件需治理 |
-| 自选 | `/watchlist` | `.app` 公共适配 | 关注关系、加入时间、备注和模拟 | `prompt/confirm` 和事件属性残留 |
-| 持仓 | `/dashboard/warroom` | `.app` 公共适配 | 账户摘要、风险、建议和事务入口 | 持仓操作实现未完全共用 |
-| 持仓管理 | `/portfolio` | `.app` 公共适配 | 持仓事实、交易、导入导出 | 与持仓主页面仍有入口重叠 |
-| 持仓详情 | `/portfolio/{id}` | `.app` 公共适配 | 成本、流水、建议和操作 | 输入/确认交互仍为旧实现 |
-| 模拟 | `/simulation` | `.app` 公共适配 | 模拟清单、重算、收益和建仓入口 | 模拟与观察池页面边界仍需继续收口 |
-| 复盘 | `/dashboard/review` | `.app` 公共适配 | 统计、FIFO 流水、手动记录和导出 | 仍以服务端渲染和内联脚本为主 |
-| 晨报 | `/morning-report` | `.app` 公共适配 | Markdown 摘要和生成入口 | Markdown 净化未完成 |
-| 操作日志 | `/log` | `.app` 公共适配 | 业务操作和成交记录展示 | 记录类型和统一反馈需继续整理 |
-| 快速记录 | `/quicklog` | `.app` 公共适配 | 快速录入入口 | 页面脚本和交互仍较旧 |
-| 研究中心 | `/research` | `.app` 公共适配 | 研究工具入口和流程说明 | 入口页，不承载正式研究结果 |
-| 个股研究 | `/research/detail` | `.app` 公共适配 | ResearchRun 结构化结果和上下文 | 报告、快照和模拟后续动作按 API 状态接入 |
-| 个股分析 | `/analyze` | `.app` 公共适配 | 行情、方案、指标、报告和回测 | 进度展示、Markdown 净化和旧脚本需整改 |
-| 指标中心 | `/indicator-center` | `.app` 公共适配 | 指标目录、编辑和预览 | `confirm/alert` 和内联脚本残留 |
-| 策略编排 | `/strategy-composer` | `.app` 公共适配 | 规则、方案、校验、发布和回滚 | 确认面板和脚本拆分未完成 |
-| 策略实验 | `/strategy` | `.app` 公共适配 | 扫描、回测、曲线和明细 | CDN、内联脚本和运行状态需收口 |
-| 操作点位 | `/operation-points` | `.app` 公共适配 | 点位、支撑、止损、RR和回测 | 表单组件契约尚未完全落地 |
-| 方案对比 | `/compare` | `.app` 公共适配 | 方案选择、收益对比和报告 | Markdown 净化和内联样式需整改 |
-| 通知中心 | `/notify-center` | `.app` 公共适配 | 规则、通道、投递台账、重试 | 业务通知/系统告警尚未完全 Tab 化 |
-| 运行诊断 | `/diagnostics` | `.app` 公共适配 | 只读健康检查和状态表 | 状态 CSS 和独立脚本仍可继续收口 |
-| 系统 | `/system` | `.app` 公共适配 | 系统工具入口和职责说明 | 入口页，数据仍由子页面负责 |
-| 系统设置 | `/settings` | `.app` 公共适配 | 方案、规则、通知、账户和重置 | `confirm`、内联样式和表单契约需整改 |
-| 登录 | `/login` | 独立登录布局 | 登录表单和错误提示 | 不使用业务侧栏 |
+| 页面 | 路由 | 当前壳层 | 当前实现 | 主要限制 | 状态 |
+|---|---|---|---|---|---|
+| 工作台 | `/`、`/workbench` | `wb-*` | 独立 JS，摘要和待办已接入 | 仍消费旧聚合接口，市场摘要为空 | `in_progress` |
+| 数据中心 | `/data-center` | `dm-*` | 独立 Adapter，资产、健康、链路已接入 | 任务运行编号和安全预览受接口限制 | `in_progress` |
+| 数据资产 | `/data-center/assets` | `dm-*` | 目录、动态分类、详情和管理操作 | 管理脚本仍有部分原生确认/输入 | `in_progress` |
+| 任务中心 | `/data-center/tasks` | `dm-*` | 分组、筛选、配置、日志、产物和轮询 | 执行接口部分场景不返回本次 `run_id` | `in_progress` |
+| 市场 | `/market` | `.app` 公共适配 | 指数、板块、持仓图表保留 | 模板内联脚本和 CDN 依赖 | `in_progress` |
+| 市场发现 | `/market-discovery` | `.app` 公共适配 | 筛选、分页、K 线和观察入口保留 | 候选上下文和内联脚本仍需收口 | `in_progress` |
+| 观察池 | `/watch-pool` | `.app` 公共适配 | 来源、状态、模拟和建仓入口保留 | 入口与观察看板/自选仍有重叠 | `in_progress` |
+| 观察池行情 | `/dashboard/observe` | `.app` 公共适配 | 行情、支撑、指令和详情保留 | 超宽表格仍需移动端收口 | `in_progress` |
+| 自选 | `/watchlist` | `.app` 公共适配 | 关注关系、加入时间、备注和模拟 | `prompt/confirm` 仍有残留 | `in_progress` |
+| 持仓 | `/dashboard/warroom` | `.app` 公共适配 | 账户摘要、风险、建议和事务入口 | 持仓操作实现未完全共用 | `in_progress` |
+| 持仓管理 | `/portfolio` | `.app` 公共适配 | 持仓事实、交易、导入导出 | 与持仓主页面仍有入口重叠 | `in_progress` |
+| 持仓详情 | `/portfolio/{id}` | `.app` 公共适配 | 成本、流水、建议和操作 | 输入/确认交互仍为旧实现 | `in_progress` |
+| 模拟 | `/simulation` | `.app` 公共适配 | 模拟清单、重算、收益和建仓入口 | 模拟与观察池页面边界仍需继续收口 | `in_progress` |
+| 复盘 | `/dashboard/review` | `.app` 公共适配 | 统计、FIFO 流水、手动记录和导出 | 仍以服务端渲染和内联脚本为主 | `in_progress` |
+| 晨报 | `/morning-report` | `.app` 公共适配 | Markdown 摘要和生成入口已接入净化 | 页面脚本和资源治理仍需收口 | `in_progress` |
+| 操作日志 | `/log` | `.app` 公共适配 | 业务操作和成交记录展示 | 记录类型和统一反馈需继续整理 | `in_progress` |
+| 快速记录 | `/quicklog` | `.app` 公共适配 | 快速录入入口 | 页面脚本和交互仍较旧 | `in_progress` |
+| 研究中心 | `/research` | `.app` 公共适配 | 研究工具入口和流程说明 | 入口页，不承载正式研究结果 | `in_progress` |
+| 个股研究 | `/research/detail` | `.app` 公共适配 | ResearchRun 结构化结果和上下文 | 报告、快照和模拟后续动作按 API 状态接入 | `in_progress` |
+| 个股分析 | `/analyze` | `.app` 公共适配 | 行情、方案、指标、报告和回测 | 进度展示和旧脚本需整改 | `in_progress` |
+| 指标中心 | `/indicator-center` | `.app` 公共适配 | 指标目录、编辑和预览 | `confirm/alert` 和内联脚本残留 | `in_progress` |
+| 策略编排 | `/strategy-composer` | `.app` 公共适配 | 规则、方案、校验、发布和回滚 | 确认面板和脚本拆分未完成 | `in_progress` |
+| 策略实验 | `/strategy` | `.app` 公共适配 | 扫描、回测、曲线和明细 | CDN、内联脚本和运行状态需收口 | `in_progress` |
+| 操作点位 | `/operation-points` | `.app` 公共适配 | 点位、支撑、止损、RR 和回测 | 表单组件契约尚未完全落地 | `in_progress` |
+| 方案对比 | `/compare` | `.app` 公共适配 | 方案选择、收益对比和报告 | 内联样式和资源治理需整改 | `in_progress` |
+| 通知中心 | `/notify-center` | `.app` 公共适配 | 规则、通道、投递台账、重试 | 业务通知/系统告警尚未完全 Tab 化 | `in_progress` |
+| 运行诊断 | `/diagnostics` | `.app` 公共适配 | 只读健康检查和状态表 | 状态 CSS 和独立脚本仍可继续收口 | `in_progress` |
+| 系统 | `/system` | `.app` 公共适配 | 系统工具入口和职责说明 | 入口页，数据仍由子页面负责 | `in_progress` |
+| 系统设置 | `/settings` | `.app` 公共适配 | 方案、规则、通知、账户和重置 | `confirm`、内联样式和表单契约需整改 | `in_progress` |
+| 登录 | `/login` | 独立登录布局 | 登录表单和错误提示 | 不使用业务侧栏 | `in_progress` |
 
 ## 公共资源现状
 
 | 资源 | 当前作用 | 当前问题 |
 |---|---|---|
-| `base.css` | 公共 Token 和基础组件 | 语义 Token 已增加；`.ui-card`、`.ui-input-panel` 等目标组件仍在落地，旧类和页面内联样式仍并存 |
+| `base.css` | 公共 Token 和基础组件 | 语义 Token 和 `.ui-*` 基础组件已存在；旧类和页面内联样式仍并存 |
 | `ui-shell.css` | 旧 `.app` 页面公共壳层适配 | 仍通过选择器覆盖旧模板结构 |
-| `ui-status.js` | 状态词表和 canonical class 映射 | 当前 `cls` 仍是裸后缀，需改为完整 `status-*` 类名并同步调用方 |
+| `ui-status.js` | 状态词表和 canonical class 映射 | `cls` 已返回完整 `status-*` 类名；部分旧页面仍需统一调用和展示 |
 | `ui-feedback.js` | 全局页面消息和旧 alert 过渡 | 不应继续劫持 `window.alert` 作为最终方案 |
 | `workbench.css/js` | 工作台独立页面 | 与数据模块壳层仍有重复样式 |
 | `data-module.css` | 数据中心和任务中心 | 仍有页面级内联样式 |
 | `data-center-adapter.js` | 数据总览 Adapter | 资产目录页仍有独立内联渲染逻辑 |
 | `research-detail.js/css` | 研究详情页 | 仍需完善上下文字段和后续动作展示 |
-| `stock-chart.js` | 通用 ECharts 组件 | 实例销毁和指标 Token 仍需收口 |
+| `stock-chart.js` | 通用 ECharts 组件 | K 线、成交量和均线颜色已按契约统一；实例销毁仍需收口 |
 
 ## 最近验证基线
 
@@ -90,7 +88,7 @@
 
 ## 更新规则
 
-- 页面开发完成后先更新本文，再更新 `FRONTEND_ENGINEERING_BACKLOG.md` 中对应条目状态。
+- 页面或整改事项完成后先更新本文，再更新 `FRONTEND_ENGINEERING_BACKLOG.md` 中对应条目状态。
 - 不在 `CORE_PAGES_UI_DESIGN_V1.md` 写临时测试数字、提交哈希或当前实现细节。
-- 本文的“第一版完成”不表示所有安全、资源、后台契约和人工体验问题都已解决。
+- 本文的工程状态只表示对应实现事项的进度，不表示业务运行状态或最终浏览器验收结果。
 - 发现新问题时记录真实表现、影响、是否需要后台配合和验收方法。
