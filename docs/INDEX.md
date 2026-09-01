@@ -25,6 +25,7 @@
 - [需求规格](SRD.md)：产品需求和功能边界。
 - [整体现状与架构梳理](STATUS.md)：当前实现、已知问题和技术债。
 - [目标架构设计](TARGET_ARCHITECTURE.md)：新项目独立重建方案、统一业务闭环、数据平面、策略运行时、任务模型和验收标准。
+- [Legacy 项目参考指南](LEGACY_REFERENCE_GUIDE.md)：新项目协作时读取当前项目的范围、优先级、Token 使用和历史导入规则。
 - [后续开发执行指南](IMPLEMENTATION_GUIDE.md)：生产约束、开发顺序和后续 AI 接手规范。
 - [交接说明](HANDOVER.md)：项目关键上下文和接手提示。
 
