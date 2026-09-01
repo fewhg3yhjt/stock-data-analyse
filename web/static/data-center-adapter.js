@@ -3,7 +3,7 @@
   const taskLabel = key => window.UI_STATUS_LABEL?.(key, 'run') || ({scheduled: '已排期', disabled: '未启用'}[key] || key);
   const typeLabels = {stock: '股票', etf: 'ETF', index: '指数'};
   const esc = window.UI_UTILS.esc;
-  const json = async (url, options) => { const response = await fetch(url, options); const data = await response.json(); if (!response.ok || data.status !== 'success') throw new Error(data.error || '请求失败'); return data; };
+  const json = (url, options) => window.UI_UTILS.fetchJson(url, options);
   const statusLabels = window.UI_STATUS ? Object.fromEntries(Object.keys(window.UI_STATUS).map(k => [k, window.UI_STATUS[k].label])) : {healthy:'正常', partial:'部分可用', stale:'待更新', critical:'异常', failed:'失败', unknown:'状态未知'};
   const statusCls = window.UI_STATUS_CLS || (key => `status-${key || 'unknown'}`);
   const health = value => { const key = value || 'unknown'; return `<span class="status-tag ${esc(statusCls(key))}">${esc(statusLabels[key] || key)}</span>`; };
@@ -102,13 +102,21 @@
   }
 
   async function loadOverview() {
+    document.getElementById('asset-rows').innerHTML = '<tr><td colspan="6" class="dm-empty">正在读取数据状态…</td></tr>';
+    document.getElementById('attention-list').innerHTML = '<div class="dm-detail-empty">正在读取重点关注…</div>';
+    document.getElementById('pipeline-flow').innerHTML = '<div class="dm-empty">正在读取生产链路…</div>';
     try {
       const data = await json('/api/data-center/overview');
       const adapted = adaptOverview(data);
       state.assets = adapted.assets; state.attention = adapted.attention; state.pipeline = adapted.pipeline;
       renderKpis(adapted.kpis); renderAssets(); renderAttention(); renderPipeline();
       document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'});
-    } catch (error) { document.getElementById('asset-rows').innerHTML = `<tr><td colspan="6" class="dm-empty">${esc(error.message)}，请刷新重试</td></tr>`; }
+    } catch (error) {
+      const message = `<div class="dm-empty dm-error-state">${esc(error.message)}，请刷新重试</div>`;
+      document.getElementById('asset-rows').innerHTML = `<tr><td colspan="6">${message}</td></tr>`;
+      document.getElementById('attention-list').innerHTML = message;
+      document.getElementById('pipeline-flow').innerHTML = message;
+    }
   }
 
   window.loadDataOverview = loadOverview;

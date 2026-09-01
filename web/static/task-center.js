@@ -13,6 +13,7 @@
   const formatRange = run => run?.period_start && run?.period_end ? `${run.period_start} ~ ${run.period_end}` : '暂无执行记录';
   const operation = (message, type = '') => { const target = document.getElementById('task-operation'); if (!target) return; target.className = `dm-operation ${type}`; target.textContent = message; target.hidden = false; };
   const operationError = error => operation(`操作失败：${error.message || error}`, 'error');
+  const json = (url, options) => window.UI_UTILS.fetchJson(url, options);
 
   function renderTasks() {
     const stage = document.getElementById('task-stage').value;
@@ -53,10 +54,10 @@
 
   function runTask(task) {
     if (!task) return;
-    operation(`${task.display_name}已提交，正在刷新运行状态…`); fetch(`/api/task-center/tasks/${encodeURIComponent(task.task_key)}/execute`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})}).then(response => response.json()).then(data => { if (data.status !== 'success') throw new Error(data.error || '启动失败'); operation(`${task.display_name}已提交，当前接口未返回运行编号，请在列表中查看状态。`, 'ok'); loadTasks(); }).catch(operationError);
+    return window.UI_UTILS.once(`task-center:execute:${task.task_key}`, async () => { operation(`${task.display_name}已提交，正在刷新运行状态…`); const data = await json(`/api/task-center/tasks/${encodeURIComponent(task.task_key)}/execute`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})}); if (data.status !== 'success') throw new Error(data.error || '启动失败'); operation(`${task.display_name}已提交，当前接口未返回运行编号，请在列表中查看状态。`, 'ok'); loadTasks(); }).catch(operationError);
   }
 
-  const postJson = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  const postJson = (url, body) => json(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   window.taskCenterToggle = (key, enabled) => postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/enabled`, {enabled}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(enabled ? '调度已启用' : '调度已停用', 'ok'); loadTasks(); }).catch(operationError);
   window.taskCenterActivate = async (key, version) => { if (!await window.showUiConfirm(`生效后将用于后续调度。`, `生效任务配置 v${version}`)) return; postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config/${version}/activate`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(`任务配置 v${version} 已生效`, 'ok'); loadTasks(); }).catch(operationError); };
   window.taskCenterEdit = key => {
@@ -88,7 +89,8 @@
   window.taskCenterRetry = runId => { operation(`运行记录 #${runId} 正在重试…`); return postJson(`/api/task-center/runs/${runId}/retry`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(`运行记录 #${runId} 已提交重试`, 'ok'); loadTasks(); }).catch(operationError); };
 
   function loadTasks() {
-    fetch('/api/task-center/overview').then(response => response.json()).then(data => {
+    document.getElementById('task-list').innerHTML = '<div class="dm-empty">正在读取任务…</div>';
+    json('/api/task-center/overview').then(data => {
       if (data.status !== 'success') throw new Error(data.error || '任务数据读取失败');
       state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
        const overview = data.overview || {};
@@ -97,7 +99,7 @@
       document.getElementById('task-kpis').innerHTML = [['任务定义',state.tasks.length,'已配置任务'],['今日完成',overview.today_completed || 0,'执行实例'],['执行中',overview.running || 0,'执行实例'],['执行失败',overview.failed || 0,'需要关注'],['今日执行',overview.today_total || 0,'执行实例']].map(item => `<div class="dm-kpi"><div class="dm-kpi-label">${item[0]}</div><div class="dm-kpi-value">${item[1]}</div><div class="dm-kpi-note">${item[2]}</div></div>`).join('');
       renderTasks();
       document.getElementById('task-refresh').textContent = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
-    }).catch(error => { document.getElementById('task-list').innerHTML = `<div class="dm-empty">${esc(error.message)}，请刷新重试</div>`; });
+    }).catch(error => { document.getElementById('task-list').innerHTML = `<div class="dm-empty dm-error-state">${esc(error.message)}，请刷新重试</div>`; });
   }
 
   function renderManagementSummary(overview) {
