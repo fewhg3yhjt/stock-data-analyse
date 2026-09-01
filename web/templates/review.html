@@ -1,48 +1,8 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 复盘{% endblock %}
 {% block head %}
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--color-surface-subtle);color:var(--color-text);line-height:1.8;font-size:16px;}
-.app{max-width:1400px;margin:0 auto;padding:28px 22px 60px;}
-.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--color-border);}
-.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
-.header h1 i{color:var(--color-info);}
-.header .sub{font-size:14px;color:var(--color-text-subtle);margin-top:3px;}
-.header .nav{font-size:14px;}
-.header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
-.header .nav a.active{font-weight:700;border-bottom:2px solid var(--color-info);padding-bottom:2px;}
-.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
-.ui-card-header{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.ui-card-header i{color:var(--color-info);}
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
-.stat-card{background:var(--color-surface-subtle);border-radius:6px;padding:16px 12px;text-align:center;border:1px solid var(--color-border);}
-.stat-card .value{font-size:21px;font-weight:700;}
-.stat-card .label{font-size:12px;color:var(--color-text-subtle);}
-.stat-card.green .value{color:var(--color-success);}
-.stat-card.red .value{color:var(--color-danger);}
-.stat-card.blue .value{color:var(--color-info);}
-.stat-card.orange .value{color:var(--color-warning);}
-table{width:100%;border-collapse:collapse;font-size:14px;}
-.ui-table-wrap{overflow-x:auto;}
-th{text-align:left;padding:9px 10px;color:var(--color-text-subtle);font-weight:500;border-bottom:1px solid var(--color-border);font-size:13px;white-space:nowrap;}
-td{padding:9px 10px;border-bottom:1px solid var(--color-border);vertical-align:middle;}
-tr:last-child td{border-bottom:none;}
-.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;}
-.tag.green{background:#e8f5e9;color:var(--color-success);}
-.tag.red{background:#fbe9e7;color:var(--color-danger);}
-.tag.orange{background:#fff3e0;color:var(--color-warning);}
-.tag.gray{background:#eceff1;color:var(--color-text-subtle);}
-.tag.blue{background:#e3f2fd;color:var(--color-info);}
-.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--color-danger);font-size:14px;margin-bottom:14px;}
-.note{font-size:13px;color:var(--color-text-subtle);}
-.confidence{margin-top:12px;border-radius:6px;padding:10px 16px;font-size:13px;font-weight:600;}
-.confidence.ok{background:#e8f5e9;color:#14532d;}
-.confidence.warn{background:#fff3e0;color:#7c4a03;}
-.confidence.crisis{background:#fbe9e7;color:#7f1d1d;}
-.empty{padding:30px;text-align:center;color:var(--color-text-subtle);}
-</style>
+<link rel="stylesheet" href="{{ static_asset('review.css') }}">
+<script src="{{ static_asset('review.js') }}" defer></script>
 {% endblock %}
 {% block body %}
 <div class="app">
@@ -79,7 +39,7 @@ tr:last-child td{border-bottom:none;}
       <input id="tx-shares" placeholder="数量" type="number" step="100" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 10px;font-size:14px;width:90px;">
       <input id="tx-date" type="date" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 10px;font-size:14px;">
       <input id="tx-reason" placeholder="备注" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 10px;font-size:14px;flex:1;min-width:120px;">
-      <button class="ui-button ui-button-primary" onclick="addTxn()"><i class="fas fa-plus"></i> 添加</button>
+       <button class="ui-button ui-button-primary" id="add-transaction"><i class="fas fa-plus"></i> 添加</button>
     </div>
     {% if not positions %}<p class="note" style="margin-top:8px;">当前无持仓 —— 先建仓才能记录买卖交易（分红除外）</p>{% endif %}
   </div>
@@ -144,21 +104,4 @@ tr:last-child td{border-bottom:none;}
   {% endif %}
 
 </div>
-<script>
-async function addTxn(){
-  const posId = document.getElementById('tx-pos').value;
-  const type = document.getElementById('tx-type').value;
-  const price = parseFloat(document.getElementById('tx-price').value);
-  const shares = parseFloat(document.getElementById('tx-shares').value || 0);
-  const date = document.getElementById('tx-date').value || '';
-  const reason = document.getElementById('tx-reason').value.trim();
-  if (!posId){ showUiMessage('请选择持仓', 'error'); return; }
-  if (!price || price <= 0){ showUiMessage('请填写价格', 'error'); return; }
-  const body = new URLSearchParams({ type, price, shares: String(shares), date, reason });
-  const url = type === 'sell_all' ? '/portfolio/' + posId + '/close' : '/portfolio/' + posId + '/transaction';
-  const d = await (await fetch(url, { method: 'POST', body })).json();
-  if (d.status === 'success'){ showUiMessage('已添加交易' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : ''), 'success'); setTimeout(()=>location.reload(),600); }
-  else showUiMessage(d.error || '添加失败', 'error');
-}
-</script>
 {% endblock %}
