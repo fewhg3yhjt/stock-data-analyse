@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 观察池{% endblock %}
 {% block head %}
-<script src="/static/echarts.min.js?v=3"></script><script src="/static/stock-chart.js?v=3"></script><script src="/static/stock-detail.js?v=11"></script>
+<script src="{{ static_asset('echarts.min.js') }}"></script><script src="{{ static_asset('stock-chart.js') }}"></script><script src="{{ static_asset('stock-detail.js') }}"></script>
 <style>
 .pool-detail{display:none;padding:14px 0 4px;border-top:1px solid var(--color-border)}.pool-detail.open{display:block}.pool-detail-box{min-height:40px}.pool-row{cursor:pointer}.flow{display:flex;gap:7px;flex-wrap:wrap}.flow span{padding:5px 9px;border:1px solid var(--color-border);border-radius:5px;background:var(--color-surface-subtle);font-size:12px}.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.42);display:none;align-items:center;justify-content:center;z-index:1500}.modal{background:var(--color-surface);border-radius:10px;padding:22px;width:min(560px,92vw);max-height:85vh;overflow:auto}.result-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.result-grid div{background:var(--color-surface-subtle);padding:9px;border-radius:6px}
 </style>{% endblock %}

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}个股研究{% endblock %}
-{% block head %}<link rel="stylesheet" href="/static/research-detail.css?v=1">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static_asset('research-detail.css') }}">{% endblock %}
 {% block body %}
 <main class="app research-page">
   <header class="header">
@@ -39,5 +39,5 @@
   </section>
 </main>
 <script>window.RESEARCH_PREFILL_RUN_ID={{ prefill_run_id|tojson }};</script>
-<script src="/static/research-detail.js?v=1"></script>
+<script src="{{ static_asset('research-detail.js') }}"></script>
 {% endblock %}

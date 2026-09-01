@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 运行诊断{% endblock %}
-{% block head %}<script src="/static/ui-status.js?v=2"></script>{% endblock %}
+{% block head %}<script src="{{ static_asset('ui-status.js') }}"></script>{% endblock %}
 {% block body %}
 <main class="app">
   <header class="header"><div><h1><i class="fas fa-stethoscope"></i> 运行诊断</h1><div class="sub">应用、调度、数据、通知与安全开关的当前状态</div></div>{% set active='system' %}{% include '_nav.html' %}</header>

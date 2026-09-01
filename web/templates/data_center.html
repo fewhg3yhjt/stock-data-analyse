@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}数据中心{% endblock %}
-{% block head %}<link rel="stylesheet" href="/static/data-module.css?v=6">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static_asset('data-module.css') }}">{% endblock %}
 {% block body %}
 <div class="dm-page">
   <aside class="dm-sidebar"><div class="dm-brand"><div class="dm-brand-mark"><i class="fas fa-chart-line"></i></div><div><strong>量化星球</strong><span>数据智能平台</span></div></div><div class="dm-side-label">工作台</div><nav class="dm-side-nav" aria-label="数据模块导航"><a href="/workbench"><i class="fas fa-border-all"></i>工作台</a><a href="/market"><i class="fas fa-compass"></i>市场发现</a><a href="/analyze"><i class="fas fa-chart-column"></i>个股分析</a><a href="/watch-pool"><i class="far fa-star"></i>观察池</a><a class="active" href="/data-center"><i class="fas fa-database"></i>数据中心</a><a href="/data-center/tasks"><i class="fas fa-list-check"></i>任务中心</a></nav><div class="dm-side-bottom"><div class="dm-user"><span class="dm-avatar"><i class="fas fa-user"></i></span><span>量化研究员</span></div><div class="dm-side-actions"><i class="fas fa-bell"></i><i class="fas fa-gear"></i><i class="fas fa-right-from-bracket"></i></div></div></aside>
@@ -14,5 +14,5 @@
   </main>
 </div>
 <div class="dm-drawer-mask" id="asset-mask"><aside class="dm-drawer"><header class="dm-drawer-head"><div><h2 id="drawer-title">数据项详情</h2><div class="dm-muted" id="drawer-sub"></div></div><button class="dm-btn" onclick="closeAsset()">关闭</button></header><div id="asset-detail" class="dm-detail-empty">选择数据项查看详情</div></aside></div>
-<script src="/static/data-center-adapter.js?v=1"></script>
+<script src="{{ static_asset('data-center-adapter.js') }}"></script>
 {% endblock %}

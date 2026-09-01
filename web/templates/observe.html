@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 观察{% endblock %}
 {% block head %}
-<script src="/static/echarts.min.js?v=3"></script>
-<script src="/static/stock-chart.js?v=3"></script>
-<script src="/static/stock-detail.js?v=11"></script>
+<script src="{{ static_asset('echarts.min.js') }}"></script>
+<script src="{{ static_asset('stock-chart.js') }}"></script>
+<script src="{{ static_asset('stock-detail.js') }}"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

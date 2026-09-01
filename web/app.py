@@ -51,6 +51,17 @@ def _to_json_safe(obj):
 
 web_app = flask.Blueprint("stock_web", __name__, template_folder="templates")
 
+
+@web_app.app_template_global()
+def static_asset(path: str) -> str:
+    """Return a cache-busted URL based on the current local asset mtime."""
+    asset = Path(__file__).resolve().parent / "static" / path
+    try:
+        version = int(asset.stat().st_mtime)
+    except OSError:
+        version = 0
+    return f"/static/{path}?v={version}"
+
 # 在线程中存储分析进度
 _analysis_status: dict[str, dict] = {}
 _heavy_task_lock = threading.BoundedSemaphore(1)

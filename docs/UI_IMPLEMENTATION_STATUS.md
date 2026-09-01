@@ -23,7 +23,7 @@
 | 公共组件类名 | `in_progress` | 基础 `.ui-*` 组件和主要类名迁移已完成；旧组件类、页面内联样式及独立 `wb-*`/`dm-*` 体系仍未全部收口 |
 | 页面级 Adapter | `in_progress` | 核心系统页面有独立脚本，许多业务页仍是模板内联脚本 |
 | 安全治理 | `in_progress` | 内联事件注入已清零，Markdown 已通过 `ui-sanitize.js` 净化，CSP 和基础安全头已启用；仍允许内联脚本和 CDN |
-| 资源治理 | `in_progress` | ECharts 已统一使用本地资源；Font Awesome、Marked、内联脚本和手写版本号仍待治理 |
+| 资源治理 | `in_progress` | ECharts 已统一使用本地资源，静态资源版本已改为按文件修改时间生成；Font Awesome、Marked、内联脚本和构建策略仍待治理 |
 | 人工浏览器验收 | `todo` | 已做路由/接口冒烟，尚未完成逐页视觉、移动端和交互验收 |
 
 ## 页面实现矩阵
