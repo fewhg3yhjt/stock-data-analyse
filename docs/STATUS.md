@@ -127,9 +127,9 @@
 | B3 | **Quality coverage 使用自证基准** | `ops/task_execution.py:95-100` | 将候选版本自身 `symbol_count` 传为 `expected_symbols`，覆盖率可能恒为 1.0；无法发现 Universe 缺失，质量门禁失去覆盖约束 |
 | B4 | **Publisher 缺少同分区并发互斥** | `warehouse/publish.py:17-61` | 两个版本可同时替换同一正式文件并更新 `dataset_current`，文件、Current 指针和 previous_version 可能不一致 |
 | B5 | **旧 `job_runs.db` 收敛缺少专项迁移方案** | `ops/job_runs.py`、`ops/management_db.py` | 旧库仍可能承载 TaskCenter 运行表；缺少 Legacy ID 映射、重复记录处理、只读切换和独立验收，不能证明 `management.db` 已成为唯一数据任务事实源 |
-| B6 | **领域运行状态与 BusinessJobRun 状态未收敛** | `biz/task_registry.py:206-213`、`biz/repo.py:341-354` | 模拟执行在 executor 前创建 `running` 领域对象，异常时只由任务层标记 JobRun failed；领域运行可能永久停留 `running`，筛选失败还会留下已保存的 ScreenVersion/UniverseSnapshot 孤儿记录 |
-| B7 | **业务队列领取不是原子 claim** | `biz/tasks.py:161-172`、`biz/tasks.py:196-203` | `run_next()` 先查询 requested 行，再由 `execute_run()` 单独校验和更新；并发 Worker 可能选中同一 Run，锁竞争被 API 转成 500，而不是可预期的 claim 失败/重试结果 |
-| B8 | **新 biz 模拟事件未形成持久化事实** | `biz/simulation.py:77,287`、`biz/db.py:292-299`、`biz/repo.py` | `SimulationExecutor` 生成 `SimulationEvent` 并暂存内存，但新 biz repository 和 task handler 没有写入/查询事件的方法；模拟信号、拒单、成交和数据缺口在任务结束后丢失 |
+| B6 | **领域运行状态与 BusinessJobRun 状态曾未收敛** | `biz/task_registry.py`、`biz/repo.py` | Simulation/Screen/Research 失败基础落库已实现；ScreenVersion/UniverseSnapshot 等前置审计事实保留，orphan/reconciled 展示策略和生产验证仍需完善 |
+| B7 | **业务队列领取曾不是严格原子 claim** | `biz/tasks.py` `_claim_run()` | requested Run 现在在单事务中选择、抢锁并置为 running；仍需执行并发 Worker 回归和生产接入验证 |
+| B8 | **新 biz 模拟事件异常路径仍需验证** | `biz/task_registry.py:207-225`、`biz/repo.py:420-447` | 正常和失败路径已有事件持久化；异常时的部分事件保存和独立查询 API 仍需完整回归与生产验证 |
 | B9 | **DataContext 公共契约与实现字段漂移** | `docs/DOMAIN_MODEL_AND_CONTRACTS.md:182-201`、`biz/models.py:48-78`、`warehouse/datasets.py:78-87` | 文档、`DataContext` 和 `DatasetResult.context` 分别使用不同的版本、日期和 fallback 字段；下游无法稳定依赖同一数据上下文 |
 | B10 | **旧 RuleContext 仍是正式旧链路依赖** | `strategy/context.py:23-52`、`core/engine.py:220-232`、`portfolio/advisor.py` | 新契约已指定 `StrategyContext`，但旧 core/portfolio/strategy 链路仍直接使用 `RuleContext`；若按文档误删会破坏旧入口 |
 | B11 | **数据源统一完成标记不实** | `core/engine.py:21`、`portfolio/*`、`web/app.py` | 新 biz 链路已使用统一数据访问，但旧 Fetcher 和在线 fallback 仍被多个正式入口引用，尚未完成全量收口 |

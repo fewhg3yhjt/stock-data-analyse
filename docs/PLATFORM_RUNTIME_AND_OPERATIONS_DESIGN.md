@@ -481,6 +481,6 @@ Route
 - 当前仍未闭环：`DataContext` 已完成基础 canonical 字段输出，但 API DTO、Screen 全链路和旧字段适配清理仍待完成；`web/app.py:3041-3042` 的双 Blueprint 注册已清理；stale 时间格式、质量 Candidate 自证、Publisher 分区锁和模拟事件正常路径已完成代码修复；Worker/业务 Scheduler 已生产接入但仍需故障演练；`job_runs.db` 仍需独立只读归档验收。
 - 路由约束：业务 Blueprint 只允许挂载到明确的 `/api/biz` 命名空间；不得同时注册到 `/api`。旧 `/api/health/details`、`/api/system/alerts` 等同路径必须在路由切换表中明确归属，不能依赖 Blueprint 注册顺序解决冲突。
 - stale 回收约束：heartbeat 存储和比较必须使用同一 UTC 可比较格式，或在应用层解析后比较；必须有“未超时不回收”和“超时可回收”的回归测试。
-- 领域状态约束：BusinessJobRun 与 SimulationRun、ScreenRun、ResearchRun 等领域运行实体必须有明确的状态映射和失败收敛策略。任务失败不得留下永久 `running` 的领域记录；执行前创建的 ScreenVersion、UniverseSnapshot 等前置事实必须通过事务边界或显式 orphan/reconciled 状态处理。
+- 领域状态约束：BusinessJobRun 与 SimulationRun、ScreenRun、ResearchRun 等领域运行实体必须有明确的状态映射和失败收敛策略。Simulation/Screen/Research 的基础失败落库已实现；任务失败不得留下永久 `running` 的领域记录，执行前创建的 ScreenVersion、UniverseSnapshot 等前置事实仍需通过显式 orphan/reconciled 状态或查询规则处理。
 - 队列领取约束：当前 `_claim_run()` 已在数据库事务内完成选择、条件更新和领取确认；并发领取失败由 `run_next()` 转换为无可领取结果，仍需多 Worker 回归和生产验证。
 - 当前业务专项/页面测试和全量测试均应以当前 CI/测试收集结果为准；历史通过数不作为完成依据。未修改数据模块。

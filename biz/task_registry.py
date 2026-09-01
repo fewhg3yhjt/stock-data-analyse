@@ -79,7 +79,7 @@ def _default_handler(task_key: str, service: BusinessTaskService) -> Callable:
 def _screen_handler(service: BusinessTaskService) -> Callable:
     def handler(input_data: dict) -> dict:
         from StockInvestmentTool.biz.data_access import load_market_data
-        from StockInvestmentTool.biz.models import new_id
+        from StockInvestmentTool.biz.models import new_id, now_utc
         from StockInvestmentTool.biz.repo import BusinessRepository
         from StockInvestmentTool.biz.screen import ScreenDefinition, ScreenExecutor, ScreenRun
         from StockInvestmentTool.warehouse.storage import Warehouse
@@ -104,15 +104,26 @@ def _screen_handler(service: BusinessTaskService) -> Callable:
         screen_version_id = repo.save_screen_version(definition)
         symbols = [str(value) for value in dataset.data["code"].dropna().unique()]
         universe_id = repo.save_universe_snapshot(symbols, universe_type="selected_symbols", as_of=as_of)
-        candidates, meta = ScreenExecutor(definition, dataset.data).execute(as_of)
         run = ScreenRun(
             run_id=new_id("screen_run"), screen_version_id=screen_version_id,
             universe_snapshot_id=universe_id, run_type=input_data.get("run_type", "manual"),
-            requested_as_of=as_of, actual_data_as_of=meta.get("actual_data_as_of", ""),
-            data_context=dataset.context, status=meta.get("status", "success"),
-            matched_count=len(candidates), error=meta.get("error", ""),
+            requested_as_of=as_of, data_context=dataset.context,
+            status="running", started_at=now_utc(),
         )
         repo.save_screen_run(run)
+        try:
+            candidates, meta = ScreenExecutor(definition, dataset.data).execute(as_of)
+        except Exception as exc:  # noqa: BLE001
+            repo.update_screen_run_status(run.run_id, "failed", str(exc))
+            raise
+        run.status = meta.get("status", "success")
+        run.actual_data_as_of = meta.get("actual_data_as_of", "")
+        run.matched_count = len(candidates)
+        run.error = meta.get("error", "")
+        repo.update_screen_run_status(
+            run.run_id, run.status, run.error,
+            actual_data_as_of=run.actual_data_as_of, matched_count=run.matched_count,
+        )
         for candidate in candidates:
             candidate.screen_run_id = run.run_id
             repo.save_screen_candidate(candidate)
@@ -126,7 +137,8 @@ def _research_handler(service: BusinessTaskService) -> Callable:
         from StockInvestmentTool.biz.data_access import load_market_data
         from StockInvestmentTool.biz.db import loads_json
         from StockInvestmentTool.biz.regime import MarketRegimeService
-        from StockInvestmentTool.biz.research import ResearchService
+        from StockInvestmentTool.biz.models import new_id, now_utc
+        from StockInvestmentTool.biz.research import ResearchResult, ResearchService
         from StockInvestmentTool.biz.strategy import StrategySpec, compile_strategy
         from StockInvestmentTool.warehouse.storage import Warehouse
 
@@ -150,7 +162,22 @@ def _research_handler(service: BusinessTaskService) -> Callable:
             strategy = compile_strategy(StrategySpec(**loads_json(stored["config_json"])),
                                         strategy_version_id=strategy_version_id)
         regime = MarketRegimeService(dataset.data, dataset.context).compute(as_of)
-        result = ResearchService(dataset.data, dataset.context, strategy, regime.to_dict()).run()
+        try:
+            result = ResearchService(dataset.data, dataset.context, strategy, regime.to_dict()).run()
+        except Exception as exc:  # noqa: BLE001
+            result = ResearchResult(
+                research_run_id=new_id("rr"), status="failed",
+                error=str(exc), finished_at=now_utc(),
+            )
+            service.repo.save_research_run(
+                result, dataset.context,
+                subject_type=input_data.get("subject_type", "single_symbol"),
+                symbol=symbol, strategy_version_id=strategy_version_id,
+                observation_id=input_data.get("observation_id", ""),
+                source_screen_run_id=input_data.get("screen_run_id", ""),
+                source_candidate_id=input_data.get("candidate_id", ""),
+            )
+            raise
         service.repo.save_market_regime(regime)
         service.repo.save_research_run(
             result, dataset.context, subject_type=input_data.get("subject_type", "single_symbol"),

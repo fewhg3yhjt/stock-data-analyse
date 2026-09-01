@@ -226,7 +226,7 @@ FAIL    → failed，禁止发布
 10. 人工发布历史 Candidate 应使用独立显式入口，不得复用自动流水线回退。
 11. `expected_symbols` 必须来自请求固化 Universe、UniverseSnapshot、active instruments 或明确配置基准，禁止使用 Candidate 自身 `symbol_count`。
 12. Publisher 必须按 `dataset_name + partition_key` 获取数据库租约或等价分区锁；锁覆盖读取 current、复制 rollback、标记 publishing、替换文件、更新 current 的完整发布临界区。
-13. 模拟任务必须持久化 `SimulationEvent`，并与 `SimulationRun`、`SimulationFill`、`SimulationResult` 保持相同 run 关联；正常路径已实现，异常路径需继续验收。
+13. 模拟任务必须持久化 `SimulationEvent`，并与 `SimulationRun`、`SimulationFill`、`SimulationResult` 保持相同 run 关联；正常路径和模拟失败基础路径已实现，Screen/Research 前置事实的 orphan/reconciled 策略仍需完善。
 14. `DataContext` 必须形成单一 canonical DTO；`partition_versions`、`max_date` 等内部字段不得直接作为新业务公共契约。
 15. 新 `biz` 统一使用 `StrategyContext`；旧 `RuleContext` 只能存在于明确标记的迁移兼容链路，迁移完成前不得删除。
 16. Factors 退役必须停止新生产、清理 active 配置/任务/消费者/术语，并将历史文件转为显式 legacy archive；不得误删历史文件。
@@ -246,6 +246,7 @@ FAIL    → failed，禁止发布
 11. DatasetAccess、Screen、Research、Simulation 和 API DTO 返回一致的 DataContext 字段与版本引用。
 12. 旧 `RuleContext` 仅由迁移兼容链路引用，且有迁移前后回归对账。
 13. Factors 不再被新任务、API、数据中心或消费者作为正式结果依赖，历史归档可被显式查询。
+14. Screen/Research/Simulation 任务失败后均有可查询领域终态；无对应成功运行的前置版本和 Universe 事实不会被展示为成功结果。
 
 ### 验收
 

@@ -115,3 +115,79 @@ def test_simulation_handler_persists_failed_run_and_partial_events(tmp_path, mon
         (run["run_id"],),
     )
     assert event["event_type"] == "SIGNAL_GENERATED"
+
+
+def test_screen_handler_persists_failed_screen_run(tmp_path, monkeypatch):
+    import pandas as pd
+    from StockInvestmentTool.warehouse.datasets import DatasetResult
+
+    data = pd.DataFrame({
+        "date": pd.to_datetime(["2026-08-14"]), "code": ["sh600908"],
+        "close": [11.0],
+    })
+    monkeypatch.setattr(
+        "StockInvestmentTool.biz.data_access.load_market_data",
+        lambda *args, **kwargs: DatasetResult(data=data, context={"quality_status": "PASS"}),
+    )
+
+    class FailingScreenExecutor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def execute(self, as_of):
+            raise RuntimeError("screen failure")
+
+    monkeypatch.setattr("StockInvestmentTool.biz.screen.ScreenExecutor", FailingScreenExecutor)
+    from StockInvestmentTool.biz.task_registry import _screen_handler
+
+    service = BusinessTaskService(BusinessRepository(BusinessDB(tmp_path / "screen-failure.db")))
+    with pytest.raises(RuntimeError, match="screen failure"):
+        _screen_handler(service)({
+            "name": "failing screen", "start_date": "2026-08-01", "as_of": "2026-08-14",
+            "condition_spec": {"type": "comparison", "left": {"field": "close"},
+                               "operator": ">", "right": {"value": 10}},
+        })
+
+    row = service.repo.db.fetchone(
+        "SELECT status,error,finished_at FROM screen_runs ORDER BY rowid DESC LIMIT 1"
+    )
+    assert row["status"] == "failed"
+    assert row["error"] == "screen failure"
+    assert row["finished_at"]
+
+
+def test_research_handler_persists_failed_research_run(tmp_path, monkeypatch):
+    import pandas as pd
+    from StockInvestmentTool.warehouse.datasets import DatasetResult
+
+    data = pd.DataFrame({
+        "date": pd.to_datetime(["2026-08-14"]), "code": ["sh600908"],
+        "close": [11.0],
+    })
+    monkeypatch.setattr(
+        "StockInvestmentTool.biz.data_access.load_market_data",
+        lambda *args, **kwargs: DatasetResult(data=data, context={"quality_status": "PASS"}),
+    )
+
+    class FailingResearchService:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def run(self):
+            raise RuntimeError("research failure")
+
+    monkeypatch.setattr("StockInvestmentTool.biz.research.ResearchService", FailingResearchService)
+    from StockInvestmentTool.biz.task_registry import _research_handler
+
+    service = BusinessTaskService(BusinessRepository(BusinessDB(tmp_path / "research-failure.db")))
+    with pytest.raises(RuntimeError, match="research failure"):
+        _research_handler(service)({
+            "symbol": "sh600908", "start_date": "2026-08-01", "as_of": "2026-08-14",
+        })
+
+    row = service.repo.db.fetchone(
+        "SELECT status,error,finished_at FROM research_runs ORDER BY rowid DESC LIMIT 1"
+    )
+    assert row["status"] == "failed"
+    assert row["error"] == "research failure"
+    assert row["finished_at"]

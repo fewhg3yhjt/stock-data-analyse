@@ -197,6 +197,18 @@ class BusinessRepository:
         })
         return run.run_id
 
+    def update_screen_run_status(self, run_id: str, status: str, error: str = "",
+                                 *, actual_data_as_of: str | None = None,
+                                 matched_count: int | None = None) -> None:
+        fields = {"status": status, "error": error}
+        if status in {"success", "partial_success", "failed", "cancelled"}:
+            fields["finished_at"] = now_utc()
+        if actual_data_as_of is not None:
+            fields["actual_data_as_of"] = actual_data_as_of
+        if matched_count is not None:
+            fields["matched_count"] = matched_count
+        self.db.update("screen_runs", fields, "screen_run_id=?", (run_id,))
+
     def save_screen_candidate(self, candidate: ScreenCandidate) -> str:
         self.db.insert("screen_candidates", {
             "candidate_id": candidate.candidate_id,
