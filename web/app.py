@@ -776,11 +776,12 @@ def api_task_center_task_config_activate(task_key, version):
 def api_task_center_task_execute(task_key):
     """Start a configured task through the new task runner.
 
-    202 返回前先同步持久化 Request，返回 request_id/status_url，
-    真正的执行放在 daemon 线程中（不占用 Waitress 请求线程）。
+    同步执行：任务结束后才返回最终结果。不使用 daemon 线程，
+    避免线程在请求线程结束后残留/被回收时锁泄漏、任务状态永久卡住。
+    锁的获取/释放仍由 TaskRunner 的 finally 保证。
     """
     payload = flask.request.get_json(silent=True) or {}
-    from StockInvestmentTool.ops.task_execution import precreate_request
+    from StockInvestmentTool.ops.task_execution import execute_task
     from StockInvestmentTool.ops.task_center_service import TaskCenterService
     task = TaskCenterService(management_db_path()).task(task_key)
     if task is None:
@@ -791,21 +792,16 @@ def api_task_center_task_execute(task_key):
         latest = task.get("latest_run") or {}
         payload["period_start"] = latest.get("period_start") or (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
         payload["period_end"] = payload.get("period_end") or latest.get("period_end") or (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    # 202 返回前持久化 Request，保证请求可查、可重试
-    request_id = precreate_request(management_db_path(), task_key, payload)
-    result_holder = {}
-    def execute():
-        try:
-            from StockInvestmentTool.ops.task_execution import execute_task
-            result_holder["result"] = execute_task(management_db_path(), task_key, payload, request_id=request_id)
-        except Exception as exc:
-            result_holder["error"] = str(exc)
-    thread = threading.Thread(target=execute, daemon=True, name=f"task-center-{task_key}")
-    thread.start()
-    return flask.jsonify({"status": "success", "task_key": task_key,
-                          "request_id": request_id,
-                          "status_url": f"/api/task-center/requests/{request_id}",
-                          "message": "任务已提交"}), 202
+    try:
+        result = execute_task(management_db_path(), task_key, payload)
+        return flask.jsonify({"status": "success", "task_key": task_key,
+                              **{k: result.get(k) for k in
+                                 ("request_id", "run_id", "status", "result", "status_url")},
+                              "message": "任务执行完成"}), 200
+    except Exception as exc:
+        logger.exception("任务执行失败: %s", task_key)
+        return flask.jsonify({"status": "error", "task_key": task_key,
+                              "error": str(exc)}), 500
 
 
 @web_app.route("/api/task-center/runs/<int:run_id>/retry", methods=["POST"])

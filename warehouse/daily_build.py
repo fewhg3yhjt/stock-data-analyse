@@ -107,11 +107,12 @@ class DailyBuilder:
             source, path = item[:2]
             batch_ids.append(item[2] if len(item) > 2 else str(path))
             frame = self._read_raw_partition(path, source, partition)
-            previous = source_frames.get(source)
-            source_frames[source] = (pd.concat([previous, frame], ignore_index=True)
-                                     if previous is not None and not previous.empty else frame)
-            frame["_source"] = source
-            frames.append(frame)
+            if frame is not None and not frame.empty:
+                previous = source_frames.get(source)
+                source_frames[source] = (pd.concat([previous, frame], ignore_index=True)
+                                         if previous is not None and not previous.empty else frame)
+                frame["_source"] = source
+                frames.append(frame)
         if include_current:
             current = self.warehouse.read_daily(partition)
             if current is not None and not current.empty:
@@ -122,6 +123,7 @@ class DailyBuilder:
             raise ValueError("没有可用于构建的 Raw Batch")
 
         combined = pd.concat(frames, ignore_index=True)
+        combined["date"] = pd.to_datetime(combined["date"], errors="coerce")
         priority = {name: item["priority"] for name, item in self._sources.items()}
         priority["legacy_daily"] = 999
         combined["_priority"] = combined["_source"].map(priority).fillna(999)

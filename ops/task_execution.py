@@ -54,25 +54,28 @@ def _capture(warehouse: Warehouse, request: dict, run_id: int) -> dict:
 
 
 def _build(warehouse: Warehouse, request: dict) -> dict:
-    batch_id = request.get("input_batch_id")
-    if not batch_id:
-        with sqlite3.connect(warehouse.meta_db_path) as conn:
-            row = conn.execute("SELECT batch_id FROM source_batches WHERE dataset_name='stock_daily' AND status='success' ORDER BY rowid DESC LIMIT 1").fetchone()
-        if not row:
-            raise RuntimeError("没有可用的 stock_daily Raw Batch")
-        batch_id = row[0]
-    path = _batch(warehouse, batch_id)
     versions = {}
     rows = 0
+    batch_ids = []
     for partition in _months(request.get("period_start"), request.get("period_end")):
-        build = DailyBuilder(warehouse).build_partition(partition, [("tencent", path, batch_id)], include_current=True)
-        version = PipelineState(warehouse.meta_db_path).create_version(build, source_batches=[batch_id])
+        if request.get("input_batch_id"):
+            path = _batch(warehouse, request["input_batch_id"])
+            selected = [("tencent", path, request["input_batch_id"])]
+        else:
+            # 自动合并所有重叠该月的 Raw Batch（含补漏 batch），避免只取最新
+            # 单个 batch 导致 coverage 骤降。
+            selected = DailyBuilder(warehouse).select_raw_batches(partition)
+        build = DailyBuilder(warehouse).build_partition(partition, selected, include_current=True)
+        ids = [item[2] for item in selected]
+        version = PipelineState(warehouse.meta_db_path).create_version(build, source_batches=ids)
         versions[partition] = {"version": version, "build": build}
         rows += build["row_count"]
+        batch_ids += ids
+    batch_id = request.get("input_batch_id") or (batch_ids[0] if batch_ids else None)
     return {"rows": rows, "months": len(versions),
             "versions": versions,
             "output_versions": {partition: item["version"] for partition, item in versions.items()},
-            "source_batch_id": batch_id}
+            "source_batch_id": batch_id, "source_batch_ids": batch_ids}
 
 
 def _quality(warehouse: Warehouse, request: dict) -> dict:
