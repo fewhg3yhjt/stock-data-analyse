@@ -21,7 +21,7 @@
 | 设计 Token | `done` | `base.css` 与页面/脚本已改用 `--color-*` 语义 Token；旧变量及模板内联 `:root` 已删除，全库 `var()` 引用均有定义 |
 | 状态 CSS 类 | `done` | `ui-status.js` 的 `cls` 已返回完整 `status-*` canonical class；核心页面已统一使用 `.status-tag.status-<key>` |
 | 公共组件类名 | `in_progress` | 基础 `.ui-*` 组件和主要类名迁移已完成；旧组件类、页面内联样式及独立 `wb-*`/`dm-*` 体系仍未全部收口 |
-| 页面级 Adapter | `in_progress` | 核心系统页面、市场、晨报、复盘和操作点位已有独立资源；观察池、自选、持仓等页面仍保留较多模板内联脚本 |
+| 页面级 Adapter | `in_progress` | 核心系统页面、市场、晨报、复盘、操作点位、观察池、自选和持仓已有独立资源；任务中心及其他业务页仍保留模板内联脚本 |
 | 安全治理 | `in_progress` | 内联事件注入已清零，Markdown 已通过 `ui-sanitize.js` 净化，CSP 和基础安全头已启用；仍允许内联脚本和 CDN |
 | 资源治理 | `in_progress` | ECharts 已统一使用本地资源，静态资源版本已改为按文件修改时间生成；Font Awesome、Marked、内联脚本和构建策略仍待治理 |
 | 人工浏览器验收 | `in_progress` | 已用 Chromium 完成主要页面桌面/移动视口加载和基础交互烟测；关键业务链路和生产 HTTPS 登录仍待完整验收 |
@@ -38,11 +38,11 @@
 | 任务中心 | `/data-center/tasks` | `dm-*` | 分组、筛选、配置、日志、产物和轮询 | 执行接口部分场景不返回本次 `run_id` | `in_progress` |
 | 市场 | `/market` | `.app` 公共适配 | 指数、板块、持仓图表保留，已使用独立 `market.css/js` | CDN 图标依赖和公共壳层仍待收口 | `in_progress` |
 | 市场发现 | `/market-discovery` | `.app` 公共适配 | 筛选、分页、K 线和观察入口保留 | 候选上下文和内联脚本仍需收口 | `in_progress` |
-| 观察池 | `/watch-pool` | `.app` 公共适配 | 来源、状态、模拟和建仓入口保留 | 入口与观察看板/自选仍有重叠 | `in_progress` |
+| 观察池 | `/watch-pool` | `.app` 公共适配 | 来源、状态、模拟和建仓入口保留；已使用独立 `watch-pool.css/js` | 入口与观察看板/自选仍有重叠 | `in_progress` |
 | 观察池行情 | `/dashboard/observe` | `.app` 公共适配 | 行情、支撑、指令和详情保留 | 超宽表格仍需移动端收口 | `in_progress` |
-| 自选 | `/watchlist` | `.app` 公共适配 | 关注关系、加入时间、备注和模拟 | 页面结构和脚本模块化仍需收口 | `in_progress` |
+| 自选 | `/watchlist` | `.app` 公共适配 | 关注关系、加入时间、备注和模拟；已使用独立 `watchlist.css/js` | 页面结构和公共壳层仍需收口 | `in_progress` |
 | 持仓 | `/dashboard/warroom` | `.app` 公共适配 | 账户摘要、风险、建议和事务入口 | 持仓操作实现未完全共用 | `in_progress` |
-| 持仓管理 | `/portfolio` | `.app` 公共适配 | 持仓事实、交易、导入导出 | 与持仓主页面仍有入口重叠 | `in_progress` |
+| 持仓管理 | `/portfolio` | `.app` 公共适配 | 持仓事实、交易、导入导出；已使用独立 `portfolio.css/js` | 与持仓主页面仍有入口重叠 | `in_progress` |
 | 持仓详情 | `/portfolio/{id}` | `.app` 公共适配 | 成本、流水、建议和操作 | 页面结构和表单校验仍需收口 | `in_progress` |
 | 模拟 | `/simulation` | `.app` 公共适配 | 模拟清单、重算、收益和建仓入口 | 模拟与观察池页面边界仍需继续收口 | `in_progress` |
 | 复盘 | `/dashboard/review` | `.app` 公共适配 | 统计、FIFO 流水、手动记录和导出；已使用独立 `review.css/js` | 服务端数据渲染和公共壳层仍待收口 | `in_progress` |
@@ -81,6 +81,10 @@
 | `morning-report.css/js` | 晨报页独立资源 | 晨报样式、Markdown 渲染和生成交互已从模板移出；Marked 仍依赖现有 CDN |
 | `review.css/js` | 复盘页独立资源 | 复盘样式和添加交易交互已从模板移出；数据表格仍由服务端渲染 |
 | `operation-points.css/js` | 操作点位页独立资源 | 操作点位样式、分析、回测和图表交互已从模板移出 |
+| `observe.css/js` | 观察池行情独立资源 | 观察池行情样式和详情交互已从模板移出 |
+| `watchlist.css/js` | 自选独立资源 | 自选样式、详情、模拟和观察起点交互已从模板移出 |
+| `portfolio.css/js` | 持仓管理独立资源 | 持仓样式、交易、建仓、平仓和刷新交互已从模板移出 |
+| `watch-pool.css/js` | 观察池独立资源 | 观察池样式、观察、模拟和数据门禁交互已从模板移出 |
 
 ## 最近验证基线
 

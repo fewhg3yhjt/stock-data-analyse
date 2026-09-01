@@ -1,41 +1,11 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 自选{% endblock %}
 {% block head %}
+<link rel="stylesheet" href="{{ static_asset('watchlist.css') }}">
 <script src="{{ static_asset('echarts.min.js') }}"></script>
 <script src="{{ static_asset('stock-chart.js') }}"></script>
 <script src="{{ static_asset('stock-detail.js') }}"></script>
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--color-surface-subtle);color:var(--color-text);line-height:1.8;font-size:16px;}
-.app{max-width:1200px;margin:0 auto;padding:28px 22px 60px;}
-.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--color-border);}
-.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
-.header h1 i{color:var(--color-info);}
-.header .sub{font-size:14px;color:var(--color-text-subtle);margin-top:3px;}
-.header .nav{font-size:14px;}
-.header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
-.header .nav a.active{font-weight:700;border-bottom:2px solid var(--color-info);padding-bottom:2px;}
-.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:16px 20px;margin-bottom:12px;box-shadow:var(--shadow);}
-.wl-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer;}
-.wl-head .name{font-weight:700;font-size:16px;}
-.wl-head .code{color:var(--color-text-subtle);font-size:13px;}
-.wl-actions{display:flex;gap:6px;flex-wrap:wrap;}
-.btn{padding:5px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:6px;text-decoration:none;}
-.btn-primary{background:var(--color-info);color:#fff;}
-.btn-outline{background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-subtle);}
-.btn-danger{background:#fbe9e7;color:var(--color-danger);}
-.wl-detail{display:none;margin-top:12px;border-top:1px solid var(--color-border);padding-top:12px;}
-.wl-detail.open{display:block;}
-.chart{width:100%;height:300px;}
-.meta{font-size:13px;color:var(--color-text-subtle);margin-bottom:8px;display:flex;gap:16px;flex-wrap:wrap;}
-.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--color-danger);font-size:14px;margin-bottom:14px;}
-.toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
-.empty{padding:30px;text-align:center;color:var(--color-text-subtle);}
-.metric-grid .m{background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:5px;padding:6px 10px;text-align:center;}
-.metric-grid .m .l{font-size:11px;color:var(--color-text-subtle);}
-.metric-grid .m .v{font-size:14px;font-weight:600;}
-</style>
+<script src="{{ static_asset('watchlist.js') }}" defer></script>
 {% endblock %}
 {% block body %}
 <div class="app">
@@ -54,11 +24,11 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 
   <div class="ui-card">
     <div class="ui-card-header"><span><i class="fas fa-plus-circle"></i> 手动添加自选</span></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <input id="wl-code" placeholder="代码 sh600519 / 600519" onblur="lookupStock()" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:180px;">
-      <input id="wl-name" placeholder="名称（可留空自动识别）" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;flex:1;min-width:180px;">
-      <input id="wl-added" type="date" title="观察起点（默认今天，可回看）" style="background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:8px 12px;font-size:14px;">
-      <button class="ui-button ui-button-primary" onclick="addManual()"><i class="fas fa-plus"></i> 添加</button>
+    <div class="wl-add-form">
+      <input id="wl-code" placeholder="代码 sh600519 / 600519">
+      <input id="wl-name" placeholder="名称（可留空自动识别）">
+      <input id="wl-added" type="date" title="观察起点（默认今天，可回看）">
+      <button class="ui-button ui-button-primary" data-action="addManual"><i class="fas fa-plus"></i> 添加</button>
     </div>
   </div>
 
@@ -69,7 +39,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
            data-sim-date="{{ w.sim_entry.date if w.sim_entry and w.sim_entry.date else '' }}"
            data-sim-price="{{ w.sim_entry.price if w.sim_entry and w.sim_entry.price else '' }}">
         <span class="name">{{ w.stock_name }} <span class="code">{{ w.stock_code }}</span>
-          <button class="ui-button ui-button-secondary" style="font-size:11px;padding:2px 8px;margin-left:6px;" data-action="editAddedTime" data-id="{{ w.id }}" data-added="{{ w.added_time or '' }}" title="点击修改观察起点">
+          <button class="ui-button ui-button-secondary wl-added-time" data-action="editAddedTime" data-id="{{ w.id }}" data-added="{{ w.added_time or '' }}" title="点击修改观察起点">
             <i class="fas fa-clock"></i> {{ w.added_time or '设观察起点' }}
           </button>
         </span>
@@ -89,95 +59,4 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   {% endif %}
 
 </div>
-<script>
-function toggle(code, wl){
-  const d = document.getElementById('detail-'+code);
-  d.classList.toggle('open');
-  if (d.classList.contains('open') && !d.dataset.loaded){
-    d.dataset.loaded = '1';
-    const box = document.getElementById('detail-box-'+code);
-    const sim = wl && wl.sim_entry ? wl.sim_entry : {};
-    window.StockDetail.load(code, 'watch', box, {
-      entryDate: sim.date || '',
-      entryPrice: sim.price || '',
-      onSimEntry: function(entry){
-        return fetch('/api/watchlist/'+wl.id+'/sim_entry', {method:'POST', body:new URLSearchParams(entry)})
-          .then(r=>r.json()).then(j=>{ if(j.status==='success'){ showUiMessage('模拟入场点已保存', 'success'); return true; } return false; })
-          .catch(()=>false);
-      }
-    }).catch(err=>{ box.innerHTML = '<span style="color:#c62828;font-size:13px;">'+err.message+'</span>'; });
-  }
-}
-document.addEventListener('click', function(e){
-  const el = e.target.closest('[data-action]');
-  if (!el) return;
-  const action = el.dataset.action;
-  if (action === 'toggle'){
-    const sim = el.dataset.simDate || el.dataset.simPrice ? {date: el.dataset.simDate || '', price: el.dataset.simPrice || ''} : {};
-    toggle(el.dataset.code, {id: Number(el.dataset.id), sim_entry: sim});
-  } else if (action === 'simulate'){
-    simulate(el.dataset.code, el.dataset.name);
-  } else if (action === 'editAddedTime'){
-    e.stopPropagation();
-    editAddedTime(Number(el.dataset.id), el.dataset.added || '');
-  } else if (action === 'delWatch'){
-    delWatch(Number(el.dataset.id));
-  }
-});
-async function simulate(code, name){
-  return UI_UTILS.once('watchlist:simulate:'+code, async () => {
-    showUiMessage('模拟中…', 'info');
-    const d = await UI_UTILS.fetchJson('/api/simulation', {method:'POST', body:new URLSearchParams({code, name})});
-    if (d.status==='success') location.href = '/simulation';
-    else showUiMessage(d.error||'模拟失败', 'error');
-  }).catch(error => showUiMessage(error.message || '模拟失败', 'error'));
-}
-async function delWatch(id){
-  return UI_UTILS.once('watchlist:delete:'+id, async () => {
-    if (!await showUiConfirm('删除后将移除该自选记录。', '删除自选')) return;
-    const d = await UI_UTILS.fetchJson('/watchlist/'+id, {method:'DELETE'});
-    if (d.status==='success') location.reload(); else showUiMessage(d.error||'删除失败', 'error');
-  }).catch(error => showUiMessage(error.message || '删除失败', 'error'));
-}
-async function addManual(){
-  return UI_UTILS.once('watchlist:add', async () => {
-  const code = document.getElementById('wl-code').value.trim();
-  let name = document.getElementById('wl-name').value.trim();
-  if (!code){ showUiMessage('请填写代码', 'error'); return; }
-  // 自动关联：输编号未填名称时，从 meta.db 查名称
-  if (!name){
-    try {
-      const r = await fetch('/api/stock/lookup?code=' + encodeURIComponent(code));
-      const d = await r.json();
-      if (d.status === 'success' && d.name){
-        name = d.name;
-        document.getElementById('wl-name').value = d.name;
-      }
-    } catch(e){ /* 查不到就用代码 */ }
-  }
-  const body = {code, name: name || code};
-  const added = document.getElementById('wl-added').value;
-  if (added) body.added_time = added;
-  const d = await (await fetch('/watchlist', {method:'POST', body:new URLSearchParams(body)})).json();
-  if (d.status==='success'){ showUiMessage('已加入自选', 'success'); setTimeout(()=>location.reload(),500); }
-  else showUiMessage(d.error||'添加失败', 'error');
-  }).catch(error => showUiMessage(error.message || '添加失败', 'error'));
-}
-async function lookupStock(){
-  const code = document.getElementById('wl-code').value.trim();
-  const nameInput = document.getElementById('wl-name');
-  if (!code || nameInput.value.trim()) return;
-  try {
-    const r = await fetch('/api/stock/lookup?code=' + encodeURIComponent(code));
-    const d = await r.json();
-    if (d.status === 'success' && d.name && d.name !== code) nameInput.value = d.name;
-  } catch(e){ /* 静默 */ }
-}
- async function editAddedTime(id, current){
-  const val = await showUiInput({title:'设置观察起点日期', message:'可回看；晚于今天则待观察。', label:'日期（YYYY-MM-DD）', value:current || '', placeholder:'YYYY-MM-DD'});
-  if (!val) return;
-  fetch('/api/watchlist/'+id+'/added_time', {method:'POST', body:new URLSearchParams({added_time: val})})
-    .then(r=>r.json()).then(d=>{ if(d.status==='success'){ showUiMessage('已更新', 'success'); setTimeout(()=>location.reload(),400); } else showUiMessage(d.error||'更新失败', 'error'); });
-}
-</script>
 {% endblock %}

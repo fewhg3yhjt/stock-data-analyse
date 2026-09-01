@@ -3,10 +3,10 @@
   window.UI_UTILS = {
     _busy: new Set(),
     async once(key, task) {
-      if (this._busy.has(key)) return null;
-      this._busy.add(key);
+      if (window.UI_UTILS._busy.has(key)) return null;
+      window.UI_UTILS._busy.add(key);
       try { return await task(); }
-      finally { this._busy.delete(key); }
+      finally { window.UI_UTILS._busy.delete(key); }
     },
     esc(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({

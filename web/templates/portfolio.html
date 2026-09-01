@@ -1,73 +1,6 @@
 {% extends "base.html" %}
 {% block title %}持仓管理 - StockInvestmentTool{% endblock %}
-{% block head %}
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--color-surface-subtle);color:var(--color-text);line-height:1.8;font-size:16px;}
-.app{max-width:1400px;margin:0 auto;padding:28px 22px 60px;}
-.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--color-border);}
-.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
-.header h1 i{color:var(--color-info);}
-.header .sub{font-size:14px;color:var(--color-text-subtle);margin-top:3px;}
-.header .nav{font-size:14px;}
-.header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
-.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
-.ui-card-header{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.ui-card-header i{color:var(--color-info);}
-.btn{padding:9px 20px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px;text-decoration:none;}
-.btn-primary{background:var(--color-info);color:#fff;}
-.btn-primary:hover{background:var(--color-info);}
-.btn-outline{background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-subtle);}
-.btn-outline:hover{border-color:var(--color-info);color:var(--color-info);}
-.btn-danger{background:#fbe9e7;color:var(--color-danger);}
-.btn-danger:hover{background:var(--color-danger);color:#fff;}
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;}
-.stat-card{background:var(--color-surface-subtle);border-radius:6px;padding:16px 12px;text-align:center;border:1px solid var(--color-border);}
-.stat-card .value{font-size:22px;font-weight:700;}
-.stat-card .label{font-size:12px;color:var(--color-text-subtle);}
-.stat-card.green .value{color:var(--color-success);}
-.stat-card.red .value{color:var(--color-danger);}
-.stat-card.blue .value{color:var(--color-info);}
-table{width:100%;border-collapse:collapse;font-size:14px;}
-th{text-align:left;padding:9px 10px;color:var(--color-text-subtle);font-weight:500;border-bottom:1px solid var(--color-border);font-size:13px;white-space:nowrap;}
-td{padding:9px 10px;border-bottom:1px solid var(--color-border);vertical-align:top;}
-tr:last-child td{border-bottom:none;}
-.pos{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;}
-.pos-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
-.pos-head .name{font-weight:700;font-size:16px;}
-.pos-head .code{color:var(--color-text-subtle);font-size:13px;}
-.pos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:10px;}
-.pos-metric{background:var(--color-surface-subtle);border-radius:5px;padding:8px 10px;text-align:center;}
-.pos-metric .v{font-size:16px;font-weight:600;}
-.pos-metric .l{font-size:11px;color:var(--color-text-subtle);}
-.advice{background:#fff8e1;border-left:4px solid var(--color-warning);padding:10px 14px;border-radius:0 5px 5px 0;font-size:13px;color:#5f4b00;margin-bottom:8px;}
-.advice.urgent{background:#fbe9e7;border-left-color:var(--color-danger);color:#7f1d1d;}
-.advice.hold{background:var(--color-surface-subtle);border-left-color:var(--color-text-subtle);color:var(--color-text-subtle);}
-.tag{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;}
-.tag.green{background:#e8f5e9;color:var(--color-success);}
-.tag.red{background:#fbe9e7;color:var(--color-danger);}
-.tag.orange{background:#fff3e0;color:var(--color-warning);}
-.tag.gray{background:#eceff1;color:var(--color-text-subtle);}
-.tag.blue{background:#e3f2fd;color:var(--color-info);}
-.pos-actions{display:flex;gap:8px;flex-wrap:wrap;}
-.pos-actions .btn{padding:6px 14px;font-size:13px;}
-.modal-overlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);justify-content:center;align-items:flex-start;padding:40px 16px;overflow-y:auto;}
-.modal-overlay.active{display:flex;}
-.modal{background:var(--color-surface);border-radius:10px;padding:26px;max-width:560px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.25);}
-.modal h3{font-size:18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
-.modal .close{cursor:pointer;color:var(--color-text-subtle);font-size:24px;background:none;border:none;}
-.ui-field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
-.ui-field label{font-size:13px;color:var(--color-text-subtle);font-weight:500;}
-.ui-field input,.ui-field select{background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:9px 12px;color:var(--color-text);font-size:14px;outline:none;}
-.ui-field input:focus{border-color:var(--color-info);}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--color-danger);font-size:14px;margin-bottom:14px;}
-.toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;box-shadow:0 4px 20px rgba(0,0,0,.3);}
-.empty{padding:30px;text-align:center;color:var(--color-text-subtle);}
-@media(max-width:700px){.form-row{grid-template-columns:1fr;}.stat-grid{grid-template-columns:1fr 1fr;}}
-</style>
-{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static_asset('portfolio.css') }}"><script src="{{ static_asset('portfolio.js') }}" defer></script>{% endblock %}
 {% block body %}
 <div class="app">
 
@@ -90,10 +23,10 @@ tr:last-child td{border-bottom:none;}
   <div class="ui-card">
     <div class="ui-card-header">
       <span><i class="fas fa-tachometer-alt"></i> 组合总览</span>
-      <span style="display:flex;gap:8px;">
-        <button class="ui-button ui-button-secondary" onclick="openModal('add-position')"><i class="fas fa-plus"></i> 新建持仓</button>
-        <button class="ui-button ui-button-secondary" onclick="refreshAll()"><i class="fas fa-sync"></i> 刷新行情</button>
-        <button class="ui-button ui-button-secondary" onclick="genReport()"><i class="fas fa-newspaper"></i> 生成晨报</button>
+      <span class="portfolio-actions">
+        <button class="ui-button ui-button-secondary" data-action="openModal" data-id="add-position"><i class="fas fa-plus"></i> 新建持仓</button>
+        <button class="ui-button ui-button-secondary" data-action="refresh"><i class="fas fa-sync"></i> 刷新行情</button>
+        <button class="ui-button ui-button-secondary" data-action="report"><i class="fas fa-newspaper"></i> 生成晨报</button>
         <a class="ui-button ui-button-secondary" href="/portfolio/export"><i class="fas fa-file-excel"></i> 导出</a>
       </span>
     </div>
@@ -109,7 +42,7 @@ tr:last-child td{border-bottom:none;}
 
   <!-- 持仓列表 -->
   <div class="ui-card">
-    <div class="ui-card-header"><i class="fas fa-boxes"></i> 持仓明细 <span style="font-size:13px;color:var(--color-text-subtle);font-weight:400;">{{ positions|length }} 只</span></div>
+    <div class="ui-card-header"><i class="fas fa-boxes"></i> 持仓明细 <span class="portfolio-count">{{ positions|length }} 只</span></div>
     {% if positions %}
       {% for p in positions %}
       <div class="pos" id="pos-{{ p.id }}">
@@ -124,7 +57,7 @@ tr:last-child td{border-bottom:none;}
           <div class="pos-metric"><div class="l">市值</div><div class="v">{{ '{:,.0f}'.format(p.market_value) }}</div></div>
           <div class="pos-metric"><div class="l">浮盈</div><div class="v {{ 'red' if p.unrealized_pnl >= 0 else 'green' }}">{{ '{:+,.0f}'.format(p.unrealized_pnl) }}</div></div>
           <div class="pos-metric"><div class="l">止损线</div><div class="v">{{ '%.2f' % p.stop_loss_price }}</div></div>
-          <div class="pos-metric"><div class="l">阶段</div><div class="v" style="font-size:13px;">{{ p.position_phase }}</div></div>
+           <div class="pos-metric"><div class="l">阶段</div><div class="v phase">{{ p.position_phase }}</div></div>
         </div>
         {% if p.advice %}
         <div class="advice {{ 'urgent' if p.advice.urgency == 'urgent' else ('hold' if p.advice.advice_type == 'hold' else '') }}">
@@ -141,14 +74,14 @@ tr:last-child td{border-bottom:none;}
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty"><i class="fas fa-inbox" style="font-size:32px;color:#cbd5e1;"></i><p>暂无持仓，点击"新建持仓"开始记录</p></div>
+       <div class="empty"><i class="fas fa-inbox empty-icon"></i><p>暂无持仓，点击"新建持仓"开始记录</p></div>
     {% endif %}
   </div>
 
   <!-- 自选池 -->
   <div class="ui-card">
     <div class="ui-card-header"><span><i class="fas fa-star"></i> 自选池</span>
-      <span style="display:flex;gap:8px;"><button class="ui-button ui-button-secondary" onclick="openModal('add-watch')"><i class="fas fa-plus"></i> 加自选</button></span>
+       <span class="portfolio-actions"><button class="ui-button ui-button-secondary" data-action="openModal" data-id="add-watch"><i class="fas fa-plus"></i> 加自选</button></span>
     </div>
     {% if watchlist %}
     <table class="ui-table"><thead><tr><th>代码</th><th>名称</th><th>目标仓位</th><th>弱支撑</th><th>备注</th><th></th></tr></thead>
@@ -159,7 +92,7 @@ tr:last-child td{border-bottom:none;}
         <td>{{ '{:,.0f}'.format(w.target_capital) }}</td>
         <td>{{ '%.2f' % w.weak_support if w.weak_support else '—' }}</td>
         <td>{{ w.notes }}</td>
-        <td><button class="ui-button ui-button-secondary" style="padding:4px 10px;font-size:12px;" data-action="delWatch" data-id="{{ w.id }}">删除</button></td>
+         <td><button class="ui-button ui-button-secondary watch-delete" data-action="delWatch" data-id="{{ w.id }}">删除</button></td>
       </tr>
       {% endfor %}
     </tbody></table>
@@ -172,7 +105,7 @@ tr:last-child td{border-bottom:none;}
 <!-- 新建持仓弹窗 -->
 <div class="modal-overlay" id="modal-add-position">
   <div class="modal">
-    <h3>新建持仓 <button class="close" onclick="closeModal('add-position')">&times;</button></h3>
+    <h3>新建持仓 <button class="close" data-action="closeModal" data-id="add-position">&times;</button></h3>
     <div class="form-row">
       <div class="ui-field"><label>股票代码</label><input id="np-code" placeholder="sh.600900"></div>
       <div class="ui-field"><label>股票名称</label><input id="np-name" placeholder="长江电力"></div>
@@ -194,27 +127,27 @@ tr:last-child td{border-bottom:none;}
       </select>
     </div>
     <div class="ui-field"><label>备注</label><input id="np-notes" placeholder="可选"></div>
-    <button class="ui-button ui-button-primary" style="width:100%;justify-content:center;" onclick="addPosition()"><i class="fas fa-check"></i> 确认建仓</button>
+    <button class="ui-button ui-button-primary modal-submit" data-action="addPosition"><i class="fas fa-check"></i> 确认建仓</button>
   </div>
 </div>
 
 <!-- 加自选弹窗 -->
 <div class="modal-overlay" id="modal-add-watch">
   <div class="modal">
-    <h3>新增自选 <button class="close" onclick="closeModal('add-watch')">&times;</button></h3>
+    <h3>新增自选 <button class="close" data-action="closeModal" data-id="add-watch">&times;</button></h3>
     <div class="form-row">
       <div class="ui-field"><label>股票代码</label><input id="nw-code" placeholder="sh.600519"></div>
       <div class="ui-field"><label>股票名称</label><input id="nw-name" placeholder="贵州茅台"></div>
     </div>
     <div class="ui-field"><label>目标仓位（元）</label><input id="nw-capital" type="number" min="0"></div>
-    <button class="ui-button ui-button-primary" style="width:100%;justify-content:center;" onclick="addWatch()"><i class="fas fa-check"></i> 确认</button>
+    <button class="ui-button ui-button-primary modal-submit" data-action="addWatch"><i class="fas fa-check"></i> 确认</button>
   </div>
 </div>
 
 <!-- 交易弹窗 -->
 <div class="modal-overlay" id="modal-txn">
   <div class="modal">
-    <h3 id="txn-title">记录交易 <button class="close" onclick="closeModal('txn')">&times;</button></h3>
+    <h3 id="txn-title">记录交易 <button class="close" data-action="closeModal" data-id="txn">&times;</button></h3>
     <div class="form-row">
       <div class="ui-field"><label>价格</label><input id="txn-price" type="number" step="0.01"></div>
       <div class="ui-field"><label>份额</label><input id="txn-shares" type="number" min="0"></div>
@@ -224,99 +157,8 @@ tr:last-child td{border-bottom:none;}
       <div class="ui-field"><label>手续费</label><input id="txn-fee" type="number" min="0" step="0.01" value="0"></div>
     </div>
     <div class="ui-field"><label>备注</label><input id="txn-reason" placeholder="可选"></div>
-    <button class="ui-button ui-button-primary" style="width:100%;justify-content:center;" onclick="submitTxn()"><i class="fas fa-check"></i> 确认</button>
+    <button class="ui-button ui-button-primary modal-submit" data-action="submitTxn"><i class="fas fa-check"></i> 确认</button>
   </div>
 </div>
 
-<script>
-const $ = s => document.querySelector(s);
-let txnPosId = null, txnType = 'buy';
-const esc = window.UI_UTILS.esc;
-
-function openModal(id) { $('#modal-' + id).classList.add('active'); }
-function closeModal(id) { $('#modal-' + id).classList.remove('active'); }
-function api(url, data, method='POST') {
-  const fd = new FormData();
-  Object.entries(data || {}).forEach(([k, v]) => { if (v !== undefined && v !== null) fd.append(k, v); });
-  return fetch(url, { method, body: fd }).then(r => r.json());
-}
-
-// 新建持仓
-function addPosition() {
-  const data = { code: $('#np-code').value.trim(), name: $('#np-name').value.trim(),
-    shares: $('#np-shares').value, cost: $('#np-cost').value, buy_date: $('#np-date').value,
-    stock_type: $('#np-type').value, scheme: $('#np-scheme').value, notes: $('#np-notes').value };
-  if (!data.code || !data.name || !data.shares || !data.cost) return showUiMessage('请填写完整', 'error');
-  api('/portfolio/add', data).then(r => {
-    if (r.status === 'success') { showUiMessage('建仓成功 #' + r.position_id, 'success'); setTimeout(() => location.reload(), 600); }
-    else showUiMessage(r.error || '建仓失败', 'error');
-  });
-}
-// 加自选
-function addWatch() {
-  api('/watchlist', { code: $('#nw-code').value.trim(), name: $('#nw-name').value.trim(),
-    target_capital: $('#nw-capital').value }).then(r => {
-    if (r.status === 'success') { showUiMessage('已加入自选', 'success'); setTimeout(() => location.reload(), 600); }
-    else showUiMessage(r.error || '失败', 'error');
-  });
-}
-function delWatch(id) {
-  fetch('/watchlist/' + id, { method: 'DELETE' }).then(r => r.json()).then(r => {
-    if (r.status === 'success') { showUiMessage('已删除', 'success'); setTimeout(() => location.reload(), 600); }
-    else showUiMessage(r.error, 'error');
-  });
-}
-// 交易
-function openTxn(id, type, name) {
-  txnPosId = id; txnType = type;
-  $('#txn-title').innerHTML = (type === 'buy' ? '记录买入' : type === 'sell' ? '记录卖出' : '记录分红') + ' — ' + esc(name) +
-    ' <button class="close" onclick="closeModal(\'txn\')">&times;</button>';
-  $('#txn-date').value = new Date().toISOString().slice(0,10);
-  openModal('txn');
-}
-function submitTxn() {
-  if (txnType === 'dividend') {
-    api(`/portfolio/${txnPosId}/transaction`, { type: 'dividend', price: 0,
-      shares: $('#txn-shares').value, fee: $('#txn-fee').value, date: $('#txn-date').value, reason: '分红' })
-      .then(r => { if (r.status==='success'){showUiMessage('已记录', 'success');setTimeout(()=>location.reload(),600);} else showUiMessage(r.error||'失败', 'error'); });
-    return;
-  }
-  api(`/portfolio/${txnPosId}/transaction`, { type: txnType, price: $('#txn-price').value,
-    shares: $('#txn-shares').value, fee: $('#txn-fee').value, date: $('#txn-date').value, reason: $('#txn-reason').value })
-    .then(r => { if (r.status==='success'){showUiMessage('已记录', 'success');setTimeout(()=>location.reload(),600);} else showUiMessage(r.error||'失败', 'error'); });
-}
-// 平仓
-async function closePos(id, name) {
-  const price = await showUiInput({title: `平仓 ${name}`, message: '请输入成交价。', label: '成交价', type: 'number', placeholder: '成交价'});
-  if (!price || isNaN(price)) return;
-  api(`/portfolio/${id}/close`, { price, reason: '手动平仓' }).then(r => {
-    if (r.status==='success'){showUiMessage('已平仓', 'success');setTimeout(()=>location.reload(),600);} else showUiMessage(r.error||'平仓失败', 'error');
-  });
-}
-// 刷新
-function refreshAll() {
-  const btn = event.currentTarget; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 刷新中';
-  api('/portfolio/refresh').then(r => {
-    if (r.status==='success'){ showUiMessage('行情已刷新', 'success'); setTimeout(()=>location.reload(), 800); }
-    else showUiMessage(r.error||'刷新失败', 'error');
-    btn.disabled = false;
-  });
-}
-function genReport() {
-  const btn = event.currentTarget; btn.disabled = true;
-  api('/morning-report').then(r => {
-    if (r.status==='success'){ showUiMessage('晨报已生成', 'success'); setTimeout(()=>location.href='/morning-report', 600); }
-    else showUiMessage(r.error||'生成失败', 'error');
-    btn.disabled = false;
-  });
-}
-document.addEventListener('click', function(e){
-  const el = e.target.closest('[data-action]');
-  if (!el) return;
-  const a = el.dataset.action;
-  if (a === 'openTxn') openTxn(Number(el.dataset.id), el.dataset.type, el.dataset.name);
-  else if (a === 'closePos') closePos(Number(el.dataset.id), el.dataset.name);
-  else if (a === 'delWatch') delWatch(Number(el.dataset.id));
-});
-</script>
 {% endblock %}
