@@ -3168,7 +3168,7 @@ def create_app():
     app.secret_key = os.getenv("SECRET_KEY") or "stock-invest-tool-dev-secret"
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "0").lower() in {"1", "true", "yes", "on"},
         SESSION_COOKIE_SAMESITE="Lax",
     )
     app.register_blueprint(web_app, url_prefix="/")
