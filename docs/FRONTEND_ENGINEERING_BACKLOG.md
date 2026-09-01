@@ -47,7 +47,7 @@
 | Toast/反馈 | `done` | 共享 `showUiMessage()` 已覆盖页面反馈；全库只保留 `base.html` 的一个 Toast 容器，页面级 Toast 容器和函数已清理 |
 | XSS/CSP | `in_progress` | 内联事件已清零，marked 已净化，CSP 分阶段启用（仍允许内联脚本与 CDN） |
 | 表单/确认组件 | `in_progress` | `.ui-confirm`、`.ui-input-panel` 和共享 Promise API 已落地；主要确认/输入流程已迁移，表单字段校验仍未统一 |
-| CDN/构建/版本 | `todo` | 仍存在 CDN、内联脚本和手写版本号 |
+| CDN/构建/版本 | `in_progress` | ECharts 已切换为本地资源；Font Awesome 和 Marked 仍使用 CDN，内联脚本和手写版本号仍待治理 |
 | 真实进度和图表释放 | `todo` | 需单独实现和回归 |
 
 ## P0：安全和数据展示正确性
@@ -132,7 +132,7 @@
 
 | 现状 | 风险 | 整改方向 | 验收标准 |
 |---|---|---|---|
-| ECharts/Marked/Font Awesome 同时存在 CDN、本地和 fallback 多种加载方式 | 离线环境不可用、重复加载、CSP 难配置 | 统一使用本地静态资源；每个库只加载一次；缺失资源在启动检查中暴露 | 页面离线可用，网络面板无重复库和外部 CDN 依赖 |
+| ECharts/Marked/Font Awesome 曾同时存在 CDN、本地和 fallback 多种加载方式 | 离线环境不可用、重复加载、CSP 难配置 | 统一使用本地静态资源；每个库只加载一次；缺失资源在启动检查中暴露 | 页面离线可用，网络面板无重复库和外部 CDN 依赖 | `in_progress`：ECharts 已统一使用 `/static/echarts.min.js`；Marked 仍依赖 CDN，需补本地资源后继续收口 |
 
 ### E-05 静态资源版本策略分散
 

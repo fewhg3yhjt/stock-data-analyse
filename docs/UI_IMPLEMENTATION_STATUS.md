@@ -17,13 +17,13 @@
 | 任务中心 | `in_progress` | 分组、运行状态、配置、日志、产物和轮询已实现；部分执行场景不返回本次 `run_id` |
 | 个股研究详情 | `in_progress` | ResearchRun 创建/查询、业务运行轮询、四维评估、证据和数据上下文已接入；报告和后续动作仍按 API 状态收口 |
 | 状态词表 | `in_progress` | `ui-status.js` 已全局加载并提供 canonical class；部分旧页面仍有局部状态文案和样式待收口 |
-| 反馈机制 | `in_progress` | 普通消息已有统一过渡方案；原生 `confirm/prompt` 仍有残留 |
+| 反馈机制 | `done` | `showUiMessage()`、`showUiConfirm()` 和 `showUiInput()` 已由公共资源提供；页面已不再调用原生 `alert/confirm/prompt` |
 | 设计 Token | `done` | `base.css` 与页面/脚本已改用 `--color-*` 语义 Token；旧变量及模板内联 `:root` 已删除，全库 `var()` 引用均有定义 |
 | 状态 CSS 类 | `done` | `ui-status.js` 的 `cls` 已返回完整 `status-*` canonical class；核心页面已统一使用 `.status-tag.status-<key>` |
 | 公共组件类名 | `in_progress` | 基础 `.ui-*` 组件和主要类名迁移已完成；旧组件类、页面内联样式及独立 `wb-*`/`dm-*` 体系仍未全部收口 |
 | 页面级 Adapter | `in_progress` | 核心系统页面有独立脚本，许多业务页仍是模板内联脚本 |
 | 安全治理 | `in_progress` | 内联事件注入已清零，Markdown 已通过 `ui-sanitize.js` 净化，CSP 和基础安全头已启用；仍允许内联脚本和 CDN |
-| 资源治理 | `todo` | CDN、本地库、手写版本号和构建策略尚未统一 |
+| 资源治理 | `in_progress` | ECharts 已统一使用本地资源；Font Awesome、Marked、内联脚本和手写版本号仍待治理 |
 | 人工浏览器验收 | `todo` | 已做路由/接口冒烟，尚未完成逐页视觉、移动端和交互验收 |
 
 ## 页面实现矩阵
@@ -34,16 +34,16 @@
 |---|---|---|---|---|---|
 | 工作台 | `/`、`/workbench` | `wb-*` | 独立 JS，摘要和待办已接入 | 仍消费旧聚合接口，市场摘要为空 | `in_progress` |
 | 数据中心 | `/data-center` | `dm-*` | 独立 Adapter，资产、健康、链路已接入 | 任务运行编号和安全预览受接口限制 | `in_progress` |
-| 数据资产 | `/data-center/assets` | `dm-*` | 目录、动态分类、详情和管理操作 | 管理脚本仍有部分原生确认/输入 | `in_progress` |
+| 数据资产 | `/data-center/assets` | `dm-*` | 目录、动态分类、详情和管理操作 | 表单校验和脚本模块化仍需收口 | `in_progress` |
 | 任务中心 | `/data-center/tasks` | `dm-*` | 分组、筛选、配置、日志、产物和轮询 | 执行接口部分场景不返回本次 `run_id` | `in_progress` |
 | 市场 | `/market` | `.app` 公共适配 | 指数、板块、持仓图表保留 | 模板内联脚本和 CDN 依赖 | `in_progress` |
 | 市场发现 | `/market-discovery` | `.app` 公共适配 | 筛选、分页、K 线和观察入口保留 | 候选上下文和内联脚本仍需收口 | `in_progress` |
 | 观察池 | `/watch-pool` | `.app` 公共适配 | 来源、状态、模拟和建仓入口保留 | 入口与观察看板/自选仍有重叠 | `in_progress` |
 | 观察池行情 | `/dashboard/observe` | `.app` 公共适配 | 行情、支撑、指令和详情保留 | 超宽表格仍需移动端收口 | `in_progress` |
-| 自选 | `/watchlist` | `.app` 公共适配 | 关注关系、加入时间、备注和模拟 | `prompt/confirm` 仍有残留 | `in_progress` |
+| 自选 | `/watchlist` | `.app` 公共适配 | 关注关系、加入时间、备注和模拟 | 页面结构和脚本模块化仍需收口 | `in_progress` |
 | 持仓 | `/dashboard/warroom` | `.app` 公共适配 | 账户摘要、风险、建议和事务入口 | 持仓操作实现未完全共用 | `in_progress` |
 | 持仓管理 | `/portfolio` | `.app` 公共适配 | 持仓事实、交易、导入导出 | 与持仓主页面仍有入口重叠 | `in_progress` |
-| 持仓详情 | `/portfolio/{id}` | `.app` 公共适配 | 成本、流水、建议和操作 | 输入/确认交互仍为旧实现 | `in_progress` |
+| 持仓详情 | `/portfolio/{id}` | `.app` 公共适配 | 成本、流水、建议和操作 | 页面结构和表单校验仍需收口 | `in_progress` |
 | 模拟 | `/simulation` | `.app` 公共适配 | 模拟清单、重算、收益和建仓入口 | 模拟与观察池页面边界仍需继续收口 | `in_progress` |
 | 复盘 | `/dashboard/review` | `.app` 公共适配 | 统计、FIFO 流水、手动记录和导出 | 仍以服务端渲染和内联脚本为主 | `in_progress` |
 | 晨报 | `/morning-report` | `.app` 公共适配 | Markdown 摘要和生成入口已接入净化 | 页面脚本和资源治理仍需收口 | `in_progress` |
@@ -52,7 +52,7 @@
 | 研究中心 | `/research` | `.app` 公共适配 | 研究工具入口和流程说明 | 入口页，不承载正式研究结果 | `in_progress` |
 | 个股研究 | `/research/detail` | `.app` 公共适配 | ResearchRun 结构化结果和上下文 | 报告、快照和模拟后续动作按 API 状态接入 | `in_progress` |
 | 个股分析 | `/analyze` | `.app` 公共适配 | 行情、方案、指标、报告和回测 | 进度展示和旧脚本需整改 | `in_progress` |
-| 指标中心 | `/indicator-center` | `.app` 公共适配 | 指标目录、编辑和预览 | `confirm/alert` 和内联脚本残留 | `in_progress` |
+| 指标中心 | `/indicator-center` | `.app` 公共适配 | 指标目录、编辑和预览 | 表单校验和内联脚本仍需收口 | `in_progress` |
 | 策略编排 | `/strategy-composer` | `.app` 公共适配 | 规则、方案、校验、发布和回滚 | 确认面板和脚本拆分未完成 | `in_progress` |
 | 策略实验 | `/strategy` | `.app` 公共适配 | 扫描、回测、曲线和明细 | CDN、内联脚本和运行状态需收口 | `in_progress` |
 | 操作点位 | `/operation-points` | `.app` 公共适配 | 点位、支撑、止损、RR 和回测 | 表单组件契约尚未完全落地 | `in_progress` |
@@ -60,7 +60,7 @@
 | 通知中心 | `/notify-center` | `.app` 公共适配 | 规则、通道、投递台账、重试 | 业务通知/系统告警尚未完全 Tab 化 | `in_progress` |
 | 运行诊断 | `/diagnostics` | `.app` 公共适配 | 只读健康检查和状态表 | 状态 CSS 和独立脚本仍可继续收口 | `in_progress` |
 | 系统 | `/system` | `.app` 公共适配 | 系统工具入口和职责说明 | 入口页，数据仍由子页面负责 | `in_progress` |
-| 系统设置 | `/settings` | `.app` 公共适配 | 方案、规则、通知、账户和重置 | `confirm`、内联样式和表单契约需整改 | `in_progress` |
+| 系统设置 | `/settings` | `.app` 公共适配 | 方案、规则、通知、账户和重置 | 内联样式和表单契约需整改 | `in_progress` |
 | 登录 | `/login` | 独立登录布局 | 登录表单和错误提示 | 不使用业务侧栏 | `in_progress` |
 
 ## 公共资源现状
