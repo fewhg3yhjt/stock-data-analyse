@@ -1,8 +1,0 @@
-intraday:
-  enabled: true
-  interval_minutes: 10
-post_close:
-  enabled: true
-  time: "15:35"
-email:
-  to: ""

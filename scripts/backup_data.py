@@ -69,7 +69,9 @@ def create_backup(destination: Path, source_root: Path) -> Path:
         elif source.name.endswith(".db"):
             target.parent.mkdir(parents=True, exist_ok=True)
             _backup_sqlite(source, target)
-    for relative in (".env", "schemes/custom", "notifier/notify_rules.yaml"):
+    for relative in (".env", "schemes/custom",
+                     "notifier/notify_rules.yaml", "notifier/rules.yaml",
+                     "biz/notify_rules.yaml", "biz/rules.yaml"):
         source = source_root / relative
         if not source.exists():
             continue
