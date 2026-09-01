@@ -156,26 +156,29 @@ class BusinessTaskService:
         })
         return run
 
-    def execute_run(self, run_id: str) -> BusinessJobRun:
-        """Worker 执行已创建的 requested JobRun，并在执行期间持有租约锁。
-
-        claim 是原子操作：同一个事务内验证 requested → 占用锁 → 置 running。
-        两个并发 Worker 竞争同一 run 时只有一个能成功，另一个抛出
-        TaskStateError（可重试），不会伪装成任务执行失败。
-        """
+    def _claim_run(self, run_id: str | None = None) -> BusinessJobRun | None:
+        """Atomically select and claim one requested run."""
         import datetime
         from datetime import timezone
-        lock_key = None
         with self.repo.db.transaction() as conn:
-            row = conn.execute(
-                "SELECT * FROM business_job_runs WHERE run_id=?", (run_id,)
-            ).fetchone()
+            if run_id is None:
+                row = conn.execute(
+                    "SELECT * FROM business_job_runs WHERE status=? ORDER BY rowid LIMIT 1",
+                    (JOB_REQUESTED,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM business_job_runs WHERE run_id=?", (run_id,)
+                ).fetchone()
             if not row:
+                if run_id is None:
+                    return None
                 raise KeyError(f"unknown run: {run_id}")
             if row["status"] != JOB_REQUESTED:
                 raise TaskStateError(f"run is not requested: {row['status']}")
             run = self._row_to_job(row)
             lock_key = run.lock_key or self.make_lock_key(run.task_key)
+            run.lock_key = lock_key
             now = now_utc()
             expires = datetime.datetime.now(timezone.utc) + datetime.timedelta(seconds=300)
             expires_text = expires.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -193,11 +196,16 @@ class BusinessTaskService:
             )
             conn.execute(
                 "UPDATE business_job_runs SET status=?, started_at=?, heartbeat_at=? WHERE run_id=?",
-                (JOB_RUNNING, now, now, run_id),
+                (JOB_RUNNING, now, now, run.run_id),
             )
             run.status = JOB_RUNNING
             run.started_at = now
             run.heartbeat_at = now
+            return run
+
+    def _execute_claimed(self, run: BusinessJobRun) -> BusinessJobRun:
+        """Execute a run that has already been atomically claimed."""
+        lock_key = run.lock_key
         stop_heartbeat = threading.Event()
         heartbeat_thread = threading.Thread(
             target=self._heartbeat_loop,
@@ -221,18 +229,21 @@ class BusinessTaskService:
             self.release_lock(lock_key, owner_run_id=run.run_id)
         return run
 
+    def execute_run(self, run_id: str) -> BusinessJobRun:
+        """Atomically claim and execute one requested JobRun."""
+        run = self._claim_run(run_id)
+        return self._execute_claimed(run)
+
     def run_next(self) -> BusinessJobRun | None:
         """领取最早 requested JobRun 并执行一个，供轻量 Worker 调用。
 
         竞争失败（另一 Worker 已领取同一 run）返回 None，不伪装成任务失败。
         """
-        row = self.repo.db.fetchone(
-            "SELECT * FROM business_job_runs WHERE status=? ORDER BY rowid LIMIT 1", (JOB_REQUESTED,)
-        )
-        if not row:
-            return None
         try:
-            return self.execute_run(row["run_id"])
+            run = self._claim_run()
+            if run is None:
+                return None
+            return self._execute_claimed(run)
         except TaskStateError as exc:
             logger.warning("run_next 竞争领取失败: %s", exc)
             return None

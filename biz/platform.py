@@ -87,6 +87,7 @@ class HealthService:
         checks = [
             self._check_business_db(),
             self._check_management_db(),
+            self._check_business_queue(),
             self._check_disk(),
         ]
         blocking = [c for c in checks if c.blocking and c.status != "healthy"]
@@ -96,6 +97,35 @@ class HealthService:
             "observed_at": now_utc(),
             "components": [c.__dict__ for c in checks],
         }
+
+    def _check_business_queue(self) -> HealthComponent:
+        """Expose queue pressure without treating normal backlog as DB failure."""
+        try:
+            with self.business_db.connect() as conn:
+                counts = conn.execute(
+                    "SELECT "
+                    "COALESCE(SUM(CASE WHEN status='requested' THEN 1 ELSE 0 END), 0), "
+                    "COALESCE(SUM(CASE WHEN status='running' THEN 1 ELSE 0 END), 0) "
+                    "FROM business_job_runs"
+                ).fetchone()
+                oldest = conn.execute(
+                    "SELECT requested_at FROM business_execution_requests r "
+                    "JOIN business_job_runs j ON j.request_id=r.request_id "
+                    "WHERE j.status='requested' ORDER BY r.requested_at LIMIT 1"
+                ).fetchone()
+            return HealthComponent(
+                name="business_queue", status="healthy", code="",
+                details={
+                    "requested": int(counts[0]),
+                    "running": int(counts[1]),
+                    "oldest_requested_at": oldest[0] if oldest else None,
+                },
+            )
+        except Exception as e:  # noqa: BLE001
+            return HealthComponent(
+                name="business_queue", status="unhealthy", code="QUEUE_UNAVAILABLE",
+                blocking=True, details={"error": str(e)},
+            )
 
     def details(self) -> dict:
         ready = self.ready()

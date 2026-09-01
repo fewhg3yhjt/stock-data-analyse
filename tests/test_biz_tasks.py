@@ -162,6 +162,20 @@ class TestTaskService:
         thread.join(timeout=5)
         assert first["run"].status == JOB_SUCCESS
 
+    def test_run_next_claims_before_executor_lookup(self, svc):
+        register_task("health.reconcile", run_ok)
+        request = svc.enqueue("health.reconcile", input_data={})
+        run = svc.create_run_for_request(request.request_id)
+        claimed = svc._claim_run()
+        assert claimed.run_id == run.run_id
+        assert claimed.status == JOB_RUNNING
+        assert svc.repo.db.fetchone(
+            "SELECT status FROM business_job_runs WHERE run_id=?", (run.run_id,)
+        )["status"] == JOB_RUNNING
+        with pytest.raises(TaskStateError):
+            svc._claim_run()
+        svc.release_lock(claimed.lock_key, owner_run_id=claimed.run_id)
+
     def test_release_only_by_owner(self, svc):
         assert svc.acquire_lock("task:x", "owner")
         svc.release_lock("task:x", owner_run_id="other")

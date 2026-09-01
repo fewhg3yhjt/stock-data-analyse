@@ -60,6 +60,16 @@ class TestHealth:
         assert "business_db" in d
         assert d["status"] in {"ok", "degraded"}
 
+    def test_ready_reports_business_queue(self, tmp_path):
+        db = BusinessDB(tmp_path / "queue.db")
+        hs = HealthService(db)
+        ready = hs.ready()
+        queue = next(c for c in ready["components"] if c["name"] == "business_queue")
+        assert queue["status"] == "healthy"
+        assert queue["details"] == {
+            "requested": 0, "running": 0, "oldest_requested_at": None,
+        }
+
 
 class TestBackup:
     def test_backup_and_restore(self, tmp_path):

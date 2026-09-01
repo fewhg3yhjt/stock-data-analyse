@@ -204,9 +204,21 @@ def _simulation_handler(service: BusinessTaskService) -> Callable:
             source_screen_run_id=input_data.get("screen_run_id"), data_context=dataset.context,
         )
         service.repo.save_simulation_plan(plan)
-        run = SimulationRun(run_id=new_id("run"), plan_id=plan.plan_id, status="running")
+        run = SimulationRun(
+            run_id=new_id("run"), plan_id=plan.plan_id, status="running",
+            data_context=dataset.context, started_at=now_utc(),
+        )
+        service.repo.save_simulation_run(run)
         executor = SimulationExecutor(plan, dataset.data, strategy=strategy, run_id=run.run_id)
-        result = executor.run()
+        try:
+            result = executor.run()
+        except Exception as exc:  # noqa: BLE001
+            # Preserve the partial execution trail before exposing the task failure.
+            try:
+                service.repo.save_simulation_events(executor.events)
+            finally:
+                service.repo.update_simulation_run_status(run.run_id, "failed", str(exc))
+            raise
         fills, events = executor.fills, executor.events
         run.status = "success"
         run.finished_at = now_utc()
