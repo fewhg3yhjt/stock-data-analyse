@@ -297,8 +297,17 @@ class _MinuteFirstPriceLoader:
             from StockInvestmentTool.warehouse.minute import MinuteStore, normalize_minute_code
             from StockInvestmentTool.config import Config
 
-            day = datetime.now().strftime("%Y-%m-%d")
             store = MinuteStore()
+            # 不硬取"今天"：凌晨/非交易时段当天无分钟数据，应取最近一个
+            # 已有分钟快照的交易日（如上一个交易日），否则会误判为无价格。
+            days = store.days()
+            today = datetime.now().strftime("%Y-%m-%d")
+            day = None
+            if days:
+                past = [d for d in days if d <= today]
+                day = past[-1] if past else days[-1]
+            if day is None:
+                return None, None
             frame = store.read(day, normalize_minute_code(symbol))
             if frame is None or frame.empty:
                 return None, None
