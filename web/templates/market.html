@@ -3,28 +3,7 @@
 {% block head %}
 <script src="{{ static_asset('echarts.min.js') }}"></script>
 <script src="{{ static_asset('stock-chart.js') }}"></script>
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;background:var(--color-surface-subtle);color:var(--color-text);line-height:1.8;font-size:16px;}
-.app{max-width:1400px;margin:0 auto;padding:28px 22px 60px;}
-.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--color-border);}
-.header h1{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
-.header h1 i{color:var(--color-info);}
-.header .sub{font-size:14px;color:var(--color-text-subtle);margin-top:3px;}
-.header .nav{font-size:14px;}
-.header .nav a{color:var(--color-info);text-decoration:none;margin-left:16px;}
-.header .nav a.active{font-weight:700;border-bottom:2px solid var(--color-info);padding-bottom:2px;}
-.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:18px 22px;margin-bottom:16px;box-shadow:var(--shadow);}
-.ui-card-header{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;}
-.ui-card-header i{color:var(--color-info);}
-.chart{width:100%;height:340px;}
-.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
-select,input{background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--color-text);outline:none;}
-.btn{padding:7px 14px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s;background:var(--color-info);color:#fff;}
-.btn:hover{background:var(--color-info);}
-.error{background:#fbe9e7;border:1px solid #f5c6cb;border-radius:6px;padding:12px 16px;color:var(--color-danger);font-size:14px;margin-bottom:14px;}
-</style>
+<link rel="stylesheet" href="{{ static_asset('market.css') }}">
 {% endblock %}
 {% block body %}
 <div class="app">
@@ -76,87 +55,6 @@ select,input{background:var(--color-surface-subtle);border:1px solid var(--color
   </div>
 
 </div>
-<script>
-// ECharts 离线降级：不可用时显示占位
-const chartEls = { index: 'chart-index', board: 'chart-board', stock: 'chart-stock' };
-function makeChart(id){ return StockChart.mount(document.getElementById(id)); }
-
-
-function lineOption(title, dates, series, lines){
-  const opt = {
-    title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
-    tooltip: { trigger: 'axis' },
-    legend: { top: 28 },
-    grid: { left: 50, right: 20, top: 60, bottom: 30 },
-    xAxis: { type: 'category', data: dates, boundaryGap: false },
-    yAxis: { type: 'value', scale: true },
-    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 14 }],
-    series: series.map(s => ({ name: s.name, type: 'line', data: s.data, showSymbol: false, lineStyle: { width: 1.5 } })),
-  };
-  if (lines && lines.length) {
-    opt.series.push({ name: '点位线', type: 'line', data: [], markLine: {
-      silent: true, symbol: 'none',
-      label: { formatter: p => p.name, position: 'insideEndTop', fontSize: 10 },
-      data: lines.map(l => ({ name: l.name, yAxis: l.value, lineStyle: { type: 'dashed', color: l.color || '#999' } })),
-    }});
-  }
-  return opt;
-}
-function legendHtml(lines){
-  if (!lines || !lines.length) return '';
-  return '<div style="margin-top:6px;font-size:12px;color:var(--color-text-subtle);">' +
-    lines.map(l => '<span style="margin-right:14px;white-space:nowrap;"><span style="display:inline-block;width:16px;height:3px;background:'+(l.color||'#999')+';vertical-align:middle;margin-right:4px;"></span>' + l.name + '</span>').join('') + '</div>';
-}
-
-async function loadIndices(){
-  const codes = Object.values({{ indices | tojson }}).join(',');
-  try {
-    const r = await fetch('/market/index_kline?codes=' + encodeURIComponent(codes));
-    const d = await r.json();
-    if (d.status !== 'success'){ showUiMessage(d.error || '指数加载失败', 'error'); return; }
-    const names = Object.keys({{ indices | tojson }});
-    const series = names.map(n => ({ name: n, data: d.series[{{ indices | tojson }}[n]] || [] }));
-    makeChart('chart-index').setOption(lineOption('指数走势', d.dates || [], series, null), true);
-  } catch(e){ showUiMessage('指数加载失败: ' + e.message, 'error'); }
-}
-
-async function loadBoard(){
-  const name = document.getElementById('board-select').value;
-  showUiMessage('加载板块 ' + name + '…', 'info');
-  try {
-    const r = await fetch('/market/board_kline?name=' + encodeURIComponent(name));
-    const d = await r.json();
-    if (d.status !== 'success'){ showUiMessage(d.error || '板块加载失败', 'error'); return; }
-    makeChart('chart-board').setOption(lineOption(d.name, d.dates || [], [{ name: d.name, data: d.close || [] }], null), true);
-    showUiMessage('板块 ' + d.name + ' 已加载', 'success');
-  } catch(e){ showUiMessage('板块加载失败: ' + e.message, 'error'); }
-}
-
-async function loadStock(){
-  const code = document.getElementById('stock-select').value;
-  if (!code) return;
-  showUiMessage('加载 ' + code + '…', 'info');
-  try {
-    const r = await fetch('/market/stock_chart?code=' + encodeURIComponent(code));
-    const d = await r.json();
-    if (d.status !== 'success'){ showUiMessage(d.error || '股票加载失败', 'error'); return; }
-    document.getElementById('stock-state').textContent = '市场状态：' + (d.market_state || '');
-    makeChart('chart-stock').setOption(lineOption(code, d.dates || [], [{ name: code, data: d.close || [] }], d.lines || []), true);
-    document.getElementById('stock-legend').innerHTML = legendHtml(d.lines || []);
-    showUiMessage('已加载 ' + code, 'success');
-  } catch(e){ showUiMessage('股票加载失败: ' + e.message, 'error'); }
-}
-
-// 持仓股票下拉
-async function initStocks(){
-  const codes = window.__positions_codes__ || [];
-  const sel = document.getElementById('stock-select');
-  if (!codes.length){ sel.innerHTML = '<option value="">暂无持仓（先去持仓/观察建仓）</option>'; return; }
-  codes.forEach(c => { const o = document.createElement('option'); o.value = c.code; o.textContent = c.name; sel.appendChild(o); });
-  if (codes.length) loadStock();
-}
-window.__positions_codes__ = {{ positions_codes | tojson }};
-initStocks();
-loadIndices();
-</script>
+<script>window.MARKET_INDICES={{ indices | tojson }};window.MARKET_POSITIONS={{ positions_codes | tojson }};</script>
+<script src="{{ static_asset('market.js') }}"></script>
 {% endblock %}

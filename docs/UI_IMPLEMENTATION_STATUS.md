@@ -77,6 +77,7 @@
 | `data-center-adapter.js` | 数据总览 Adapter | 资产目录页仍有独立内联渲染逻辑 |
 | `research-detail.js/css` | 研究详情页 | 仍需完善上下文字段和后续动作展示 |
 | `stock-chart.js` | 通用 ECharts 组件 | 统一提供图表挂载和释放入口；K 线、成交量和均线颜色已按契约统一 |
+| `market.css/js` | 市场页独立资源 | 市场页样式和图表业务脚本已从模板移出；仍依赖现有 CDN 图标资源 |
 
 ## 最近验证基线
 
