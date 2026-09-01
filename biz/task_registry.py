@@ -10,6 +10,7 @@ from typing import Callable
 
 from StockInvestmentTool.biz.reporting import SystemAlertService
 from StockInvestmentTool.biz.tasks import BusinessTaskDefinition, BusinessTaskService, register_task
+from StockInvestmentTool.biz.models import DataContext
 
 
 BUSINESS_TASK_DEFINITIONS = (
@@ -24,6 +25,12 @@ BUSINESS_TASK_DEFINITIONS = (
     ("health.reconcile", "健康检查", "记录系统健康状态"),
 )
 
+DISABLED_BUSINESS_TASKS = {
+    "parameter_search.run",
+    "advice.refresh",
+    "notification.outbox_delivery",
+}
+
 
 def register_business_tasks(service: BusinessTaskService, handlers: dict[str, Callable] | None = None) -> None:
     """幂等注册全部业务任务及 handler。"""
@@ -31,7 +38,7 @@ def register_business_tasks(service: BusinessTaskService, handlers: dict[str, Ca
     for task_key, name, description in BUSINESS_TASK_DEFINITIONS:
         service.register_definition(BusinessTaskDefinition(
             task_key=task_key, name=name, description=description,
-            input_schema={}, result_schema={}, enabled=True,
+            input_schema={}, result_schema={}, enabled=task_key not in DISABLED_BUSINESS_TASKS,
         ))
         handler = handlers.get(task_key) or _default_handler(task_key, service)
         register_task(task_key, handler)
@@ -85,12 +92,14 @@ def _screen_handler(service: BusinessTaskService) -> Callable:
         from StockInvestmentTool.warehouse.storage import Warehouse
 
         condition = input_data.get("condition_spec")
-        start_date = input_data.get("start_date")
+        execution_mode = input_data.get("execution_mode", "snapshot")
+        start_date = input_data.get("start_date") or input_data.get("scan_start")
         as_of = input_data.get("as_of") or input_data.get("end_date")
         if not isinstance(condition, dict) or not start_date or not as_of:
             raise ValueError("screen.run requires condition_spec/start_date/as_of")
+        data_end = input_data.get("scan_end") if execution_mode == "signal_scan" else as_of
         dataset = load_market_data(
-            Warehouse(), start_date=start_date, end_date=as_of,
+            Warehouse(), start_date=start_date, end_date=data_end,
             symbols=input_data.get("symbols"), required_quality="WARNING",
         )
         definition = ScreenDefinition(
@@ -107,12 +116,17 @@ def _screen_handler(service: BusinessTaskService) -> Callable:
         run = ScreenRun(
             run_id=new_id("screen_run"), screen_version_id=screen_version_id,
             universe_snapshot_id=universe_id, run_type=input_data.get("run_type", "manual"),
-            requested_as_of=as_of, data_context=dataset.context,
+            requested_as_of=as_of, data_context=DataContext.from_dict(dataset.context).to_dict(),
             status="running", started_at=now_utc(),
         )
         repo.save_screen_run(run)
         try:
-            candidates, meta = ScreenExecutor(definition, dataset.data).execute(as_of)
+            candidates, meta = ScreenExecutor(definition, dataset.data).execute(
+                as_of,
+                execution_mode=execution_mode,
+                scan_start=input_data.get("scan_start"),
+                scan_end=input_data.get("scan_end"),
+            )
         except Exception as exc:  # noqa: BLE001
             repo.update_screen_run_status(run.run_id, "failed", str(exc))
             raise
@@ -163,14 +177,14 @@ def _research_handler(service: BusinessTaskService) -> Callable:
                                         strategy_version_id=strategy_version_id)
         regime = MarketRegimeService(dataset.data, dataset.context).compute(as_of)
         try:
-            result = ResearchService(dataset.data, dataset.context, strategy, regime.to_dict()).run()
+            result = ResearchService(dataset.data, DataContext.from_dict(dataset.context).to_dict(), strategy, regime.to_dict()).run()
         except Exception as exc:  # noqa: BLE001
             result = ResearchResult(
                 research_run_id=new_id("rr"), status="failed",
                 error=str(exc), finished_at=now_utc(),
             )
             service.repo.save_research_run(
-                result, dataset.context,
+                result, DataContext.from_dict(dataset.context).to_dict(),
                 subject_type=input_data.get("subject_type", "single_symbol"),
                 symbol=symbol, strategy_version_id=strategy_version_id,
                 observation_id=input_data.get("observation_id", ""),
@@ -180,7 +194,7 @@ def _research_handler(service: BusinessTaskService) -> Callable:
             raise
         service.repo.save_market_regime(regime)
         service.repo.save_research_run(
-            result, dataset.context, subject_type=input_data.get("subject_type", "single_symbol"),
+            result, DataContext.from_dict(dataset.context).to_dict(), subject_type=input_data.get("subject_type", "single_symbol"),
             symbol=symbol, strategy_version_id=strategy_version_id,
             observation_id=input_data.get("observation_id", ""),
             source_screen_run_id=input_data.get("screen_run_id", ""),

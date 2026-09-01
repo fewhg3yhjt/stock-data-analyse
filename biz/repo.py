@@ -219,6 +219,11 @@ class BusinessRepository:
             "condition_results_json": dumps_json(candidate.condition_results),
             "display_values_json": dumps_json(candidate.display_values),
             "data_as_of": candidate.data_as_of, "expires_at": candidate.expires_at or "",
+            "scan_start": candidate.scan_start or "", "scan_end": candidate.scan_end or "",
+            "first_signal_date": candidate.first_signal_date or "",
+            "last_signal_date": candidate.last_signal_date or "",
+            "signal_count": candidate.signal_count,
+            "representative_signal_date": candidate.representative_signal_date or "",
             "created_at": now_utc(),
         })
         return candidate.candidate_id
@@ -234,6 +239,15 @@ class BusinessRepository:
             d["display_values"] = loads_json(d.pop("display_values_json"))
             out.append(d)
         return out
+
+    def get_candidate(self, candidate_id: str) -> dict | None:
+        row = self.db.fetchone("SELECT * FROM screen_candidates WHERE candidate_id=?", (candidate_id,))
+        if not row:
+            return None
+        result = dict(row)
+        result["condition_results"] = loads_json(result.pop("condition_results_json"))
+        result["display_values"] = loads_json(result.pop("display_values_json"))
+        return result
 
     # ── 研究 ──────────────────────────────────────────────
 

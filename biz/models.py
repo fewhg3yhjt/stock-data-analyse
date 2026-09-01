@@ -79,7 +79,22 @@ class DataContext:
 
     @staticmethod
     def from_dict(data: dict) -> "DataContext":
-        return DataContext(**data)
+        data = dict(data or {})
+        # DatasetAccess keeps these aliases during the migration, but new biz
+        # entities should consume one canonical context shape.
+        partition_versions = data.get("partition_versions", {})
+        dataset_refs = data.get("dataset_refs") or (
+            {data["dataset"]: {"partition_versions": partition_versions,
+                               "quality_status": data.get("quality_status", "unknown")}}
+            if data.get("dataset") else {}
+        )
+        data.setdefault("dataset_refs", dataset_refs)
+        data.setdefault("indicator_refs", {})
+        data.setdefault("returned_end", data.get("max_date"))
+        data.setdefault("data_as_of", data.get("max_date") or data.get("returned_end"))
+        data.setdefault("fallback_reason", None)
+        allowed = {field.name for field in __import__("dataclasses").fields(DataContext)}
+        return DataContext(**{key: value for key, value in data.items() if key in allowed})
 
 
 # ---------------------------------------------------------------------------

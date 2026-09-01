@@ -15,7 +15,7 @@ TASK_TYPE_LABELS = {
     "QUALITY_CHECK": "数据质量检查",
     "DATA_PUBLISH": "数据正式发布",
     "INDICATOR_BUILD": "技术指标计算",
-    "FACTOR_BUILD": "研究因子计算",
+    "FACTOR_BUILD": "历史因子归档（已废弃新生产）",
     "DERIVED_BUILD": "派生数据计算",
     "LEGACY_CONVERT": "历史数据转换",
     "DATA_REPAIR": "数据修复",
@@ -32,7 +32,7 @@ STATUS_LABELS = {
 ARTIFACT_LABELS = {
     "raw_batch": "原始采集数据", "candidate": "待发布标准数据",
     "quality_report": "质量检查报告", "published_dataset": "正式数据",
-    "indicator_output": "技术指标结果", "factor_output": "研究因子结果",
+    "indicator_output": "技术指标结果", "factor_output": "历史因子归档（已废弃新生产）",
     "diff_report": "新旧结果差异报告", "log": "执行日志",
 }
 

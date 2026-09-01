@@ -119,7 +119,7 @@ stock_daily_pipeline
 → quality
 → publish
 → indicators
-→ factors
+→ historical factors archive (no new production build)
 ```
 
 阶段任务可保留人工执行入口，但不能依赖多个独立定时任务按时间碰撞完成链路。

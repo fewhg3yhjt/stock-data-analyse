@@ -881,9 +881,19 @@ class BusinessDB:
             job_columns = {row[1] for row in conn.execute("PRAGMA table_info(business_job_runs)")}
             if "lock_key" not in job_columns:
                 conn.execute("ALTER TABLE business_job_runs ADD COLUMN lock_key TEXT NOT NULL DEFAULT ''")
-            conn.execute(
-                "INSERT OR IGNORE INTO schema_migrations(migration_id, applied_at) VALUES('v1_initial', datetime('now'))"
-            )
+                conn.execute(
+                    "INSERT OR IGNORE INTO schema_migrations(migration_id, applied_at) VALUES('v1_initial', datetime('now'))"
+                )
+            candidate_columns = {row[1] for row in conn.execute("PRAGMA table_info(screen_candidates)")}
+            additions = {
+                "scan_start": "TEXT", "scan_end": "TEXT",
+                "first_signal_date": "TEXT", "last_signal_date": "TEXT",
+                "signal_count": "INTEGER NOT NULL DEFAULT 0",
+                "representative_signal_date": "TEXT",
+            }
+            for name, definition in additions.items():
+                if name not in candidate_columns:
+                    conn.execute(f"ALTER TABLE screen_candidates ADD COLUMN {name} {definition}")
 
     def connect(self) -> sqlite3.Connection:
         return self._connect()

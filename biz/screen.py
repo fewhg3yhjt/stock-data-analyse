@@ -69,6 +69,12 @@ class ScreenCandidate:
     display_values: dict = field(default_factory=dict)
     data_as_of: str = ""
     expires_at: str | None = None
+    scan_start: str | None = None
+    scan_end: str | None = None
+    first_signal_date: str | None = None
+    last_signal_date: str | None = None
+    signal_count: int = 0
+    representative_signal_date: str | None = None
 
 
 @dataclass
@@ -135,57 +141,88 @@ class ScreenExecutor:
 
     # ── 执行 ──────────────────────────────────────────────
 
-    def execute(self, as_of: str) -> tuple[list[ScreenCandidate], dict]:
-        """返回 (candidates, run_meta)。as_of 为请求交易日（YYYY-MM-DD）。"""
+    def execute(self, as_of: str, *, execution_mode: str = "snapshot",
+                scan_start: str | None = None, scan_end: str | None = None) -> tuple[list[ScreenCandidate], dict]:
+        """Return one candidate per symbol for a snapshot or bounded signal scan."""
+        if execution_mode not in {"snapshot", "signal_scan"}:
+            raise ValueError(f"unsupported execution_mode: {execution_mode}")
         compiler = ConditionCompiler(self.definition.condition_spec)
         modes = compiler.compile_mode()
 
-        # 1. 索引行
+        # 1. Select the evaluation dates. Historical conditions still use the
+        # symbol history already supplied in self.df.
         dates = self.df["date"].astype(str).str[:10]
         if "date" in self.df.columns:
-            # 目标日：取 <= as_of 的最后一个交易日
-            mask = dates <= as_of
+            end_date = scan_end or as_of
+            mask = dates <= end_date
             if not mask.any():
-                return [], {"status": "failed", "error": f"无 {as_of} 及之前的数据"}
-            target_dates = dates[mask]
-            last_date = target_dates.iloc[-1]
-            target_df = self.df[dates == last_date]
+                return [], {"status": "failed", "error": f"无 {end_date} 及之前的数据"}
+            if execution_mode == "signal_scan":
+                if not scan_start or not scan_end:
+                    raise ValueError("signal_scan requires scan_start/scan_end")
+                if (pd.Timestamp(scan_end) - pd.Timestamp(scan_start)).days > 31:
+                    raise ValueError("signal_scan window cannot exceed 31 calendar days")
+                target_mask = (dates >= scan_start) & (dates <= scan_end)
+                target_df = self.df[target_mask]
+                evaluation_dates = sorted(target_df["date"].astype(str).str[:10].unique())
+            else:
+                last_date = dates[mask].iloc[-1]
+                target_df = self.df[dates == last_date]
+                evaluation_dates = [last_date]
         else:
             target_df = self.df
             last_date = as_of
+            evaluation_dates = [last_date]
 
-        # 2. 按 symbol 逐行精确评估（第一阶段：全精确）
-        candidates: list[ScreenCandidate] = []
-        scope = ConditionScope(target_df, registry=self.registry)
-
-        for idx, row in target_df.iterrows():
-            symbol = normalize(str(row["code"])) if "code" in row else ""
-            if not symbol:
-                continue
-            # 构建单行评估上下文：条件树引用字段/指标，需在行维度取值
-            # ConditionScope 以整表为上下文，这里对单行构建"值字典"评估
-            row_result = self._evaluate_row(target_df, idx, compiler)
-            if row_result["passed"]:
-                candidates.append(ScreenCandidate(
-                    candidate_id=new_id("cand"),
-                    screen_run_id="",
-                    symbol=symbol,
-                    name=str(row.get("name", "")),
-                    asset_type=str(row.get("asset_type", "stock")),
-                    condition_results=row_result["results"],
-                    display_values=self._display_values(row, self.definition.display_fields),
-                    data_as_of=last_date,
-                ))
+        # 2. Evaluate each symbol/date, then aggregate scan hits by symbol.
+        candidate_by_symbol: dict[str, ScreenCandidate] = {}
+        for eval_date in evaluation_dates:
+            day_df = target_df[dates.loc[target_df.index] == eval_date]
+            for idx, row in day_df.iterrows():
+                symbol = normalize(str(row["code"])) if "code" in row else ""
+                if not symbol:
+                    continue
+                row_result = self._evaluate_row(day_df, idx, compiler)
+                if not row_result["passed"]:
+                    continue
+                candidate = candidate_by_symbol.get(symbol)
+                if candidate is None:
+                    candidate = ScreenCandidate(
+                        candidate_id=new_id("cand"), screen_run_id="", symbol=symbol,
+                        name=str(row.get("name", "")),
+                        asset_type=str(row.get("asset_type", "stock")),
+                        condition_results=row_result["results"],
+                        display_values=self._display_values(row, self.definition.display_fields),
+                        data_as_of=eval_date,
+                        scan_start=scan_start if execution_mode == "signal_scan" else None,
+                        scan_end=scan_end if execution_mode == "signal_scan" else None,
+                        first_signal_date=eval_date,
+                        last_signal_date=eval_date,
+                        signal_count=1,
+                        representative_signal_date=eval_date,
+                    )
+                    candidate_by_symbol[symbol] = candidate
+                else:
+                    candidate.signal_count += 1
+                    candidate.last_signal_date = eval_date
+                    candidate.representative_signal_date = eval_date
+                candidate.condition_results = row_result["results"]
+                candidate.display_values = self._display_values(row, self.definition.display_fields)
+                candidate.data_as_of = eval_date
+        candidates = list(candidate_by_symbol.values())
 
         # 3. 排序
         candidates = self._sort(candidates)
 
         run_meta = {
             "requested_as_of": as_of,
-            "actual_data_as_of": last_date,
+            "actual_data_as_of": evaluation_dates[-1] if evaluation_dates else as_of,
             "symbol_count": int(target_df["code"].nunique() if "code" in target_df else 0),
             "matched_count": len(candidates),
             "compile_modes": modes,
+            "execution_mode": execution_mode,
+            "scan_start": scan_start,
+            "scan_end": scan_end,
             "status": "success",
         }
         return candidates, run_meta

@@ -15,6 +15,16 @@ def test_registers_all_business_tasks(tmp_path):
     assert [row["task_key"] for row in rows] == sorted(key for key, _, _ in BUSINESS_TASK_DEFINITIONS)
 
 
+def test_placeholder_business_tasks_are_disabled(tmp_path):
+    service = BusinessTaskService(BusinessRepository(BusinessDB(tmp_path / "disabled.db")))
+    register_business_tasks(service)
+    rows = service.repo.db.fetchall(
+        "SELECT task_key,enabled FROM business_task_definitions "
+        "WHERE task_key IN ('parameter_search.run','advice.refresh','notification.outbox_delivery')"
+    )
+    assert {row["task_key"] for row in rows if row["enabled"]} == set()
+
+
 def test_health_task_runs_through_business_runner(tmp_path):
     service = BusinessTaskService(BusinessRepository(BusinessDB(tmp_path / "tasks2.db")))
     register_business_tasks(service)
@@ -134,7 +144,7 @@ def test_screen_handler_persists_failed_screen_run(tmp_path, monkeypatch):
         def __init__(self, *args, **kwargs):
             pass
 
-        def execute(self, as_of):
+        def execute(self, as_of, **kwargs):
             raise RuntimeError("screen failure")
 
     monkeypatch.setattr("StockInvestmentTool.biz.screen.ScreenExecutor", FailingScreenExecutor)

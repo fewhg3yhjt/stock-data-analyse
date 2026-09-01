@@ -117,12 +117,6 @@ consumers:
     required_quality: PASS/WARNING
     fallback_policy: 只读正式版本
     blocked_actions: 指标输入
-  - name: factors
-    type: compute
-    purpose: 因子计算
-    required_quality: PASS/WARNING
-    fallback_policy: 只读正式版本
-    blocked_actions: 因子输入
   - name: stock_research
     type: research
     purpose: K 线分析

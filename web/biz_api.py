@@ -148,9 +148,16 @@ def create_screen_run():
     """创建正式筛选任务；由业务 Worker 执行。"""
     payload = flask.request.get_json(silent=True) or {}
     condition = payload.get("condition_spec")
-    as_of = payload.get("as_of") or payload.get("end_date")
-    if not isinstance(condition, dict) or not as_of or not payload.get("start_date"):
+    as_of = payload.get("as_of") or payload.get("end_date") or payload.get("scan_end")
+    execution_mode = payload.get("execution_mode", "snapshot")
+    if execution_mode == "signal_scan":
+        valid_dates = payload.get("scan_start") and payload.get("scan_end")
+    else:
+        valid_dates = payload.get("start_date")
+    if not isinstance(condition, dict) or not as_of or not valid_dates:
         return _error("SCREEN_INVALID", "condition_spec 和 as_of 必填")
+    if execution_mode not in {"snapshot", "signal_scan"}:
+        return _error("SCREEN_INVALID", "不支持的 execution_mode")
     try:
         data, status = _enqueue_business_task("screen.run", payload)
         return flask.jsonify({"data": data,
@@ -178,6 +185,34 @@ def get_screen_candidates(run_id: str):
         return _error("SCREEN_RUN_NOT_FOUND", "筛选运行不存在", 404)
     return flask.jsonify({"data": {"run_id": run_id, "candidates": repo.list_candidates(run_id)},
                           "request_id": flask.request.headers.get("X-Request-ID", "")})
+
+
+@biz_api.get("/screen-runs/<run_id>/candidates/<candidate_id>/data")
+def get_screen_candidate_data(run_id: str, candidate_id: str):
+    """Load expanded market data for one persisted screening candidate."""
+    repo = _repo()
+    candidate = repo.get_candidate(candidate_id)
+    if not candidate or candidate["screen_run_id"] != run_id:
+        return _error("SCREEN_CANDIDATE_NOT_FOUND", "筛选候选不存在", 404)
+    start_date = flask.request.args.get("start_date") or candidate["data_as_of"]
+    end_date = flask.request.args.get("end_date") or candidate["data_as_of"]
+    if not start_date or not end_date:
+        return _error("SCREEN_DATA_INVALID", "start_date 和 end_date 必填")
+    try:
+        from StockInvestmentTool.biz.data_access import load_market_data
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        result = load_market_data(
+            Warehouse(), start_date=start_date, end_date=end_date,
+            symbols=[candidate["symbol"]], required_quality="WARNING",
+        )
+        from StockInvestmentTool.biz.models import DataContext
+        return flask.jsonify({
+            "data": {"symbol": candidate["symbol"], "rows": result.data.to_dict("records"),
+                     "data_context": DataContext.from_dict(result.context).to_dict()},
+            "request_id": flask.request.headers.get("X-Request-ID", ""),
+        })
+    except Exception as exc:  # noqa: BLE001
+        return _error("SCREEN_DATA_FAILED", str(exc), 409)
 
 
 @biz_api.post("/research-runs")
@@ -301,7 +336,7 @@ def create_research_observation_snapshot(run_id: str):
     snapshot = ObservationSnapshot(
         snapshot_id=new_id("snapshot"), observation_id=observation_id,
         snapshot_time=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        data_as_of=payload.get("data_as_of") or research.get("data_context", {}).get("max_date", ""),
+        data_as_of=payload.get("data_as_of") or research.get("data_context", {}).get("data_as_of") or research.get("data_context", {}).get("max_date", ""),
         strategy_version_id=payload.get("strategy_version_id"),
         price=result.get("technical_assessment", {}).get("price"),
         market_regime=result.get("market_assessment", {}),

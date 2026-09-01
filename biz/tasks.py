@@ -113,9 +113,12 @@ class BusinessTaskService:
     def enqueue(self, task_key: str, *, trigger_type: str = "manual",
                 config_version_id: str | None = None, input_data: dict | None = None) -> BusinessExecutionRequest:
         """创建持久化请求（HTTP 返回 202 前必须已持久化）。"""
-        if not self.repo.db.fetchone(
-            "SELECT task_key FROM business_task_definitions WHERE task_key=?", (task_key,)
-        ):
+        definition = self.repo.db.fetchone(
+            "SELECT task_key,enabled FROM business_task_definitions WHERE task_key=?", (task_key,)
+        )
+        if definition and not definition["enabled"]:
+            raise TaskStateError(f"业务任务已禁用: {task_key}")
+        if not definition:
             self.register_definition(BusinessTaskDefinition(task_key=task_key, name=task_key))
         request = BusinessExecutionRequest(
             request_id=new_id("req"), task_key=task_key, trigger_type=trigger_type,

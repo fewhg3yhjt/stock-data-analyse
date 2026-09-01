@@ -3,6 +3,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from StockInvestmentTool.biz.screen import (
     ConditionCompiler,
@@ -120,3 +121,32 @@ class TestScreenExecutor:
         executor = ScreenExecutor(definition, make_market_df())
         _, meta = executor.execute(as_of="2026-08-07")
         assert meta["compile_modes"]["type"] == "and"
+
+    def test_signal_scan_deduplicates_symbols(self):
+        spec = {
+            "type": "comparison", "left": {"field": "close"},
+            "operator": ">", "right": {"value": 10},
+        }
+        definition = ScreenDefinition(screen_id="sc6", name="区间", condition_spec=spec)
+        candidates, meta = ScreenExecutor(definition, make_market_df()).execute(
+            as_of="2026-08-07", execution_mode="signal_scan",
+            scan_start="2026-08-03", scan_end="2026-08-07",
+        )
+        assert meta["execution_mode"] == "signal_scan"
+        assert len(candidates) == len({candidate.symbol for candidate in candidates})
+        assert {candidate.symbol for candidate in candidates} == {"sh600908", "sz000001", "sh601211"}
+        assert all(candidate.signal_count >= 1 for candidate in candidates)
+        assert all(candidate.first_signal_date and candidate.last_signal_date for candidate in candidates)
+
+    def test_signal_scan_rejects_window_over_31_days(self):
+        definition = ScreenDefinition(
+            screen_id="sc7", name="超长", condition_spec={
+                "type": "comparison", "left": {"field": "close"},
+                "operator": ">", "right": {"value": 10},
+            },
+        )
+        with pytest.raises(ValueError, match="31"):
+            ScreenExecutor(definition, make_market_df()).execute(
+                as_of="2026-08-31", execution_mode="signal_scan",
+                scan_start="2026-07-01", scan_end="2026-08-31",
+            )

@@ -26,7 +26,7 @@ External Source
 1. 任务中心显示启用不代表 APScheduler 已注册。
 2. 质量失败可能被任务层记录为成功，并继续进入发布阶段。
 3. Publish 可能在缺少本次输出版本时选择历史合格 Candidate。
-4. Indicators 未经过独立质量检查即登记 `PASS/published`；历史 Factors 链路的清理尚未完成。
+4. Indicators 未经过独立质量检查即登记 `PASS/published`；历史 Factors 文件和诊断兼容代码仍保留，但已从 `stock_daily` 正式 consumer 中移除。
 5. `management.db`、`warehouse/meta.db`、旧 `job_runs.db` 的事实口径分裂。
 6. 生产文件、数据集配置和消费者之间存在字段契约不一致。
 7. 大量正式业务消费者绕过 `DatasetAccess`，直接读取物理文件或静默在线回退。
