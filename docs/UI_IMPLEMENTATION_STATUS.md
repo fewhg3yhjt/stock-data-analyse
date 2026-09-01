@@ -71,6 +71,7 @@
 | `ui-shell.css` | 旧 `.app` 页面公共壳层适配 | 仍通过选择器覆盖旧模板结构 |
 | `ui-status.js` | 状态词表和 canonical class 映射 | `cls` 已返回完整 `status-*` 类名；部分旧页面仍需统一调用和展示 |
 | `ui-feedback.js` | 全局页面消息和旧 alert 过渡 | 不应继续劫持 `window.alert` 作为最终方案 |
+| `ui-utils.js` | 公共转义和基础格式化 | 已接入核心 Adapter；页面内联脚本仍有重复辅助函数 |
 | `workbench.css/js` | 工作台独立页面 | 与数据模块壳层仍有重复样式 |
 | `data-module.css` | 数据中心和任务中心 | 仍有页面级内联样式 |
 | `data-center-adapter.js` | 数据总览 Adapter | 资产目录页仍有独立内联渲染逻辑 |

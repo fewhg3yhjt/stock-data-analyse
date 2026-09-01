@@ -3,7 +3,7 @@
   const stageNames = {CAPTURE:'数据采集',BUILD:'数据构建',QUALITY:'数据质量',PUBLISH:'数据发布',DERIVED:'派生计算'};
   const typeNames = {SOURCE_CAPTURE:'源数据采集',DATA_BUILD:'标准数据构建',QUALITY_CHECK:'数据质量检查',DATA_PUBLISH:'数据正式发布',INDICATOR_BUILD:'技术指标计算',FACTOR_BUILD:'研究因子计算',DERIVED_BUILD:'派生数据计算'};
   const statusNames = new Proxy({}, {get: (_, key) => window.UI_STATUS_LABEL?.(key, 'run') || key || '状态未知'});
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const esc = window.UI_UTILS.esc;
   const statusTag = value => {
     const key = value || 'disabled';
     const cls = window.UI_STATUS_CLS?.(key) || 'status-unknown';

@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const esc = window.UI_UTILS.esc;
   const json = async (url, options) => { const response = await fetch(url, options); const body = await response.json(); if (!response.ok || body.status === 'error' || body.error) throw new Error(body.error?.message || body.error || '请求失败'); return body.data ?? body; };
   const statusText = (key, context = 'default') => window.UI_STATUS_LABEL?.(key, context) || key || '状态未知';
   const value = item => item == null || item === '' ? '暂无' : (typeof item === 'object' ? JSON.stringify(item) : item);

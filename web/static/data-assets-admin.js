@@ -2,9 +2,7 @@
   const post = (url, body = {}) => fetch(url, {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
   }).then(response => response.json());
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[char]));
+  const esc = window.UI_UTILS.esc;
   const showResult = data => {
     window.showUiMessage(data.status === 'success' ? '操作已提交' : (data.error || '操作失败'), data.status === 'success' ? 'success' : 'error');
     if (data.status === 'success') window.loadAssets?.();

@@ -2,7 +2,7 @@
   const state = {assets: [], attention: [], pipeline: [], tasks: [], operation: null};
   const taskLabel = key => window.UI_STATUS_LABEL?.(key, 'run') || ({scheduled: '已排期', disabled: '未启用'}[key] || key);
   const typeLabels = {stock: '股票', etf: 'ETF', index: '指数'};
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const esc = window.UI_UTILS.esc;
   const json = async (url, options) => { const response = await fetch(url, options); const data = await response.json(); if (!response.ok || data.status !== 'success') throw new Error(data.error || '请求失败'); return data; };
   const statusLabels = window.UI_STATUS ? Object.fromEntries(Object.keys(window.UI_STATUS).map(k => [k, window.UI_STATUS[k].label])) : {healthy:'正常', partial:'部分可用', stale:'待更新', critical:'异常', failed:'失败', unknown:'状态未知'};
   const statusCls = window.UI_STATUS_CLS || (key => `status-${key || 'unknown'}`);

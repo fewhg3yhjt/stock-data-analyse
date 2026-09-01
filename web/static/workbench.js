@@ -1,7 +1,7 @@
 (() => {
   const dataStatusText = new Proxy({}, {get: (_, key) => window.UI_STATUS_LABEL?.(key) || key || '状态未知'});
   const actionLabels = {simulate:'待模拟', buy:'待建仓', review:'已持仓', none:'候选'};
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const esc = window.UI_UTILS.esc;
   const json = async url => { const response = await fetch(url); const data = await response.json(); if (!response.ok || data.status !== 'success') throw new Error(data.error || '请求失败'); return data; };
   const statusTag = status => `<span class="wb-state ${esc(status || 'unknown')}">${esc(dataStatusText[status] || status || '状态未知')}</span>`;
   const setText = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = value; };
