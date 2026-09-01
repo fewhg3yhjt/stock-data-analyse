@@ -90,9 +90,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   {% endif %}
 
 </div>
-<div class="toast" id="toast"></div>
 <script>
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
 function toggle(code, wl){
   const d = document.getElementById('detail-'+code);
   d.classList.toggle('open');
@@ -105,7 +103,7 @@ function toggle(code, wl){
       entryPrice: sim.price || '',
       onSimEntry: function(entry){
         return fetch('/api/watchlist/'+wl.id+'/sim_entry', {method:'POST', body:new URLSearchParams(entry)})
-          .then(r=>r.json()).then(j=>{ if(j.status==='success'){ showToast('模拟入场点已保存'); return true; } return false; })
+          .then(r=>r.json()).then(j=>{ if(j.status==='success'){ showUiMessage('模拟入场点已保存', 'success'); return true; } return false; })
           .catch(()=>false);
       }
     }).catch(err=>{ box.innerHTML = '<span style="color:#c62828;font-size:13px;">'+err.message+'</span>'; });
@@ -128,21 +126,21 @@ document.addEventListener('click', function(e){
   }
 });
 async function simulate(code, name){
-  showToast('模拟中…');
+  showUiMessage('模拟中…', 'info');
   const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name})})).json();
   if (d.status==='success') location.href = '/simulation';
-  else showToast(d.error||'模拟失败');
+  else showUiMessage(d.error||'模拟失败', 'error');
 }
 async function delWatch(id){
-  if (!confirm('确认删除该自选？')) return;
+  if (!await showUiConfirm('删除后将移除该自选记录。', '删除自选')) return;
   const r = await fetch('/watchlist/'+id, {method:'DELETE'});
   const d = await r.json();
-  if (d.status==='success') location.reload(); else showToast(d.error||'删除失败');
+  if (d.status==='success') location.reload(); else showUiMessage(d.error||'删除失败', 'error');
 }
 async function addManual(){
   const code = document.getElementById('wl-code').value.trim();
   let name = document.getElementById('wl-name').value.trim();
-  if (!code){ showToast('请填写代码'); return; }
+  if (!code){ showUiMessage('请填写代码', 'error'); return; }
   // 自动关联：输编号未填名称时，从 meta.db 查名称
   if (!name){
     try {
@@ -158,8 +156,8 @@ async function addManual(){
   const added = document.getElementById('wl-added').value;
   if (added) body.added_time = added;
   const d = await (await fetch('/watchlist', {method:'POST', body:new URLSearchParams(body)})).json();
-  if (d.status==='success'){ showToast('已加入自选'); setTimeout(()=>location.reload(),500); }
-  else showToast(d.error||'添加失败');
+  if (d.status==='success'){ showUiMessage('已加入自选', 'success'); setTimeout(()=>location.reload(),500); }
+  else showUiMessage(d.error||'添加失败', 'error');
 }
 async function lookupStock(){
   const code = document.getElementById('wl-code').value.trim();
@@ -171,11 +169,11 @@ async function lookupStock(){
     if (d.status === 'success' && d.name && d.name !== code) nameInput.value = d.name;
   } catch(e){ /* 静默 */ }
 }
-function editAddedTime(id, current){
-  const val = prompt('设置观察起点日期（YYYY-MM-DD，可回看；晚于今天则待观察）', current || '');
+ async function editAddedTime(id, current){
+  const val = await showUiInput({title:'设置观察起点日期', message:'可回看；晚于今天则待观察。', label:'日期（YYYY-MM-DD）', value:current || '', placeholder:'YYYY-MM-DD'});
   if (!val) return;
   fetch('/api/watchlist/'+id+'/added_time', {method:'POST', body:new URLSearchParams({added_time: val})})
-    .then(r=>r.json()).then(d=>{ if(d.status==='success'){ showToast('已更新'); setTimeout(()=>location.reload(),400); } else showToast(d.error||'更新失败'); });
+    .then(r=>r.json()).then(d=>{ if(d.status==='success'){ showUiMessage('已更新', 'success'); setTimeout(()=>location.reload(),400); } else showUiMessage(d.error||'更新失败', 'error'); });
 }
 </script>
 {% endblock %}

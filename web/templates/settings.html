@@ -143,9 +143,7 @@ textarea.code.mini{min-height:200px;}
   </div>
 
 </div>
-<div class="toast" id="toast"></div>
 <script>
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
@@ -154,46 +152,46 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
 async function post(url, data){ const r=await fetch(url,{method:'POST',body:new URLSearchParams(data)}); return r.json(); }
 async function saveScheme(){
   const d = await post('/settings/scheme', {name:document.getElementById('scheme-select').value, content:document.getElementById('scheme-content').value});
-  d.status==='success' ? showToast('方案已保存：'+d.saved) : showToast(d.error||'保存失败');
+  d.status==='success' ? showUiMessage('方案已保存：'+d.saved, 'success') : showUiMessage(d.error||'保存失败', 'error');
 }
 async function saveScreen(){
   const d = await post('/settings/screen-rules', {content:document.getElementById('screen-content').value});
-  d.status==='success' ? showToast('初筛规则已保存') : showToast(d.error||'保存失败');
+  d.status==='success' ? showUiMessage('初筛规则已保存', 'success') : showUiMessage(d.error||'保存失败', 'error');
 }
 async function saveNotifyRules(){
   const d = await post('/settings/notify', {action:'rules', content:document.getElementById('notify-rules').value});
-  d.status==='success' ? showToast('通知规则已保存') : showToast(d.error||'保存失败');
+  d.status==='success' ? showUiMessage('通知规则已保存', 'success') : showUiMessage(d.error||'保存失败', 'error');
  }
 async function saveNotifySettings(){
   const d = await post('/settings/notify', {action:'notify_settings', content:document.getElementById('notify-settings').value});
-  d.status==='success' ? showToast('通知策略已保存，重启容器后生效') : showToast(d.error||'保存失败');
+  d.status==='success' ? showUiMessage('通知策略已保存，重启容器后生效', 'success') : showUiMessage(d.error||'保存失败', 'error');
  }
 async function saveWebhook(){
   const d = await post('/settings/notify', {action:'webhook', channel:document.getElementById('notify-channel').value,
     feishu_url:document.getElementById('notify-feishu-url').value, wecom_url:document.getElementById('notify-wecom-url').value});
-  if(d.status==='success'){ showToast('webhook 已保存'); setTimeout(()=>location.reload(),700); }
-  else showToast(d.error||'保存失败');
+  if(d.status==='success'){ showUiMessage('webhook 已保存', 'success'); setTimeout(()=>location.reload(),700); }
+  else showUiMessage(d.error||'保存失败', 'error');
 }
 async function saveAccount(){
   const cash = document.getElementById('acc-cash').value;
-  if (!cash || parseFloat(cash) <= 0){ showToast('请填写本金金额'); return; }
+  if (!cash || parseFloat(cash) <= 0){ showUiMessage('请填写本金金额', 'error'); return; }
   const d = await post('/settings/account', {cash});
-  d.status==='success' ? showToast('本金已设为 ' + d.cash + ' 元') : showToast(d.error||'保存失败');
+  d.status==='success' ? showUiMessage('本金已设为 ' + d.cash + ' 元', 'success') : showUiMessage(d.error||'保存失败', 'error');
 }
 async function resetData(scope){
   const names = {watchlist:'清空自选', simulations:'清空模拟', positions:'清空持仓+流水', all:'全部重置'};
   const warn = scope==='all'
     ? '将清空：持仓、交易流水、建议、自选、模拟、本金。确认？'
     : `将清空${names[scope]}数据。确认？`;
-  if (!confirm('⚠️ ' + warn + '\n建议先到「复盘」页导出 Excel 备份。')) return;
+  if (!await showUiConfirm(warn + '\n建议先到「复盘」页导出 Excel 备份。', '危险操作确认')) return;
   const d = await post('/settings/reset', {scope});
-  if(d.status==='success'){ showToast('已清空: ' + JSON.stringify(d.deleted)); setTimeout(()=>location.reload(),700); }
-  else showToast(d.error||'重置失败');
+  if(d.status==='success'){ showUiMessage('已清空: ' + JSON.stringify(d.deleted), 'success'); setTimeout(()=>location.reload(),700); }
+  else showUiMessage(d.error||'重置失败', 'error');
 }
 async function runDaily(){
-  if (!confirm('立即运行每日自动任务？（持仓刷新+自选同步+观察重算+晨报+推送，约 1-3 分钟）')) return;
+  if (!await showUiConfirm('持仓刷新、自选同步、观察重算、晨报和推送预计需要 1-3 分钟。', '运行每日自动任务')) return;
   const d = await (await fetch('/api/daily/run', {method:'POST'})).json();
-  d.status==='success' ? showToast(d.msg||'每日任务已启动') : showToast(d.error||'启动失败');
+  d.status==='success' ? showUiMessage(d.msg||'每日任务已启动', 'success') : showUiMessage(d.error||'启动失败', 'error');
 }
 // 方案切换加载
 const sel = document.getElementById('scheme-select');
