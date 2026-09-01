@@ -573,6 +573,25 @@ CREATE TABLE IF NOT EXISTS position_snapshots (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS position_runtime_states (
+    position_cycle_id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    current_price REAL,
+    highest_since_entry REAL,
+    lowest_since_entry REAL,
+    unrealized_pnl REAL,
+    unrealized_pnl_pct REAL,
+    max_profit_pct REAL,
+    drawdown_from_high REAL,
+    holding_days INTEGER,
+    price_as_of TEXT,
+    price_source TEXT NOT NULL DEFAULT 'minute',
+    data_context_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(position_cycle_id) REFERENCES position_cycles(position_cycle_id)
+);
+CREATE INDEX IF NOT EXISTS idx_position_runtime_symbol ON position_runtime_states(symbol);
+
 -- ============ 建议、通知与复盘 ============
 CREATE TABLE IF NOT EXISTS advices (
     advice_id TEXT PRIMARY KEY,

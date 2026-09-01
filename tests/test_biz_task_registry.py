@@ -22,7 +22,11 @@ def test_placeholder_business_tasks_are_disabled(tmp_path):
         "SELECT task_key,enabled FROM business_task_definitions "
         "WHERE task_key IN ('parameter_search.run','advice.refresh','notification.outbox_delivery')"
     )
-    assert {row["task_key"] for row in rows if row["enabled"]} == set()
+    # notification.outbox_delivery 已启用（回撤通知投递依赖它）
+    enabled = {row["task_key"] for row in rows if row["enabled"]}
+    assert enabled == {"notification.outbox_delivery"}
+    assert "parameter_search.run" not in enabled
+    assert "advice.refresh" not in enabled
 
 
 def test_health_task_runs_through_business_runner(tmp_path):

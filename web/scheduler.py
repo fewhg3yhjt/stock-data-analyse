@@ -434,6 +434,12 @@ def init_scheduler(app) -> None:
         max_instances=1,
     )
     _schedule_business_tasks(scheduler, app)
+    # 兜底：定期回收过期任务锁/在途状态，防止异常退出后任务永久卡死。
+    scheduler.add_job(
+        _recover_stale_task_state, CronTrigger(minute="*/30", timezone=TZ),
+        id="recover_stale_state", misfire_grace_time=1800, coalesce=True,
+        max_instances=1,
+    )
     # 分钟采集优先；只有分钟采集未启用时才启用低频在线快照兜底。
     minute_enabled = os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1"
     if os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1" and not minute_enabled:
@@ -487,13 +493,18 @@ def _schedule_business_tasks(scheduler, app=None) -> None:
         minutes = max(1, int(os.getenv("BUSINESS_EXPIRY_RECONCILE_MINUTES", "30")))
         business = BusinessScheduler(scheduler)
         business.register_interval("observation.expiry_reconcile", minutes=minutes)
+        # 通知投递：领取并发送 pending 投递（与旧 outbox 每 5 分钟节奏一致）
+        outbox_minutes = max(1, int(os.getenv("NOTIFICATION_OUTBOX_MINUTES", "5")))
+        business.register_interval("notification.outbox_delivery", minutes=outbox_minutes)
         if app is not None:
             app.extensions["business_scheduler"] = business
             app.extensions["business_scheduler_state"] = {
                 "enabled": True, "registered": business.registered(),
                 "reason": "registered", "expiry_reconcile_minutes": minutes,
+                "outbox_delivery_minutes": outbox_minutes,
             }
-        logger.info("业务维护任务已注册: observation.expiry_reconcile 每 %d 分钟", minutes)
+        logger.info("业务维护任务已注册: observation.expiry_reconcile 每 %d 分钟, "
+                    "notification.outbox_delivery 每 %d 分钟", minutes, outbox_minutes)
     except Exception as exc:  # noqa: BLE001
         logger.exception("业务任务调度注册失败")
         if app is not None:
@@ -1197,7 +1208,11 @@ def run_online_snapshot_job():
 
 
 def run_minute_snapshot_job():
-    """盘中分钟数据任务主体（默认关闭，观察池范围）。"""
+    """盘中分钟数据任务主体（默认关闭，观察池范围）。
+
+    分钟数据落盘成功后立即执行持仓运行状态评估（回撤通知），
+    保证「数据拉到 → 计算」紧耦合、不另起定时。
+    """
     from StockInvestmentTool.warehouse.online import _default_observe_codes
     from StockInvestmentTool.warehouse.minute import collect_minute_snapshot
     from StockInvestmentTool.ops.job_runs import JobRunStore
@@ -1210,9 +1225,27 @@ def run_minute_snapshot_job():
         else:
             logger.warning("分钟数据采集失败: %s", result.get("errors"))
         JobRunStore().finish(run_id, "success" if result.get("ok") else "failed", result)
+        if result.get("ok"):
+            _evaluate_position_runtime()
     except Exception as e:
         logger.error("分钟数据任务异常: %s", e)
         JobRunStore().finish(run_id, "failed", error=str(e))
+
+
+def _evaluate_position_runtime() -> dict:
+    """分钟数据落盘后执行持仓运行状态评估（回撤通知）。
+
+    独立函数便于手动触发与测试；失败只记录日志，不影响分钟任务本身。
+    """
+    try:
+        from StockInvestmentTool.biz.position_runtime import PositionRuntimeService
+        summary = PositionRuntimeService().evaluate_all()
+        logger.info("持仓运行状态评估完成: 评估 %d 只, 触发回撤通知 %d 只",
+                    summary["evaluated"], summary["triggered"])
+        return summary
+    except Exception as exc:  # noqa: BLE001
+        logger.error("持仓运行状态评估失败: %s", exc)
+        return {"evaluated": 0, "triggered": 0, "error": str(exc)}
 
 
 def run_system_alert_job() -> dict:

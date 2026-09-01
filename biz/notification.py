@@ -164,6 +164,12 @@ class EmailChannel:
         msg["From"] = self.from_address
         msg["To"] = recipient
         try:
+            if self.smtp_port == 465:
+                with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=self.connect_timeout) as server:
+                    if self.username:
+                        server.login(self.username, self.password)
+                    server.sendmail(self.from_address, [recipient], msg.as_string())
+                return True
             with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=self.connect_timeout) as server:
                 if self.use_tls:
                     server.starttls()

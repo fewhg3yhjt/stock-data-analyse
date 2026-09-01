@@ -51,10 +51,14 @@ def test_web_scheduler_registers_only_real_business_maintenance_task(tmp_path, m
 
     _schedule_business_tasks(scheduler, app)
 
-    assert set(scheduler.jobs) == {"biz:observation.expiry_reconcile"}
+    assert set(scheduler.jobs) == {
+        "biz:observation.expiry_reconcile",
+        "biz:notification.outbox_delivery",
+    }
     state = app.extensions["business_scheduler_state"]
     assert state["enabled"] is True
     assert state["expiry_reconcile_minutes"] == 5
+    assert state["outbox_delivery_minutes"] == 5
 
 
 def test_web_scheduler_can_be_disabled(tmp_path, monkeypatch):
