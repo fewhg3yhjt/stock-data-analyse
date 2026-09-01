@@ -799,6 +799,13 @@ CREATE TABLE IF NOT EXISTS business_task_locks (
     expires_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS business_worker_heartbeats (
+    worker_id TEXT PRIMARY KEY,
+    heartbeat_at TEXT NOT NULL,
+    process_id INTEGER,
+    host TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS artifacts (
     artifact_id TEXT PRIMARY KEY,
     run_id TEXT,

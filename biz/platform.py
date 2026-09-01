@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import sqlite3
 from dataclasses import dataclass, field
@@ -78,7 +79,10 @@ class HealthService:
     def __init__(self, business_db: BusinessDB | None = None,
                  management_db_path: str | None = None):
         self.business_db = business_db or BusinessDB()
-        self.management_db_path = management_db_path or ""
+        self.management_db_path = (
+            os.getenv("MANAGEMENT_DB_PATH", "")
+            if management_db_path is None else management_db_path
+        )
 
     def live(self) -> dict:
         return {"status": "ok", "observed_at": now_utc()}
@@ -88,6 +92,7 @@ class HealthService:
             self._check_business_db(),
             self._check_management_db(),
             self._check_business_queue(),
+            self._check_business_worker(),
             self._check_disk(),
         ]
         blocking = [c for c in checks if c.blocking and c.status != "healthy"]
@@ -125,6 +130,41 @@ class HealthService:
             return HealthComponent(
                 name="business_queue", status="unhealthy", code="QUEUE_UNAVAILABLE",
                 blocking=True, details={"error": str(e)},
+            )
+
+    def _check_business_worker(self) -> HealthComponent:
+        """Check the shared DB heartbeat of the dedicated business worker."""
+        required = os.getenv("BUSINESS_WORKER_REQUIRED", "0") == "1"
+        try:
+            with self.business_db.connect() as conn:
+                row = conn.execute(
+                    "SELECT worker_id,heartbeat_at,process_id,host "
+                    "FROM business_worker_heartbeats ORDER BY heartbeat_at DESC LIMIT 1"
+                ).fetchone()
+            if not row:
+                return HealthComponent(
+                    name="business_worker", status="stale" if required else "not_run",
+                    code="WORKER_HEARTBEAT_MISSING" if required else "WORKER_NOT_REGISTERED",
+                    blocking=required, severity="error" if required else "warning",
+                    details={"heartbeat_at": None},
+                )
+            from datetime import datetime, timezone
+            heartbeat = datetime.strptime(row[1], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            age_seconds = max(0.0, (datetime.now(timezone.utc) - heartbeat).total_seconds())
+            timeout = max(5, int(os.getenv("BUSINESS_WORKER_HEARTBEAT_TIMEOUT", "30")))
+            stale = age_seconds > timeout
+            return HealthComponent(
+                name="business_worker", status="stale" if stale else "healthy",
+                code="WORKER_HEARTBEAT_STALE" if stale else "",
+                blocking=required and stale, severity="error" if stale else "info",
+                details={"worker_id": row[0], "heartbeat_at": row[1],
+                         "process_id": row[2], "host": row[3],
+                         "age_seconds": round(age_seconds, 1), "timeout_seconds": timeout},
+            )
+        except Exception as e:  # noqa: BLE001
+            return HealthComponent(
+                name="business_worker", status="unhealthy", code="WORKER_HEALTH_UNAVAILABLE",
+                blocking=required, details={"error": str(e)},
             )
 
     def details(self) -> dict:

@@ -4,7 +4,7 @@
 
 文档性质：实施计划，不代表工作项已完成。每一阶段还必须记录代码状态、测试状态、生产接入状态、实际提交和残余风险。
 
-当前进度说明：本文列出的阶段大多仍是待办或部分完成；业务侧已有部分实现和测试，但数据平面、生产调度、旧库下线和跨入口验收尚未闭环。
+当前进度说明：本文列出的阶段大多仍是待办或部分完成；单实例 `business-worker` 和业务 Scheduler 已接入生产，业务 Scheduler 当前仅调度观察过期维护任务；旧库下线和跨入口验收尚未闭环。
 
 ## 1. 背景与结论
 
@@ -226,7 +226,7 @@ FAIL    → failed，禁止发布
 10. 人工发布历史 Candidate 应使用独立显式入口，不得复用自动流水线回退。
 11. `expected_symbols` 必须来自请求固化 Universe、UniverseSnapshot、active instruments 或明确配置基准，禁止使用 Candidate 自身 `symbol_count`。
 12. Publisher 必须按 `dataset_name + partition_key` 获取数据库租约或等价分区锁；锁覆盖读取 current、复制 rollback、标记 publishing、替换文件、更新 current 的完整发布临界区。
-13. 模拟任务必须持久化 `SimulationEvent`，并与 `SimulationRun`、`SimulationFill`、`SimulationResult` 保持相同 run 关联。
+13. 模拟任务必须持久化 `SimulationEvent`，并与 `SimulationRun`、`SimulationFill`、`SimulationResult` 保持相同 run 关联；正常路径已实现，异常路径需继续验收。
 14. `DataContext` 必须形成单一 canonical DTO；`partition_versions`、`max_date` 等内部字段不得直接作为新业务公共契约。
 15. 新 `biz` 统一使用 `StrategyContext`；旧 `RuleContext` 只能存在于明确标记的迁移兼容链路，迁移完成前不得删除。
 16. Factors 退役必须停止新生产、清理 active 配置/任务/消费者/术语，并将历史文件转为显式 legacy archive；不得误删历史文件。
@@ -441,7 +441,7 @@ expires_at
 7. `partial_success=block_downstream` 时阻断下游。
 8. HTTP `202` 返回前 Request 已存在。
 9. 最近五分钟内的 RFC3339 heartbeat 不被回收，超过租约的业务 Run 可以被回收。
-10. 两个并发 Worker 领取同一 requested Run 时只有一个成功 claim，另一个得到可重试的竞争结果，不能执行同一 Run 两次。
+10. 两个并发 Worker 领取同一 requested Run 时只有一个成功 claim，另一个得到可重试的竞争结果，不能执行同一 Run 两次；当前已通过事务内 claim 实现，需补完整并发回归。
 
 ### 建议提交
 

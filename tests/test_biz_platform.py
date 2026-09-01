@@ -70,6 +70,37 @@ class TestHealth:
             "requested": 0, "running": 0, "oldest_requested_at": None,
         }
 
+    def test_ready_requires_recent_business_worker_heartbeat(self, tmp_path, monkeypatch):
+        db = BusinessDB(tmp_path / "worker-health.db")
+        monkeypatch.setenv("BUSINESS_WORKER_REQUIRED", "1")
+        ready = HealthService(db).ready()
+        worker = next(c for c in ready["components"] if c["name"] == "business_worker")
+        assert worker["status"] == "stale"
+        assert worker["blocking"] is True
+
+    def test_ready_accepts_business_worker_heartbeat(self, tmp_path, monkeypatch):
+        db = BusinessDB(tmp_path / "worker-health-ok.db")
+        monkeypatch.setenv("BUSINESS_WORKER_REQUIRED", "1")
+        from StockInvestmentTool.biz.worker import _heartbeat
+        from StockInvestmentTool.biz.tasks import BusinessTaskService
+        from StockInvestmentTool.biz.repo import BusinessRepository
+        _heartbeat(BusinessTaskService(BusinessRepository(db)))
+        ready = HealthService(db).ready()
+        worker = next(c for c in ready["components"] if c["name"] == "business_worker")
+        assert worker["status"] == "healthy"
+        assert worker["details"]["heartbeat_at"]
+
+    def test_ready_uses_management_db_environment(self, tmp_path, monkeypatch):
+        db = BusinessDB(tmp_path / "business-management-env.db")
+        management = tmp_path / "management.db"
+        import sqlite3
+        with sqlite3.connect(management) as conn:
+            conn.execute("CREATE TABLE health_probe (id INTEGER)")
+        monkeypatch.setenv("MANAGEMENT_DB_PATH", str(management))
+        ready = HealthService(db).ready()
+        management_component = next(c for c in ready["components"] if c["name"] == "management.db")
+        assert management_component["status"] == "healthy"
+
 
 class TestBackup:
     def test_backup_and_restore(self, tmp_path):

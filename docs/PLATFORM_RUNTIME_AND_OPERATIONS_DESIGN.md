@@ -130,6 +130,8 @@ stock_daily_pipeline
 
 业务 Scheduler 当前只注册已实现的 `observation.expiry_reconcile` 维护任务，默认每 30 分钟运行；`BUSINESS_SCHEDULER_ENABLED=0` 可关闭。`advice.refresh`、`notification.outbox_delivery`、`health.reconcile` 和 `parameter_search.run` 在真实 handler 完成前不自动调度。
 
+业务 Worker 通过 `business_worker_heartbeats` 在 `business.db` 写入进程心跳；`/health/ready` 同时检查业务队列积压和 Worker 心跳。生产配置使用 `BUSINESS_WORKER_REQUIRED=1` 时，缺少或超时心跳会阻断就绪状态。
+
 必须做到：
 
 1. HTTP 请求只创建并持久化 Request/Run。
@@ -453,7 +455,7 @@ Route
 - 补齐更多真实业务 handler 后，再逐项开放业务任务调度。
 - 统一业务任务结果 DTO、HTTP 202 和持久化队列。
 - 启动恢复检查、任务影响确认、生产级 ready 依赖检查。
-- BusinessScheduler 生产调度接入，以及 `meta.db` / `job_runs.db` 旧运行路径下线。
+- 继续补齐更多真实业务 handler 后，再逐项开放业务任务调度；`meta.db` / `job_runs.db` 旧运行路径仍待下线。
 
 ### 跨模块验证
 
@@ -469,14 +471,14 @@ Route
 - BusinessRun 查询接口已返回结构化输入/输出版本信息，供页面和 Worker 状态轮询使用。
 - `tests/test_biz_tasks.py` 已验证 Request/JobRun 分离、Worker 执行、租约锁和失败恢复。
 - `biz/worker.py` 已提供独立业务 Worker 入口；`docker-compose.yml` 已增加单实例 `business-worker` 服务，默认每 2 秒轮询，启动时回收 stale run，再领取并执行 requested run。
-- stale 回收设计上只针对 heartbeat 超时的 `running` JobRun，`requested` 队列不会被误判为进程重启失败；但当前实现的 RFC3339 `T...Z` 与 SQLite `datetime()` 文本比较存在格式缺陷，stale 运行可能无法被回收，待修复并通过时间边界测试后才能视为完成。
-- heartbeat 现在同时更新任务锁和 `BusinessJobRun.heartbeat_at`；但恢复逻辑的时间比较仍未完成统一，不能据此宣称不会误判或能够可靠回收。
+- stale 回收设计上只针对 heartbeat 超时的 `running` JobRun，`requested` 队列不会被误判为进程重启失败；当前实现已统一使用 RFC3339 UTC 格式，仍需生产故障演练验证。
+- heartbeat 现在同时更新任务锁、`BusinessJobRun.heartbeat_at` 和 Worker 心跳表；`/health/ready` 可报告 Worker 心跳缺失或超时。
 - `biz/task_registry.py` 已为 `screen.run`、`research.run`、`simulation.run`、`report.daily_generate`、`notification.outbox_delivery` 和 `advice.refresh` 提供业务 handler；参数搜索和复杂持仓建议仍需继续接入专用执行器。
 - `screen.run`、`research.run`、`simulation.run` 正式 API 已改为只创建 BusinessRequest/JobRun 并返回 202；Worker 执行后通过 BusinessRun/领域结果查询接口获取结果。
 - 新业务正式 API 当前已在容器内注册并通过路由契约检查；现有业务页面和旧业务主链路尚未完成切换。
-- 当前容器内正式 API 路由检查通过；业务过渡 API 的精确数量以自动路由检查为准。业务 Worker 已作为单实例生产常驻进程挂载。
+- 当前容器内正式 API 路由检查通过；业务过渡 API 的精确数量以自动路由检查为准。业务 Worker 已作为单实例生产常驻进程挂载，业务 Scheduler 已注册观察过期维护任务。
 - 生产 `Warehouse` 已通过 `MANAGEMENT_DB_PATH` 使用 `management.db`；`warehouse/meta.db` 仍被默认回退、行业/标的旧读取、测试和迁移脚本引用，只有完成全量引用清理、数据对账、生产只读观察和回归验证后，才允许将其降为归档并在人工确认后删除。
-- 当前仍未闭环：业务 Worker 尚未生产接入；`DataContext` 尚未完全统一；`web/app.py:3041-3042` 的双 Blueprint 注册已清理；stale 时间格式、质量 Candidate 自证、Publisher 分区锁和模拟事件正常路径已完成代码修复，但仍需完整回归或生产验证；`job_runs.db` 仍需独立只读归档验收。
+- 当前仍未闭环：`DataContext` 尚未完全统一；`web/app.py:3041-3042` 的双 Blueprint 注册已清理；stale 时间格式、质量 Candidate 自证、Publisher 分区锁和模拟事件正常路径已完成代码修复；Worker/业务 Scheduler 已生产接入但仍需故障演练；`job_runs.db` 仍需独立只读归档验收。
 - 路由约束：业务 Blueprint 只允许挂载到明确的 `/api/biz` 命名空间；不得同时注册到 `/api`。旧 `/api/health/details`、`/api/system/alerts` 等同路径必须在路由切换表中明确归属，不能依赖 Blueprint 注册顺序解决冲突。
 - stale 回收约束：heartbeat 存储和比较必须使用同一 UTC 可比较格式，或在应用层解析后比较；必须有“未超时不回收”和“超时可回收”的回归测试。
 - 领域状态约束：BusinessJobRun 与 SimulationRun、ScreenRun、ResearchRun 等领域运行实体必须有明确的状态映射和失败收敛策略。任务失败不得留下永久 `running` 的领域记录；执行前创建的 ScreenVersion、UniverseSnapshot 等前置事实必须通过事务边界或显式 orphan/reconciled 状态处理。
