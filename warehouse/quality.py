@@ -194,7 +194,7 @@ def _industry_quality(path, dataset_name: str, expected_symbols: int | None = No
     coverage = len(frame[keys[1]].unique()) / expected_symbols if expected_symbols else None
     fail = duplicate > 0 or int((~valid).sum()) > 0 or (coverage is not None and coverage < config["coverage"]["warning_min"])
     status = "FAIL" if fail else ("PASS" if coverage is None or coverage >= config["coverage"]["pass_min"] else "WARNING")
-    return {"status": status, "publish_allowed": status != "FAIL" or config["publish_warning"],
+    return {"status": status, "publish_allowed": status != "FAIL" and (status == "PASS" or config["publish_warning"]),
             "checks": {"duplicate_primary_keys": duplicate, "invalid_rows": int((~valid).sum()),
                        "row_count": len(frame), "coverage": coverage, "expected_symbols": expected_symbols}}
 

@@ -265,8 +265,12 @@ def stage_and_publish_industry_batch(warehouse, *, dataset_name: str, batch_id: 
                   if dataset_name == "industry_membership" else
                   [str(value)[:7] for value in frame[date_col].dropna().unique()])
     for partition in sorted(set(partitions)):
-        results[partition] = stage_and_publish_industry(
-            warehouse, dataset_name=dataset_name, partition=partition,
-            batch_id=batch_id, expected_symbols=expected_symbols,
-        )
+        try:
+            results[partition] = stage_and_publish_industry(
+                warehouse, dataset_name=dataset_name, partition=partition,
+                batch_id=batch_id, expected_symbols=expected_symbols,
+            )
+        except Exception as exc:
+            logger.error("行业数据分区发布失败 %s/%s: %s", dataset_name, partition, exc)
+            results[partition] = {"error": str(exc), "published": None}
     return results
