@@ -232,7 +232,7 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
     </div>
 
     <!-- 交易明细 -->
-    <div class="ui-card" id="sell-plan-card" style="display:none;"><div class="ui-card-header"><i class="fas fa-hand-holding-usd"></i> 卖出计划 <span class="hint">（基于回测最优参数，以当前价估算）</span></div><table class="ui-table"><thead><tr><th>类型</th><th>触发条件</th><th>触发价</th><th>盈亏</th><th>说明</th></tr></thead><tbody id="sell-tbody"></tbody></table></div>
+    <div class="ui-card" id="sell-plan-card" style="display:none;"><div class="ui-card-header"><i class="fas fa-hand-holding-usd"></i> 卖出计划 <span class="hint">（基于近 252 个交易日最高价）</span></div><table class="ui-table"><thead><tr><th>类型</th><th>触发条件</th><th>触发价</th><th>盈亏</th><th>说明</th></tr></thead><tbody id="sell-tbody"></tbody></table><div id="sell-plan-asof" class="hint"></div></div>
 
 <div class="ui-card" id="trades-card" style="display:none;">
       <div class="ui-card-header"><i class="fas fa-exchange-alt"></i> 交易明细 <span class="hint">（策略执行记录）</span></div>
@@ -304,8 +304,7 @@ form.addEventListener('submit', async (e) => {
   loadingFill.style.width = '0%';
   const fd = new FormData(form);
   try {
-    const resp = await fetch('/analyze', { method: 'POST', body: fd });
-    const data = await resp.json();
+    const data = await UI_UTILS.fetchJson('/analyze', { method: 'POST', body: fd });
     if (data.status === 'error') { showError(data.error); return; }
     if (data.status === 'success') {
       loading.style.display = 'none';
@@ -327,8 +326,7 @@ function pollAnalysisTask(url) {
   analysisPollStartedAt = Date.now();
   const poll = async () => {
     try {
-      const response = await fetch(url);
-      const data = await response.json();
+      const data = await UI_UTILS.fetchJson(url);
       const task = data.task || data;
       loading.style.display = 'block';
       loadingStage.textContent = task.stage || '处理中';
@@ -350,7 +348,7 @@ function pollAnalysisTask(url) {
       }
       analysisPollTimer = setTimeout(poll, 800);
     } catch (error) {
-      if (Date.now() - analysisPollStartedAt > 300000) showError('任务仍在处理中，结果未知。');
+      if (error.resultUnknown || Date.now() - analysisPollStartedAt > 300000) showError('任务仍在处理中，结果未知。请稍后刷新查看。');
       else analysisPollTimer = setTimeout(poll, 1200);
     }
   };
@@ -441,7 +439,10 @@ function renderResults(data) {
   if (d.backtest_done && d.current_price) {
     sellCard.style.display = 'block';
     const cost = d.current_price;
-    const yh = d.current_price;  // 简化：以当前价作为年高参考
+    const yh = Number(d.year_high);
+    const asof = document.getElementById('sell-plan-asof');
+    if (asof) asof.textContent = Number.isFinite(yh) && yh > 0 ? '参考前高：' + yh.toFixed(2) + ' 元，数据截至 ' + (d.year_high_as_of || d.data_end || '暂无') : '暂无可靠前高数据，暂不生成前高分档计划';
+    if (!Number.isFinite(yh) || yh <= 0) { sellCard.style.display = 'none'; return; }
     const slRate = (d.stop_loss_rate || 0.15) * 100;
     sellBody.innerHTML = [
       { t: '左侧预警区', cond: '最高价达前高90%-95%', price: (yh * 0.90).toFixed(2) + '~' + (yh * 0.95).toFixed(2), pct: '-20%', note: '减持20%仓位' },

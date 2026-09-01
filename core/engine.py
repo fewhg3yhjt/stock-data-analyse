@@ -90,6 +90,9 @@ class AnalysisResult:
         if self.kline is not None and len(self.kline):
             d["data_start"] = str(self.kline["date"].iloc[0])[:10]
             d["data_end"] = str(self.kline["date"].iloc[-1])[:10]
+            if "high" in self.kline.columns:
+                d["year_high"] = float(self.kline["high"].tail(252).max())
+                d["year_high_as_of"] = d["data_end"]
         pe_info = self.valuation.get("pe") or {}
         d["pe"] = pe_info.get("current_pe")
         d["pe_percentile"] = pe_info.get("pe_percentile")

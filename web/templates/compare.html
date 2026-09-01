@@ -247,8 +247,7 @@ $('#compare-form').addEventListener('submit', async e => {
   setProgress('提交中...', 2);
 
   try {
-    const res = await fetch('/compare', { method: 'POST', body: fd });
-    const data = await res.json();
+    const data = await UI_UTILS.fetchJson('/compare', { method: 'POST', body: fd });
     if (data.status === 'running' && data._query_url) {
       pollComparisonTask(data._query_url);
       return;
@@ -273,8 +272,7 @@ function pollComparisonTask(url) {
   comparisonPollStartedAt = Date.now();
   const poll = async () => {
     try {
-      const response = await fetch(url);
-      const data = await response.json();
+      const data = await UI_UTILS.fetchJson(url);
       const task = data.task || data;
       setProgress(task.stage || '处理中', Math.max(0, Number(task.progress) || 0));
       if (task.status === 'success') {
@@ -295,7 +293,7 @@ function pollComparisonTask(url) {
       }
       comparisonPollTimer = setTimeout(poll, 800);
     } catch (error) {
-      if (Date.now() - comparisonPollStartedAt > 300000) showError('任务仍在处理中，结果未知。');
+      if (error.resultUnknown || Date.now() - comparisonPollStartedAt > 300000) showError('任务仍在处理中，结果未知。请稍后刷新查看。');
       else comparisonPollTimer = setTimeout(poll, 1200);
     }
   };
