@@ -231,7 +231,7 @@ tr:last-child td{border-bottom:none;}
 <script>
 const $ = s => document.querySelector(s);
 let txnPosId = null, txnType = 'buy';
-const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = window.UI_UTILS.esc;
 
 function openModal(id) { $('#modal-' + id).classList.add('active'); }
 function closeModal(id) { $('#modal-' + id).classList.remove('active'); }
