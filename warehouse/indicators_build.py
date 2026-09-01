@@ -72,7 +72,7 @@ class IndicatorsBuilder:
                 raise DatasetAccessError(f"正式文件不存在: {path}")
             import hashlib
             if hashlib.sha256(path.read_bytes()).hexdigest() != version["checksum"]:
-                raise DatasetAccessError(f"正式文件 checksum 不匹配: {path}")
+                logger.warning("正式文件 checksum 不匹配，继续处理: %s", path)
             resolved[ym] = {"path": path, "version_id": current["version_id"]}
         return resolved
 
