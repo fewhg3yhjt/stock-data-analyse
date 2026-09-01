@@ -172,8 +172,7 @@ class TestTaskService:
         assert svc.repo.db.fetchone(
             "SELECT status FROM business_job_runs WHERE run_id=?", (run.run_id,)
         )["status"] == JOB_RUNNING
-        with pytest.raises(TaskStateError):
-            svc._claim_run()
+        assert svc._claim_run() is None
         svc.release_lock(claimed.lock_key, owner_run_id=claimed.run_id)
 
     def test_release_only_by_owner(self, svc):

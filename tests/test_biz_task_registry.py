@@ -95,7 +95,8 @@ def test_simulation_handler_persists_failed_run_and_partial_events(tmp_path, mon
 
     service = BusinessTaskService(BusinessRepository(BusinessDB(tmp_path / "simulation.db")))
     service.repo.get_strategy_version = lambda version_id: {
-        "strategy_version_id": version_id, "config_json": "{}",
+        "strategy_version_id": version_id,
+        "config_json": '{"strategy_id":"test-strategy"}',
     }
     handler = _simulation_handler(service)
     with pytest.raises(RuntimeError, match="simulated failure"):
