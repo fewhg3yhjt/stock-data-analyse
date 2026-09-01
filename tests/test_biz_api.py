@@ -176,3 +176,37 @@ def test_screen_candidate_data_expands_by_symbol(app, monkeypatch):
     payload = response.get_json()["data"]
     assert payload["symbol"] == "sh600908"
     assert len(payload["rows"]) == 2
+
+
+def test_failed_screen_run_does_not_expose_candidates(app):
+    from StockInvestmentTool.biz.db import BusinessDB
+    from StockInvestmentTool.biz.models import new_id
+    from StockInvestmentTool.biz.repo import BusinessRepository
+    from StockInvestmentTool.biz.screen import ScreenCandidate, ScreenRun, ScreenDefinition
+
+    repo = BusinessRepository(BusinessDB(__import__("os").environ["BUSINESS_DB_PATH"]))
+    screen_id = new_id("screen")
+    version_id = repo.save_screen_version(ScreenDefinition(
+        screen_id=screen_id, name="failed", condition_spec={}
+    ))
+    universe_id = repo.save_universe_snapshot(["sh600908"], as_of="2026-08-14")
+    run_id = new_id("screen_run")
+    repo.save_screen_run(ScreenRun(
+        run_id=run_id, screen_version_id=version_id, universe_snapshot_id=universe_id,
+        requested_as_of="2026-08-14", data_context={}, status="failed",
+        error="boom", finished_at="2026-08-14T10:00:00Z",
+    ))
+    candidate_id = new_id("candidate")
+    repo.save_screen_candidate(ScreenCandidate(
+        candidate_id=candidate_id, screen_run_id=run_id, symbol="sh600908",
+        data_as_of="2026-08-14",
+    ))
+    response = app.test_client().get(f"/api/biz/screen-runs/{run_id}")
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["result_available"] is False
+    assert data["candidates"] == []
+    response = app.test_client().get(
+        f"/api/biz/screen-runs/{run_id}/candidates/{candidate_id}/data"
+    )
+    assert response.status_code == 409

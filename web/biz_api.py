@@ -174,6 +174,7 @@ def get_screen_run(run_id: str):
         return _error("SCREEN_RUN_NOT_FOUND", "筛选运行不存在", 404)
     run = dict(row)
     run["data_context"] = __import__("StockInvestmentTool.biz.db", fromlist=["loads_json"]).loads_json(run.pop("data_context_json"))
+    run["result_available"] = run["status"] in {"success", "partial_success"}
     run["candidates"] = repo.list_candidates(run_id)
     return flask.jsonify({"data": run, "request_id": flask.request.headers.get("X-Request-ID", "")})
 
@@ -194,6 +195,9 @@ def get_screen_candidate_data(run_id: str, candidate_id: str):
     candidate = repo.get_candidate(candidate_id)
     if not candidate or candidate["screen_run_id"] != run_id:
         return _error("SCREEN_CANDIDATE_NOT_FOUND", "筛选候选不存在", 404)
+    run = repo.db.fetchone("SELECT status FROM screen_runs WHERE screen_run_id=?", (run_id,))
+    if not run or run["status"] not in {"success", "partial_success"}:
+        return _error("SCREEN_RUN_NOT_READY", "筛选运行未成功，暂无候选数据", 409)
     start_date = flask.request.args.get("start_date") or candidate["data_as_of"]
     end_date = flask.request.args.get("end_date") or candidate["data_as_of"]
     if not start_date or not end_date:

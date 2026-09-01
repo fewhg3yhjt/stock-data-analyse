@@ -33,6 +33,13 @@ def kline():
     return make_kline()
 
 
+@pytest.fixture(autouse=True)
+def isolate_runtime_databases(monkeypatch):
+    """Prevent tests from inheriting production database paths."""
+    monkeypatch.delenv("MANAGEMENT_DB_PATH", raising=False)
+    monkeypatch.delenv("BUSINESS_DB_PATH", raising=False)
+
+
 @pytest.fixture
 def dividends():
     return [

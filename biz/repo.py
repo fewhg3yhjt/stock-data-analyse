@@ -229,6 +229,9 @@ class BusinessRepository:
         return candidate.candidate_id
 
     def list_candidates(self, screen_run_id: str) -> list[dict]:
+        run = self.db.fetchone("SELECT status FROM screen_runs WHERE screen_run_id=?", (screen_run_id,))
+        if not run or run["status"] not in {"success", "partial_success"}:
+            return []
         rows = self.db.fetchall(
             "SELECT * FROM screen_candidates WHERE screen_run_id=? ORDER BY rank_no",
             (screen_run_id,))
