@@ -44,3 +44,38 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  business-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: stock-invest:latest
+    container_name: stock-invest-business-worker
+    env_file:
+      - path: ${STOCK_ENV_FILE:-./.env}
+        required: false
+    environment:
+      - TZ=Asia/Shanghai
+      - MANAGEMENT_DB_PATH=/app/StockInvestmentTool/output/data/management.db
+      - BUSINESS_DB_PATH=/app/StockInvestmentTool/output/data/business.db
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - ${STOCK_OUTPUT_DIR:-./output}:/app/StockInvestmentTool/output
+      - ./:/app/StockInvestmentTool
+    working_dir: /app
+    command: ["python", "-m", "StockInvestmentTool.biz.worker", "--poll-interval", "${BUSINESS_WORKER_POLL_INTERVAL:-2}"]
+    restart: unless-stopped
+    mem_limit: ${STOCK_WORKER_MEMORY_LIMIT:-512m}
+    memswap_limit: ${STOCK_WORKER_MEMORY_SWAP_LIMIT:-768m}
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3; p='/app/StockInvestmentTool/output/data/business.db'; c=sqlite3.connect(p); assert c.execute('PRAGMA quick_check').fetchone()[0] == 'ok'; c.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
