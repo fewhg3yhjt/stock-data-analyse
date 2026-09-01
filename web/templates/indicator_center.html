@@ -48,7 +48,7 @@
   </div>
 </div>
 <div class="indicator-help" id="indicator-help"></div>
-<script src="/static/echarts.min.js"></script>
+<script src="{{ static_asset('echarts.min.js') }}"></script>
 <script>
 let indicators = {base:[], composite:[], code:[]};
 const groupMeta = {base:['基础指标','green'], composite:['组合指标','orange'], code:['代码指标','blue']};
@@ -99,12 +99,16 @@ function editIndicator(item){
 }
 function closeIndicatorModal(){document.getElementById('indicator-modal').style.display='none';}
 async function saveIndicator(){
-  const status=document.getElementById('edit-status'); status.textContent='保存中…';
+  const status=document.getElementById('edit-status'); const button=document.querySelector('#indicator-modal button[onclick="saveIndicator()"]');
+  status.textContent='保存中…'; button.disabled=true;
   try{
+    const name=document.getElementById('edit-name').value.trim(); const expr=document.getElementById('edit-expr').value.trim();
+    if(!name || !expr) throw new Error('指标名和表达式不能为空');
     const response=await fetch('/api/indicators/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.getElementById('edit-name').value,kind:document.getElementById('edit-kind').value,expr:document.getElementById('edit-expr').value,description:document.getElementById('edit-description').value})});
     const data=await response.json(); if(data.status!=='success') throw new Error(data.error || '保存失败');
     status.textContent='已保存'; status.className='preview-result ok'; closeIndicatorModal(); await loadIndicators();
   }catch(error){status.textContent=error.message; status.className='preview-result error-text';}
+  finally{button.disabled=false;}
 }
 async function toggleIndicator(item){
   const response=await fetch('/api/indicators/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:item.name,enabled:item.enabled===false})});
