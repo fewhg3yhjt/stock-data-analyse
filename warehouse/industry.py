@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
@@ -134,9 +135,24 @@ class IndustryCollector:
         snapshot_date = snapshot_date or datetime.now().strftime("%Y-%m-%d")
         checkpoint = self.checkpoint_dir / f"industry_membership_{snapshot_date}.json"
         completed = set()
+        saved_values = {}
         if checkpoint.exists() and not refresh:
-            completed = set(json.loads(checkpoint.read_text(encoding="utf-8")).get("completed", []))
-        rows, failed, skipped = [], [], 0
+            checkpoint_data = json.loads(checkpoint.read_text(encoding="utf-8"))
+            completed = set(checkpoint_data.get("completed", []))
+            saved_values = checkpoint_data.get("results", {})
+        # Older checkpoints only stored completed codes. Reconstruct their
+        # values from the current instrument cache instead of re-querying them.
+        if completed:
+            with sqlite3.connect(self.warehouse.meta_db_path) as conn:
+                placeholders = ",".join("?" for _ in completed)
+                cached = conn.execute(
+                    f"SELECT code, industry FROM instruments WHERE code IN ({placeholders})",
+                    tuple(completed),
+                ).fetchall()
+            saved_values.update({code: industry for code, industry in cached if industry and str(industry).strip()})
+            completed = {code for code in completed if code in saved_values}
+        rows = [{"code": code, "industry": saved_values[code]} for code in codes if code in completed]
+        failed, skipped = [], 0
         for code in codes:
             if code in completed:
                 skipped += 1
@@ -156,12 +172,14 @@ class IndustryCollector:
                     rows.append({"code": code, "industry": value,
                                  "source_update_date": source_update_date,
                                  "industry_classification": classification})
+                    saved_values[code] = value
                     completed.add(code)
             except Exception as exc:
                 failed.append(code)
                 logger.warning("行业成员采集失败 %s: %s", code, exc)
             checkpoint.parent.mkdir(parents=True, exist_ok=True)
-            checkpoint.write_text(json.dumps({"completed": sorted(completed), "failed": failed}, ensure_ascii=False), encoding="utf-8")
+            checkpoint.write_text(json.dumps({"completed": sorted(completed), "failed": failed,
+                                              "results": saved_values}, ensure_ascii=False), encoding="utf-8")
             self.sleep(self.interval)
         normalized = normalize_membership(pd.DataFrame(rows, columns=["code", "industry", "source_update_date", "industry_classification"]), snapshot_date=snapshot_date)
         raw = capture_frames(self.warehouse, dataset_name="industry_membership", source_name="baostock", frames=[normalized],
