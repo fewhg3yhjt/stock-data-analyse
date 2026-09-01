@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 指标中心{% endblock %}
-{% block head %}<style>.indicator-info{display:inline-flex;width:17px;height:17px;align-items:center;justify-content:center;border:1px solid var(--color-info);border-radius:50%;color:var(--color-info);font-size:11px;font-weight:700;cursor:pointer}.indicator-help{position:fixed;z-index:2000;display:none;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.16);padding:14px 16px;width:min(420px,calc(100vw - 32px));font-size:13px;line-height:1.65}.indicator-help b{display:block;margin-bottom:5px}</style>{% endblock %}
+{% block head %}<script src="{{ static_asset('echarts.min.js') }}"></script><script src="{{ static_asset('stock-chart.js') }}"></script><style>.indicator-info{display:inline-flex;width:17px;height:17px;align-items:center;justify-content:center;border:1px solid var(--color-info);border-radius:50%;color:var(--color-info);font-size:11px;font-weight:700;cursor:pointer}.indicator-help{position:fixed;z-index:2000;display:none;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.16);padding:14px 16px;width:min(420px,calc(100vw - 32px));font-size:13px;line-height:1.65}.indicator-help b{display:block;margin-bottom:5px}</style>{% endblock %}
 {% block body %}
 <main class="app indicator-center">
   <header class="header">
@@ -121,8 +121,8 @@ async function previewExpression(){
     const response=await fetch('/api/indicators/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:document.getElementById('preview-code').value,expr:document.getElementById('preview-expr').value})});
     const data=await response.json(); if(data.status!=='success') throw new Error(data.error || '预览失败');
     status.textContent='表达式有效'; status.className='preview-result ok'; document.getElementById('latest-value').textContent='最新 ' + data.latest;
-    const series=data.series || []; const chartEl=document.getElementById('preview-chart'); const old=echarts.getInstanceByDom(chartEl); if(old) old.dispose();
-    const chart=echarts.init(chartEl); chart.setOption({tooltip:{trigger:'axis'},grid:{left:55,right:18,top:18,bottom:48},xAxis:{type:'category',data:series.map(x=>x.date),boundaryGap:false},yAxis:{type:'value',scale:true},dataZoom:[{type:'inside'},{type:'slider',height:16}],series:[{name:data.expr,type:'line',data:series.map(x=>x.value),showSymbol:false,lineStyle:{color:'#1a73e8',width:1.8}}]});
+     const series=data.series || []; const chartEl=document.getElementById('preview-chart'); StockChart.dispose(chartEl);
+     const chart=StockChart.mount(chartEl); chart.setOption({tooltip:{trigger:'axis'},grid:{left:55,right:18,top:18,bottom:48},xAxis:{type:'category',data:series.map(x=>x.date),boundaryGap:false},yAxis:{type:'value',scale:true},dataZoom:[{type:'inside'},{type:'slider',height:16}],series:[{name:data.expr,type:'line',data:series.map(x=>x.value),showSymbol:false,lineStyle:{color:'#1a73e8',width:1.8}}]});
   }catch(error){status.textContent=error.message; status.className='preview-result error-text';}
 }
 loadIndicators().catch(error=>{document.getElementById('indicator-list').innerHTML='<div class="error">'+escapeHtml(error.message)+'</div>';});

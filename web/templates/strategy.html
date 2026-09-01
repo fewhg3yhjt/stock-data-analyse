@@ -2,6 +2,7 @@
 {% block title %}StockInvestmentTool - 策略实验{% endblock %}
 {% block head %}
 <script src="{{ static_asset('echarts.min.js') }}"></script>
+<script src="{{ static_asset('stock-chart.js') }}"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -183,7 +184,7 @@ async function loadBacktestCurve(limit_up, deviation, hold){
     const d = await r.json();
     if(d.status!=='success' || !d.dates.length) return;
     const el = document.getElementById('chart_backtest');
-    const chart = echarts.init(el);
+    const chart = StockChart.mount(el);
     chart.setOption({
       tooltip:{trigger:'axis'},
       legend:{top:0},
@@ -241,7 +242,7 @@ function onMetricChange(){
 
 function drawEChart(d){
   const el = document.getElementById('chart_main');
-  if(!chartObj){ chartObj = echarts.init(el); }
+  if(!chartObj){ chartObj = StockChart.mount(el); }
   const series = d.series.map(s=>({
     name: s.name, type:'line', data:s.data, showSymbol:false,
     lineStyle:{width: s.key==='close'?1.8:1.1, color: METRIC_COLORS[s.key]||'#1a73e8'},

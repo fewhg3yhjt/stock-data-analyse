@@ -75,7 +75,7 @@
 | `data-module.css` | 数据中心和任务中心 | 仍有页面级内联样式 |
 | `data-center-adapter.js` | 数据总览 Adapter | 资产目录页仍有独立内联渲染逻辑 |
 | `research-detail.js/css` | 研究详情页 | 仍需完善上下文字段和后续动作展示 |
-| `stock-chart.js` | 通用 ECharts 组件 | K 线、成交量和均线颜色已按契约统一；实例销毁仍需收口 |
+| `stock-chart.js` | 通用 ECharts 组件 | 统一提供图表挂载和释放入口；K 线、成交量和均线颜色已按契约统一 |
 
 ## 最近验证基线
 

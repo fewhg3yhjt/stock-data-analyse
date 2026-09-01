@@ -293,7 +293,7 @@ async function loadStockChart(btn){
     const d = await res.json();
     if (d.status !== 'success'){ chartEl.innerHTML = '<span style="color:#c62828;font-size:13px;">' + d.error + '</span>'; return; }
     // 用 ECharts 渲染：收盘+指标 主图，收益率双线叠加
-    const chart = echarts.init(chartEl);
+    const chart = StockChart.mount(chartEl);
     const series = [{ name:'收盘', type:'line', data:d.closes, showSymbol:false, lineStyle:{width:1.6,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'} }];
     (d.metrics||[]).forEach(m => {
       series.push({ name:m.name, type:'line', data:m.data, showSymbol:false,

@@ -14,6 +14,30 @@ window.StockChart = (function(){
   };
   const _charts = {};
 
+  function mount(el){
+    if (!el || !window.echarts) return null;
+    const id = el.getAttribute('data-chart-id') || el.id || Math.random().toString(36).slice(2);
+    el.setAttribute('data-chart-id', id);
+    const existing = _charts[id] || echarts.getInstanceByDom(el);
+    if (existing) {
+      _charts[id] = existing;
+      return existing;
+    }
+    const chart = echarts.init(el);
+    _charts[id] = chart;
+    ensureResizeHandler();
+    return chart;
+  }
+
+  function dispose(el){
+    if (!el || !window.echarts) return;
+    const id = el.getAttribute('data-chart-id') || el.id;
+    const chart = (id && _charts[id]) || echarts.getInstanceByDom(el);
+    if (!chart) return;
+    try { chart.dispose(); } catch (e) {}
+    if (id) delete _charts[id];
+  }
+
   function colorOf(key){ return METRIC_COLORS[key] || '#1a73e8'; }
 
   // 全局 resize 监听（只绑一次），让所有图表随容器/窗口尺寸变化重绘
@@ -32,7 +56,7 @@ window.StockChart = (function(){
     if(!_charts[id]){
       // echarts.init 在元素尺寸为 0（如动态展开、父容器未就绪）时创建实例不绘制，
       // 延迟到布局完成后 resize() 强制按真实尺寸重绘
-      const chart = echarts.init(el);
+      const chart = mount(el);
       requestAnimationFrame(function(){
         try{ chart.resize(); }catch(e){}
       });
@@ -135,5 +159,5 @@ window.StockChart = (function(){
     _metricHandler(selected);
   }
 
-  return { drawLine, drawKLine, metricSelector, colorOf, _metricChanged };
+  return { drawLine, drawKLine, metricSelector, colorOf, mount, dispose, _metricChanged };
 })();

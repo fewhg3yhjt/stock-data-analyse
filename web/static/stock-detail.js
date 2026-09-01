@@ -213,7 +213,8 @@ window.StockDetail = (function(){
     function disposeChart(el){
       const prev = echarts.getInstanceByDom(el);
       if (!prev) return;
-      try{ prev.dispose(); }catch(e){}
+      if (window.StockChart?.dispose) window.StockChart.dispose(el);
+      else { try{ prev.dispose(); }catch(e){} }
       const idx = charts.indexOf(prev);
       if (idx >= 0) charts.splice(idx, 1);
     }
@@ -224,7 +225,7 @@ window.StockDetail = (function(){
       if (!(kDates && kDates.length)) return false;
       if (!sized(klineEl)) return false;   // 容器未就绪 → 由 draw 重试
       disposeChart(klineEl);
-      const chart = echarts.init(klineEl);
+      const chart = window.StockChart?.mount(klineEl) || echarts.init(klineEl);
       charts.push(chart);
       // boundaryGap 自带首尾内边距，不加额外空类目：120根均匀铺满、最新K线贴右。
       const chartDates = kDates;
@@ -342,7 +343,7 @@ window.StockDetail = (function(){
       if (!window.echarts || !hasTrend) return false;
       if (!sized(trendEl)) return false;
       disposeChart(trendEl);
-      const chart = echarts.init(trendEl);
+      const chart = window.StockChart?.mount(trendEl) || echarts.init(trendEl);
       charts.push(chart);
       chart.setOption({
         title:{ text:'盘中走势（' + (it.day || '当日') + ' 快照源）', left:0, top:0, textStyle:{fontSize:12, color:'#6b7280', fontWeight:'normal'} },
@@ -363,7 +364,7 @@ window.StockDetail = (function(){
       if (!window.echarts || !retData) return false;
       if (!retEl || !sized(retEl)) return false;
       disposeChart(retEl);
-      const chart = echarts.init(retEl);
+      const chart = window.StockChart?.mount(retEl) || echarts.init(retEl);
       charts.push(chart);
       chart.setOption({
         tooltip:{trigger:'axis'}, legend:{top:0}, animation:false,
