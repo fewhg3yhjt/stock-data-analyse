@@ -43,12 +43,12 @@
 |---|---|---|
 | 红涨绿跌 | `done` | 语义 Token 全量落地；K 线阳线/阴线、成交量、收益率均统一为 `--color-up` 红 / `--color-down` 绿（`#dc3545`/`#28a745`），MA5/10/20/60 固定紫/蓝/橙/深绿 |
 | 状态词表 | `done` | `cls` 已返回完整 `status-*` canonical class，调用方已统一到 `.status-tag.status-<key>`（提交 7838b9b 后续提交） |
-| 公共壳层 | `in_progress` | `.app` 页面通过 CSS 适配，尚未全部改为真实公共结构 |
+| 公共壳层 | `in_progress` | `.app`、`wb-*`、`dm-*` 三套结构仍并存；主要页面已具备统一导航语义，但尚未全部改为同一 DOM 壳层 |
 | Toast/反馈 | `done` | 共享 `showUiMessage()` 已覆盖页面反馈；全库只保留 `base.html` 的一个 Toast 容器，页面级 Toast 容器和函数已清理 |
 | XSS/CSP | `in_progress` | 内联事件已清零，marked 已净化，CSP 分阶段启用（仍允许内联脚本与 CDN） |
 | 表单/确认组件 | `in_progress` | `.ui-confirm`、`.ui-input-panel` 和共享 Promise API 已落地；指标中心已补充必填校验、提交中禁用和异常恢复，其他表单仍待统一 |
 | CDN/构建/版本 | `in_progress` | ECharts 已切换为本地资源；Font Awesome 和 Marked 仍使用 CDN，内联脚本和手写版本号仍待治理 |
-| 真实进度和图表释放 | `in_progress` | 图表统一挂载/释放入口已落地；分析和方案对比已改为任务轮询，结果未知提示和完整生命周期回归仍待验证 |
+| 真实进度和图表释放 | `in_progress` | 图表统一挂载/释放入口和分析/方案对比任务轮询已落地；主要页面浏览器烟测通过，完整长任务和重复开关回归仍待验证 |
 
 ## P0：安全和数据展示正确性
 
