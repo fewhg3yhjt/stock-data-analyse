@@ -144,9 +144,7 @@ tr:last-child td{border-bottom:none;}
   {% endif %}
 
 </div>
-<div class="toast" id="toast" style="position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;"></div>
 <script>
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
 async function addTxn(){
   const posId = document.getElementById('tx-pos').value;
   const type = document.getElementById('tx-type').value;
@@ -154,13 +152,13 @@ async function addTxn(){
   const shares = parseFloat(document.getElementById('tx-shares').value || 0);
   const date = document.getElementById('tx-date').value || '';
   const reason = document.getElementById('tx-reason').value.trim();
-  if (!posId){ showToast('请选择持仓'); return; }
-  if (!price || price <= 0){ showToast('请填写价格'); return; }
+  if (!posId){ showUiMessage('请选择持仓', 'error'); return; }
+  if (!price || price <= 0){ showUiMessage('请填写价格', 'error'); return; }
   const body = new URLSearchParams({ type, price, shares: String(shares), date, reason });
   const url = type === 'sell_all' ? '/portfolio/' + posId + '/close' : '/portfolio/' + posId + '/transaction';
   const d = await (await fetch(url, { method: 'POST', body })).json();
-  if (d.status === 'success'){ showToast('已添加交易' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : '')); setTimeout(()=>location.reload(),600); }
-  else showToast(d.error || '添加失败');
+  if (d.status === 'success'){ showUiMessage('已添加交易' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : ''), 'success'); setTimeout(()=>location.reload(),600); }
+  else showUiMessage(d.error || '添加失败', 'error');
 }
 </script>
 {% endblock %}

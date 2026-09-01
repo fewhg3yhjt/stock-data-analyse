@@ -108,12 +108,12 @@ async function saveIndicator(){
 }
 async function toggleIndicator(item){
   const response=await fetch('/api/indicators/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:item.name,enabled:item.enabled===false})});
-  const data=await response.json(); if(data.status!=='success'){alert(data.error || '操作失败');return;} await loadIndicators();
+  const data=await response.json(); if(data.status!=='success'){showUiMessage(data.error || '操作失败', 'error');return;} await loadIndicators();
 }
 async function deleteIndicator(item){
-  if(!confirm(`确定删除自定义指标“${item.name}”吗？`)) return;
+  if(!await showUiConfirm('删除后将移除该自定义指标。', `删除指标“${item.name}”`)) return;
   const response=await fetch('/api/indicators/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:item.name})});
-  const data=await response.json(); if(data.status!=='success'){alert(data.error || '删除失败');return;} await loadIndicators();
+  const data=await response.json(); if(data.status!=='success'){showUiMessage(data.error || '删除失败', 'error');return;} await loadIndicators();
 }
 async function previewExpression(){
   const status=document.getElementById('preview-status'); status.textContent='计算中…'; status.className='preview-result';

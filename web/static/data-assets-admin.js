@@ -6,7 +6,7 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[char]));
   const showResult = data => {
-    alert(data.status === 'success' ? '操作已提交' : (data.error || '操作失败'));
+    window.showUiMessage(data.status === 'success' ? '操作已提交' : (data.error || '操作失败'), data.status === 'success' ? 'success' : 'error');
     if (data.status === 'success') window.loadAssets?.();
   };
   const attach = asset => {
@@ -26,24 +26,24 @@
     if (current?.previous_version_id) actions.push(`<button class="dm-btn" data-action="rollback">回滚上一版本</button>`);
     if (!actions.length) return;
     detail.insertAdjacentHTML('beforeend', `<section class="dm-detail-section"><h3>管理操作</h3><div class="dm-toolbar">${actions.join('')}</div></section>`);
-    detail.querySelector('[data-action="edit"]')?.addEventListener('click', () => {
-      const definition = prompt('请输入新的指标定义', asset.definition || '');
+    detail.querySelector('[data-action="edit"]')?.addEventListener('click', async () => {
+      const definition = await window.showUiInput({title: '编辑指标定义', label: '指标定义', value: asset.definition || ''});
       if (definition != null) post(`/api/data-center/assets/${encodeURIComponent(asset.asset_key)}/definition`, {
         display_name: asset.display_name, category: asset.category, definition,
         unit: asset.unit || '', producer_task: asset.producer_task,
       }).then(showResult);
     });
-    detail.querySelector('[data-action="disable"]')?.addEventListener('click', () => {
-      if (confirm(`确认停用 ${asset.display_name}？`)) post(`/api/data-center/assets/${encodeURIComponent(asset.asset_key)}/disable`).then(showResult);
+    detail.querySelector('[data-action="disable"]')?.addEventListener('click', async () => {
+      if (await window.showUiConfirm(`停用后将不再参与后续数据生产。`, `停用 ${asset.display_name}`)) post(`/api/data-center/assets/${encodeURIComponent(asset.asset_key)}/disable`).then(showResult);
     });
-    detail.querySelector('[data-action="regenerate"]')?.addEventListener('click', () => {
-      if (confirm(`确认重新生成 ${asset.display_name}？`)) post(`/api/data-center/assets/${encodeURIComponent(asset.asset_key)}/regenerate`).then(showResult);
+    detail.querySelector('[data-action="regenerate"]')?.addEventListener('click', async () => {
+      if (await window.showUiConfirm(`将重新生成该资产的数据。`, `重新生成 ${asset.display_name}`)) post(`/api/data-center/assets/${encodeURIComponent(asset.asset_key)}/regenerate`).then(showResult);
     });
-    detail.querySelector('[data-action="publish"]')?.addEventListener('click', () => {
-      if (confirm('确认发布候选版本？')) post(`/api/data-center/versions/${encodeURIComponent(candidate.version_id)}/publish`).then(showResult);
+    detail.querySelector('[data-action="publish"]')?.addEventListener('click', async () => {
+      if (await window.showUiConfirm('发布后将成为正式版本。', '发布候选版本')) post(`/api/data-center/versions/${encodeURIComponent(candidate.version_id)}/publish`).then(showResult);
     });
-    detail.querySelector('[data-action="rollback"]')?.addEventListener('click', () => {
-      if (confirm('确认回滚上一版本？')) post(`/api/data-center/versions/${encodeURIComponent(asset.asset_key)}/${encodeURIComponent(current.partition_key)}/rollback`).then(showResult);
+    detail.querySelector('[data-action="rollback"]')?.addEventListener('click', async () => {
+      if (await window.showUiConfirm('将生成新的回滚版本。', '回滚上一版本')) post(`/api/data-center/versions/${encodeURIComponent(asset.asset_key)}/${encodeURIComponent(current.partition_key)}/rollback`).then(showResult);
     });
   };
   const original = window.openAsset;

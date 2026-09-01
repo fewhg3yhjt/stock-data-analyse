@@ -214,8 +214,6 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   {% endif %}
 
 </div>
-<div id="toast" style="position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;"></div>
-
 <!-- 持仓操作弹窗（加仓/减仓/分红） -->
 <div id="op-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1500;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:10px;padding:20px 24px;width:380px;max-width:92%;box-shadow:0 8px 30px rgba(0,0,0,.2);">
@@ -234,11 +232,6 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   </div>
 </div>
 <script>
-function showToast(msg){
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.style.display = 'block';
-  setTimeout(() => t.style.display = 'none', 3000);
-}
 function toggleHist(){
   const box = document.getElementById('history-box');
   box.style.display = box.style.display === 'none' ? 'block' : 'none';
@@ -249,12 +242,12 @@ async function refreshAll(){
     const res = await fetch('/portfolio/refresh', { method: 'POST' });
     const d = await res.json();
     if (d.status === 'success') {
-      showToast('已刷新 ' + (d.results || []).length + ' 只持仓建议');
+      showUiMessage('已刷新 ' + (d.results || []).length + ' 只持仓建议', 'success');
       setTimeout(() => location.reload(), 800);
     } else {
-      showToast(d.error || '刷新失败');
+      showUiMessage(d.error || '刷新失败', 'error');
     }
-  } catch(e) { showToast('刷新失败: ' + e.message); }
+  } catch(e) { showUiMessage('刷新失败: ' + e.message, 'error'); }
   btn.style.opacity = 1;
 }
 async function toggleDetail(btn, code){
@@ -341,8 +334,8 @@ async function submitOp(){
   const price = parseFloat(document.getElementById('op-price').value);
   const shares = parseFloat(document.getElementById('op-shares').value || 0);
   const reason = document.getElementById('op-reason').value.trim();
-  if (!price || price <= 0){ showToast('请填写成交价格'); return; }
-  if (curOpType !== 'dividend' && (!shares || shares <= 0)){ showToast('请填写份额'); return; }
+  if (!price || price <= 0){ showUiMessage('请填写成交价格', 'error'); return; }
+  if (curOpType !== 'dividend' && (!shares || shares <= 0)){ showUiMessage('请填写份额', 'error'); return; }
   const fd = new FormData();
   fd.append('type', curOpType); fd.append('price', price);
   fd.append('shares', shares); fd.append('reason', reason);
@@ -350,22 +343,22 @@ async function submitOp(){
     const res = await fetch('/portfolio/' + curOpPos + '/transaction', { method: 'POST', body: fd });
     const d = await res.json();
     if (d.status === 'success'){
-      showToast('操作成功' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : ''));
+      showUiMessage('操作成功' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : ''), 'success');
       closeOp(); setTimeout(() => location.reload(), 700);
-    } else { showToast(d.error || '操作失败'); }
-  } catch(e){ showToast('操作失败: ' + e.message); }
+    } else { showUiMessage(d.error || '操作失败', 'error'); }
+  } catch(e){ showUiMessage('操作失败: ' + e.message, 'error'); }
 }
 // ── 删除持仓（危险，需弹窗确认）────────────────────
 async function deletePos(id, name){
-  if (!confirm('⚠️ 删除持仓「' + name + '」？\n\n将还原占用资金，并删除该持仓全部交易与建议记录。\n此操作不可恢复！')) return;
+  if (!await showUiConfirm('将还原占用资金，并删除该持仓全部交易与建议记录。此操作不可恢复！', '删除持仓「' + name + '」')) return;
   try {
     const res = await fetch('/portfolio/' + id + '/delete', { method: 'POST' });
     const d = await res.json();
     if (d.status === 'success'){
-      showToast('已删除「' + name + '」，还原资金 ' + (d.restored_cash||0).toFixed(2) + ' 元');
+      showUiMessage('已删除「' + name + '」，还原资金 ' + (d.restored_cash||0).toFixed(2) + ' 元', 'success');
       setTimeout(() => location.reload(), 700);
-    } else { showToast(d.error || '删除失败'); }
-  } catch(e){ showToast('删除失败: ' + e.message); }
+    } else { showUiMessage(d.error || '删除失败', 'error'); }
+  } catch(e){ showUiMessage('删除失败: ' + e.message, 'error'); }
 }
 document.addEventListener('click', function(e){
   const el = e.target.closest('[data-action]');

@@ -80,20 +80,6 @@ select,input{background:var(--color-surface-subtle);border:1px solid var(--color
 const chartEls = { index: 'chart-index', board: 'chart-board', stock: 'chart-stock' };
 function makeChart(id){ return echarts.init(document.getElementById(id)); }
 
-function showToast(msg, isErr){
-  let t = document.getElementById('toast');
-  if (!t){
-    t = document.createElement('div');
-    t.id = 'toast';
-    t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 22px;border-radius:6px;color:#fff;z-index:9999;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.2);';
-    document.body.appendChild(t);
-  }
-  t.style.background = isErr ? 'var(--color-danger)' : 'var(--color-success)';
-  t.textContent = msg;
-  t.style.display = 'block';
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.style.display = 'none', 3000);
-}
 
 function lineOption(title, dates, series, lines){
   const opt = {
@@ -126,38 +112,38 @@ async function loadIndices(){
   try {
     const r = await fetch('/market/index_kline?codes=' + encodeURIComponent(codes));
     const d = await r.json();
-    if (d.status !== 'success'){ showToast(d.error || '指数加载失败', true); return; }
+    if (d.status !== 'success'){ showUiMessage(d.error || '指数加载失败', 'error'); return; }
     const names = Object.keys({{ indices | tojson }});
     const series = names.map(n => ({ name: n, data: d.series[{{ indices | tojson }}[n]] || [] }));
     makeChart('chart-index').setOption(lineOption('指数走势', d.dates || [], series, null), true);
-  } catch(e){ showToast('指数加载失败: ' + e.message, true); }
+  } catch(e){ showUiMessage('指数加载失败: ' + e.message, 'error'); }
 }
 
 async function loadBoard(){
   const name = document.getElementById('board-select').value;
-  showToast('加载板块 ' + name + '…');
+  showUiMessage('加载板块 ' + name + '…', 'info');
   try {
     const r = await fetch('/market/board_kline?name=' + encodeURIComponent(name));
     const d = await r.json();
-    if (d.status !== 'success'){ showToast(d.error || '板块加载失败', true); return; }
+    if (d.status !== 'success'){ showUiMessage(d.error || '板块加载失败', 'error'); return; }
     makeChart('chart-board').setOption(lineOption(d.name, d.dates || [], [{ name: d.name, data: d.close || [] }], null), true);
-    showToast('板块 ' + d.name + ' 已加载');
-  } catch(e){ showToast('板块加载失败: ' + e.message, true); }
+    showUiMessage('板块 ' + d.name + ' 已加载', 'success');
+  } catch(e){ showUiMessage('板块加载失败: ' + e.message, 'error'); }
 }
 
 async function loadStock(){
   const code = document.getElementById('stock-select').value;
   if (!code) return;
-  showToast('加载 ' + code + '…');
+  showUiMessage('加载 ' + code + '…', 'info');
   try {
     const r = await fetch('/market/stock_chart?code=' + encodeURIComponent(code));
     const d = await r.json();
-    if (d.status !== 'success'){ showToast(d.error || '股票加载失败', true); return; }
+    if (d.status !== 'success'){ showUiMessage(d.error || '股票加载失败', 'error'); return; }
     document.getElementById('stock-state').textContent = '市场状态：' + (d.market_state || '');
     makeChart('chart-stock').setOption(lineOption(code, d.dates || [], [{ name: code, data: d.close || [] }], d.lines || []), true);
     document.getElementById('stock-legend').innerHTML = legendHtml(d.lines || []);
-    showToast('已加载 ' + code);
-  } catch(e){ showToast('股票加载失败: ' + e.message, true); }
+    showUiMessage('已加载 ' + code, 'success');
+  } catch(e){ showUiMessage('股票加载失败: ' + e.message, 'error'); }
 }
 
 // 持仓股票下拉

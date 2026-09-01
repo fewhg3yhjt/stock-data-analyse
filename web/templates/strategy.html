@@ -136,7 +136,7 @@ async function doScan(){
       tb.appendChild(tr);
     });
     document.getElementById('scan_result').style.display='';
-  }catch(e){ showToast('扫描失败: '+e.message, true); }
+  }catch(e){ showUiMessage('扫描失败: '+e.message, 'error'); }
   setLoading(false);
 }
 
@@ -169,7 +169,7 @@ async function doBacktest(){
     });
     document.getElementById('backtest_result').style.display='';
     await loadBacktestCurve(limit_up, deviation, hold);
-  }catch(e){ showToast('回测失败: '+e.message, true); }
+  }catch(e){ showUiMessage('回测失败: '+e.message, 'error'); }
   setLoading(false);
 }
 
@@ -216,7 +216,7 @@ async function renderChart(){
   fd.append('metrics', lastMetrics.join(','));
   const r = await fetch('/api/strategy/chart', {method:'POST', body: fd});
   const d = await r.json();
-  if(d.status!=='success'){ showToast('图表失败: '+d.error, true); return; }
+  if(d.status!=='success'){ showUiMessage('图表失败: '+d.error, 'error'); return; }
   metricMeta = d.metrics || {};
   buildMetricSelector();
   drawEChart(d);
@@ -277,20 +277,6 @@ function drawEChart(d){
 
 function setLoading(on){
   document.getElementById('loading').style.display = on?'':'none';
-}
-function showToast(msg, isErr){
-  let t = document.getElementById('toast');
-  if (!t){
-    t = document.createElement('div');
-    t.id = 'toast';
-    t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 22px;border-radius:6px;color:#fff;z-index:9999;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.2);';
-    document.body.appendChild(t);
-  }
-  t.style.background = isErr ? 'var(--color-danger)' : 'var(--color-success)';
-  t.textContent = msg;
-  t.style.display = 'block';
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.style.display = 'none', 3000);
 }
 </script>
 {% endblock %}

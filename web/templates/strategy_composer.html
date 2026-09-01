@@ -129,13 +129,11 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
 <script>
 let RULES = {buy:[], sell:[]};   // [{type,label,kind,description,schema,params}]
 let INDICATORS = {base:[],composite:[],code:[]};
 let TYPES = [];
 
-function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',2800);}
 function openModal(title){document.getElementById('modal-title').textContent=title;document.getElementById('modal-bg').style.display='flex';}
 function closeModal(){document.getElementById('modal-bg').style.display='none';}
 
@@ -375,22 +373,22 @@ async function saveScheme(){
   const model=collectModel();
   const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
   const d=await r.json();
-  if(d.status!=='success'){showToast('生成失败: '+d.error);return;}
+  if(d.status!=='success'){showUiMessage('生成失败: '+d.error, 'error');return;}
   const s=await fetch('/api/schemes/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:model.name,content:d.yaml})});
   const sd=await s.json();
-  if(sd.status==='success'){showToast('方案已保存: '+sd.name);document.getElementById('save-hint').textContent='最新版本 '+sd.version;}
-  else showToast('保存失败: '+sd.error);
+  if(sd.status==='success'){showUiMessage('方案已保存: '+sd.name, 'success');document.getElementById('save-hint').textContent='最新版本 '+sd.version;}
+  else showUiMessage('保存失败: '+sd.error, 'error');
 }
 
 function copyYaml(){
   const t=document.getElementById('yaml-preview');
-  navigator.clipboard.writeText(t.value).then(()=>showToast('已复制 YAML'));
+  navigator.clipboard.writeText(t.value).then(()=>showUiMessage('已复制 YAML', 'success'));
 }
 
 // 方案列表管理
 async function loadSchemeList(){
   const r=await fetch('/api/schemes/list');const d=await r.json();
-  if(d.status!=='success'){showToast(d.error);return;}
+  if(d.status!=='success'){showUiMessage(d.error, 'error');return;}
   const body=document.getElementById('modal-body');
   let html='<table class="kv"><tr><th>名称</th><th>版本</th><th>状态</th><th>操作</th></tr>';
   for(const s of d.schemes){
@@ -417,7 +415,7 @@ async function editScheme(name){
 async function loadFromYaml(content){
   const r=await fetch('/api/schemes/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
   const d=await r.json();
-  if(d.status!=='success'){showToast('解析失败: '+d.error);return;}
+  if(d.status!=='success'){showUiMessage('解析失败: '+d.error, 'error');return;}
   const m=d.model;
   document.getElementById('f-name').value=m.name;
   document.getElementById('f-version').value=m.version;
@@ -445,33 +443,33 @@ function renderRuleFromType(kind,type,params){
 }
 async function toggleScheme(name,enabled){
   const s=await fetch('/api/schemes/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,enabled})});
-  const d=await s.json();showToast(d.status==='success'?(enabled?'已启用':'已停用'):d.error);loadSchemeList();
+  const d=await s.json();showUiMessage(d.status==='success'?(enabled?'已启用':'已停用'):d.error, d.status==='success'?'success':'error');loadSchemeList();
 }
 async function setDefaultScheme(name){
   const r=await fetch('/api/schemes/default',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-  const d=await r.json(); showToast(d.status==='success'?'已设为默认方案':d.error); if(d.status==='success')loadSchemeList();
+  const d=await r.json(); showUiMessage(d.status==='success'?'已设为默认方案':d.error, d.status==='success'?'success':'error'); if(d.status==='success')loadSchemeList();
 }
 async function showVersions(name){
   const r=await fetch('/api/schemes/versions?name='+encodeURIComponent(name)); const d=await r.json();
-  if(d.status!=='success'){showToast(d.error||'版本读取失败');return;}
+  if(d.status!=='success'){showUiMessage(d.error||'版本读取失败', 'error');return;}
   const versions=d.versions||[]; let html='<div class="help" style="margin-bottom:10px">最近版本（回滚会生成一个新版本）</div>';
   if(!versions.length)html+='<div class="empty">暂无历史版本</div>';
   versions.slice().reverse().forEach(v=>{html+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border);"><span>${v.time||v.ts}</span><button class="ui-button ui-button-ghost ui-button-sm" onclick="rollbackScheme('${name}',${v.ts})">回滚</button></div>`;});
   document.getElementById('modal-body').innerHTML=html; openModal(name+' 版本历史');
 }
 async function rollbackScheme(name,ts){
-  if(!confirm('回滚后会覆盖当前用户方案并生成新版本，继续吗？'))return;
+  if(!await showUiConfirm('回滚后会覆盖当前用户方案并生成新版本。', '确认回滚方案'))return;
   const r=await fetch('/api/schemes/rollback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,ts})}); const d=await r.json();
-  showToast(d.status==='success'?'已回滚方案':'回滚失败: '+d.error); if(d.status==='success'){closeModal();loadSchemeList();editScheme(name);}
+  showUiMessage(d.status==='success'?'已回滚方案':'回滚失败: '+d.error, d.status==='success'?'success':'error'); if(d.status==='success'){closeModal();loadSchemeList();editScheme(name);}
 }
 async function delScheme(name){
-  if(!confirm('删除方案 '+name+'？'))return;
+  if(!await showUiConfirm('删除后将移除该方案。', '删除方案 '+name))return;
   const s=await fetch('/api/schemes/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-  const d=await s.json();showToast(d.status==='success'?'已删除':d.error);loadSchemeList();
+  const d=await s.json();showUiMessage(d.status==='success'?'已删除':d.error, d.status==='success'?'success':'error');loadSchemeList();
 }
 async function loadFromExisting(){
   const r=await fetch('/api/schemes/list');const d=await r.json();
-  if(d.status!=='success'){showToast(d.error);return;}
+  if(d.status!=='success'){showUiMessage(d.error, 'error');return;}
   const body=document.getElementById('modal-body');
   let html='<div class="help" style="margin-bottom:10px">选择一个方案作为模板复制</div><select id="clone-src" style="width:100%;margin-bottom:12px;">';
   for(const s of d.schemes)html+=`<option value="${s.name}">${s.name}</option>`;
@@ -482,11 +480,11 @@ async function loadFromExisting(){
 async function doClone(){
   const src=document.getElementById('clone-src').value;
   const new_name=document.getElementById('clone-name').value;
-  if(!new_name){showToast('请填写新方案名');return;}
+  if(!new_name){showUiMessage('请填写新方案名', 'error');return;}
   const s=await fetch('/api/schemes/clone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src,new_name})});
   const d=await s.json();
-  if(d.status==='success'){closeModal();showToast('已复制为 '+new_name);editScheme(new_name);}
-  else showToast('复制失败: '+d.error);
+  if(d.status==='success'){closeModal();showUiMessage('已复制为 '+new_name, 'success');editScheme(new_name);}
+  else showUiMessage('复制失败: '+d.error, 'error');
 }
 
 init();

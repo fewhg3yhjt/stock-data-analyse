@@ -228,20 +228,11 @@ tr:last-child td{border-bottom:none;}
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
-
 <script>
 const $ = s => document.querySelector(s);
 let txnPosId = null, txnType = 'buy';
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-function showToast(msg, ok=true) {
-  const t = $('#toast');
-  t.style.display = 'block';
-  t.style.background = ok ? '#323232' : '#c62828';
-  t.textContent = msg;
-  setTimeout(() => t.style.display = 'none', 3000);
-}
 function openModal(id) { $('#modal-' + id).classList.add('active'); }
 function closeModal(id) { $('#modal-' + id).classList.remove('active'); }
 function api(url, data, method='POST') {
@@ -255,24 +246,24 @@ function addPosition() {
   const data = { code: $('#np-code').value.trim(), name: $('#np-name').value.trim(),
     shares: $('#np-shares').value, cost: $('#np-cost').value, buy_date: $('#np-date').value,
     stock_type: $('#np-type').value, scheme: $('#np-scheme').value, notes: $('#np-notes').value };
-  if (!data.code || !data.name || !data.shares || !data.cost) return showToast('请填写完整', false);
+  if (!data.code || !data.name || !data.shares || !data.cost) return showUiMessage('请填写完整', 'error');
   api('/portfolio/add', data).then(r => {
-    if (r.status === 'success') { showToast('建仓成功 #' + r.position_id); setTimeout(() => location.reload(), 600); }
-    else showToast(r.error || '建仓失败', false);
+    if (r.status === 'success') { showUiMessage('建仓成功 #' + r.position_id, 'success'); setTimeout(() => location.reload(), 600); }
+    else showUiMessage(r.error || '建仓失败', 'error');
   });
 }
 // 加自选
 function addWatch() {
   api('/watchlist', { code: $('#nw-code').value.trim(), name: $('#nw-name').value.trim(),
     target_capital: $('#nw-capital').value }).then(r => {
-    if (r.status === 'success') { showToast('已加入自选'); setTimeout(() => location.reload(), 600); }
-    else showToast(r.error || '失败', false);
+    if (r.status === 'success') { showUiMessage('已加入自选', 'success'); setTimeout(() => location.reload(), 600); }
+    else showUiMessage(r.error || '失败', 'error');
   });
 }
 function delWatch(id) {
   fetch('/watchlist/' + id, { method: 'DELETE' }).then(r => r.json()).then(r => {
-    if (r.status === 'success') { showToast('已删除'); setTimeout(() => location.reload(), 600); }
-    else showToast(r.error, false);
+    if (r.status === 'success') { showUiMessage('已删除', 'success'); setTimeout(() => location.reload(), 600); }
+    else showUiMessage(r.error, 'error');
   });
 }
 // 交易
@@ -287,35 +278,35 @@ function submitTxn() {
   if (txnType === 'dividend') {
     api(`/portfolio/${txnPosId}/transaction`, { type: 'dividend', price: 0,
       shares: $('#txn-shares').value, fee: $('#txn-fee').value, date: $('#txn-date').value, reason: '分红' })
-      .then(r => { if (r.status==='success'){showToast('已记录');setTimeout(()=>location.reload(),600);} else showToast(r.error||'失败',false); });
+      .then(r => { if (r.status==='success'){showUiMessage('已记录', 'success');setTimeout(()=>location.reload(),600);} else showUiMessage(r.error||'失败', 'error'); });
     return;
   }
   api(`/portfolio/${txnPosId}/transaction`, { type: txnType, price: $('#txn-price').value,
     shares: $('#txn-shares').value, fee: $('#txn-fee').value, date: $('#txn-date').value, reason: $('#txn-reason').value })
-    .then(r => { if (r.status==='success'){showToast('已记录');setTimeout(()=>location.reload(),600);} else showToast(r.error||'失败',false); });
+    .then(r => { if (r.status==='success'){showUiMessage('已记录', 'success');setTimeout(()=>location.reload(),600);} else showUiMessage(r.error||'失败', 'error'); });
 }
 // 平仓
-function closePos(id, name) {
-  const price = prompt(`平仓 ${name}，请输入成交价：`);
+async function closePos(id, name) {
+  const price = await showUiInput({title: `平仓 ${name}`, message: '请输入成交价。', label: '成交价', type: 'number', placeholder: '成交价'});
   if (!price || isNaN(price)) return;
   api(`/portfolio/${id}/close`, { price, reason: '手动平仓' }).then(r => {
-    if (r.status==='success'){showToast('已平仓');setTimeout(()=>location.reload(),600);} else showToast(r.error||'平仓失败',false);
+    if (r.status==='success'){showUiMessage('已平仓', 'success');setTimeout(()=>location.reload(),600);} else showUiMessage(r.error||'平仓失败', 'error');
   });
 }
 // 刷新
 function refreshAll() {
   const btn = event.currentTarget; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 刷新中';
   api('/portfolio/refresh').then(r => {
-    if (r.status==='success'){ showToast('行情已刷新'); setTimeout(()=>location.reload(), 800); }
-    else showToast(r.error||'刷新失败', false);
+    if (r.status==='success'){ showUiMessage('行情已刷新', 'success'); setTimeout(()=>location.reload(), 800); }
+    else showUiMessage(r.error||'刷新失败', 'error');
     btn.disabled = false;
   });
 }
 function genReport() {
   const btn = event.currentTarget; btn.disabled = true;
   api('/morning-report').then(r => {
-    if (r.status==='success'){ showToast('晨报已生成'); setTimeout(()=>location.href='/morning-report', 600); }
-    else showToast(r.error||'生成失败', false);
+    if (r.status==='success'){ showUiMessage('晨报已生成', 'success'); setTimeout(()=>location.href='/morning-report', 600); }
+    else showUiMessage(r.error||'生成失败', 'error');
     btn.disabled = false;
   });
 }

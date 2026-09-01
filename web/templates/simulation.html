@@ -127,20 +127,18 @@ select{background:var(--color-surface-subtle);border:1px solid var(--color-borde
   </div>
 
 </div>
-<div class="toast" id="toast"></div>
 <script>
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
 async function reanalyze(code, name, id){
   const scheme = document.getElementById('scheme-'+id).value;
-  showToast('重新分析中…');
+  showUiMessage('重新分析中…', 'info');
   const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name, scheme})})).json();
-  if (d.status==='success'){ showToast('已更新模拟快照'); setTimeout(()=>location.reload(),600); }
-  else showToast(d.error||'重新分析失败');
+  if (d.status==='success'){ showUiMessage('已更新模拟快照', 'success'); setTimeout(()=>location.reload(),600); }
+  else showUiMessage(d.error||'重新分析失败', 'error');
 }
 async function delSim(id){
-  if (!confirm('删除该模拟？')) return;
+  if (!await showUiConfirm('删除后将移除该模拟记录。', '删除模拟')) return;
   const d = await (await fetch('/api/simulation?id='+id, {method:'DELETE'})).json();
-  if (d.status==='success') location.reload(); else showToast(d.error||'删除失败');
+  if (d.status==='success') location.reload(); else showUiMessage(d.error||'删除失败', 'error');
 }
 async function toggleReturn(code){
   const tr = document.getElementById('return-'+code);
@@ -166,11 +164,11 @@ async function addManual(){
   const code = document.getElementById('sim-code').value.trim();
   const name = document.getElementById('sim-name').value.trim() || code;
   const scheme = document.getElementById('sim-scheme').value;
-  if (!code){ showToast('请填写代码'); return; }
-  showToast('模拟中…');
+  if (!code){ showUiMessage('请填写代码', 'error'); return; }
+  showUiMessage('模拟中…', 'info');
   const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name, scheme})})).json();
-  if (d.status==='success'){ showToast('模拟完成'); setTimeout(()=>location.reload(),500); }
-  else showToast(d.error||'模拟失败');
+  if (d.status==='success'){ showUiMessage('模拟完成', 'success'); setTimeout(()=>location.reload(),500); }
+  else showUiMessage(d.error||'模拟失败', 'error');
 }
 document.addEventListener('click', function(e){
   const el = e.target.closest('[data-action]');

@@ -58,7 +58,7 @@
 
   const postJson = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
   window.taskCenterToggle = (key, enabled) => postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/enabled`, {enabled}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(enabled ? '调度已启用' : '调度已停用', 'ok'); loadTasks(); }).catch(operationError);
-  window.taskCenterActivate = (key, version) => { if (!confirm(`确认生效任务配置 v${version}？`)) return; postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config/${version}/activate`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(`任务配置 v${version} 已生效`, 'ok'); loadTasks(); }).catch(operationError); };
+  window.taskCenterActivate = async (key, version) => { if (!await window.showUiConfirm(`生效后将用于后续调度。`, `生效任务配置 v${version}`)) return; postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config/${version}/activate`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(`任务配置 v${version} 已生效`, 'ok'); loadTasks(); }).catch(operationError); };
   window.taskCenterEdit = key => {
     const task = state.tasks.find(item => item.task_key === key);
     if (!task) return;
@@ -82,7 +82,7 @@
       postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/config`, {config, activate}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(activate ? '配置已保存并生效' : `配置草稿 v${d.version} 已保存`, 'ok'); loadTasks(); }).catch(operationError);
     };
     document.getElementById('cfg-save').onclick = () => save(false);
-    document.getElementById('cfg-save-active').onclick = () => { if (confirm('确认保存并立即生效？')) save(true); };
+    document.getElementById('cfg-save-active').onclick = async () => { if (await window.showUiConfirm('保存后将立即用于后续调度。', '保存并立即生效')) save(true); };
   };
   window.taskCenterExecute = key => { operation('任务已提交，正在刷新运行状态…'); return postJson(`/api/task-center/tasks/${encodeURIComponent(key)}/execute`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation('任务已提交，当前接口未返回运行编号，请在列表中查看状态。', 'ok'); loadTasks(); }).catch(operationError); };
   window.taskCenterRetry = runId => { operation(`运行记录 #${runId} 正在重试…`); return postJson(`/api/task-center/runs/${runId}/retry`, {}).then(d => { if (d.status !== 'success') throw new Error(d.error); operation(`运行记录 #${runId} 已提交重试`, 'ok'); loadTasks(); }).catch(operationError); };

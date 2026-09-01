@@ -150,20 +150,18 @@ tr:last-child td{border-bottom:none;}
   </div>
 
 </div>
-<div class="toast" id="toast" style="position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;"></div>
 <script>
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
 async function addWatch(code, name){
   const d = await (await fetch('/watchlist', {method:'POST', body:new URLSearchParams({code, name})})).json();
-  d.status==='success' ? showToast('已加入自选') : showToast(d.error||'失败');
+  d.status==='success' ? showUiMessage('已加入自选', 'success') : showUiMessage(d.error||'失败', 'error');
 }
 async function simulate(code, name){
-  showToast('模拟中，请稍候…');
+  showUiMessage('模拟中，请稍候…', 'info');
   const d = await (await fetch('/api/simulation', {method:'POST', body:new URLSearchParams({code, name})})).json();
   if (d.status==='success'){
     const s = d.snapshot;
-    showToast(`模拟完成：止损${s.hard_stop} 止盈预警${s.left_side_zone ? s.left_side_zone[1] : '-'}`);
-  } else showToast(d.error||'模拟失败');
+    showUiMessage(`模拟完成：止损${s.hard_stop} 止盈预警${s.left_side_zone ? s.left_side_zone[1] : '-'}`, 'success');
+  } else showUiMessage(d.error||'模拟失败', 'error');
 }
 document.addEventListener('click', function(e){
   const actionBtn = e.target.closest('[data-action]');

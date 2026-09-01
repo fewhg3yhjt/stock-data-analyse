@@ -77,7 +77,6 @@ table.kv th{background:var(--color-surface-subtle);font-weight:600;}
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
 <script>
 let RULES=[];
 const SCHEDULE_MODES=[
@@ -87,13 +86,12 @@ const SCHEDULE_MODES=[
 ];
 const ADVICE_OPTIONS=['hold','buy_more','partial_sell','sell_all','adjust_stop'];
 
-function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2800);}
 function esc(s){return (s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
 async function loadRules(){
   const r=await fetch('/api/notify/rules');const d=await r.json();
   if(d.status==='success'){RULES=d.rules||[];renderRules();loadConfig();}
-  else showToast(d.error);
+  else showUiMessage(d.error, 'error');
 }
 function renderRules(){
   const el=document.getElementById('rules-list');el.innerHTML='';
@@ -122,7 +120,7 @@ function renderRules(){
 let editingIdx=-1;
 function addRule(){editingIdx=-1;openEditor(defaultRule());}
 function editRule(idx){editingIdx=idx;openEditor({...(RULES[idx]),conditions:(RULES[idx].conditions||[]).map(c=>({...c}))});}
-function delRule(idx){if(!confirm('删除触发器 '+RULES[idx].name+'？'))return;RULES.splice(idx,1);renderRules();}
+async function delRule(idx){if(!await showUiConfirm('删除后将移除该触发器。', '删除触发器 '+RULES[idx].name))return;RULES.splice(idx,1);renderRules();}
 function toggleRule(idx){RULES[idx].enabled=!(RULES[idx].enabled!==false);renderRules();}
 function defaultRule(){return {id:'rule_'+Date.now(),name:'新触发器',enabled:true,logic:'AND',priority:'batch',channel:'feishu',schedule:{mode:'intraday',interval_minutes:10},conditions:[{type:'action',params:{advice_types:['partial_sell','sell_all']}}]};}
 
@@ -213,8 +211,8 @@ function closeEditorModal(){document.getElementById('modal-bg').style.display='n
 async function saveRules(){
   const r=await fetch('/api/notify/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:RULES})});
   const d=await r.json();
-  if(d.status==='success'){showToast('触发器已保存，即时生效');document.getElementById('save-hint').textContent='已保存 '+d.count+' 条，无需重启';}
-  else showToast('保存失败: '+d.error);
+  if(d.status==='success'){showUiMessage('触发器已保存，即时生效', 'success');document.getElementById('save-hint').textContent='已保存 '+d.count+' 条，无需重启';}
+  else showUiMessage('保存失败: '+d.error, 'error');
 }
 
 async function loadConfig(){
@@ -232,7 +230,7 @@ async function saveMail(){
   const to=document.getElementById('email-to').value;
   const r=await fetch('/api/notify/mail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to})});
   const d=await r.json();
-  d.status==='success'?showToast('收件人已保存'):showToast('保存失败: '+d.error);
+  d.status==='success'?showUiMessage('收件人已保存', 'success'):showUiMessage('保存失败: '+d.error, 'error');
 }
 async function sendTest(){
   const channel=document.getElementById('channel').value;
@@ -240,7 +238,7 @@ async function sendTest(){
   const to=document.getElementById('email-to').value;
   const r=await fetch('/api/notify/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel,url,to})});
   const d=await r.json();
-  d.status==='success'?showToast('测试消息已发送（渠道 '+channel+'）'):showToast('发送失败: '+d.error);
+  d.status==='success'?showUiMessage('测试消息已发送（渠道 '+channel+'）', 'success'):showUiMessage('发送失败: '+d.error, 'error');
 }
 async function loadOutbox(){
   const status=document.getElementById('outbox-status').value;
@@ -252,7 +250,7 @@ async function loadOutbox(){
 }
 async function retryOne(id){await fetch('/api/notify/outbox/'+id+'/retry',{method:'POST'});loadOutbox();}
 async function retryDead(){await fetch('/api/notify/outbox/retry-dead',{method:'POST'});loadOutbox();}
-async function createSystemAlerts(){const r=await fetch('/api/system/alerts',{method:'POST'});const d=await r.json();showToast('已生成 '+(d.outbox_ids||[]).length+' 条系统告警');loadOutbox();}
+async function createSystemAlerts(){const r=await fetch('/api/system/alerts',{method:'POST'});const d=await r.json();showUiMessage('已生成 '+(d.outbox_ids||[]).length+' 条系统告警', 'success');loadOutbox();}
 
 loadRules();
 loadOutbox();

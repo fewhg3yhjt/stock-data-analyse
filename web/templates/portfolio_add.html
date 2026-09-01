@@ -65,7 +65,6 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
     </form>
   </div>
 </div>
-<div class="toast" id="toast"></div>
 <script>
 async function lookupName(){
   const code = document.getElementById('add-code').value.trim();
@@ -116,20 +115,15 @@ document.getElementById('add-form').addEventListener('submit', async e => {
   const res = await fetch('/portfolio/add', { method: 'POST', body: fd });
   const data = await res.json();
   if (data.status === 'success') {
-    showToast('建仓成功 #' + data.position_id);
+    showUiMessage('建仓成功 #' + data.position_id, 'success');
     setTimeout(() => location.href = '/portfolio/' + data.position_id, 600);
   } else {
-    showToast(data.error || '建仓失败');
+    showUiMessage(data.error || '建仓失败', 'error');
     btn.disabled = false;
   }
 });
 document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('add-code').value) classifyStock();
 });
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.style.display = 'block'; t.textContent = msg;
-  setTimeout(() => t.style.display = 'none', 3000);
-}
 </script>
 {% endblock %}

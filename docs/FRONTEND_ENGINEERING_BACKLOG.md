@@ -44,9 +44,9 @@
 | 红涨绿跌 | `done` | 语义 Token 全量落地；K 线阳线/阴线、成交量、收益率均统一为 `--color-up` 红 / `--color-down` 绿（`#dc3545`/`#28a745`），MA5/10/20/60 固定紫/蓝/橙/深绿 |
 | 状态词表 | `done` | `cls` 已返回完整 `status-*` canonical class，调用方已统一到 `.status-tag.status-<key>`（提交 7838b9b 后续提交） |
 | 公共壳层 | `in_progress` | `.app` 页面通过 CSS 适配，尚未全部改为真实公共结构 |
-| Toast/反馈 | `in_progress` | 普通 alert 有过渡方案，confirm/prompt 尚未统一 |
+| Toast/反馈 | `done` | 共享 `showUiMessage()` 已覆盖页面反馈；全库只保留 `base.html` 的一个 Toast 容器，页面级 Toast 容器和函数已清理 |
 | XSS/CSP | `in_progress` | 内联事件已清零，marked 已净化，CSP 分阶段启用（仍允许内联脚本与 CDN） |
-| 表单/确认组件 | `todo` | 设计契约已定义，代码组件尚未完整实现 |
+| 表单/确认组件 | `in_progress` | `.ui-confirm`、`.ui-input-panel` 和共享 Promise API 已落地；主要确认/输入流程已迁移，表单字段校验仍未统一 |
 | CDN/构建/版本 | `todo` | 仍存在 CDN、内联脚本和手写版本号 |
 | 真实进度和图表释放 | `todo` | 需单独实现和回归 |
 
@@ -100,7 +100,7 @@
 
 | 现状 | 风险 | 整改方向 | 验收标准 | 状态 |
 |---|---|---|---|---|
-| 目标契约要求不用 `confirm/prompt`，代码仍有原生弹窗 | 输入和确认交互无法统一 | 直接迁移到 `.ui-confirm` 和 `.ui-input-panel`；不保留旧弹窗兼容实现 | 主要流程不依赖原生 `confirm/prompt`；取消不产生副作用，键盘和移动端可用 | `in_progress`：共享面板 API 已落地，设置、持仓详情、自选已迁移 |
+| 目标契约要求不用 `confirm/prompt`，代码仍有原生弹窗 | 输入和确认交互无法统一 | 直接迁移到 `.ui-confirm` 和 `.ui-input-panel`；不保留旧弹窗兼容实现 | 主要流程不依赖原生 `confirm/prompt`；取消不产生副作用，键盘和移动端可用 | `done`：共享面板 API 已落地，全库模板和脚本已无原生 `alert/confirm/prompt` 调用 |
 
 ### T-05 图表和 K 线配色未定义
 
@@ -114,7 +114,7 @@
 
 | 现状 | 风险 | 整改方向 | 验收标准 | 状态 |
 |---|---|---|---|---|
-| `base.html` 有全局 `#toast`，多个模板又定义同名元素和 `showToast` | 反馈位置、颜色和生命周期不一致 | 只保留基础模板的一个消息容器；公共 `ui-feedback.js` 提供成功、警告、失败、处理中四类消息 | 全站只存在一个 `#toast`；页面不重复定义同名函数 | `in_progress`：设置、持仓详情、自选已移除页面级容器和函数，其他页面仍有残留 |
+| `base.html` 有全局 `#toast`，多个模板又定义同名元素和 `showToast` | 反馈位置、颜色和生命周期不一致 | 只保留基础模板的一个消息容器；公共 `ui-feedback.js` 提供成功、警告、失败、处理中四类消息 | 全站只存在一个 `#toast`；页面不重复定义同名函数 | `done`：全库只保留 `base.html` 的 `#toast`，页面不再定义 `showToast` |
 
 ### E-02 公共函数重复
 
