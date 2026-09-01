@@ -1516,13 +1516,13 @@ def analyze():
         daemon=True,
     )
     thread.start()
-    thread.join(timeout=300)  # 最多等5分钟
-
-    result = _analysis_status.get(task_id, {})
-    response = _to_json_safe(result)
-    if thread.is_alive():
-        response["_query_url"] = f"/api/analysis/tasks/{task_id}"
-    return flask.jsonify(response)
+    return flask.jsonify({
+        "status": "running",
+        "task_id": task_id,
+        "stage": "初始化",
+        "progress": 0,
+        "_query_url": f"/api/analysis/tasks/{task_id}",
+    }), 202
 
 
 def _run_comparison(task_id: str, code: str, name: str,
@@ -1630,13 +1630,13 @@ def compare():
         daemon=True,
     )
     thread.start()
-    thread.join(timeout=300)
-
-    result = _analysis_status.get(task_id, {})
-    response = _to_json_safe(result)
-    if thread.is_alive():
-        response["_query_url"] = f"/api/analysis/tasks/{task_id}"
-    return flask.jsonify(response)
+    return flask.jsonify({
+        "status": "running",
+        "task_id": task_id,
+        "stage": "初始化",
+        "progress": 0,
+        "_query_url": f"/api/analysis/tasks/{task_id}",
+    }), 202
 
 
 # ── 持仓管理 ────────────────────────────────────

@@ -278,6 +278,8 @@ const loadingPct = document.getElementById('loading-pct');
 const loadingFill = document.getElementById('loading-fill');
 const errorArea = document.getElementById('error-area');
 const resultSection = document.getElementById('result-section');
+let analysisPollTimer = null;
+let analysisPollStartedAt = 0;
 
 // Tab 切换
 document.querySelectorAll('.tab').forEach(tab => {
@@ -304,10 +306,13 @@ form.addEventListener('submit', async (e) => {
   try {
     const resp = await fetch('/analyze', { method: 'POST', body: fd });
     const data = await resp.json();
-    loading.style.display = 'none';
     if (data.status === 'error') { showError(data.error); return; }
-    if (data.status !== 'success') { showError(data.error || '未知错误'); return; }
-    renderResults(data);
+    if (data.status === 'success') {
+      loading.style.display = 'none';
+      renderResults(data);
+    } else if (data.status === 'running' && data._query_url) {
+      pollAnalysisTask(data._query_url);
+    } else { showError(data.error || '未知错误'); }
   } catch (err) {
     loading.style.display = 'none';
     showError('网络错误: ' + err.message);
@@ -316,6 +321,41 @@ form.addEventListener('submit', async (e) => {
     runBtn.innerHTML = '<i class="fas fa-play"></i> 开始分析';
   }
 });
+
+function pollAnalysisTask(url) {
+  clearTimeout(analysisPollTimer);
+  analysisPollStartedAt = Date.now();
+  const poll = async () => {
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      const task = data.task || data;
+      loading.style.display = 'block';
+      loadingStage.textContent = task.stage || '处理中';
+      loadingPct.textContent = `${Math.max(0, Number(task.progress) || 0)}%`;
+      loadingFill.style.width = `${Math.max(0, Math.min(100, Number(task.progress) || 0))}%`;
+      if (task.status === 'success') {
+        loading.style.display = 'none';
+        renderResults({result: task.result});
+        return;
+      }
+      if (task.status === 'error' || task.status === 'failed') {
+        loading.style.display = 'none';
+        showError(task.error || '分析失败');
+        return;
+      }
+      if (Date.now() - analysisPollStartedAt > 300000) {
+        showError('任务仍在处理中，结果未知。请稍后刷新或通过任务查询接口查看。');
+        return;
+      }
+      analysisPollTimer = setTimeout(poll, 800);
+    } catch (error) {
+      if (Date.now() - analysisPollStartedAt > 300000) showError('任务仍在处理中，结果未知。');
+      else analysisPollTimer = setTimeout(poll, 1200);
+    }
+  };
+  poll();
+}
 
 function showError(msg) {
   errorArea.style.display = 'block';
@@ -488,4 +528,3 @@ document.addEventListener('click', function(){ const box = document.getElementBy
   · <a href="/morning-report" style="color:var(--color-info);text-decoration:none;">每日晨报</a>
 </footer>
 {% endblock %}
-

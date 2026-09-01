@@ -249,6 +249,10 @@ $('#compare-form').addEventListener('submit', async e => {
   try {
     const res = await fetch('/compare', { method: 'POST', body: fd });
     const data = await res.json();
+    if (data.status === 'running' && data._query_url) {
+      pollComparisonTask(data._query_url);
+      return;
+    }
     if (data.status !== 'success') {
       showError(data.error || '对比失败');
       return;
@@ -261,6 +265,42 @@ $('#compare-form').addEventListener('submit', async e => {
     $('#run-btn').disabled = false;
   }
 });
+
+let comparisonPollTimer = null;
+let comparisonPollStartedAt = 0;
+function pollComparisonTask(url) {
+  clearTimeout(comparisonPollTimer);
+  comparisonPollStartedAt = Date.now();
+  const poll = async () => {
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      const task = data.task || data;
+      setProgress(task.stage || '处理中', Math.max(0, Number(task.progress) || 0));
+      if (task.status === 'success') {
+        renderResult(task.result);
+        $('#loading').style.display = 'none';
+        $('#run-btn').disabled = false;
+        return;
+      }
+      if (task.status === 'error' || task.status === 'failed') {
+        showError(task.error || '对比失败');
+        $('#loading').style.display = 'none';
+        $('#run-btn').disabled = false;
+        return;
+      }
+      if (Date.now() - comparisonPollStartedAt > 300000) {
+        showError('任务仍在处理中，结果未知。请稍后刷新或通过任务查询接口查看。');
+        return;
+      }
+      comparisonPollTimer = setTimeout(poll, 800);
+    } catch (error) {
+      if (Date.now() - comparisonPollStartedAt > 300000) showError('任务仍在处理中，结果未知。');
+      else comparisonPollTimer = setTimeout(poll, 1200);
+    }
+  };
+  poll();
+}
 
 function setProgress(stage, pct) {
   $('#loading-stage').textContent = stage;
