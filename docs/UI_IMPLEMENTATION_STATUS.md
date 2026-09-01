@@ -78,6 +78,7 @@
 | `research-detail.js/css` | 研究详情页 | 仍需完善上下文字段和后续动作展示 |
 | `stock-chart.js` | 通用 ECharts 组件 | 统一提供图表挂载和释放入口；K 线、成交量和均线颜色已按契约统一 |
 | `market.css/js` | 市场页独立资源 | 市场页样式和图表业务脚本已从模板移出；仍依赖现有 CDN 图标资源 |
+| `morning-report.css/js` | 晨报页独立资源 | 晨报样式、Markdown 渲染和生成交互已从模板移出；Marked 仍依赖现有 CDN |
 
 ## 最近验证基线
 
