@@ -1,13 +1,46 @@
-# StockInvestmentTool 目标架构设计
+# StockInvestmentPlatform 新项目目标架构设计
 
-> 版本：v1.0 目标架构  
-> 确认基础：当前架构讨论结论  
+> 版本：v2.0 新项目独立重建基线
 > 配套现状：`docs/CURRENT_ARCHITECTURE.md`  
-> 本文描述预期最终实现，不代表当前代码已经全部完成。
+> 设计来源：当前架构讨论确认结果
+> 本文描述新项目的预期设计，不代表当前项目已经完成，也不要求当前项目继续演进为该架构。
 
-## 1. 设计目标
+## 1. 架构决策
 
-系统最终应从当前的“双入口、双策略、双业务存储、数据任务与业务任务分裂”收敛为一套统一的投资研究与执行平台：
+新系统采用“**全新项目、独立开发、选择性导入历史数据**”的方式建设。
+
+当前 `stock_data_analyse` 项目保留为：
+
+- 当前生产系统和历史参考系统。
+- 业务需求、领域概念和运行经验的参考来源。
+- 可选历史数据的只读导出来源。
+
+当前项目不作为新项目的代码基座。新项目不继承以下内容：
+
+- 当前项目的目录结构和模块依赖。
+- `core/engine.py` 的旧单股分析总编排模式。
+- 旧 `strategy/`、`backtest/` 和 `portfolio/` 的运行时实现。
+- 旧 `portfolio.db`、`job_runs.db`、`meta.db` 的表结构和运行时依赖。
+- 旧 API、旧页面和旧调度器的兼容入口。
+- v4.5、V6 等历史规则的默认行为。
+
+新项目只继承经过确认的产品目标和业务思想。历史数据、数据源和历史规则都必须经过重新评审后，才能以新项目契约重新接入。
+
+```mermaid
+flowchart LR
+    OLD[当前项目\n生产系统 / 历史参考] --> EXPORT[只读导出\n可选历史数据]
+    EXPORT --> REVIEW[字段映射 / 质量审查]
+    REVIEW --> IMPORT[一次性导入格式]
+    IMPORT --> NEW[(新项目 business.db)]
+
+    OLD -.不作为代码依赖.-> NEW
+    OLD -.不作为运行时数据库依赖.-> NEW
+    OLD -.不自动迁移旧规则.-> NEW
+```
+
+## 2. 设计目标
+
+新项目建设一套面向 A 股投资研究与执行的完整平台：
 
 ```text
 数据采集与治理
@@ -22,368 +55,364 @@
     -> 建议、通知与复盘
 ```
 
-目标架构必须满足以下原则：
+核心原则：
 
-1. **业务统一入口**：正式业务都进入 `biz` 领域服务，不再由 Web 路由或旧 CLI 直接拼装业务流程。
-2. **数据统一入口**：业务和研究只消费 Published Dataset，不在业务层直接选择 baostock、AkShare 或腾讯等外部源。
-3. **能力与编排分离**：指标、估值、支撑位、规则、回测和图表是可复用能力；Screen、Research、Simulation、Portfolio 是业务编排。
-4. **策略统一协议**：v4.5、V6 及后续规则统一注册为策略能力，通过统一上下文、参数 schema 和决策协议执行。
-5. **任务统一运行模型**：定时、手工、补数、重试和验证都转换为统一 Request/JobRun，由统一 Runner 执行。
-6. **事实单一来源**：业务事实只进 `business.db`，数据管理事实只进 `management.db`，文件数据进入受版本治理的 Dataset 存储。
-7. **研究结果可追溯**：每个结果必须能追溯到策略版本、数据集版本、计算版本、输入范围和上游业务对象。
-8. **真实交易强隔离**：真实成交不是普通后台任务；必须经过人工确认、幂等键、现金校验和事务提交。
+1. **新项目独立冷启动**：脱离当前项目代码、旧数据库和旧运行服务后，新项目能够初始化、采集数据并运行最小业务闭环。
+2. **业务统一入口**：Web、API、CLI 和定时任务都通过 Application Service 或 Task Submission Service 进入业务。
+3. **数据统一入口**：业务只通过 `DatasetAccess` 读取正式数据，不直接调用外部数据源或访问 Parquet 路径。
+4. **能力与编排分离**：指标、估值、市场状态、规则、模拟执行和报告渲染是可复用能力；选股、研究、模拟、持仓是业务用例。
+5. **策略重新设计**：先定义统一策略协议，再实现新策略；历史规则不是新项目的默认迁移对象。
+6. **统一任务运行**：定时、手工、补数、重试和验证都进入统一 Request/Run/Event/Artifact 生命周期。
+7. **事实单一来源**：新业务事实只写 `business.db`，平台任务和数据治理事实只写 `management.db`。
+8. **结果完整追溯**：研究、模拟、建议和复盘都记录策略版本、数据集版本、计算版本、输入范围和来源实体。
+9. **真实交易强隔离**：真实成交必须人工确认，不能由普通定时任务或模拟任务直接触发。
 
-## 2. 最终总体架构
+## 3. 总体架构
 
 ```mermaid
 flowchart TB
     USER[用户 / 浏览器 / 外部调用方]
     USER --> UI[Web UI]
-    USER --> CLI[CLI / 运维命令]
-    EXT[外部系统\nWebhook / 定时触发 / 管理调用] --> API
+    USER --> CLI[CLI]
+    EXT[外部触发\nWebhook / 运维] --> API
 
-    subgraph Access[统一访问层]
-        UI --> API[API Gateway / Flask API]
+    subgraph Access[访问层]
+        UI --> API[API / BFF]
         CLI --> FACADE[Application Facade]
         API --> FACADE
     end
 
     subgraph Application[应用编排层]
-        FACADE --> CMD[Command Services\nScreen / Research / Simulation / Portfolio]
+        FACADE --> COMMAND[Command Services\nScreen / Research / Simulation / Portfolio]
         FACADE --> QUERY[Query Services\nDashboard / Review / Data / Task]
-        FACADE --> TASKAPI[Task Submission Service]
-        TASKAPI --> REQUEST[Execution Request]
+        FACADE --> SUBMIT[Task Submission Service]
+        SUBMIT --> REQUEST[Execution Request]
     end
 
-    subgraph Runtime[统一任务运行层]
-        SCHED[Scheduler\n定时 / 触发器]
-        REQUEST --> RUNNER[统一 Task Runner]
-        SCHED --> REQUEST
-        RUNNER --> LOCK[Lease Lock / Idempotency]
+    subgraph Runtime[统一运行层]
+        SCHED[Scheduler]
+        SCHED --> SUBMIT
+        REQUEST --> RUNNER[Task Runner]
         RUNNER --> HANDLER[Task Handler Registry]
-        HANDLER --> CMD
-        RUNNER --> EVENTS[Run Events / Progress / Artifact]
+        RUNNER --> LOCK[Lease Lock / Idempotency]
+        RUNNER --> EVENT[Run Event / Progress / Artifact]
+        HANDLER --> COMMAND
     end
 
-    subgraph Domain[统一领域能力层]
-        SCREEN[Screening Domain]
-        OBS[Observation Domain]
-        RESEARCH[Research Domain]
-        STRATEGY[Strategy Domain]
-        SIM[Simulation Domain]
-        PORT[Portfolio & Trading Domain]
-        NOTIFY[Advice / Notification Domain]
-        REPORT[Reporting / Review Domain]
-        SCREEN --> OBS
-        OBS --> RESEARCH
-        RESEARCH --> STRATEGY
-        STRATEGY --> SIM
+    subgraph Domain[领域层]
+        SCREEN[Screening]
+        OBS[Observation]
+        RESEARCH[Research]
+        STRATEGY[Strategy]
+        SIM[Simulation]
+        PORT[Portfolio & Trading]
+        NOTICE[Advice & Notification]
+        REPORT[Reporting & Review]
+        SCREEN --> OBS --> RESEARCH --> STRATEGY --> SIM
         OBS --> PORT
-        PORT --> NOTIFY
         SIM --> REPORT
+        PORT --> NOTICE
         PORT --> REPORT
     end
-    CMD --> SCREEN
-    CMD --> RESEARCH
-    CMD --> SIM
-    CMD --> PORT
-    QUERY --> REPORT
+    COMMAND --> SCREEN
+    COMMAND --> RESEARCH
+    COMMAND --> SIM
+    COMMAND --> PORT
     QUERY --> OBS
     QUERY --> PORT
+    QUERY --> REPORT
 
-    subgraph Capability[共享分析能力层]
-        DCTX[DataContext / IndicatorContext]
-        IND[Indicator Registry / Engine]
-        VAL[Valuation Capability]
-        SUP[Support / Market State]
-        RULE[Rule Registry\nBuy / Sell / Risk]
-        BT[Simulation Engine / Backtest Adapter]
-        LLM[Prompt / LLM Adapter]
-        CHART[Chart / Artifact Renderer]
+    subgraph Capability[共享能力层]
+        IND[Indicator Engine]
+        VAL[Valuation Engine]
+        REGIME[Market Regime Engine]
+        RULE[Strategy Rule Registry]
+        EXEC[Simulation / Real Execution Adapters]
+        RENDER[Report / Chart / Artifact Renderer]
+        LLM[LLM Adapter]
     end
-    RESEARCH --> DCTX
     RESEARCH --> IND
     RESEARCH --> VAL
-    RESEARCH --> SUP
+    RESEARCH --> REGIME
     STRATEGY --> RULE
     SIM --> RULE
-    SIM --> BT
+    SIM --> EXEC
+    PORT --> EXEC
+    REPORT --> RENDER
     RESEARCH --> LLM
-    REPORT --> CHART
 
     subgraph Data[数据平面]
+        SOURCES[Source Adapters\nbaostock / AkShare / Tencent / others]
+        PIPE[Ingestion Pipeline\nRaw -> Normalize -> Quality -> Publish]
         ACCESSDATA[DatasetAccess]
-        SOURCES[Source Adapters\nbaostock / AkShare / Tencent]
-        PIPE[Data Pipeline\nRaw -> Build -> Quality -> Publish]
-        DATASET[Published Datasets\nDaily / Fundamentals / Valuation / Indicators / Flow]
+        DATASET[Published Dataset]
+        SOURCES --> PIPE --> DATASET
         ACCESSDATA --> DATASET
-        PIPE --> DATASET
-        SOURCES --> PIPE
     end
-    DCTX --> ACCESSDATA
+    IND --> ACCESSDATA
+    VAL --> ACCESSDATA
+    REGIME --> ACCESSDATA
     SCREEN --> ACCESSDATA
     RESEARCH --> ACCESSDATA
     SIM --> ACCESSDATA
     PORT --> ACCESSDATA
 
-    subgraph Persist[统一持久化]
-        BDB[(business.db\n业务事实 / 研究 / 模拟 / 持仓 / 通知)]
-        MDB[(management.db\n任务 / 数据集 / 版本 / 质量 / 血缘)]
-        FILE[(Dataset Files\nParquet / Raw / Artifacts)]
+    subgraph Persistence[持久化层]
+        BDB[(business.db\n业务事实)]
+        MDB[(management.db\n平台与数据治理事实)]
+        FILES[(Parquet / Raw / Artifacts)]
     end
     Domain --> BDB
     Runtime --> MDB
     PIPE --> MDB
-    DATASET --> FILE
+    DATASET --> FILES
     ACCESSDATA --> MDB
-    REPORT --> FILE
+    RENDER --> FILES
 ```
 
-目标架构中的关键变化是：
+## 4. 新项目目录结构
 
-- `core/engine.py` 不再是独立的旧业务总流程，而变成 Application Facade 下的研究分析门面或可复用分析服务。
-- `datasource/` 只保留外部源适配和基础连接能力，不向业务层暴露直接取数入口。
-- `strategy/`、`backtest/`、`analysis/` 的可复用算法迁移到统一能力层，并由 `biz.research`、`biz.strategy`、`biz.simulation` 编排。
-- 所有正式任务进入统一 Runner，数据任务和业务任务共享任务协议；具体执行资源可以仍然分为数据 Worker 和业务 Worker。
-- 业务事实与数据管理事实保持两个数据库，但每个平面只有一个运行时事实源。
+目录按业务边界和技术边界重新设计，不复制当前项目的目录名称：
 
-## 3. 目标分层模型
-
-```mermaid
-flowchart TB
-    L1[访问层\nWeb UI / API / CLI]
-    L2[应用层\nUse Case / Command / Query / Task Submission]
-    L3[领域层\nScreen / Research / Strategy / Simulation / Portfolio]
-    L4[能力层\nIndicators / Valuation / Rules / Backtest / LLM / Rendering]
-    L5[数据访问层\nDatasetAccess / Repository / ArtifactStore]
-    L6[基础设施层\nSQLite / Parquet / DuckDB / External APIs / Scheduler]
-
-    L1 --> L2 --> L3 --> L4
-    L3 --> L5
-    L4 --> L5
-    L5 --> L6
-    L2 --> L5
+```text
+stock-investment-platform/
+├── api/
+│   ├── routes/                         # HTTP 路由
+│   ├── schemas/                        # 请求/响应 DTO
+│   └── errors/                         # 统一错误处理
+├── application/
+│   ├── screening/                      # 选股用例
+│   ├── observation/                    # 观察用例
+│   ├── research/                       # 研究用例
+│   ├── strategy/                       # 策略配置与决策用例
+│   ├── simulation/                     # 模拟用例
+│   ├── portfolio/                      # 账户与持仓用例
+│   ├── notification/                   # 通知用例
+│   └── reporting/                      # 报告与复盘用例
+├── domain/
+│   ├── screening/
+│   ├── observation/
+│   ├── research/
+│   ├── strategy/
+│   ├── simulation/
+│   ├── portfolio/
+│   ├── notification/
+│   └── common/                         # ID、时间、状态、上下文
+├── capabilities/
+│   ├── indicators/                     # 指标定义与求值
+│   ├── valuation/                      # 估值能力
+│   ├── market_regime/                  # 市场状态
+│   ├── strategy_runtime/               # 策略编译、规则注册、仲裁
+│   ├── execution/                      # 模拟/真实执行适配器
+│   ├── performance/                    # 收益与绩效
+│   └── rendering/                      # 报告、图表、研究产物
+├── data_platform/
+│   ├── source_adapters/                # 外部数据源适配
+│   ├── ingestion/                      # Raw Batch 采集
+│   ├── normalization/                  # 标准 schema
+│   ├── builders/                       # Dataset 构建
+│   ├── quality/                        # 质量检查
+│   ├── publication/                    # 版本发布与回滚
+│   └── access/                         # DatasetAccess
+├── runtime/
+│   ├── scheduler/                      # 定时触发
+│   ├── task_runner/                    # 统一任务执行
+│   ├── workers/                        # data/business/system worker
+│   ├── locks/                          # 租约锁与幂等
+│   └── health/                         # 健康和恢复
+├── infrastructure/
+│   ├── database/                       # SQLite 连接与迁移
+│   ├── files/                          # Dataset/Artifact Store
+│   ├── external/                       # HTTP、LLM、通知客户端
+│   └── observability/                  # 日志、指标、审计
+├── web/                                # 页面和静态资源
+├── migrations/                         # 新项目数据库迁移
+├── tests/
+└── docs/
 ```
 
-依赖约束：
+依赖方向固定为：
 
-| 层 | 可以依赖 | 不应依赖 |
-|---|---|---|
-| 访问层 | 应用层 DTO/Facade | 数据库、外部数据源、策略细节 |
-| 应用层 | 领域服务、任务提交、查询服务 | Flask 请求对象、Parquet 路径 |
-| 领域层 | 领域模型、能力接口、Repository 接口 | baostock、AkShare、页面模板 |
-| 能力层 | 标准 DataContext、StrategyContext | 具体 HTTP 路由、业务数据库表 |
-| 数据访问层 | Dataset/Repository 抽象、版本元数据 | 页面和具体业务流程 |
-| 基础设施层 | 外部库、文件、SQLite、DuckDB | 上层业务决策 |
+```text
+api/web
+    -> application
+        -> domain
+            -> capabilities / ports
+                -> infrastructure / data_platform
+```
 
-## 4. 统一业务主流程
+禁止形成以下依赖：
+
+```text
+页面 -> 外部数据源
+页面 -> 数据库
+领域对象 -> baostock / AkShare
+策略规则 -> Parquet 路径
+调度器 -> 某个页面函数
+新项目 -> 当前项目代码或旧数据库
+```
+
+## 5. 领域模型与业务闭环
 
 ```mermaid
 flowchart LR
-    A[市场数据 Published] --> B[Screen 筛选]
-    B --> C[Candidate 候选]
-    C --> D[Observation 观察]
-    D --> E[Research 研究]
-    E --> F[StrategyDecision 策略决策]
-    F --> G[Simulation 模拟]
-    G --> H[Review / Performance 复盘]
-    H --> I{人工确认}
-    I -->|继续观察| D
-    I -->|确认建仓| J[EntryContext]
-    J --> K[真实成交确认]
-    K --> L[PositionCycle / Execution / Lot / CashLedger]
-    L --> M[Advice 建议]
-    M --> N[Notification 通知]
-    L --> H
+    DATA[Published Dataset] --> SCREEN[ScreenDefinition / ScreenRun]
+    SCREEN --> CAND[ScreenCandidate]
+    CAND --> OBS[Observation]
+    OBS --> RESEARCH[ResearchRun / Evidence]
+    RESEARCH --> DECISION[StrategyDecision]
+    DECISION --> SIM[SimulationPlan / SimulationRun]
+    SIM --> REVIEW[Performance / Review]
+    REVIEW --> GATE{人工确认}
+    GATE -->|继续观察| OBS
+    GATE -->|确认建仓| ENTRY[Entry Confirmation]
+    ENTRY --> POS[PositionCycle / Execution / Lot]
+    POS --> CASH[CashLedger]
+    POS --> ADVICE[Advice]
+    ADVICE --> NOTIFY[Notification Delivery]
+    POS --> REVIEW
 ```
 
-每个阶段的核心实体和责任：
+核心实体：
 
-| 阶段 | 主实体 | 责任 |
+| 领域 | 实体 | 说明 |
 |---|---|---|
-| 数据准备 | Dataset / DataContext | 固化数据版本、质量、范围和来源 |
-| 选股 | ScreenDefinition / ScreenRun / ScreenCandidate | 按版本化条件筛选并保存候选结果 |
-| 观察 | Observation | 保存候选来源、观察周期、状态和目标资金 |
-| 研究 | ResearchRun / ResearchEvidence | 生成结构化研究结果和证据 |
-| 决策 | StrategyDecision | 使用策略版本生成买卖/风险决策 |
-| 模拟 | SimulationPlan / SimulationRun | 按统一规则模拟成交和绩效 |
-| 建仓 | PositionCycle / Execution | 人工确认后的真实成交事实 |
-| 持仓 | PositionLot / CashLedger | 持仓批次、现金流水、成本和状态 |
-| 通知 | Advice / NotificationEvent / Delivery | 建议生命周期、聚合、去重和投递 |
-| 复盘 | PerformanceSnapshot / Review | 真实交易与模拟结果对比分析 |
+| 选股 | `ScreenDefinition`, `ScreenVersion`, `ScreenRun`, `ScreenCandidate` | 定义、版本化和执行筛选 |
+| 观察 | `Observation`, `ObservationEvent` | 管理候选来源、期限和状态 |
+| 研究 | `ResearchRun`, `ResearchEvidence` | 保存研究过程、证据和结构化结果 |
+| 策略 | `StrategyDefinition`, `StrategyVersion`, `StrategyDecision` | 保存策略配置、依赖和决策 |
+| 模拟 | `SimulationPlan`, `SimulationRun`, `SimulationFill`, `SimulationEvent` | 独立模拟执行和绩效 |
+| 交易 | `Account`, `Portfolio`, `PositionCycle`, `Execution`, `PositionLot`, `CashLedger` | 真实账户和成交事实 |
+| 通知 | `Advice`, `NotificationEvent`, `NotificationDelivery` | 建议生命周期和投递状态 |
+| 复盘 | `PerformanceSnapshot`, `Review` | 真实与模拟结果对照 |
 
-## 5. 统一数据架构
+实体状态和关系必须由新项目重新定义，不复制当前项目的数据库表名或字段名。历史数据只能映射到这些新实体，无法可靠映射时不导入。
 
-### 5.1 数据生产链路
+## 6. 统一数据架构
+
+### 6.1 数据生产
 
 ```mermaid
 flowchart TB
-    subgraph Sources[外部数据源]
-        BS[baostock]
-        AK[AkShare]
-        TX[Tencent]
-        OTHER[后续数据源]
-    end
-    subgraph Capture[采集层]
-        ADAPTER[Source Adapter Registry]
-        RAW[Raw Batch\n源数据不可变保存]
-    end
-    subgraph Transform[加工层]
-        NORMALIZE[Schema Normalize]
-        BUILD[Dataset Builder]
-        FACTOR[Indicator / Factor Builder]
-    end
-    subgraph Governance[治理层]
-        QUALITY[Quality Gate]
-        VERSION[Dataset Version]
-        PUBLISH[Atomic Publisher]
-        LINEAGE[Lineage / Artifact]
-    end
-    subgraph Published[正式数据层]
-        DAILY[stock_daily]
-        FUND[fundamentals]
-        VAL[valuation]
-        IND[indicators]
-        FLOW[money_flow]
-        ONLINE[online_snapshot]
-    end
-    BS --> ADAPTER
-    AK --> ADAPTER
-    TX --> ADAPTER
-    OTHER --> ADAPTER
-    ADAPTER --> RAW --> NORMALIZE --> BUILD
-    BUILD --> DAILY
-    DAILY --> FACTOR --> IND
-    RAW --> FUND
-    RAW --> VAL
-    RAW --> FLOW
-    TX --> ONLINE
-    DAILY --> QUALITY
-    FUND --> QUALITY
-    VAL --> QUALITY
-    IND --> QUALITY
-    FLOW --> QUALITY
-    QUALITY --> VERSION --> PUBLISH --> Published
-    VERSION --> LINEAGE
-    PUBLISH --> LINEAGE
+    BS[baostock] --> ADAPTER[Source Adapter Registry]
+    AK[AkShare] --> ADAPTER
+    TX[Tencent] --> ADAPTER
+    FUTURE[其他数据源] --> ADAPTER
+    ADAPTER --> RAW[Raw Batch\n不可变源数据]
+    RAW --> NORMALIZE[Schema Normalize]
+    NORMALIZE --> BUILD[Dataset Builder]
+    BUILD --> CANDIDATE[Candidate Dataset]
+    CANDIDATE --> QUALITY[Quality Gate]
+    QUALITY -->|PASS / WARNING| VERSION[Dataset Version]
+    QUALITY -->|FAIL| BLOCK[阻断发布并告警]
+    VERSION --> PUBLISH[Atomic Publish]
+    PUBLISH --> CURRENT[Current Version Pointer]
+    CURRENT --> PUB[Published Dataset]
+    VERSION --> LINEAGE[Lineage / Artifact]
 ```
 
-### 5.2 统一数据消费契约
+数据集必须具备：
 
-所有业务数据读取都必须返回统一的 `DatasetResult` 语义：
+- 唯一名称、schema 版本和粒度。
+- 输入数据集及源批次。
+- 分区版本、生成时间和实际数据截止日期。
+- 行数、标的数、覆盖范围和质量状态。
+- 文件 checksum、发布状态和回滚信息。
+- 生产者版本和计算版本。
+
+### 6.2 数据消费
+
+业务模块只能依赖以下抽象：
+
+```text
+DatasetAccess.load(
+    dataset_name,
+    start_date,
+    end_date,
+    symbols,
+    required_quality,
+) -> DatasetResult
+```
 
 ```text
 DatasetResult
-├── data                  # 标准 DataFrame 或结构化数据
+├── data
 └── context
-    ├── dataset_refs      # 数据集及分区版本
-    ├── data_as_of        # 实际数据截止日期
-    ├── requested_range   # 请求区间
-    ├── quality_status    # PASS / WARNING / FAIL
-    ├── source_batches     # 上游源批次
-    ├── input_versions    # 上游版本引用
-    ├── schema_version    # 数据结构版本
-    └── fallback_used     # 是否使用兼容降级
+    ├── dataset_refs
+    ├── data_as_of
+    ├── requested_range
+    ├── quality_status
+    ├── source_batches
+    ├── input_versions
+    ├── schema_version
+    └── fallback_used
 ```
 
-业务服务的约束：
+新项目业务运行时默认不允许隐式 fallback。若需要使用降级数据，必须由调用方显式指定，并在结果中标记原因。
 
-- 不直接 import `baostock`、`akshare`、腾讯 URL 或 `read_parquet`。
-- 不根据文件目录猜测最新数据，必须通过 `DatasetAccess` 查询 `management.db` 的当前版本。
-- 如果指标缺失，必须根据策略依赖决定“阻断、降级或标记不完整”，不能静默使用未声明数据。
-- 研究结果、模拟结果和日报都保存 DataContext 引用，而不是只保存一份无法追溯的数值。
+## 7. 统一分析能力
 
-## 6. 统一分析能力架构
-
-### 6.1 `core/engine.py` 的目标定位
-
-`core/engine.py` 最终保留，但职责改变：
-
-```text
-旧定位：
-    一个函数串联数据获取、技术分析、估值、策略、回测、LLM、报告
-
-目标定位：
-    研究分析能力 Facade
-    输入标准 DatasetResult + StrategyVersion + AnalysisContext
-    输出 ResearchArtifacts / AnalysisSnapshot / StrategyDecision 所需的结构化能力结果
-```
-
-目标接口关系：
+新项目不保留当前项目的“大一统 `core/engine.py`”。分析能力由多个可组合服务组成：
 
 ```mermaid
 flowchart LR
-    RESEARCH[ResearchService] --> ENGINE[AnalysisFacade\ncore/engine.py]
-    ENGINE --> DATA[DatasetResult / DataContext]
-    ENGINE --> IND[IndicatorEngine]
-    ENGINE --> VAL[ValuationService]
-    ENGINE --> MARKET[MarketRegimeService]
-    ENGINE --> STR[StrategyRuntime]
-    ENGINE --> ART[AnalysisArtifact]
-    ART --> RESEARCH
-    RESEARCH --> EVIDENCE[ResearchEvidence]
-    RESEARCH --> DECISION[StrategyDecision]
+    RS[ResearchApplicationService] --> LOAD[DatasetAccess]
+    LOAD --> CTX[AnalysisContext]
+    CTX --> IND[IndicatorEngine]
+    CTX --> VAL[ValuationEngine]
+    CTX --> REGIME[MarketRegimeEngine]
+    IND --> SNAP[AnalysisSnapshot]
+    VAL --> SNAP
+    REGIME --> SNAP
+    SNAP --> STR[StrategyRuntime]
+    STR --> DECISION[StrategyDecision]
+    SNAP --> EVIDENCE[ResearchEvidence]
+    DECISION --> EVIDENCE
+    EVIDENCE --> RESULT[ResearchResult]
 ```
 
-`AnalysisFacade` 不负责：
+能力职责：
 
-- 直接调用外部数据源。
-- 直接读写业务数据库表。
-- 决定 HTTP 返回结构。
-- 直接创建 `ScreenRun`、`SimulationRun` 或真实成交记录。
-- 把报告文件作为唯一事实结果。
+| 能力 | 职责 |
+|---|---|
+| `IndicatorEngine` | 根据声明式指标定义计算指标，提供覆盖和健康信息 |
+| `ValuationEngine` | 计算估值指标、估值区间和估值解释 |
+| `MarketRegimeEngine` | 根据市场数据计算市场状态和置信度 |
+| `AnalysisSnapshot` | 固化某个标的、时点和数据上下文下的分析结果 |
+| `StrategyRuntime` | 编译策略、执行规则、仲裁冲突并输出决策 |
+| `PerformanceCalculator` | 计算模拟、真实交易和基准的绩效 |
+| `ArtifactRenderer` | 生成报告、图表和可追踪研究产物 |
 
-### 6.2 指标与估值能力
+分析能力不直接写业务表；应用服务负责将结果转成 `ResearchRun`、`StrategyDecision` 或 `SimulationRun`。
 
-目标能力链路：
+## 8. 全新策略运行时
 
-```text
-DatasetAccess
-    -> DataContext
-    -> IndicatorContext
-        -> IndicatorRegistry
-        -> IndicatorEvaluator
-        -> IndicatorHealth
-    -> ValuationContext
-        -> PE/PB 分位
-        -> 股息锚
-        -> 估值区间
-        -> 交叉支撑
-```
+### 8.1 策略设计原则
 
-指标必须同时具备：
-
-- 唯一名称和版本
-- 输入字段声明
-- 计算周期和时间语义
-- 单位和缺失值语义
-- 依赖数据集
-- 质量和覆盖状态
-- 计算结果的版本引用
-
-### 6.3 策略统一协议
-
-最终把当前 `strategy/`、V6 派发和 `biz.strategy` 收敛到一个策略运行时：
+新项目先设计协议，再实现策略。历史 v4.5、V6 和其他规则只作为待评审材料，不是首期默认实现。
 
 ```mermaid
 flowchart TB
-    YAML[策略配置 / StrategyVersion] --> VALIDATE[Schema / Dependency Validation]
+    DEF[StrategyDefinition / Version] --> VALIDATE[Schema + Dependency Validation]
     VALIDATE --> COMPILE[StrategyCompiler]
-    COMPILE --> REG[RuleRegistry]
-    REG --> BUY[Buy Rule Executors]
-    REG --> SELL[Sell Rule Executors]
-    REG --> RISK[Risk Rule Executors]
-    CTX[StrategyContext\n行情 / 指标 / 估值 / 市场状态 / 持仓状态] --> BUY
-    CTX --> SELL
+    COMPILE --> REG[Rule Registry]
+    REG --> ENTRY[Entry Policies]
+    REG --> EXIT[Exit Policies]
+    REG --> RISK[Risk Policies]
+    REG --> SIZE[Position Sizing Policies]
+    CTX[StrategyContext\n数据 / 指标 / 估值 / 市场 / 持仓] --> ENTRY
+    CTX --> EXIT
     CTX --> RISK
-    BUY --> RESULT[RuleResult]
-    SELL --> RESULT
-    RISK --> RESULT
-    RESULT --> ARBITER[Decision Arbiter\n优先级 / 冲突 / 风控上限]
+    CTX --> SIZE
+    ENTRY --> RULES[Rule Results]
+    EXIT --> RULES
+    RISK --> RULES
+    SIZE --> RULES
+    RULES --> ARBITER[Decision Arbiter\n优先级 / 冲突 / 风控上限]
     ARBITER --> DECISION[StrategyDecision]
 ```
 
-统一协议的最小模型：
+### 8.2 统一协议
 
 ```text
 StrategyVersion
@@ -392,10 +421,12 @@ StrategyVersion
     - config_hash
     - status
     - dependencies
+    - compiler_version
 
 StrategyContext
+    - symbol / as_of
     - data_context
-    - current_row
+    - market_data
     - indicators
     - valuation
     - market_regime
@@ -403,344 +434,341 @@ StrategyContext
     - portfolio_state
 
 RuleExecutor
-    - kind: buy / sell / risk
+    - category: entry / exit / risk / sizing
     - type
     - params
     - schema
     - execute(context, params)
 
 StrategyDecision
-    - decision
+    - action
     - confidence
+    - entry_plan
+    - exit_plan
+    - risk_limits
     - rule_results
-    - risk_flags
-    - entry_plan / exit_plan
+    - explanations
     - strategy_version_id
     - data_context
 ```
 
-迁移完成后，以下旧逻辑不再作为独立业务入口存在：
+买入、卖出、风控和仓位计算分开实现，最终由 `DecisionArbiter` 形成一个决策结果。研究、模拟和真实持仓建议都消费同一个 `StrategyDecision` 协议。
 
-- `MultiBuyStrategy` 直接作为 Web/CLI 业务编排入口。
-- `TakeProfitOptimizer` 直接决定业务运行状态。
-- v4.5 和 V6 各自维护一套不兼容的状态机。
-- 业务模块通过字符串字段直接调用某个旧类。
+## 9. 统一任务运行时
 
-这些代码可以保留为 Rule Executor 或 Simulation Adapter，但必须通过统一策略运行时注册和调用。
-
-## 7. 统一任务运行架构
-
-### 7.1 任务生命周期
-
-```mermaid
-stateDiagram-v2
-    [*] --> Draft: 创建任务定义/配置
-    Draft --> Validated: 校验通过
-    Validated --> Active: 激活配置
-    Active --> Disabled: 停用
-    Active --> Superseded: 新版本激活
-    Disabled --> Active: 重新启用
-    Superseded --> [*]
-
-    state "运行实例" as Run {
-        [*] --> Requested
-        Requested --> Running: Runner 领取
-        Running --> Success
-        Running --> PartialSuccess
-        Running --> Failed
-        Running --> Cancelled
-        Failed --> Retrying: 可重试
-        Retrying --> Requested
-    }
-```
-
-### 7.2 统一 Runner
+### 9.1 任务模型
 
 ```mermaid
 sequenceDiagram
-    participant Trigger as 定时器 / API / CLI
-    participant Submit as TaskSubmissionService
+    participant Trigger as API / CLI / Scheduler
+    participant Submit as Task Submission
     participant DB as management.db
     participant Runner as Task Runner
     participant Handler as Handler Registry
     participant Data as DatasetAccess
-    participant Artifact as ArtifactStore
+    participant Store as ArtifactStore
 
-    Trigger->>Submit: 提交 task_key + input + trigger_type
+    Trigger->>Submit: task_key + input + trigger_type
     Submit->>DB: 写 ExecutionRequest
     Submit->>DB: 写 requested TaskRun
     Submit-->>Trigger: request_id / run_id
-    Runner->>DB: 原子领取 requested run
-    Runner->>DB: 获取 lease lock，置 running
-    Runner->>Handler: 按 task_key 执行
+    Runner->>DB: 原子领取并获取 lease
+    Runner->>Handler: 执行任务 Handler
     Handler->>Data: 读取 Published Dataset
-    Data-->>Handler: Data + DataContext
-    Handler->>Artifact: 写结果 / 文件 / 版本引用
-    Handler->>DB: 写事件、指标、输出版本
-    Runner->>DB: 置 success / partial / failed
-    Runner->>DB: 释放 lease lock
+    Data-->>Handler: DatasetResult + DataContext
+    Handler->>Store: 写 Artifact / 输出版本
+    Handler->>DB: 写 Event / Lineage / Metrics
+    Runner->>DB: success / partial / failed
+    Runner->>DB: 释放 lease
 ```
 
-目标执行部署可以保留多个 Worker 类型，但协议必须统一：
+### 9.2 任务类型
 
 ```text
-Scheduler
-    -> management.db / business.db 中的统一 Request/Run
-
 Data Worker
-    -> capture / build / quality / publish / indicator
+    - source_capture
+    - dataset_build
+    - quality_check
+    - dataset_publish
+    - indicator_build
 
 Business Worker
-    -> screen / research / simulation / report / notification
+    - screen_run
+    - research_run
+    - simulation_run
+    - report_generate
+    - advice_refresh
+    - notification_delivery
 
-Query/API
-    -> 只读运行状态、数据状态和业务结果
+System Worker
+    - health_reconcile
+    - backup
+    - cleanup
 ```
 
-Web 进程不再直接执行长时间数据采集、回测或业务任务；最多只负责提交任务和查询状态。
+不同 Worker 可以使用不同容器或进程池，但必须共享相同的任务协议、状态模型、幂等语义、事件模型和产物引用规则。
 
-## 8. 领域模块目标边界
+Web 进程只负责提交任务和查询任务，不执行长时间数据采集、研究、回测或通知投递。
 
-| 模块 | 目标职责 | 明确不负责 |
-|---|---|---|
-| `biz.screen` | 筛选定义、条件执行、候选结果 | 选择外部数据源、发送通知 |
-| `biz.observation` | 候选观察、过期、状态流转 | 重新计算行情指标 |
-| `biz.research` | 研究编排、证据、研究结果 | 直接管理真实持仓 |
-| `biz.strategy` | 策略版本、编译、决策协议 | 直接获取网络数据 |
-| `biz.simulation` | 模拟账户、订单、成交、绩效 | 写真实成交 |
-| `biz.portfolio` | 账户、持仓周期、真实执行、现金账 | 运行历史回测 |
-| `biz.notification` | 建议、事件、聚合、去重、投递 | 修改研究决策 |
-| `biz.reporting` | 日报、复盘、性能快照、Artifact | 直接运行采集任务 |
-| `core.engine` | 组合标准分析能力 | 业务状态持久化、HTTP |
-| `warehouse` | 数据采集、加工、质量、发布、读取 | 业务决策 |
-| `datasource` | 外部数据源适配 | 业务编排 |
-| `ops` | 任务、健康、备份、运行治理 | 股票策略判断 |
+### 9.3 状态模型
 
-## 9. 真实交易与模拟隔离
+```text
+Task Definition:
+    draft -> validated -> active -> disabled / superseded
 
-模拟和真实交易使用相同的策略决策协议，但使用不同的执行适配器：
+Task Run:
+    requested -> running -> success
+                        -> partial_success
+                        -> failed
+                        -> cancelled
+
+Retry:
+    failed -> retry_requested -> requested
+```
+
+每个运行必须记录：
+
+- 触发类型、请求人、输入范围和配置版本。
+- 开始时间、结束时间、心跳、进度和当前处理对象。
+- 锁键、幂等键、尝试次数和错误码。
+- 输入数据版本、输出数据版本和 Artifact。
+- 上游运行、下游运行和血缘关系。
+
+## 10. 模拟与真实交易隔离
 
 ```mermaid
 flowchart TB
     DECISION[StrategyDecision]
-    DECISION --> SIMADAPTER[SimulationExecutionAdapter]
-    DECISION --> REALADAPTER[RealExecutionAdapter\n人工确认后才能调用]
-    SIMADAPTER --> SIMDB[(business.db\nSimulationRun / Fill / Event)]
-    REALADAPTER --> GATE[Entry Confirmation Gate]
-    GATE --> IDEMP[Idempotency Key + Cash Check]
-    IDEMP --> TX[单事务提交]
-    TX --> REALDB[(business.db\nPositionCycle / Execution / Lot / CashLedger)]
+    DECISION --> SIM[Simulation Adapter]
+    DECISION --> REAL[Real Execution Adapter]
+    SIM --> SIMRUN[SimulationRun / Fill / Event]
+    SIMRUN --> BDB[(business.db)]
+    REAL --> CONFIRM[人工确认 Gate]
+    CONFIRM --> VALIDATE[价格 / 数量 / 现金 / 幂等校验]
+    VALIDATE --> TX[单事务提交]
+    TX --> EXEC[Execution / PositionLot / CashLedger]
+    EXEC --> BDB
 ```
 
-真实建仓前置条件：
+真实交易规则：
 
-- Observation 状态为 `ready_for_entry`。
-- 存在明确来源的 Candidate/Research/StrategyDecision。
-- 策略版本和数据上下文已固化。
-- 用户明确确认，不由定时器自动成交。
-- `idempotency_key` 未被使用。
-- 现金、数量、价格和交易时间通过校验。
-- PositionCycle、Execution、Lot、CashLedger 和 Observation 状态在同一事务中提交。
+- 模拟适配器不能写真实持仓事实。
+- 普通定时任务不能直接调用真实执行适配器。
+- 建仓必须关联 Observation、ResearchRun 和 StrategyDecision。
+- 必须使用幂等键，重复请求不得产生重复成交。
+- PositionCycle、Execution、PositionLot、CashLedger 和 Observation 状态在同一事务中提交。
+- 真实交易接口必须有独立权限、审计记录和人工确认信息。
 
-## 10. 目标存储架构
+## 11. 目标存储架构
 
 ```mermaid
 flowchart LR
-    subgraph BusinessDB[business.db]
-        CONFIG[策略 / 筛选 / 观察配置]
-        RESEARCH[研究 / 证据 / 决策]
-        SIM[模拟 / 成交 / 绩效]
-        TRADE[账户 / 持仓 / 真实成交 / 现金]
-        NOTICE[建议 / 通知 / 日报 / 告警]
+    subgraph Business[business.db]
+        BCONFIG[策略 / 筛选 / 观察配置]
+        BRESEARCH[研究 / 证据 / 决策]
+        BSIM[模拟 / 成交 / 绩效]
+        BTRADE[账户 / 持仓 / 真实成交 / 现金]
+        BNOTICE[建议 / 通知 / 日报 / 复盘]
     end
-    subgraph ManagementDB[management.db]
+    subgraph Platform[management.db]
         TASK[任务定义 / Request / Run / Event]
-        DATASET[Dataset Registry / Fields / Sources]
+        DATA[Dataset Registry / Schema / Source]
         VERSION[Version / Current / Quality]
-        LINEAGE[Artifact / Lineage / Pipeline State]
-        OPS[健康 / 备份 / 运行治理]
+        LINEAGE[Artifact / Lineage]
+        HEALTH[健康 / 备份 / 审计]
     end
-    subgraph Files[文件数据]
+    subgraph Files[Dataset and Artifact Store]
         RAW[Raw Parquet]
         PUB[Published Parquet]
-        ART[Reports / Charts / Research Artifacts]
+        ART[Report / Chart / Research Artifact]
     end
     TASK --> LINEAGE
+    DATA --> VERSION
     VERSION --> PUB
-    DATASET --> PUB
     RAW --> VERSION
-    BusinessDB -->|保存 dataset_ref，不复制数据事实| ManagementDB
-    RESEARCH --> ART
-    SIM --> ART
+    BRESEARCH --> ART
+    BSIM --> ART
+    BNOTICE --> ART
 ```
 
-目标状态：
+新项目启动时只创建新 schema：
 
-| 存储 | 是否继续作为运行时事实源 | 说明 |
-|---|---:|---|
-| `business.db` | 是 | 新业务唯一事实源 |
-| `management.db` | 是 | 数据与任务管理唯一事实源 |
-| `warehouse/*.parquet` | 是 | 受版本治理的文件数据 |
-| `portfolio.db` | 否 | 完成迁移后只读归档，确认后再执行删除 |
-| `job_runs.db` | 否 | 历史台账迁移/归档，不再产生新事实 |
-| `meta.db` | 否 | 历史 Warehouse 元库迁移/归档，不再运行时回退 |
+| 存储 | 定位 | 新项目要求 |
+|---|---|---|
+| `business.db` | 业务事实库 | 只保存新领域模型和业务运行结果 |
+| `management.db` | 平台事实库 | 只保存任务、数据集、版本、质量、血缘和治理事实 |
+| Published 文件 | 正式数据 | 只能通过版本指针和 `DatasetAccess` 消费 |
+| Raw 文件 | 源数据 | 不可变保存，不作为业务直接消费入口 |
+| Artifact 文件 | 报告、图表、研究产物 | 必须有 Artifact 元数据和来源引用 |
 
-## 11. API 与页面目标结构
+当前项目的 `portfolio.db`、`job_runs.db`、`meta.db` 不进入新项目运行时。需要历史数据时，使用独立导出/导入工具完成一次性导入，并写入 `legacy_import` 来源标记。
 
-### 11.1 API 分组
+## 12. API 与页面
+
+### 12.1 API 分组
 
 ```text
 /api/v1/
-├── datasets/              # 数据集定义、版本、质量、健康
-├── tasks/                 # 任务定义、配置、提交、运行、事件
-├── screens/               # 筛选定义、版本、预览、运行、候选
-├── observations/          # 观察对象、状态、来源、过期
-├── research-runs/         # 研究运行、证据、决策
+├── datasets/              # 数据集、版本、质量、覆盖
+├── tasks/                 # 定义、配置、提交、运行、事件
+├── screens/               # 筛选、预览、运行、候选
+├── observations/          # 观察对象和状态
+├── research-runs/         # 研究、证据、决策
 ├── strategies/            # 策略定义、版本、校验、发布
 ├── simulations/           # 模拟计划、运行、成交、绩效
-├── portfolios/            # 账户、持仓周期、成交、现金
+├── portfolios/            # 账户、持仓、成交、现金
 ├── advices/               # 建议生命周期
 ├── notifications/         # 通知事件、投递、重试、死信
-├── reports/               # 日报、复盘、研究报告、Artifact
+├── reports/               # 研究报告、日报、复盘和 Artifact
 └── health/                # live / ready / details
 ```
 
-页面按业务闭环组织，而不是按历史模块组织：
+### 12.2 页面信息架构
 
 ```text
 市场与数据中心
     -> 选股中心
     -> 观察池
     -> 研究工作台
-    -> 策略与模拟
+    -> 策略中心
+    -> 模拟中心
     -> 作战仓 / 真实持仓
     -> 建议与通知
     -> 复盘与绩效
     -> 任务中心 / 系统设置
 ```
 
-页面只负责：
+页面只展示 DTO、数据质量、版本和任务状态，只提交命令或任务请求，不直接取数、计算策略或写数据库。
 
-- 展示 DTO 和状态。
-- 提交命令或任务请求。
-- 轮询或订阅任务进度。
-- 展示数据版本、质量和结果来源。
+## 13. 新项目开发阶段
 
-页面不负责：
+### 阶段一：项目骨架与契约
 
-- 直接调用数据源。
-- 自己计算策略核心逻辑。
-- 直接写数据库。
-- 根据返回字段猜测任务是否完成。
+- 建立新仓库和独立运行环境。
+- 确定领域实体、状态机、ID、时间和错误协议。
+- 确定 `business.db`、`management.db` 的新 schema。
+- 确定 Dataset、DataContext、StrategyContext、TaskRun、Artifact 和 Lineage 契约。
+- 完成独立冷启动和健康检查。
 
-## 12. 从当前架构到目标架构的迁移路线
+### 阶段二：数据平台
 
-### 阶段一：冻结边界
+- 实现 Source Adapter，不让领域层感知具体数据源。
+- 完成 Raw、标准化、质量、版本和 Published 链路。
+- 实现 `DatasetAccess` 和数据上下文。
+- 用最小数据集完成端到端采集和发布。
 
-- 明确 `biz` 是正式业务编排层。
-- 明确 `DatasetAccess` 是正式业务数据入口。
-- 禁止新功能继续扩大旧 `portfolio.py`、旧 `job_runs.db` 和 `meta.db` 的运行时使用。
-- 为新旧结果建立映射和数据上下文引用。
+### 阶段三：最小业务闭环
 
-### 阶段二：收拢数据入口
-
-- 将 `core/engine.py` 改为消费 `DatasetResult` 的分析 Facade。
-- 将旧持仓监控和看板的行情读取统一转到 `DatasetAccess`。
-- 逐步移除业务层直接调用 `StockDataFetcher` 的路径。
-- 完成 `management.db` 对数据集、版本、质量和任务事实的统一承载。
-
-### 阶段三：收拢策略能力
-
-- 把 v4.5 买入、止盈、止损和回测逻辑封装为 Rule Executor/Simulation Adapter。
-- 把 V6 买入、卖出和市场状态逻辑接入同一 Rule Registry。
-- 统一 `StrategyContext`、`RuleResult` 和 `StrategyDecision`。
-- 让 `biz.research` 和 `biz.simulation` 只调用统一 Strategy Runtime。
-
-### 阶段四：收拢业务运行
-
-- 数据任务和业务任务统一 Request/Run/Event/Artifact 契约。
-- Web 只提交任务，不执行长任务。
-- 数据 Worker 负责数据生产，业务 Worker 负责业务运行。
-- 统一任务状态、重试、超时、租约、幂等和恢复。
-
-### 阶段五：迁移旧业务事实
-
-- 将 `portfolio.db` 只读评估后迁移到 `business.db`。
-- 建立旧 ID 到新实体 ID 的映射。
-- 新旧数据对账，切换页面和 CLI 查询入口。
-- `portfolio.db` 进入只读归档，不再写入运行时事实。
-
-### 阶段六：下线旧路径
-
-- `job_runs.db` 完成历史迁移和只读归档。
-- `meta.db` 完成数据版本、标的和历史元数据对账后进入只读归档。
-- 清理生产代码中的隐式默认回退。
-- 完成隔离环境冷启动、全量测试、生产只读观察。
-- 删除旧文件属于单独的破坏性运维动作，必须备份并人工确认，不与代码迁移绑定。
-
-## 13. 目标架构验收标准
-
-### 13.1 入口与依赖
-
-- [ ] 正式 Web API、CLI 和定时任务均通过 Application Facade 或 Task Submission Service 进入业务。
-- [ ] Web 路由不直接调用 `baostock`、`akshare`、`read_parquet` 或业务表 SQL。
-- [ ] 新业务代码不再直接依赖旧 `portfolio` 作为事实源。
-
-### 13.2 数据平面
-
-- [ ] 所有业务读取通过 `DatasetAccess` 获取 Published Dataset。
-- [ ] 每个业务结果保存 Dataset Version、Data As Of、Quality 和 Schema 引用。
-- [ ] 数据任务完成 Raw、Build、Quality、Publish、Current 和 Lineage 闭环。
-- [ ] `management.db` 是唯一生产数据管理事实源。
-
-### 13.3 策略与研究
-
-- [ ] v4.5 和 V6 规则都通过统一 Rule Registry 执行。
-- [ ] 研究、模拟、真实建议使用同一种 `StrategyDecision` 协议。
-- [ ] 回测只是 Simulation Adapter，不再拥有独立业务状态机。
-- [ ] 指标、估值和市场状态都具有版本和依赖声明。
-
-### 13.4 任务运行
-
-- [ ] 定时、手工、补数、重试都进入统一 Request/Run 生命周期。
-- [ ] 长任务不在 Web 请求线程或 Web 调度线程中执行。
-- [ ] 所有任务具备状态、进度、事件、锁、心跳、超时和恢复信息。
-- [ ] 任务产物具备 Artifact 和 Lineage 记录。
-
-### 13.5 业务与交易
-
-- [ ] Screen、Observation、Research、Simulation、Portfolio 状态可追溯关联。
-- [ ] 真实建仓必须经过人工确认和幂等事务。
-- [ ] 真实交易与模拟交易共用决策协议但使用不同执行适配器。
-- [ ] 建议、通知和日报都有明确生命周期和投递状态。
-
-### 13.6 存储收口
-
-- [ ] 新业务运行只写 `business.db`。
-- [ ] 新数据与任务运行只写 `management.db`。
-- [ ] `portfolio.db`、`job_runs.db`、`meta.db` 不再产生新的运行时事实。
-- [ ] 旧库备份、迁移、对账和回退方案完成后，才允许人工确认归档或删除。
-
-## 14. 目标架构总结
-
-目标系统不是简单把旧目录移动到 `biz/`，而是完成四个根本收敛：
+只实现：
 
 ```text
-1. 入口收敛
-   CLI / Web / Scheduler -> Application Facade / Task Submission
+Screen -> Observation -> Research -> StrategyDecision -> Simulation -> Review
+```
 
-2. 数据收敛
-   外部数据源 -> Data Pipeline -> Published Dataset -> DatasetAccess
+首期不接真实交易，不导入全部历史业务数据，不搬运旧策略实现。
 
-3. 策略收敛
-   v4.5 / V6 / 新规则 -> Rule Registry -> StrategyDecision
+### 阶段四：新策略运行时
 
-4. 事实收敛
-   新业务 -> business.db
-   新数据与任务 -> management.db
-   旧库 -> 只读迁移 / 归档
+- 实现策略版本和依赖声明。
+- 实现指标、估值和市场状态依赖。
+- 实现 Entry、Exit、Risk、Sizing 和 Decision Arbiter。
+- 实现第一套新策略 `baseline_v1`，用于验证平台协议。
+
+### 阶段五：账户与真实交易事实
+
+- 实现 Account、Portfolio、PositionCycle、Execution、PositionLot 和 CashLedger。
+- 实现人工确认、权限、审计和幂等成交。
+- 将 StrategyDecision 接入建议和建仓流程。
+
+### 阶段六：通知、日报与复盘
+
+- 实现 Advice 和 Notification Event。
+- 实现 Outbox、重试、死信和渠道适配。
+- 实现日报、真实收益、模拟收益、基准和执行偏差复盘。
+
+### 阶段七：选择性历史导入
+
+- 新项目已能独立运行后，再评估历史数据价值。
+- 为每类数据建立字段映射、质量报告和导入规则。
+- 历史导入只通过一次性工具完成，不成为新项目运行时依赖。
+
+## 14. 迁移与导入边界
+
+“新项目重建”不等于“历史数据全部丢弃”，但历史内容必须服从新模型：
+
+```mermaid
+flowchart TB
+    LEGACY[旧数据库 / 报告 / 文件] --> READONLY[只读读取]
+    READONLY --> MAP[字段与实体映射]
+    MAP --> CHECK[质量、完整性、重复检查]
+    CHECK -->|可可靠映射| STAGING[新项目导入暂存区]
+    CHECK -->|不可可靠映射| REJECT[保留在归档，不进入运行时]
+    STAGING --> IMPORT[一次性导入事务]
+    IMPORT --> NEWDB[(business.db / management.db)]
+```
+
+导入要求：
+
+- 旧项目数据库只读，导入过程不修改旧数据。
+- 新项目不依赖旧库才能启动和运行。
+- 导入记录带 `source=legacy_import`、导入批次和原始 ID。
+- 新实体 ID 由新项目生成，旧 ID 只作为外部来源映射保存。
+- 无法确定口径、时间或关系的数据不强行导入。
+- 导入工具、映射表和报告独立于新项目主运行时。
+
+## 15. 新项目验收标准
+
+### 独立性
+
+- [ ] 删除或隔离当前项目代码后，新项目仍能冷启动。
+- [ ] 新项目运行时不 import 当前项目任何模块。
+- [ ] 新项目不读取 `portfolio.db`、`job_runs.db`、`meta.db`。
+- [ ] 新项目不依赖旧项目 API、旧页面或旧任务进程。
+
+### 数据
+
+- [ ] 所有业务读取通过 `DatasetAccess`。
+- [ ] 所有正式数据均经过 Raw、Normalize、Quality、Version、Publish。
+- [ ] 业务结果保存 Dataset Version、Data As Of、Quality 和 Schema 引用。
+- [ ] 生产数据管理事实只写 `management.db`。
+
+### 策略
+
+- [ ] 策略协议先于具体策略实现完成。
+- [ ] Entry、Exit、Risk、Sizing 和 Arbiter 具备独立测试。
+- [ ] 第一套策略为新项目策略，不要求兼容旧 v4.5/V6 行为。
+- [ ] 研究、模拟和建议共用 `StrategyDecision` 协议。
+
+### 任务
+
+- [ ] API、CLI、Scheduler 统一进入 Task Submission。
+- [ ] Web 不执行长任务。
+- [ ] Task Run 具备状态、事件、进度、锁、心跳、重试和恢复。
+- [ ] 产物具备 Artifact 和 Lineage。
+
+### 业务与交易
+
+- [ ] Screen、Observation、Research、Simulation、Portfolio 可追溯关联。
+- [ ] 模拟和真实执行适配器严格隔离。
+- [ ] 真实建仓具备人工确认、权限、审计和幂等事务。
+- [ ] 建议、通知和复盘具备完整生命周期。
+
+## 16. 最终结论
+
+新项目不是当前项目的重命名，也不是把旧目录迁移到新目录，而是一次有边界的重新设计：
+
+```text
+不继承旧代码
+不继承旧运行时
+不继承旧数据库表
+不默认继承旧策略
+
+继承已确认的产品目标和业务概念
+重新设计领域模型、数据契约和任务协议
+重新实现策略运行时和分析能力
+历史数据通过一次性审查后选择性导入
 ```
 
 最终架构可以概括为：
 
-> **一个统一访问入口、一套任务运行协议、一个正式数据消费入口、一套策略决策协议、两个职责清晰的事实库，以及贯穿数据版本、研究证据、模拟结果和真实交易的完整可追溯链路。**
+> **一个独立的新项目，一套统一业务闭环，一个正式数据消费入口，一套全新策略决策协议，一套统一任务运行模型，两个职责清晰的新事实库，以及可选但不反向约束新系统的历史数据导入边界。**
