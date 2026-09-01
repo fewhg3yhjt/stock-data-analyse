@@ -1942,6 +1942,48 @@ def portfolio_refresh():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/position/<symbol>/alert-rules", methods=["GET"])
+def api_position_alert_rules(symbol):
+    """查询某持仓股票的目标价通知规则。"""
+    from StockInvestmentTool.biz.position_alert import list_rules
+    try:
+        rules = list_rules(symbol=symbol)
+        return flask.jsonify({"status": "success", "symbol": symbol,
+                              "rules": rules})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/position/<symbol>/alert-rules", methods=["POST"])
+def api_position_alert_rule_create(symbol):
+    """为某持仓股票新增一条目标价通知规则。"""
+    from StockInvestmentTool.biz.position_alert import add_rule
+    payload = flask.request.get_json(silent=True) or {}
+    rule_type = str(payload.get("rule_type", "")).strip()
+    direction = str(payload.get("direction", "")).strip()
+    threshold_pct = payload.get("threshold_pct")
+    try:
+        rule = add_rule(symbol=symbol, rule_type=rule_type, direction=direction,
+                        threshold_pct=float(threshold_pct),
+                        note=str(payload.get("note", "")))
+        return flask.jsonify({"status": "success", "rule": rule}), 201
+    except (ValueError, TypeError) as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/position/<symbol>/alert-rules/<rule_id>", methods=["DELETE"])
+def api_position_alert_rule_delete(symbol, rule_id):
+    """删除某条目标价通知规则。"""
+    from StockInvestmentTool.biz.position_alert import delete_rule
+    try:
+        delete_rule(repo=None, rule_id=rule_id)
+        return flask.jsonify({"status": "success", "rule_id": rule_id})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/portfolio/export", methods=["GET"])
 def portfolio_export():
     """导出 Excel"""

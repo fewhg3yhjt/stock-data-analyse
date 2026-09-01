@@ -592,6 +592,19 @@ CREATE TABLE IF NOT EXISTS position_runtime_states (
 );
 CREATE INDEX IF NOT EXISTS idx_position_runtime_symbol ON position_runtime_states(symbol);
 
+CREATE TABLE IF NOT EXISTS position_alert_rules (
+    rule_id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    rule_type TEXT NOT NULL,          -- high_pct | high_minus_cost_pct
+    direction TEXT NOT NULL,          -- below | above
+    threshold_pct REAL NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    note TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_position_alert_rules_symbol ON position_alert_rules(symbol);
+
 -- ============ 建议、通知与复盘 ============
 CREATE TABLE IF NOT EXISTS advices (
     advice_id TEXT PRIMARY KEY,

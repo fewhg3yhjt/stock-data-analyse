@@ -92,6 +92,58 @@
     }).catch(error => showUiMessage(error.message || '生成失败', 'error'));
   }
 
+  // ── 目标价提醒 ──────────────────────────────────────────
+  let alertStack = [];
+  async function openAlert(id, code, name) {
+    alertStack = [id, code, name];
+    $('#alert-title').replaceChildren(document.createTextNode(`目标价提醒 — ${name}`));
+    const close = document.createElement('button');
+    close.className = 'close'; close.dataset.action = 'closeModal'; close.dataset.id = 'alert'; close.innerHTML = '&times;';
+    $('#alert-title').append(close);
+    // 查询现有规则
+    try {
+      const res = await fetchJson(`/api/position/${encodeURIComponent(code)}/alert-rules`, {method: 'GET'});
+      if (res.status === 'success' && res.rules && res.rules.length) {
+        $('#alert-list').replaceChildren(...res.rules.map(r => {
+          const li = document.createElement('li');
+          const label = (r.rule_type === 'high_minus_cost_pct' ? '(后高-成本)×' : '后高×') + r.threshold_pct + '% · ' + (r.direction === 'below' ? '回撤(现价≤)' : '冲高(现价≥)');
+          const btn = document.createElement('button');
+          btn.className = 'ui-button ui-button-danger ui-button-sm'; btn.textContent = '删除'; btn.dataset.action = 'deleteAlert'; btn.dataset.ruleId = r.rule_id; btn.dataset.code = code;
+          li.append(document.createTextNode(label), ' ', btn);
+          return li;
+        }));
+      } else {
+        $('#alert-list').replaceChildren();
+      }
+    } catch (e) { $('#alert-list').replaceChildren(); }
+    openModal('alert');
+  }
+
+  async function submitAlert() {
+    return once(`portfolio:submit-alert:${alertStack[0]}`, async () => {
+      const code = alertStack[1];
+      const data = {
+        rule_type: $('#alert-rule-type').value,
+        direction: $('#alert-direction').value,
+        threshold_pct: $('#alert-pct').value,
+      };
+      if (!data.threshold_pct) return showUiMessage('请填写阈值百分比', 'error');
+      const res = await fetchJson(`/api/position/${encodeURIComponent(code)}/alert-rules`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+      if (res.status === 'success') {
+        showUiMessage('规则已添加', 'success');
+        closeModal('alert');
+      } else return showUiMessage(res.error || '添加失败', 'error');
+    }).catch(error => showUiMessage(error.message || '添加失败', 'error'));
+  }
+
+  async function deleteAlert(ruleId, code) {
+    return once(`portfolio:delete-alert:${ruleId}`, async () => {
+      const res = await fetchJson(`/api/position/${encodeURIComponent(code)}/alert-rules/${ruleId}`, {method: 'DELETE'});
+      if (res.status === 'success') { showUiMessage('规则已删除', 'success'); setTimeout(() => openAlert(null, code, $('#alert-title').textContent.replace('目标价提醒 — ', '')), 300); }
+      else return showUiMessage(res.error || '删除失败', 'error');
+    }).catch(error => showUiMessage(error.message || '删除失败', 'error'));
+  }
+
   document.addEventListener('click', event => {
     const element = event.target.closest('[data-action]');
     if (!element) return;
@@ -106,5 +158,8 @@
     else if (action === 'delWatch') delWatch(Number(id));
     else if (action === 'refresh') refresh(element);
     else if (action === 'report') genReport(element);
+    else if (action === 'openAlert') openAlert(Number(id), code, name);
+    else if (action === 'submitAlert') submitAlert();
+    else if (action === 'deleteAlert') deleteAlert(element.dataset.ruleId, element.dataset.code);
   });
 })();

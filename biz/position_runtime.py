@@ -92,7 +92,7 @@ class PositionRuntimeService:
         """
         threshold = drawdown_threshold() if threshold is None else threshold
         cycles = self._open_cycles()
-        summary = {"evaluated": 0, "triggered": 0, "positions": []}
+        summary = {"evaluated": 0, "triggered": 0, "alert_hits": 0, "positions": []}
         for cycle in cycles:
             try:
                 result = self.evaluate_cycle(cycle["position_cycle_id"], threshold=threshold)
@@ -101,10 +101,13 @@ class PositionRuntimeService:
                 continue
             summary["evaluated"] += 1
             item = result["state"]
+            alert_hits = result.get("alert_hits", 0)
             item["triggered"] = result["triggered"]
+            item["alert_hits"] = alert_hits
             summary["positions"].append(item)
             if result["triggered"]:
                 summary["triggered"] += 1
+            summary["alert_hits"] += alert_hits
         return summary
 
     def evaluate_cycle(self, position_cycle_id: str, *, threshold: float | None = None) -> dict:
@@ -122,7 +125,10 @@ class PositionRuntimeService:
         triggered = state.drawdown_from_high <= -threshold
         if triggered:
             self._emit_drawdown_event(state)
-        return {"state": state.__dict__, "triggered": triggered}
+        # 用户可配置的目标价规则（后高/成本 × M%）评估
+        from StockInvestmentTool.biz.position_alert import evaluate_position_alerts
+        alert_hits = evaluate_position_alerts(self.repo, state.__dict__)
+        return {"state": state.__dict__, "triggered": triggered, "alert_hits": alert_hits}
 
     # ── 数据读取 ──────────────────────────────────────────
 

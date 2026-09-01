@@ -122,6 +122,14 @@ def run_daily_tasks(run_id: int | None = None) -> dict:
         logger.error("通知推送失败: %s", e)
         failures.append("notify")
 
+    # ⑥ 持仓运行状态评估（日线收盘后）：让日线收盘价计入后高，
+    #     并触发用户配置的目标价规则（盘中已由分钟任务评估过，这里补日线口径）。
+    try:
+        results["position_runtime"] = _evaluate_position_runtime()
+    except Exception as e:
+        logger.error("持仓运行状态评估失败: %s", e)
+        failures.append("position_runtime")
+
     results["failures"] = failures
     if owns_run or run_id:
         JobRunStore().finish(run_id, "failed" if failures else "success", results)

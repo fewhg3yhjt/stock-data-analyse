@@ -69,6 +69,7 @@
           <button class="ui-button ui-button-secondary" data-action="openTxn" data-id="{{ p.id }}" data-type="buy" data-name="{{ p.stock_name }}"><i class="fas fa-plus-circle"></i> 买入</button>
           <button class="ui-button ui-button-secondary" data-action="openTxn" data-id="{{ p.id }}" data-type="sell" data-name="{{ p.stock_name }}"><i class="fas fa-minus-circle"></i> 卖出</button>
           <button class="ui-button ui-button-secondary" data-action="openTxn" data-id="{{ p.id }}" data-type="dividend" data-name="{{ p.stock_name }}"><i class="fas fa-coins"></i> 分红</button>
+          <button class="ui-button ui-button-secondary" data-action="openAlert" data-id="{{ p.id }}" data-code="{{ p.stock_code }}" data-name="{{ p.stock_name }}"><i class="fas fa-bell"></i> 目标价提醒</button>
           <button class="ui-button ui-button-danger" data-action="closePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}"><i class="fas fa-times-circle"></i> 平仓</button>
         </div>
       </div>
@@ -158,6 +159,30 @@
     </div>
     <div class="ui-field"><label>备注</label><input id="txn-reason" placeholder="可选"></div>
     <button class="ui-button ui-button-primary modal-submit" data-action="submitTxn"><i class="fas fa-check"></i> 确认</button>
+  </div>
+</div>
+
+<!-- 目标价提醒弹窗 -->
+<div class="modal-overlay" id="modal-alert">
+  <div class="modal">
+    <h3 id="alert-title">目标价提醒 <button class="close" data-action="closeModal" data-id="alert">&times;</button></h3>
+    <div class="form-row">
+      <div class="ui-field"><label>规则类型</label>
+        <select id="alert-rule-type">
+          <option value="high_minus_cost_pct">(后高 - 成本) × % + 成本</option>
+          <option value="high_pct">后高 × %</option>
+        </select>
+      </div>
+      <div class="ui-field"><label>方向</label>
+        <select id="alert-direction">
+          <option value="below">现价 ≤ 目标价（回撤提醒）</option>
+          <option value="above">现价 ≥ 目标价（冲高提醒）</option>
+        </select>
+      </div>
+    </div>
+    <div class="ui-field"><label>阈值 %（如回撤 90 或冲高 98）</label><input id="alert-pct" type="number" min="1" max="100" step="0.1" placeholder="90"></div>
+    <div class="ui-field"><label>现有规则</label><ul id="alert-list" class="alert-rule-list"><li class="empty">暂无规则</li></ul></div>
+    <button class="ui-button ui-button-primary modal-submit" data-action="submitAlert"><i class="fas fa-check"></i> 添加规则</button>
   </div>
 </div>
 
