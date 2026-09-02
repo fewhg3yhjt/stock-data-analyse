@@ -95,8 +95,10 @@ class PortfolioManager:
         scheme = self.registry.get(scheme_name)
         code = stock_code
 
-        # 拉取初始数据计算参考价
-        kline, dividend_anchor = self.monitor.fetch_context_data(code)
+        # 建仓主流程只读取本地/统一行情层的 K 线；股息估值锚点会访问
+        # 外部多年数据，不能阻塞真实持仓写入。
+        kline = self.monitor.fetch_kline(code)
+        dividend_anchor = None
         last = kline.iloc[-1] if len(kline) else None
         current_price = float(last["close"]) if last is not None else cost
 

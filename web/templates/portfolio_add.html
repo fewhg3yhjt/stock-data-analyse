@@ -111,15 +111,24 @@ document.getElementById('add-form').addEventListener('submit', async e => {
   const fd = new FormData(e.target);
   const btn = e.target.querySelector('button');
   btn.disabled = true;
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 正在保存持仓...';
   if (!fd.get('buy_date')) fd.set('buy_date', new Date().toISOString().slice(0,10));
-  const res = await fetch('/portfolio/add', { method: 'POST', body: fd });
-  const data = await res.json();
-  if (data.status === 'success') {
-    showUiMessage('建仓成功 #' + data.position_id, 'success');
-    setTimeout(() => location.href = '/portfolio/' + data.position_id, 600);
-  } else {
-    showUiMessage(data.error || '建仓失败', 'error');
+  try {
+    const res = await fetch('/portfolio/add', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.status === 'success') {
+      showUiMessage('建仓成功 #' + data.position_id, 'success');
+      setTimeout(() => location.href = '/portfolio/' + data.position_id, 600);
+    } else {
+      showUiMessage(data.error || '建仓失败', 'error');
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+  } catch (err) {
+    showUiMessage('建仓请求失败：' + (err.message || '网络异常'), 'error');
     btn.disabled = false;
+    btn.innerHTML = originalText;
   }
 });
 document.addEventListener('DOMContentLoaded', () => {
