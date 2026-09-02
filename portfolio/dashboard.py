@@ -1066,6 +1066,40 @@ class DashboardService:
                 row["advice_label"] = "—"
                 row["advice"] = None
             row["fundamental"] = self._fundamental_snapshot(p.stock_code)
+            # 持仓级交易记录（时间倒序，含费用/盈亏），供"操作记录"页签使用
+            txns = []
+            for position in ps:
+                for txn in self.manager.storage.get_transactions(position.id):
+                    if txn.trans_type in ("buy", "sell", "sell_all", "dividend", "correction"):
+                        txns.append({**txn.to_dict(),
+                                     "position_id": position.id,
+                                     "stock_code": position.stock_code,
+                                     "stock_name": position.stock_name,
+                                     "stock_type": position.stock_type})
+            txns.sort(key=lambda x: (x.get("date") or "", x.get("id") or 0), reverse=True)
+            row["transactions"] = txns
+            # 策略说明：优先用建仓时的方案快照，其次当前注册方案
+            from StockInvestmentTool.portfolio.models import load_snapshot_scheme
+            scheme_ctx = load_snapshot_scheme(base.scheme_snapshot) or None
+            if scheme_ctx is None:
+                try:
+                    scheme_ctx = SchemeRegistry().get(base.scheme_name)
+                except Exception:
+                    scheme_ctx = None
+            if scheme_ctx is not None:
+                strategy = {
+                    "scheme_name": base.scheme_name,
+                    "version": getattr(scheme_ctx, "version", "1.0"),
+                    "applicable_types": list(scheme_ctx.applicable_types or []),
+                    "strategy_spec": getattr(scheme_ctx, "strategy_spec", {}) or {},
+                    "buy_rules": [{"type": r.type} for r in getattr(scheme_ctx, "buy_rules", [])],
+                    "sell_rules": [{"type": r.type} for r in getattr(scheme_ctx, "sell_rules", [])],
+                }
+            else:
+                strategy = {"scheme_name": base.scheme_name, "version": "1.0",
+                            "applicable_types": [], "strategy_spec": {},
+                            "buy_rules": [], "sell_rules": []}
+            row["strategy"] = strategy
             positions.append(row)
         # 顶部账户汇总也采用同一批实时价格，避免明细和总览口径不一致。
         if positions:

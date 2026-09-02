@@ -1939,14 +1939,8 @@ def portfolio_add():
 
 @web_app.route("/portfolio/<int:position_id>", methods=["GET"])
 def portfolio_detail(position_id):
-    """持仓详情"""
-    mgr = _get_manager()
-    try:
-        detail = mgr.get_position_detail(position_id)
-        schemes = SchemeRegistry().list()
-        return flask.render_template("position_detail.html", detail=detail, schemes=schemes)
-    except ValueError as e:
-        return flask.jsonify({"status": "error", "error": str(e)}), 404
+    """持仓详情 —— 已并入持仓页，直接回到主持仓页。"""
+    return flask.redirect("/dashboard/warroom")
 
 
 @web_app.route("/portfolio/<int:position_id>/transaction", methods=["POST"])
@@ -2102,6 +2096,32 @@ def api_position_alert_rule_delete(symbol, rule_id):
     try:
         delete_rule(repo=None, rule_id=rule_id)
         return flask.jsonify({"status": "success", "rule_id": rule_id})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/position/<int:position_id>/notify-config", methods=["GET"])
+def api_position_notify_config(position_id):
+    """读取持仓策略信号通知配置（未配置时返回全部启用）。"""
+    from StockInvestmentTool.biz.signal_notify import ALL_SIGNALS, get_signals
+    try:
+        config = get_signals(position_id)
+        enabled = list(config) if config is not None else list(ALL_SIGNALS)
+        return flask.jsonify({"status": "success", "position_id": position_id,
+                              "all": ALL_SIGNALS, "enabled": enabled})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
+@web_app.route("/api/position/<int:position_id>/notify-config", methods=["POST"])
+def api_position_notify_config_save(position_id):
+    """保存持仓策略信号通知配置。"""
+    from StockInvestmentTool.biz.signal_notify import save_signals
+    payload = flask.request.get_json(silent=True) or {}
+    signals = payload.get("signals") or []
+    try:
+        result = save_signals(position_id, signals)
+        return flask.jsonify({"status": "success", **result})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 

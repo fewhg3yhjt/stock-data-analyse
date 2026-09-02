@@ -64,6 +64,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .metric-grid .m .l{font-size:11px;color:var(--color-text-subtle);}
 .metric-grid .m .v{font-size:14px;font-weight:600;}
 .detail-tabs{display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--color-border);padding-bottom:8px;}.detail-tab{border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-subtle);border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;}.detail-tab.active{background:var(--color-info);border-color:var(--color-info);color:#fff;}.detail-panel{min-height:30px;}.strategy-points{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:12px;}.strategy-point{display:flex;flex-direction:column;padding:9px 10px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.strategy-point span{font-size:12px;color:var(--color-text-subtle);}.strategy-point b{font-size:16px;margin:2px 0;}.strategy-point small{font-size:11px;color:var(--color-text-subtle);line-height:1.5;}.strategy-advice{padding:10px 12px;border-left:3px solid var(--color-warning);background:#fff8e1;border-radius:0 5px 5px 0;font-size:13px;}
+.strategy-summary{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.strategy-meta{font-size:14px;font-weight:600;margin-bottom:6px;}.strategy-spec .spec-line{font-size:12px;color:var(--color-text-subtle);line-height:1.7;}.records-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}.records-title{font-size:14px;font-weight:600;}.records-table{width:100%;border-collapse:collapse;font-size:12px;}.records-table th,.records-table td{border:1px solid var(--color-border);padding:6px 8px;text-align:left;}.records-table th{background:var(--color-surface);font-weight:600;}.weights{font-size:12px;margin-bottom:8px;}.operation-row td input,.operation-row td select{width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid var(--color-border);border-radius:4px;font-size:12px;}.notify-summary{margin-bottom:10px;}.notify-group{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.notify-group-title{font-size:13px;font-weight:600;margin-bottom:8px;}.notify-check{display:block;font-size:13px;padding:3px 0;cursor:pointer;}.notify-check input{margin-right:6px;}.notify-foot{display:flex;justify-content:space-between;align-items:center;}
 </style>
 {% endblock %}
 {% block body %}
@@ -148,26 +149,18 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
        <div class="pos" data-position-card data-code="{{ p.stock_code }}" style="cursor:pointer;">
         <div class="pos-head">
           <span class="name">{{ p.stock_name }} <span class="code">{{ p.stock_code }}</span></span>
-          <span>
-            <span class="tag gray">{{ p.scheme_name }}</span>
-            <span class="tag blue">类型{{ p.stock_type }}</span>
-            <span class="tag {% if (p.unrealized_pnl_pct or 0)>=0 %}red{% else %}green{% endif %}">{{ "%+.2f"|format(p.unrealized_pnl_pct or 0) }}%</span>
-            <a class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
-               href="/portfolio/{{ p.id }}" title="加仓/减仓/平仓操作"><i class="fas fa-arrows-rotate"></i> 操作</a>
-            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
-               data-action="toggleReturn" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}" data-cost="{{ p.avg_cost }}"
-               title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
-            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-success);"
-               data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="buy" title="加仓"><i class="fas fa-plus"></i> 加仓</button>
-            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-warning);"
-               data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="sell" title="减仓"><i class="fas fa-minus"></i> 减仓</button>
-             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#9c27b0;"
-               data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="dividend" title="分红"><i class="fas fa-coins"></i> 分红</button>
+           <span>
+             <span class="tag gray">{{ p.scheme_name }}</span>
+             <span class="tag blue">类型{{ p.stock_type }}</span>
+             <span class="tag {% if (p.unrealized_pnl_pct or 0)>=0 %}red{% else %}green{% endif %}">{{ "%+.2f"|format(p.unrealized_pnl_pct or 0) }}%</span>
              <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
-               data-action="openAlert" data-code="{{ p.stock_code }}" data-name="{{ p.stock_name }}" title="配置后高/成本目标价通知"><i class="fas fa-bell"></i> 目标价提醒</button>
+                data-action="toggleReturn" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}" data-cost="{{ p.avg_cost }}"
+                title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
+             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+                data-action="openAlert" data-code="{{ p.stock_code }}" data-name="{{ p.stock_name }}" title="配置后高/成本目标价通知"><i class="fas fa-bell"></i> 目标价提醒</button>
              <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-danger);"
-               data-action="deletePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
-          </span>
+                data-action="deletePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
+           </span>
         </div>
         <div class="pos-grid">
           <div class="pos-metric"><div class="v">{{ "%.0f"|format(p.total_shares or 0) }}</div><div class="l">持仓股数{% if p.batch_count and p.batch_count>1 %}（{{ p.batch_count }}批）{% endif %}</div></div>
@@ -183,9 +176,19 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
            <div class="detail-tabs" onclick="event.stopPropagation();">
              <button type="button" class="detail-tab active" data-detail-tab="trend">趋势</button>
              <button type="button" class="detail-tab" data-detail-tab="strategy">策略</button>
+             <button type="button" class="detail-tab" data-detail-tab="records">操作记录</button>
+             <button type="button" class="detail-tab" data-detail-tab="notify">消息通知</button>
            </div>
            <div class="detail-panel detail-panel-trend"></div>
            <div class="detail-panel detail-panel-strategy" style="display:none;">
+             <div class="strategy-summary">
+               <div class="strategy-meta"><b>{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}</b> · 版本 {{ p.strategy.version if p.strategy else '1.0' }}</div>
+               <div class="strategy-spec">
+                 {% if p.strategy and p.strategy.strategy_spec %}
+                   {% for k, v in p.strategy.strategy_spec.items() %}<div class="spec-line"><b>{{ k }}：</b>{{ v if v is not string else v }}</div>{% endfor %}
+                 {% else %}<div class="spec-line">按当前方案 {{ p.scheme_name }} 的策略规则执行。</div>{% endif %}
+               </div>
+             </div>
              <div class="strategy-points">
                <div class="strategy-point"><span>硬止损线</span><b>{{ p.stop_loss_price }}</b><small>跌破成本止损线，建议清仓</small></div>
                <div class="strategy-point"><span>持仓峰值</span><b>{{ p.peak_price }}</b><small>持仓以来的止盈锚</small></div>
@@ -195,6 +198,37 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
                {% if p.buy_more %}<div class="strategy-point"><span>补仓线</span><b>{{ p.buy_more.trigger_price }}</b><small>{{ p.buy_more.label }}</small></div>{% endif %}
              </div>
              {% if p.advice %}<div class="strategy-advice"><b>当前操作建议：{{ p.advice_label }}</b><br><span>{{ p.advice.reason }}</span></div>{% else %}<div class="empty">暂无策略建议</div>{% endif %}
+           </div>
+           <div class="detail-panel detail-panel-records" style="display:none;" data-position="{{ p.id }}" data-stock-type="{{ p.stock_type }}">
+             <div class="records-bar">
+               <span class="records-title">操作记录（时间倒序）</span>
+               <button type="button" class="ui-button ui-button-primary ui-button-sm" data-action="add-operation" onclick="addOperationRow(this)"><i class="fas fa-plus"></i> 操作</button>
+             </div>
+             <div class="weights note">买入费用计入持仓成本；卖出费用计入已实现盈亏。加仓/减仓/清仓/分红/纠错均可在此录入。</div>
+             <table class="kv records-table"><thead><tr><th>日期</th><th>类型</th><th>成交价</th><th>数量</th><th>金额</th><th>费用</th><th>盈亏</th><th>备注</th></tr></thead><tbody class="records-rows">
+               {% for t in p.transactions %}
+               <tr><td>{{ t.date }}</td><td>{{ {'buy':'加仓','sell':'减仓','sell_all':'清仓','dividend':'分红','correction':'纠错'}.get(t.trans_type, t.trans_type) }}</td><td>{{ "%.2f"|format(t.price) }}</td><td>{{ t.shares }}</td><td>{{ "%.2f"|format(t.amount) }}</td><td>{{ "%.2f"|format(t.fee or 0) }}</td><td>{{ "%+.2f"|format(t.pnl) if t.pnl else '—' }}</td><td class="note">{{ t.reason }}</td></tr>
+               {% endfor %}
+             </tbody></table>
+           </div>
+           <div class="detail-panel detail-panel-notify" style="display:none;">
+             <div class="notify-summary note">满足勾选的策略买卖点时发送邮件通知，默认全部开启；只影响通知，不影响策略本身的判断和建议。</div>
+             <form class="notify-form" data-position="{{ p.id }}" onclick="event.stopPropagation();">
+               <div class="notify-group"><div class="notify-group-title">买入 / 加仓信号</div>
+                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="buy-support-weak" checked>综合弱支撑触发</label>
+                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="buy-support-strong" checked>综合强支撑触发</label>
+                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="buy-extreme" checked>极端低估锚触发</label>
+                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="buy-trend" checked>趋势跟随加仓触发</label>
+               </div>
+               <div class="notify-group"><div class="notify-group-title">卖出 / 止损止盈信号</div>
+                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="stop-hard" checked>硬止损触发</label>
+                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="stop-technical" checked>技术止损触发</label>
+                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="take-left" checked>左侧固定止盈触发</label>
+                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="take-right" checked>右侧移动止盈触发</label>
+                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="stop-logic" checked>逻辑止损触发</label>
+               </div>
+               <div class="notify-foot"><span class="note">通知渠道：邮件（收件人沿用 EMAIL_TO 配置）</span><button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="saveNotifyConfig(this)"><i class="fas fa-save"></i> 保存通知配置</button></div>
+             </form>
            </div>
          </div>
         <div class="return-box" style="display:none;margin-top:10px;padding:12px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;">
@@ -266,6 +300,21 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   </div>
 </div>
 <script>
+const typeLabels={buy:'加仓',sell:'减仓',sell_all:'清仓',dividend:'分红',correction:'纠错'};
+const stockTypeLabel={stock:'股票',etf:'ETF'};
+// 费用预估（与后端 portfolio.fees 保持一致）
+window.TRADE_FEES = function(amount, stockType, direction){
+  const t=(stockType||'B').toUpperCase(); const dir=(direction||'buy').toLowerCase();
+  if(t==='E'){ return Math.max(amount*0.00005, 0.5); }
+  const commission=Math.max(amount*0.000085, 1.0);
+  const transfer=amount*0.00001;
+  const stamp=(dir==='sell'||dir==='sell_all')?amount*0.0005:0;
+  return commission+transfer+stamp;
+};
+document.addEventListener('click', function(e){
+  const tab=e.target.closest('.detail-tab');
+  if(tab){ e.stopPropagation(); switchDetailTab(tab.closest('.detail-box'), tab.dataset.detailTab); }
+});
 function toggleHist(){
   const box = document.getElementById('history-box');
   box.style.display = box.style.display === 'none' ? 'block' : 'none';
@@ -288,9 +337,92 @@ async function toggleDetail(card, code){
   const box = card.querySelector('.detail-box');
   if (box.style.display !== 'none'){ box.style.display = 'none'; return; }
   box.style.display = 'block';
-  box.innerHTML = '<div style="color:var(--color-text-subtle);font-size:13px;">加载中…</div>';
-  window.StockDetail.load(code, 'position', box)
-    .catch(err => { box.innerHTML = '<span style="color:#c62828;font-size:13px;">' + err.message + '</span>'; });
+  const trendPanel = box.querySelector('.detail-panel-trend');
+  if (trendPanel && !trendPanel.dataset.loaded){
+    trendPanel.dataset.loaded = '1';
+    trendPanel.innerHTML = '<div style="color:var(--color-text-subtle);font-size:13px;">加载中…</div>';
+    window.StockDetail.load(code, 'position', trendPanel)
+      .catch(err => { trendPanel.innerHTML = '<span style="color:#c62828;font-size:13px;">' + err.message + '</span>'; });
+  }
+  switchDetailTab(box, 'trend');
+}
+function switchDetailTab(box, tab){
+  box.querySelectorAll('.detail-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.detailTab === tab));
+  box.querySelectorAll('.detail-panel').forEach(panel => {
+    panel.style.display = panel.classList.contains('detail-panel-' + tab) ? '' : 'none';
+  });
+}
+// ── 操作记录：新增录入行 ──────────────────────────────
+function addOperationRow(btn){
+  const panel = btn.closest('.detail-panel-records');
+  const tbody = panel.querySelector('.records-rows');
+  const today = new Date().toISOString().slice(0,10);
+  const tr = document.createElement('tr');
+  tr.className = 'operation-row';
+  tr.innerHTML = `
+    <td><input type="date" class="op-date" value="${today}" max="${today}"></td>
+    <td><select class="op-type">
+      <option value="buy">加仓</option><option value="sell">减仓</option>
+      <option value="sell_all">清仓</option><option value="dividend">分红</option>
+      <option value="correction">纠错</option>
+    </select></td>
+    <td><input type="number" class="op-price" step="any" placeholder="成交价"></td>
+    <td><input type="number" class="op-shares" step="any" placeholder="数量"></td>
+    <td class="op-amount">—</td><td class="op-fee">—</td><td class="op-pnl">—</td>
+    <td><input type="text" class="op-reason" placeholder="备注（可选）"></td>`;
+  tbody.insertBefore(tr, tbody.firstChild);
+  tr.querySelector('.op-price').addEventListener('input', () => recomputeOperationRow(panel, tr));
+  tr.querySelector('.op-shares').addEventListener('input', () => recomputeOperationRow(panel, tr));
+  tr.querySelector('.op-type').addEventListener('change', () => recomputeOperationRow(panel, tr));
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button'; confirmBtn.className = 'ui-button ui-button-primary ui-button-sm';
+  confirmBtn.textContent = '确认';
+  confirmBtn.onclick = () => submitOperationRow(panel, tr);
+  tr.insertAdjacentHTML('beforeend', '<td></td>');
+  tr.querySelector('td:last-child').appendChild(confirmBtn);
+}
+function recomputeOperationRow(panel, tr){
+  const type = tr.querySelector('.op-type').value;
+  const price = parseFloat(tr.querySelector('.op-price').value) || 0;
+  const shares = parseFloat(tr.querySelector('.op-shares').value) || 0;
+  const amount = price * shares;
+  tr.querySelector('.op-amount').textContent = amount ? amount.toFixed(2) : '—';
+  const stockType = panel.dataset.stockType || 'B';
+  const dir = type === 'sell' || type === 'sell_all' ? 'sell' : 'buy';
+  if (amount > 0){
+    const fee = window.TRADE_FEES ? window.TRADE_FEES(amount, stockType, dir) : null;
+    tr.querySelector('.op-fee').textContent = fee !== null ? fee.toFixed(2) : '—';
+  } else { tr.querySelector('.op-fee').textContent = '—'; }
+}
+async function submitOperationRow(panel, tr){
+  const posId = parseInt(panel.dataset.position || panel.closest('[data-position-card]').dataset.id, 10);
+  const type = tr.querySelector('.op-type').value;
+  const data = {
+    type,
+    price: parseFloat(tr.querySelector('.op-price').value) || 0,
+    shares: parseFloat(tr.querySelector('.op-shares').value) || 0,
+    date: tr.querySelector('.op-date').value,
+    reason: tr.querySelector('.op-reason').value,
+  };
+  if (!data.price || !data.shares){ return showUiMessage('请填写成交价和数量', 'error'); }
+  try{
+    const res = await fetch('/portfolio/' + posId + '/transaction', {method:'POST', body:new URLSearchParams(data)});
+    const d = await res.json();
+    if (d.status === 'success'){ showUiMessage('已录入交易', 'success'); setTimeout(()=>location.reload(), 500); }
+    else showUiMessage(d.error || '录入失败', 'error');
+  }catch(e){ showUiMessage('录入失败：' + e.message, 'error'); }
+}
+// ── 消息通知：保存勾选配置 ────────────────────────────
+async function saveNotifyConfig(btn){
+  const form = btn.closest('.notify-form');
+  const positionId = form.dataset.position;
+  const enabled = Array.from(form.querySelectorAll('.notify-signal:checked')).map(cb => cb.dataset.signal);
+  try{
+    const res = await fetch('/api/position/' + positionId + '/notify-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({signals:enabled})});
+    const d = await res.json();
+    if (d.status === 'success') showUiMessage('通知配置已保存', 'success');
+    else showUiMessage(d.error || '保存失败', 'error');
+  }catch(e){ showUiMessage('保存失败：' + e.message, 'error'); }
 }
 async function toggleReturn(btn){
   const box = btn.closest('.pos').querySelector('.return-box');

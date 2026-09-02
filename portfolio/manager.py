@@ -499,7 +499,61 @@ class PortfolioManager:
         self.storage.save_advice(advice)
         # 持久化 phase 变化（advisor 可能更新了 position.position_phase）
         self.storage.update_position(position)
+        try:
+            self._emit_signal_notifications(position, advice)
+        except Exception as e:
+            logger.warning("持仓信号通知失败 %s: %s", position.stock_code, e)
         return advice
+
+    def _emit_signal_notifications(self, position: Position, advice: ActionAdvice) -> None:
+        """按勾选的策略信号发送邮件通知（去重：同持仓同信号同日一次）。"""
+        import os
+        from StockInvestmentTool.biz.notification import NotificationService
+        from StockInvestmentTool.biz.signal_notify import ALL_SIGNALS, signal_enabled, signal_code
+        from datetime import datetime as _dt
+
+        email_to = os.getenv("EMAIL_TO", "")
+        if not email_to:
+            return
+        cr = (getattr(advice, "check_results", None) or {})
+        # 信号 → (check_results 键, 触发字段, 中文名)
+        signal_map = {
+            "stop-hard": ("hard_stop", "triggered", "硬止损"),
+            "stop-technical": ("technical_stop", "triggered", "技术止损"),
+            "take-left": ("left_side", None, "左侧固定止盈"),
+            "take-right": ("right_side", "triggered", "右侧移动止盈"),
+            "stop-logic": ("logic_stop", "triggered", "逻辑止损"),
+        }
+        today = _dt.now().strftime("%Y-%m-%d")
+        for signal in ALL_SIGNALS:
+            if signal not in signal_map:
+                continue
+            if not signal_enabled(position.id, signal):
+                continue
+            key, field, label = signal_map[signal]
+            block = cr.get(key)
+            if not isinstance(block, dict):
+                continue
+            if field is not None and not block.get(field):
+                continue
+            if field is None and not block:
+                continue
+            finger = f"signal:{position.id}:{signal_code(signal)}:{today}"
+            service = NotificationService()
+            subject = f"[持仓{label}] {position.stock_code} 触发 {label}建议"
+            text = (f"股票: {position.stock_code} {position.stock_name}\n"
+                    f"事件: 持仓{label}信号触发\n"
+                    f"数据: {cr}")
+            event = service.create_event(
+                event_type="POSITION_SIGNAL", symbol=position.stock_code,
+                subject_type="position_cycle", subject_id=str(position.id),
+                priority=1, payload={"subject": subject, "text": text,
+                                     "signal": signal, "position_id": position.id},
+                data_as_of=today, action=label,
+                trigger_fingerprint=finger,
+            )
+            service.create_delivery(event, "email", email_to, template="position_signal")
+            logger.info("持仓信号通知已生成: %s %s", position.stock_code, signal)
 
     # ══════════════════════════════════════════════════
     # 查询 / 总览
