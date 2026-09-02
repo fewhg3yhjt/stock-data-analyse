@@ -63,6 +63,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .metric-grid .m{background:var(--color-surface);border:1px solid var(--color-border);border-radius:5px;padding:6px 10px;text-align:center;}
 .metric-grid .m .l{font-size:11px;color:var(--color-text-subtle);}
 .metric-grid .m .v{font-size:14px;font-weight:600;}
+.detail-tabs{display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--color-border);padding-bottom:8px;}.detail-tab{border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-subtle);border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;}.detail-tab.active{background:var(--color-info);border-color:var(--color-info);color:#fff;}.detail-panel{min-height:30px;}.strategy-points{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:12px;}.strategy-point{display:flex;flex-direction:column;padding:9px 10px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.strategy-point span{font-size:12px;color:var(--color-text-subtle);}.strategy-point b{font-size:16px;margin:2px 0;}.strategy-point small{font-size:11px;color:var(--color-text-subtle);line-height:1.5;}.strategy-advice{padding:10px 12px;border-left:3px solid var(--color-warning);background:#fff8e1;border-radius:0 5px 5px 0;font-size:13px;}
 </style>
 {% endblock %}
 {% block body %}
@@ -144,7 +145,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
     </div>
     {% if data.positions %}
       {% for p in data.positions %}
-      <div class="pos">
+       <div class="pos" data-position-card data-code="{{ p.stock_code }}" style="cursor:pointer;">
         <div class="pos-head">
           <span class="name">{{ p.stock_name }} <span class="code">{{ p.stock_code }}</span></span>
           <span>
@@ -153,9 +154,6 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
             <span class="tag {% if (p.unrealized_pnl_pct or 0)>=0 %}red{% else %}green{% endif %}">{{ "%+.2f"|format(p.unrealized_pnl_pct or 0) }}%</span>
             <a class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                href="/portfolio/{{ p.id }}" title="加仓/减仓/平仓操作"><i class="fas fa-arrows-rotate"></i> 操作</a>
-            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
-               data-action="toggleDetail" data-code="{{ p.stock_code }}"
-               title="基础指标 + 天级K线 + 盘中实时 + 实际收益"><i class="fas fa-chart-simple"></i> 详情</button>
             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
                data-action="toggleReturn" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}" data-cost="{{ p.avg_cost }}"
                title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
@@ -180,22 +178,25 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
            <div class="pos-metric"><div class="v {{ 'gain' if (p.realized_pnl or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.realized_pnl or 0) }}</div><div class="l">已实现收益(元)</div></div>
            <div class="pos-metric"><div class="v {{ 'gain' if (p.total_pnl or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.total_pnl or 0) }}</div><div class="l">累计总收益(元)</div></div>
            <div class="pos-metric"><div class="v {{ 'gain' if (p.total_pnl_pct or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.total_pnl_pct or 0) }}%</div><div class="l">累计收益率</div></div>
-           <div class="pos-metric stop"><div class="v">{{ p.stop_loss_price }}</div><div class="l">🚨硬止损线</div></div>
-          <div class="pos-metric peak" title="自买入以来的最高价，右侧回撤止盈线 = 峰值 × 95%/97%"><div class="v">{{ p.peak_price }}</div><div class="l">📈持仓峰值(止盈锚)</div></div>
-          {% if p.left_side %}
-          <div class="pos-metric warn"><div class="v">{{ p.left_side.year_high }}</div><div class="l">💡止盈预警区(前高{{ p.left_side.pct_of_year_high }}%)</div></div>
-          {% endif %}
-          {% if p.hard_cap %}
-          <div class="pos-metric gain"><div class="v">{{ p.hard_cap }}</div><div class="l">📈止盈硬上限</div></div>
-          {% endif %}
-          {% if p.right_side %}
-          <div class="pos-metric warn"><div class="v">{{ p.right_side.trigger_price if p.right_side.trigger_price else p.right_side.peak_price }}</div><div class="l">📉右侧止盈线(峰值{{ p.right_side.peak_price }} 已回撤{{ p.right_side.drawdown_pct }}%，跌破触发)</div></div>
-          {% endif %}
-          {% if p.buy_more %}
-          <div class="pos-metric buy"><div class="v">{{ p.buy_more.trigger_price }}</div><div class="l">💰补仓线{{ p.buy_more.label }}</div></div>
-          {% endif %}
         </div>
-        <div class="detail-box" style="display:none;margin-top:10px;padding:12px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;"></div>
+         <div class="detail-box" style="display:none;margin-top:10px;padding:12px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;">
+           <div class="detail-tabs" onclick="event.stopPropagation();">
+             <button type="button" class="detail-tab active" data-detail-tab="trend">趋势</button>
+             <button type="button" class="detail-tab" data-detail-tab="strategy">策略</button>
+           </div>
+           <div class="detail-panel detail-panel-trend"></div>
+           <div class="detail-panel detail-panel-strategy" style="display:none;">
+             <div class="strategy-points">
+               <div class="strategy-point"><span>硬止损线</span><b>{{ p.stop_loss_price }}</b><small>跌破成本止损线，建议清仓</small></div>
+               <div class="strategy-point"><span>持仓峰值</span><b>{{ p.peak_price }}</b><small>持仓以来的止盈锚</small></div>
+               {% if p.left_side %}<div class="strategy-point"><span>左侧止盈预警</span><b>{{ p.left_side.year_high }}</b><small>前高 {{ p.left_side.pct_of_year_high }}%，进入后按策略减仓</small></div>{% endif %}
+               {% if p.hard_cap %}<div class="strategy-point"><span>止盈硬上限</span><b>{{ p.hard_cap }}</b><small>达到后不再追高</small></div>{% endif %}
+               {% if p.right_side %}<div class="strategy-point"><span>右侧移动止盈</span><b>{{ p.right_side.trigger_price if p.right_side.trigger_price else p.right_side.peak_price }}</b><small>峰值 {{ p.right_side.peak_price }}，回撤 {{ p.right_side.drawdown_pct }}% 后触发</small></div>{% endif %}
+               {% if p.buy_more %}<div class="strategy-point"><span>补仓线</span><b>{{ p.buy_more.trigger_price }}</b><small>{{ p.buy_more.label }}</small></div>{% endif %}
+             </div>
+             {% if p.advice %}<div class="strategy-advice"><b>当前操作建议：{{ p.advice_label }}</b><br><span>{{ p.advice.reason }}</span></div>{% else %}<div class="empty">暂无策略建议</div>{% endif %}
+           </div>
+         </div>
         <div class="return-box" style="display:none;margin-top:10px;padding:12px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;">
           <div class="return-loading" style="color:var(--color-text-subtle);font-size:13px;">收益加载中…</div>
         </div>
@@ -283,8 +284,8 @@ async function refreshAll(){
   } catch(e) { showUiMessage('刷新失败: ' + e.message, 'error'); }
   btn.style.opacity = 1;
 }
-async function toggleDetail(btn, code){
-  const box = btn.closest('.pos').querySelector('.detail-box');
+async function toggleDetail(card, code){
+  const box = card.querySelector('.detail-box');
   if (box.style.display !== 'none'){ box.style.display = 'none'; return; }
   box.style.display = 'block';
   box.innerHTML = '<div style="color:var(--color-text-subtle);font-size:13px;">加载中…</div>';
@@ -448,13 +449,17 @@ async function deleteAlertRule(ruleId){
 }
 document.addEventListener('click', function(e){
   const el = e.target.closest('[data-action]');
-  if (!el) return;
-  const a = el.dataset.action;
-  if (a === 'toggleDetail') toggleDetail(el, el.dataset.code);
-  else if (a === 'toggleReturn') toggleReturn(el);
-  else if (a === 'openOp') openOp(Number(el.dataset.id), el.dataset.name, el.dataset.type);
-  else if (a === 'deletePos') deletePos(Number(el.dataset.id), el.dataset.name);
-  else if (a === 'openAlert') openAlert(null, el.dataset.code, el.dataset.name);
+  if (el) {
+    const a = el.dataset.action;
+    if (a === 'toggleReturn') toggleReturn(el);
+    else if (a === 'openOp') openOp(Number(el.dataset.id), el.dataset.name, el.dataset.type);
+    else if (a === 'deletePos') deletePos(Number(el.dataset.id), el.dataset.name);
+    else if (a === 'openAlert') openAlert(null, el.dataset.code, el.dataset.name);
+    return;
+  }
+  const card = e.target.closest('[data-position-card]');
+  if (!card || e.target.closest('a,button,input,select,textarea,.detail-box,.return-box,.advice')) return;
+  toggleDetail(card, card.dataset.code);
 });
 </script>
 {% endblock %}
