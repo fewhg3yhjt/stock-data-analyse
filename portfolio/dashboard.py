@@ -454,6 +454,13 @@ class DashboardService:
                 hdf = hdf.tail(days).reset_index(drop=True)
                 closes_s = _pd.to_numeric(hdf["close"], errors="coerce")
 
+                def _number_list(values, decimals=2):
+                    """把可选行情列安全转成 JSON 数值，缺失值保留 None。"""
+                    return [
+                        round(float(value), decimals) if _pd.notna(value) else None
+                        for value in values
+                    ]
+
                 # 复用 indicators 分区里已预计算的均线（与 daily 同源、按日期对齐），
                 # 指标是离线批处理算好落盘的，不在此重复现算；单指标缺失时按列现算补上。
                 mas = {}
@@ -486,15 +493,15 @@ class DashboardService:
 
                 result["daily_history"] = {
                     "dates": [str(d)[:10] for d in hdf["date"]],
-                    "closes": [round(float(x), 2) if x == x else None for x in hdf["close"]],
-                    "opens": [round(float(x), 2) if x == x else None for x in hdf.get("open", _pd.Series([None]*len(hdf)))],
-                    "highs": [round(float(x), 2) if x == x else None for x in hdf.get("high", _pd.Series([None]*len(hdf)))],
-                    "lows": [round(float(x), 2) if x == x else None for x in hdf.get("low", _pd.Series([None]*len(hdf)))],
-                    "volumes": [round(float(x), 0) if x == x else None for x in hdf["volume"]],
-                    "amounts": [round(float(x), 2) if x == x else None for x in hdf.get("amount", _pd.Series([None]*len(hdf)))],
-                    "turns": [round(float(x), 2) if x == x else None for x in hdf.get("turn", _pd.Series([None]*len(hdf)))],
-                    "pe": [round(float(x), 2) if x == x else None for x in hdf.get("pe_ttm", _pd.Series([None]*len(hdf)))],
-                    "pb": [round(float(x), 2) if x == x else None for x in hdf.get("pb_mrq", _pd.Series([None]*len(hdf)))],
+                    "closes": _number_list(hdf["close"]),
+                    "opens": _number_list(hdf.get("open", _pd.Series([None]*len(hdf)))),
+                    "highs": _number_list(hdf.get("high", _pd.Series([None]*len(hdf)))),
+                    "lows": _number_list(hdf.get("low", _pd.Series([None]*len(hdf)))),
+                    "volumes": _number_list(hdf["volume"], 0),
+                    "amounts": _number_list(hdf.get("amount", _pd.Series([None]*len(hdf)))),
+                    "turns": _number_list(hdf.get("turn", _pd.Series([None]*len(hdf)))),
+                    "pe": _number_list(hdf.get("pe_ttm", _pd.Series([None]*len(hdf)))),
+                    "pb": _number_list(hdf.get("pb_mrq", _pd.Series([None]*len(hdf)))),
                     "mas": mas,
                 }
         except Exception as e:
