@@ -96,7 +96,8 @@ class BacktestEngine:
         return self._result
 
     def run_custom(self, trail_threshold: float = 0.05,
-                   offset: float = 0.0) -> dict:
+                   offset: float = 0.0,
+                   trade_start_date: Optional[str] = None) -> dict:
         """用自定义参数回测
 
         Args:
@@ -104,7 +105,7 @@ class BacktestEngine:
             offset: 买入阈值偏移量
         """
         optimizer = self._build_optimizer()
-        result = optimizer.run_detailed(trail_threshold, offset)
+        result = optimizer.run_detailed(trail_threshold, offset, trade_start_date=trade_start_date)
         self._result = {
             "custom_params": {
                 "trail_threshold": trail_threshold,

@@ -935,27 +935,32 @@ class DashboardService:
         cb = self.manager.cost_basis(position_id)
         buy_date = p.buy_date
 
-        # ①/④ 实际收益 + 买入持有：用全量日线（含建仓前预热）
+        txns = [txn.to_dict() for txn in self.manager.storage.get_transactions(position_id)]
+
+        # ① 实际持仓收益：逐日重放真实交易流水，后续加仓不会反向影响过去。
         an = self._stock_analysis(code)
         kline = an["kline"]
-        actual = self._compute_return(kline, start_date=buy_date,
-                                      cost_price=cb["cost_price"], shares=cb["shares"]) or {}
-        dates = actual.get("dates") or []
-        actual_series = actual.get("ret_pct") or []
+        actual = self._actual_position_returns(kline, txns)
+        dates = actual["dates"]
+        actual_series = actual["series"]
 
-        # 买入持有：从建仓日首日收盘为基准，close / base - 1
+        # ④ 买入持有：从第一笔真实买入成交价（含买入费用）起算，不模拟后续操作。
         buy_hold_series = []
-        base = None
+        first_buy = next((t for t in txns if t.get("trans_type") == "buy"), None)
         if kline is not None and not kline.empty:
-            mask = pd.to_datetime(kline["date"]) >= pd.Timestamp(buy_date)
+            mask = pd.to_datetime(kline["date"]) >= pd.Timestamp(str(first_buy.get("date") if first_buy else buy_date)[:10])
             window = kline[mask].reset_index(drop=True)
             if not window.empty:
-                base = float(window["close"].iloc[0]) or 1.0
-                buy_hold_series = [round((float(c) / base - 1) * 100, 2) for c in window["close"]]
-        # 若 dates 与 buy_hold 长度不一致，用实际收益日期轴为准重对齐
-        if not dates and buy_hold_series:
-            dates = [str(d)[:10] for d in window["date"]]
-            actual_series = [None] * len(buy_hold_series)
+                first_amount = float(first_buy.get("amount") or 0) if first_buy else 0.0
+                first_fee = float(first_buy.get("fee") or 0) if first_buy else 0.0
+                first_shares = float(first_buy.get("shares") or 0) if first_buy else 0.0
+                base = (first_amount + first_fee) / first_shares if first_shares else float(window["close"].iloc[0])
+                base = base or 1.0
+                buy_hold_by_date = {str(d)[:10]: round((float(c) / base - 1) * 100, 2)
+                                    for d, c in zip(window["date"], window["close"])}
+                buy_hold_series = [buy_hold_by_date.get(d) for d in dates]
+        if len(buy_hold_series) != len(dates):
+            buy_hold_series = [None] * len(dates)
 
         # ② 模拟方案收益：用当前策略从建仓日回测
         simulation_series = []
@@ -972,6 +977,7 @@ class DashboardService:
             result = engine.run_custom(
                 trail_threshold=float(getattr(scheme.risk, "drawdown_stop", 0.05) or 0.05),
                 offset=0.0,
+                trade_start_date=buy_date,
             )
             equity = (result.get("backtest") or {}).get("equity_curve") or []
             eq_pairs = []
@@ -982,9 +988,11 @@ class DashboardService:
                 sim_dates = {d for d, _ in eq_pairs}
                 sim_by_date = dict(eq_pairs)
                 first_cash = eq_pairs[0][1] if eq_pairs else 0.0
-                # 与统一日期轴对齐，只取建仓日之后的点，缺失用前值填充
+                # 与统一日期轴对齐；trade_start_date 已保证建仓日前不交易。
                 last_val = None
                 simulation_series = []
+                start_equity = next((v for d, v in eq_pairs if d >= dates[0]), None) if dates else None
+                start_equity = start_equity or first_cash
                 for d in dates:
                     val = sim_by_date.get(d)
                     if val is None:
@@ -993,8 +1001,8 @@ class DashboardService:
                         val = prior[-1] if prior else None
                     if val is not None:
                         last_val = val
-                    if last_val and first_cash:
-                        simulation_series.append(round((last_val / first_cash - 1) * 100, 2))
+                    if last_val is not None and start_equity:
+                        simulation_series.append(round((last_val / start_equity - 1) * 100, 2))
                     else:
                         simulation_series.append(None)
         except Exception as e:
@@ -1010,11 +1018,54 @@ class DashboardService:
             "dates": dates, "actual": actual_series,
             "simulation": simulation_series, "market": market_series,
             "buy_hold": buy_hold_series if len(buy_hold_series) == len(dates) else actual_series,
-            "actual_latest": actual.get("ret_pct_latest"),
+            "actual_latest": self._last_number(actual_series),
             "simulation_latest": self._last_number(simulation_series),
+            "market_latest": self._last_number(market_series),
             "buy_hold_latest": self._last_number(buy_hold_series),
             "benchmark_code": self._benchmark_code(code),
         }
+
+    @staticmethod
+    def _actual_position_returns(kline, transactions: list[dict]) -> dict:
+        """逐日重放真实交易流水，计算含费用的实际持仓收益率。"""
+        import pandas as pd
+        if kline is None or kline.empty:
+            return {"dates": [], "series": []}
+        first_buy = next((t for t in transactions if t.get("trans_type") == "buy"), None)
+        start = str(first_buy.get("date") if first_buy else "")[:10]
+        if not start:
+            return {"dates": [], "series": []}
+        frame = kline[pd.to_datetime(kline["date"]) >= pd.Timestamp(start)].copy()
+        frame = frame.sort_values("date").reset_index(drop=True)
+        shares = 0.0
+        cash = 0.0
+        invested = 0.0
+        by_date: dict[str, list[dict]] = {}
+        for txn in transactions:
+            by_date.setdefault(str(txn.get("date") or "")[:10], []).append(txn)
+        dates, series = [], []
+        for _, row in frame.iterrows():
+            day = str(row["date"])[:10]
+            for txn in by_date.get(day, []):
+                typ = txn.get("trans_type")
+                amount = float(txn.get("amount") or 0)
+                fee = float(txn.get("fee") or 0)
+                qty = float(txn.get("shares") or 0)
+                if typ == "buy":
+                    shares += qty
+                    cash -= amount + fee
+                    invested += amount + fee
+                elif typ in ("sell", "sell_all"):
+                    shares = max(0.0, shares - qty)
+                    cash += amount - fee
+                elif typ == "dividend":
+                    # 当前产品约定暂不把分红收益纳入累计收益曲线。
+                    continue
+            value = cash + shares * float(row["close"])
+            dates.append(day)
+            profit = value
+            series.append(round(profit / invested * 100, 2) if invested else 0.0)
+        return {"dates": dates, "series": series}
 
     @staticmethod
     def _last_number(values):

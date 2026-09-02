@@ -823,7 +823,8 @@ class TakeProfitOptimizer:
     # ── 详细回测（含明细）─────────────────────────────────
 
     def run_detailed(self, trail_threshold: float = 0.05,
-                     offset: float = 0.0) -> dict:
+                     offset: float = 0.0,
+                     trade_start_date: Optional[str] = None) -> dict:
         """用指定参数完整回测，返回交易明细 + 权益曲线 + 绩效"""
         cash = self.initial_cash
         shares = 0.0
@@ -840,6 +841,10 @@ class TakeProfitOptimizer:
             row = self.df.iloc[i]
             date = row["date"]
             close = row["close"]
+
+            # 建仓日前只提供均线/滚动指标预热，不参与模拟交易或权益曲线。
+            if trade_start_date and str(date)[:10] < str(trade_start_date)[:10]:
+                continue
 
             # ── 买入（规则A）──
             bought_this_bar = False
@@ -872,7 +877,9 @@ class TakeProfitOptimizer:
             )
             if triggered:
                 equity_curve.append({
-                    "date": date, "total_asset": round(cash, 2), "price": round(close, 2),
+                    "date": date,
+                    "total_asset": round(cash + shares * close, 2),
+                    "price": round(close, 2),
                 })
                 continue
 
