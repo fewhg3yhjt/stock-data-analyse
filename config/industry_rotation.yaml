@@ -1,0 +1,9 @@
+industry_rotation:
+  classification: csrc
+  weights: {return_1d: 0.15, return_5d: 0.30, return_20d: 0.35, up_ratio: 0.10, amount_ratio: 0.10}
+  state_thresholds: {strong: 0.70, weak: 0.35}
+  minimum_valid_count: 3
+  stock_screen:
+    condition_spec: {type: comparison, left: {field: close}, operator: '>', right: {value: 0}}
+    sort_spec: {field: symbol, direction: asc}
+    display_fields: [date, code, close, pct_chg, ret_5d, ret_20d, amount]

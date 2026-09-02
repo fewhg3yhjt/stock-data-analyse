@@ -23,6 +23,7 @@ BUSINESS_TASK_DEFINITIONS = (
     ("advice.refresh", "刷新建议", "刷新持仓建议"),
     ("notification.outbox_delivery", "投递通知", "领取并投递 Outbox"),
     ("health.reconcile", "健康检查", "记录系统健康状态"),
+    ("industry_rotation.run", "行业轮动", "计算行业特征并执行可复现行业内选股"),
 )
 
 DISABLED_BUSINESS_TASKS = {
@@ -52,6 +53,8 @@ def _default_handler(task_key: str, service: BusinessTaskService) -> Callable:
         return _simulation_handler(service)
     if task_key == "report.daily_generate":
         return _report_handler(service)
+    if task_key == "industry_rotation.run":
+        return _industry_rotation_handler(service)
     if task_key == "notification.outbox_delivery":
         def outbox_handler(input_data: dict) -> dict:
             from StockInvestmentTool.biz.daily_digest import send_pending_deliveries
@@ -77,6 +80,58 @@ def _default_handler(task_key: str, service: BusinessTaskService) -> Callable:
     def not_implemented_handler(input_data: dict) -> dict:
         raise NotImplementedError(f"业务任务尚未接入完整 handler: {task_key}")
     return not_implemented_handler
+
+
+def _industry_rotation_handler(service: BusinessTaskService) -> Callable:
+    def handler(input_data: dict) -> dict:
+        from StockInvestmentTool.warehouse.industry_features import IndustryFeaturesBuilder, IndustryRotationService
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        as_of = input_data.get("as_of") or input_data.get("end_date")
+        start_date = input_data.get("start_date") or as_of
+        if not as_of:
+            raise ValueError("industry_rotation.run requires as_of")
+        warehouse = Warehouse()
+        built = IndustryFeaturesBuilder(warehouse).build(
+            start_date=start_date, end_date=as_of, as_of=as_of,
+            partition_versions=input_data.get("input_versions") or None)
+        if built.get("status") != "success":
+            return {"status": built.get("status", "no_data"),
+                    "output_versions": built.get("output_versions", {}),
+                    "decisions": [], "candidates": [],
+                    "actual_data_as_of": built.get("actual_data_as_of"),
+                    "membership_available_from": built.get("membership_available_from"),
+                    "gap_reason": built.get("gap_reason")}
+        rotation = IndustryRotationService(warehouse)
+        decisions = rotation.decide(as_of)
+        if not decisions:
+            return {"status": "success", "output_versions": built["output_versions"], "decisions": [], "candidates": []}
+        selected = input_data.get("industry_code") or decisions[0]["industry_code"]
+        actual_as_of = rotation.last_context.get("actual_data_as_of") or as_of
+        candidates, screen_meta = rotation.screen_stocks(actual_as_of, selected)
+        from StockInvestmentTool.biz.models import DataContext, new_id, now_utc
+        from StockInvestmentTool.biz.screen import ScreenDefinition, ScreenRun
+        definition = ScreenDefinition(screen_id="industry_rotation_stock", name="行业轮动行业内选股",
+                                      condition_spec=rotation.config["stock_screen"]["condition_spec"],
+                                      sort_spec=rotation.config["stock_screen"]["sort_spec"],
+                                      display_fields=rotation.config["stock_screen"]["display_fields"])
+        screen_version_id = service.repo.save_screen_version(definition)
+        symbols = [candidate.symbol for candidate in candidates]
+        universe_id = service.repo.save_universe_snapshot(symbols, universe_type="industry_rotation", as_of=as_of)
+        run = ScreenRun(run_id=new_id("screen_run"), screen_version_id=screen_version_id,
+                        universe_snapshot_id=universe_id, run_type="industry_rotation",
+                        requested_as_of=as_of, actual_data_as_of=screen_meta.get("actual_data_as_of", actual_as_of),
+                        data_context={"industry_code": selected, "industry_decision": next((d for d in decisions if d["industry_code"] == selected), {})},
+                        status="success", matched_count=len(candidates), started_at=now_utc(), finished_at=now_utc())
+        service.repo.save_screen_run(run)
+        for candidate in candidates:
+            candidate.screen_run_id = run.run_id; service.repo.save_screen_candidate(candidate)
+        return {"status": "success", "output_versions": {**built["output_versions"], "screen_run_id": run.run_id},
+                "decisions": decisions, "industry_code": selected, "candidates": [candidate.symbol for candidate in candidates],
+                "screen_run_id": run.run_id, "matched_count": len(candidates),
+                "requested_as_of": as_of, "actual_data_as_of": actual_as_of,
+                "data_status": rotation.last_context.get("status"),
+                "gap_reason": rotation.last_context.get("reason")}
+    return handler
 
 
 def _screen_handler(service: BusinessTaskService) -> Callable:

@@ -171,7 +171,10 @@ class IndustryCollector:
                 else:
                     rows.append({"code": code, "industry": value,
                                  "source_update_date": source_update_date,
-                                 "industry_classification": classification})
+                                 # Keep a stable internal identifier in the
+                                 # formal dataset; the source text remains in
+                                 # the raw industry value and source metadata.
+                                 "industry_classification": "csrc"})
                     saved_values[code] = value
                     completed.add(code)
             except Exception as exc:

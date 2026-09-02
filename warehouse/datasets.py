@@ -56,6 +56,8 @@ class DatasetAccess:
         if partition_versions:
             versions = {month: {"version_id": version_id} for month, version_id in partition_versions.items()}
         if not versions:
+            if not allow_legacy or dataset_name != "stock_daily":
+                raise DatasetAccessError(f"{dataset_name} 没有 Published Dataset")
             if not months:
                 months = self._local_months(dataset_name)
             return self._load_local_fallback(
@@ -86,8 +88,13 @@ class DatasetAccess:
             if current:
                 try:
                     version, quality = self._version_context(current["version_id"])
-                    path = Path(version["published_path"] or "")
-                    if not path.exists():
+                    if version.get("publish_status") != "published":
+                        fallback_reason = "版本不是 published 状态"
+                    else:
+                        path = Path(version["published_path"] or "")
+                    if fallback_reason:
+                        path = None
+                    elif not path.exists():
                         path = None
                         fallback_reason = "正式文件不存在"
                     elif not self._quality_allowed(quality, required_quality):
@@ -102,11 +109,17 @@ class DatasetAccess:
                 fallback_reason = "分区没有正式版本"
 
             if path is None:
+                if not allow_legacy or dataset_name != "stock_daily":
+                    raise DatasetAccessError(
+                        f"{dataset_name}/{month} 没有可用的 Published 版本: {fallback_reason}"
+                    )
                 path = self._local_partition_path(dataset_name, month)
             if path is None or not path.exists():
                 raise DatasetAccessError(
                     f"{dataset_name}/{month} 没有可读取的本地分区"
                 )
+            if fallback_reason and not (allow_legacy and dataset_name == "stock_daily"):
+                raise DatasetAccessError(f"{dataset_name}/{month} Published 版本不可读: {fallback_reason}")
             if fallback_reason:
                 # 治理信息保留用于诊断，但不阻断当前数据读取。
                 import logging
@@ -178,6 +191,8 @@ class DatasetAccess:
             return self.warehouse.daily_partition(month)
         if dataset_name == "indicators":
             return self.warehouse.indicator_dir / f"{month}.parquet"
+        if dataset_name == "industry_features_daily":
+            return self.warehouse.industry_features_dir / f"{month}.parquet"
         return None
 
     def _local_months(self, dataset_name: str) -> list[str]:
@@ -186,6 +201,8 @@ class DatasetAccess:
             return self.warehouse.available_months("daily")
         if dataset_name == "indicators":
             return self.warehouse.available_months("indicator")
+        if dataset_name == "industry_features_daily":
+            return [p.stem for p in self.warehouse.industry_features_dir.glob("*.parquet")]
         return []
 
     def _load_local_fallback(self, dataset_name, months, start_date, end_date, symbols,

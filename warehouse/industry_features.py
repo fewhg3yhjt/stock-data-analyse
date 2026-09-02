@@ -74,8 +74,22 @@ class IndustryFeaturesBuilder:
             d[f"ret_{n}d"] = d.groupby("code", sort=False)["close"].pct_change(n)
         # A snapshot is valid from its date until the next snapshot. This avoids
         # using a future membership snapshot for a historical as_of decision.
-        m = m[m["industry_classification"].astype(str) == str(_config().get("classification", "csrc"))]
+        classification = str(_config().get("classification", "csrc"))
+        m = m[m["industry_classification"].astype(str).isin({classification, "证监会行业分类"})]
         m = m.sort_values("snapshot_date").drop_duplicates(["snapshot_date", "code", "industry_classification"])
+        membership_available_from = (
+            str(m["snapshot_date"].min())[:10] if not m.empty else None
+        )
+        stock_latest = str(d["date"].max())[:10] if not d.empty else None
+        if membership_available_from and stock_latest and pd.Timestamp(membership_available_from) > pd.Timestamp(stock_latest):
+            return {
+                "status": "no_data", "rows": 0, "months": 0, "output_versions": {},
+                "input_versions": {name: result.context.get("partition_versions", {})
+                                    for name, result in (("industry_membership", membership), ("stock_daily", daily), ("indicators", indicators))},
+                "membership_available_from": membership_available_from,
+                "actual_data_as_of": None,
+                "gap_reason": "membership 首次快照晚于 stock_daily 最新交易日，历史区间没有可用行业归属",
+            }
         dates = pd.DataFrame({"date": sorted(d[(d["date"] >= pd.Timestamp(start_date))]["date"].unique())})
         rows = []
         for date in dates["date"]:
@@ -105,7 +119,14 @@ class IndustryFeaturesBuilder:
                 rows.append(row)
         out = pd.DataFrame(rows)
         if out.empty:
-            raise DatasetAccessError("没有可生成的行业特征")
+            return {
+                "status": "no_data", "rows": 0, "months": 0, "output_versions": {},
+                "input_versions": {name: result.context.get("partition_versions", {})
+                                    for name, result in (("industry_membership", membership), ("stock_daily", daily), ("indicators", indicators))},
+                "membership_available_from": membership_available_from,
+                "actual_data_as_of": None,
+                "gap_reason": "行业成员快照与股票交易日没有重叠，未使用未来快照补齐历史数据",
+            }
         out = out.sort_values(["industry_code", "date"])
         for col, window in (("amount_ma5", 5), ("amount_ma20", 20)):
             out[col] = out.groupby("industry_code")["amount"].transform(lambda s: s.rolling(window, min_periods=1).mean())
@@ -143,7 +164,11 @@ class IndustryFeaturesBuilder:
                 expected_as_of=as_of if month == max(paths) else None)
             quality[month] = result; state.quality(version, status=result["status"], checks=result["checks"], publish_allowed=result["publish_allowed"])
             if result["publish_allowed"]: Publisher(self.warehouse).publish(version)
-        return {"status": "success", "rows": len(out), "months": len(paths), "output_versions": versions, "input_versions": actual_input_versions, "quality": quality}
+        actual_data_as_of = str(out["date"].max())[:10]
+        return {"status": "success", "rows": len(out), "months": len(paths), "output_versions": versions,
+                "input_versions": actual_input_versions, "quality": quality,
+                "membership_available_from": membership_available_from,
+                "actual_data_as_of": actual_data_as_of, "gap_reason": None}
 
 
 def build_industry_features(warehouse: Warehouse, *, start_date: str, end_date: str,
@@ -158,12 +183,31 @@ class IndustryRotationService:
 
     def __init__(self, warehouse: Warehouse | None = None, config: dict | None = None):
         self.warehouse = warehouse or Warehouse(); self.config = config or _config()
+        self.last_context: dict = {}
 
     def features(self, as_of: str) -> pd.DataFrame:
-        return DatasetAccess(self.warehouse).load_dataset("industry_features_daily", end_date=as_of, required_quality="PASS", allow_legacy=False).data
+        result = DatasetAccess(self.warehouse).load_dataset("industry_features_daily", end_date=as_of, required_quality="PASS", allow_legacy=False)
+        frame = result.data.copy()
+        if frame.empty:
+            self.last_context = {"requested_as_of": as_of, "actual_data_as_of": None, "status": "no_data",
+                                 "reason": "没有不晚于请求 as_of 的行业特征"}
+            return frame
+        dates = pd.to_datetime(frame["date"], errors="coerce")
+        eligible = frame[dates <= pd.Timestamp(as_of)]
+        actual = str(pd.to_datetime(eligible["date"]).max())[:10] if not eligible.empty else None
+        if actual is None:
+            self.last_context = {"requested_as_of": as_of, "actual_data_as_of": None, "status": "no_data",
+                                 "reason": "没有不晚于请求 as_of 的行业特征"}
+            return eligible
+        selected = eligible[pd.to_datetime(eligible["date"]).dt.strftime("%Y-%m-%d") == actual].copy()
+        self.last_context = {"requested_as_of": as_of, "actual_data_as_of": actual,
+                             "status": "success", "reason": None,
+                             "data_context": result.context}
+        selected.attrs.update(self.last_context)
+        return selected
 
     def decide(self, as_of: str) -> list[dict]:
-        frame = self.features(as_of); frame = frame[pd.to_datetime(frame["date"]).dt.strftime("%Y-%m-%d") == as_of]
+        frame = self.features(as_of)
         return frame.sort_values(["industry_score", "industry_code"], ascending=[False, True]).to_dict("records")
 
     def screen_stocks(self, as_of: str, industry_code: str, *, definition=None) -> tuple[list, dict]:

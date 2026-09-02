@@ -33,7 +33,8 @@ def cmd_init(args):
     n = c.sync_instruments(include_etf=True, include_index=args.include_index)
     print(f"✅ 标的清单已入库: {n} 条")
     start = (datetime.now() - timedelta(days=args.years * 365)).strftime("%Y-%m-%d")
-    res = c.sync_daily(start_date=start, include_etf=True,
+    end = datetime.now().strftime("%Y-%m-%d")
+    res = c.sync_daily(start_date=start, end_date=end, include_etf=True,
                        include_index=args.include_index, max_symbols=args.max_symbols)
     print(f"✅ 日线同步: +{res['added_rows']} 行, 失败 {len(res['failed'])}")
     if res["failed"]:
@@ -44,7 +45,9 @@ def cmd_sync(args):
     """增量同步日线（收盘后每日跑）。"""
     from StockInvestmentTool.warehouse.collector import MarketCollector
     c = MarketCollector()
-    res = c.sync_daily(start_date=args.start, include_etf=True,
+    if not args.start or not args.end:
+        raise ValueError("sync 必须显式传入 --start 和 --end")
+    res = c.sync_daily(start_date=args.start, end_date=args.end, include_etf=True,
                        include_index=args.include_index, max_symbols=args.max_symbols,
                        flush_every=args.flush_every, source=args.source,
                        target=args.target)
@@ -229,7 +232,8 @@ def main(argv: list[str] | None = None):
     p_init.add_argument("--max-symbols", type=int, default=None, help="限定标的数(测试)")
 
     p_sync = sub.add_parser("sync", help="增量同步日线")
-    p_sync.add_argument("--start", default=None, help="起始日期(默认近3年)")
+    p_sync.add_argument("--start", required=True, help="起始日期 YYYY-MM-DD（必须显式传入）")
+    p_sync.add_argument("--end", required=True, help="结束日期 YYYY-MM-DD（必须显式传入）")
     p_sync.add_argument("--include-index", action="store_true", help="含指数")
     p_sync.add_argument("--max-symbols", type=int, default=None)
     p_sync.add_argument("--flush-every", type=int, default=1000,

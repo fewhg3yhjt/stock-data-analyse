@@ -5,7 +5,7 @@ from StockInvestmentTool.warehouse.industry import (
 )
 from StockInvestmentTool.warehouse.pipeline_state import PipelineState
 from StockInvestmentTool.warehouse.publish import Publisher
-from StockInvestmentTool.warehouse.quality import check_industry_daily, check_industry_membership
+from StockInvestmentTool.warehouse.quality import check_industry_daily, check_industry_membership, check_industry_features_daily
 from StockInvestmentTool.warehouse.storage import Warehouse
 
 
@@ -74,7 +74,24 @@ def test_membership_dict_keeps_source_metadata(tmp_path):
     assert result["success"] == 1
     raw = pd.read_parquet(warehouse.raw.batch_dir("baostock", "industry_membership", "2026-09-02").glob("batch_*.parquet").__iter__().__next__())
     assert raw.iloc[0]["source_update_date"] == "2026-08-31"
-    assert raw.iloc[0]["industry_classification"] == "证监会行业分类"
+    assert raw.iloc[0]["industry_classification"] == "csrc"
+
+
+def test_industry_features_quality_checks_grain_and_as_of(tmp_path):
+    frame = pd.DataFrame({
+        "date": pd.to_datetime(["2026-09-04"]), "industry_code": ["I64"],
+        "industry_name": ["互联网"], "industry_classification": ["csrc"],
+        "member_count": [2], "valid_count": [2], "up_count": [1], "down_count": [1], "up_ratio": [.5],
+        "return_1d": [.1], "return_3d": [.1], "return_5d": [.1], "return_10d": [.1], "return_20d": [.1],
+        "amount": [10.], "amount_ma5": [10.], "amount_ma20": [10.], "amount_ratio": [1.],
+        "rank_1d": [1], "rank_5d": [1], "rank_20d": [1], "leader_code": ["sh600000"],
+        "leader_return": [.1], "leader_amount": [10.], "industry_score": [.8],
+        "industry_state": ["strong"], "state_reason": ["ok"],
+    })
+    path = tmp_path / "features.parquet"; frame.to_parquet(path, index=False)
+    assert check_industry_features_daily(path, expected_industries=1, expected_as_of="2026-09-05")["status"] == "PASS"
+    bad = frame.assign(date=pd.Timestamp("2026-09-06")); bad.to_parquet(path, index=False)
+    assert check_industry_features_daily(path, expected_as_of="2026-09-05")["status"] == "FAIL"
 
 
 def _write(frame):

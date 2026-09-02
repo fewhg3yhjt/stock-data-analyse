@@ -97,9 +97,15 @@ class PipelineState:
                     "SELECT version_id FROM dataset_current WHERE dataset_name=? AND partition_key=?",
                     (dataset_name, partition),
                 ).fetchone()
-                frame = pd.read_parquet(path, columns=["date", "code"])
-                min_date = str(pd.to_datetime(frame["date"]).min())[:10] if not frame.empty else None
-                max_date = str(pd.to_datetime(frame["date"]).max())[:10] if not frame.empty else None
+                # Derived datasets may use a domain key other than security code
+                # (for example industry_code); lineage metadata still needs the
+                # row/date bounds without imposing a fake ``code`` column.
+                available = pd.read_parquet(path, columns=None)
+                frame = available[[c for c in ("date", "trading_date", "snapshot_date", "code", "industry_code", "industry_id") if c in available.columns]]
+                symbol_column = next((c for c in ("code", "industry_code", "industry_id") if c in frame.columns), None)
+                date_column = next((c for c in ("date", "trading_date", "snapshot_date") if c in frame.columns), None)
+                min_date = str(pd.to_datetime(frame[date_column]).min())[:10] if date_column and not frame.empty else None
+                max_date = str(pd.to_datetime(frame[date_column]).max())[:10] if date_column and not frame.empty else None
                 conn.execute("""INSERT OR IGNORE INTO dataset_versions
                     (version_id,dataset_name,partition_key,candidate_path,published_path,previous_version_id,
                      input_versions,source_batches,row_count,symbol_count,min_date,max_date,schema_version,
@@ -107,7 +113,7 @@ class PipelineState:
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (version_id, dataset_name, partition, str(path), None, previous[0] if previous else None,
                      json.dumps({input_dataset: input_versions}, ensure_ascii=False), "[]", len(frame),
-                     int(frame["code"].nunique()) if "code" in frame else 0, min_date, max_date,
+                      int(frame[symbol_column].nunique()) if symbol_column else 0, min_date, max_date,
                      schema_version, checksum, builder_version, None, "candidate", _now(), None))
                 versions[partition] = version_id
         return versions

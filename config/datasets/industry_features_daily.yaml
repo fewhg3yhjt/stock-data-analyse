@@ -1,0 +1,44 @@
+dataset:
+  name: industry_features_daily
+  display_name: 行业轮动日特征
+  description: 基于已发布行业成员、股票日线和技术指标计算的行业轮动特征
+  grain: 一个行业的一个交易日一条特征
+  primary_keys: [date, industry_code, industry_classification]
+  partition: {type: month, path: 'warehouse/industry_features_daily/{partition}.parquet'}
+  update_frequency: stock_daily 和 indicators 发布后
+  schema_version: industry_features_daily.v1
+fields:
+  - {name: date, display_name: 交易日期, data_type: date, nullable: false, primary_key: true}
+  - {name: industry_code, display_name: 行业代码, data_type: string, nullable: false, primary_key: true}
+  - {name: industry_name, display_name: 行业名称, data_type: string, nullable: false}
+  - {name: industry_classification, display_name: 分类体系, data_type: string, nullable: false, primary_key: true}
+  - {name: member_count, display_name: 成员数, data_type: integer, nullable: false}
+  - {name: valid_count, display_name: 有效数, data_type: integer, nullable: false}
+  - {name: up_count, display_name: 上涨家数, data_type: integer, nullable: false}
+  - {name: down_count, display_name: 下跌家数, data_type: integer, nullable: false}
+  - {name: up_ratio, display_name: 上涨比例, data_type: float, nullable: false}
+  - {name: return_1d, display_name: 等权收益1日, data_type: float, nullable: true}
+  - {name: return_3d, display_name: 等权收益3日, data_type: float, nullable: true}
+  - {name: return_5d, display_name: 等权收益5日, data_type: float, nullable: true}
+  - {name: return_10d, display_name: 等权收益10日, data_type: float, nullable: true}
+  - {name: return_20d, display_name: 等权收益20日, data_type: float, nullable: true}
+  - {name: amount, display_name: 成交额, data_type: float, nullable: false}
+  - {name: amount_ma5, display_name: 五日均额, data_type: float, nullable: true}
+  - {name: amount_ma20, display_name: 二十日均额, data_type: float, nullable: true}
+  - {name: amount_ratio, display_name: 成交额比, data_type: float, nullable: true}
+  - {name: rank_1d, display_name: 一日排名, data_type: integer, nullable: true}
+  - {name: rank_5d, display_name: 五日排名, data_type: integer, nullable: true}
+  - {name: rank_20d, display_name: 二十日排名, data_type: integer, nullable: true}
+  - {name: leader_code, display_name: 龙头代码, data_type: string, nullable: true}
+  - {name: leader_return, display_name: 龙头收益, data_type: float, nullable: true}
+  - {name: leader_amount, display_name: 龙头成交额, data_type: float, nullable: true}
+  - {name: industry_score, display_name: 行业评分, data_type: float, nullable: true}
+  - {name: industry_state, display_name: 行业状态, data_type: string, nullable: false}
+  - {name: state_reason, display_name: 状态原因, data_type: string, nullable: false}
+sources:
+  - {name: industry_membership, role: input, priority: 1, field_mapping: {}, unit_conversions: {}}
+  - {name: stock_daily, role: input, priority: 2, field_mapping: {}, unit_conversions: {}}
+  - {name: indicators, role: input, priority: 3, field_mapping: {}, unit_conversions: {}}
+consumers:
+  - {name: industry_rotation, type: business, purpose: 行业轮动判断和行业内选股, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式决策}
+quality: {publish_warning: false, coverage: {pass_min: 0.98, warning_min: 0.90}}

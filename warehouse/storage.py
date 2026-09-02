@@ -72,6 +72,7 @@ class Warehouse:
         self.base_dir = Path(base_dir) if base_dir else Config.DATA_DIR / "warehouse"
         self.daily_dir = self.base_dir / "daily"
         self.indicator_dir = self.base_dir / "indicators"
+        self.industry_features_dir = self.base_dir / "industry_features_daily"
         self.fundamental_dir = self.base_dir / "fundamentals"
         self.online_dir = self.base_dir / "online"
         self.minute_dir = self.base_dir / "minute"
@@ -81,7 +82,7 @@ class Warehouse:
         _mgmt = _os.getenv("MANAGEMENT_DB_PATH")
         self.meta_db_path = (Path(meta_db_path) if meta_db_path is not None
                              else (Path(_mgmt) if _mgmt else self.base_dir / "meta.db"))
-        for d in (self.daily_dir, self.indicator_dir,
+        for d in (self.daily_dir, self.indicator_dir, self.industry_features_dir,
                   self.fundamental_dir, self.online_dir, self.minute_dir):
             d.mkdir(parents=True, exist_ok=True)
         self._init_meta()
@@ -220,6 +221,10 @@ class Warehouse:
     def read_indicator(self, month: str):
         """读取某月指标分区"""
         return self._read_partition(self.indicator_dir, month)
+
+    def read_industry_features(self, month: str):
+        """读取行业轮动特征月分区。"""
+        return self._read_partition(self.industry_features_dir, month)
 
     def read_indicator_code(self, code: str, days: int = 750) -> Optional[pd.DataFrame]:
         """通过 DuckDB 只读取一个标的的指标分区数据。"""

@@ -27,7 +27,7 @@ def test_access_reads_current_only_and_returns_context(tmp_path, monkeypatch):
     quality = check_stock_daily(build["path"], expected_symbols=1)
     state.quality(version, status=quality["status"], checks=quality["checks"], publish_allowed=True)
     Publisher(warehouse).publish(version)
-    result = load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-08-28")
+    result = load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-08-28", allow_legacy=True)
     assert result.data["code"].tolist() == ["sh600000"]
     assert result.context["partition_versions"]["2026-08"] == version
     assert result.context["dataset_refs"]["stock_daily"]["partition_versions"]["2026-08"] == version
@@ -68,12 +68,12 @@ def test_access_falls_back_to_local_partition_without_current_index(tmp_path, mo
         "volume": [1000.0], "amount": [100000.0],
     }))
 
-    result = load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-08-28")
+    result = load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-08-28", allow_legacy=True)
 
     assert result.data["code"].tolist() == ["sh600000"]
     assert result.context["source"] == "local_partition_fallback"
     assert result.context["fallback_used"] is True
-    assert result.context["quality_status"] == "WARNING"
+    assert result.context["quality_status"] == "LEGACY"
 
 
 def test_access_falls_back_for_one_missing_month_when_other_month_is_published(tmp_path, monkeypatch):
@@ -101,7 +101,7 @@ def test_access_falls_back_for_one_missing_month_when_other_month_is_published(t
     state.quality(version, status=quality["status"], checks=quality["checks"], publish_allowed=True)
     Publisher(warehouse).publish(version)
 
-    result = load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-09-01")
+    result = load_dataset(warehouse, "stock_daily", "2026-08-28", "2026-09-01", allow_legacy=True)
 
     assert result.data["date"].dt.strftime("%Y-%m-%d").tolist() == ["2026-08-28", "2026-09-01"]
     assert result.context["source"] == "published_dataset"

@@ -205,3 +205,45 @@ def check_industry_membership(path, expected_symbols: int | None = None) -> dict
 
 def check_industry_daily(path, expected_symbols: int | None = None) -> dict:
     return _industry_quality(path, "industry_daily", expected_symbols)
+
+
+def check_industry_features_daily(path, *, expected_industries: int | None = None,
+                                  expected_as_of: str | None = None) -> dict:
+    """Quality gate specific to the industry-feature grain and as-of boundary."""
+    frame = pd.read_parquet(path) if Path(path).exists() else pd.DataFrame()
+    required = {"date", "industry_code", "industry_name", "industry_classification",
+                "member_count", "valid_count", "up_count", "down_count", "up_ratio",
+                "return_1d", "return_3d", "return_5d", "return_10d", "return_20d",
+                "amount", "amount_ma5", "amount_ma20", "amount_ratio",
+                "rank_1d", "rank_5d", "rank_20d", "leader_code", "leader_return",
+                "leader_amount", "industry_score", "industry_state", "state_reason"}
+    missing = sorted(required - set(frame.columns))
+    checks = {"missing_columns": missing, "row_count": int(len(frame))}
+    if missing or frame.empty:
+        return {"status": "FAIL", "publish_allowed": False, "checks": checks}
+    keys = ["date", "industry_code", "industry_classification"]
+    duplicate = int(frame.duplicated(keys).sum())
+    valid_fields = (frame["industry_code"].astype(str).str.strip().ne("") &
+                    frame["industry_name"].astype(str).str.strip().ne("") &
+                    frame["industry_classification"].astype(str).str.strip().ne("") &
+                    pd.to_numeric(frame["member_count"], errors="coerce").ge(0) &
+                    pd.to_numeric(frame["valid_count"], errors="coerce").ge(0))
+    dates = pd.to_datetime(frame["date"], errors="coerce")
+    max_date = str(dates.max())[:10] if dates.notna().any() else None
+    coverage = (frame["industry_code"].astype(str).nunique() / expected_industries
+                if expected_industries else None)
+    checks.update({"duplicate_primary_keys": duplicate, "invalid_industry_rows": int((~valid_fields).sum()),
+                   "industry_count": int(frame["industry_code"].astype(str).nunique()),
+                   "expected_industries": expected_industries, "coverage": coverage,
+                   "min_date": str(dates.min())[:10] if dates.notna().any() else None,
+                   "max_date": max_date, "expected_as_of": expected_as_of})
+    # ``as_of`` may be a weekend/holiday; the invariant is that the output
+    # contains no data after it, not that a non-trading date must be present.
+    as_of_bad = expected_as_of is not None and (
+        max_date is None or pd.Timestamp(max_date) > pd.Timestamp(expected_as_of)
+    )
+    invalid_state = frame["industry_state"].astype(str).isin({"strong", "neutral", "weak", "insufficient_data"}) == False
+    fail = duplicate > 0 or int((~valid_fields).sum()) > 0 or as_of_bad or (coverage is not None and coverage < 0.9)
+    fail |= int(invalid_state.sum()) > 0
+    return {"status": "FAIL" if fail else ("WARNING" if coverage is not None and coverage < 0.98 else "PASS"),
+            "publish_allowed": not fail, "checks": checks}

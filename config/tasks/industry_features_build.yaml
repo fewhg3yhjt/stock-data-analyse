@@ -1,0 +1,12 @@
+task:
+  key: industry_features_build
+  display_name: 行业轮动特征计算
+  stage: DERIVED
+  type: DERIVED_BUILD
+  input_datasets: [industry_membership, stock_daily, indicators]
+  output_datasets: [industry_features_daily]
+  producer_metrics: [industry_score, industry_state, amount_ratio]
+scope: {asset_types: [stock], universe: active}
+schedule: {enabled: true, timezone: Asia/Shanghai, frequency: after_upstream, time: null, period_type: month, period_start: null, period_end: null}
+execution: {manual_enabled: true, retry_limit: 2}
+policy: {on_partial_success: block_downstream, on_failure: block_downstream}
