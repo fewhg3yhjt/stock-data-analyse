@@ -308,6 +308,8 @@ class TakeProfitOptimizer:
         self.buy_ratios = buy_ratios or Config.BUY_RATIOS
         self.stock_type = stock_type.upper()
         self.stop_loss_rate = stop_loss_rate
+        self.hard_stop_mode = "fixed"
+        self.breakeven_activation = 0.08
         self.drawdown_stop = drawdown_stop
         self.min_profit_for_dd = min_profit_for_dd
         self.technical_stop_enabled = True
@@ -364,9 +366,15 @@ class TakeProfitOptimizer:
         # 硬止损（扣减率）
         params = rule_params("sell", "hard_stop")
         if params:
+            self.hard_stop_mode = str(params.get("mode", "fixed")).lower()
             by_type = params.get("stop_loss_by_type")
             if isinstance(by_type, dict) and by_type:
                 self.stop_loss_rate = float(by_type.get(self.stock_type, self.stop_loss_rate))
+            activation_by_type = params.get("breakeven_activation_by_type")
+            if isinstance(activation_by_type, dict) and activation_by_type:
+                self.breakeven_activation = float(
+                    activation_by_type.get(self.stock_type, self.breakeven_activation)
+                )
 
         # 左侧止盈参数
         params = rule_params("sell", "left_side_fixed")
@@ -647,8 +655,12 @@ class TakeProfitOptimizer:
         if close > peak_price:
             peak_price = close
 
-        # ── ③ 硬止损：最低价跌破止损线 ──
-        stop_price = avg_cost * (1 - self.stop_loss_rate)
+        # ── ③ 硬止损：固定比例止损或达到盈利阈值后的保本止损 ──
+        breakeven_activated = (
+            self.hard_stop_mode == "breakeven"
+            and peak_price >= avg_cost * (1 + self.breakeven_activation)
+        )
+        stop_price = avg_cost if breakeven_activated else avg_cost * (1 - self.stop_loss_rate)
         if low <= stop_price:
             fill = close
             cash += shares * fill
@@ -657,7 +669,11 @@ class TakeProfitOptimizer:
                 "price": round(fill, 2), "shares": round(shares, 2),
                 "amount": round(shares * fill, 2),
                 "pnl": round(shares * (fill - avg_cost), 2),
-                "reason": f"最低价{low:.2f}≤止损线{stop_price:.2f}（成本{avg_cost:.2f}×{1-self.stop_loss_rate:.0%})",
+                "reason": (
+                    f"最低价{low:.2f}≤保本线{stop_price:.2f}（峰值达到成本+{self.breakeven_activation:.1%}）"
+                    if breakeven_activated else
+                    f"最低价{low:.2f}≤固定止损线{stop_price:.2f}（成本{avg_cost:.2f}×{1-self.stop_loss_rate:.0%})"
+                ),
             })
             return cash, 0.0, 0.0, 0, 0.0, "closed", 0, True
 

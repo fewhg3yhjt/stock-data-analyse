@@ -105,20 +105,30 @@ def _execute_market_state_arbiter(ctx: RuleContext, params: dict) -> RuleResult:
 # ── 卖出规则（适配既有判定函数）────────────────────────────
 
 def _execute_hard_stop(ctx: RuleContext, params: dict) -> RuleResult:
-    """hard_stop：硬止损（v4.5，均价 × (1 - 扣减率)）。"""
+    """hard_stop：固定比例止损或保本止损。"""
     if ctx.avg_cost <= 0:
         return RuleResult(triggered=False, action="hold", reason="无持仓成本")
+    stock_type = ctx.extra.get("stock_type", "B")
+    mode = str(params.get("mode", "fixed")).strip().lower()
     by_type = params.get("stop_loss_by_type") or {}
-    rate = float(by_type.get(ctx.extra.get("stock_type", "B"), 0.15))
-    stop = ctx.avg_cost * (1 - rate)
+    rate = float(by_type.get(stock_type, 0.15))
+    activation_by_type = params.get("breakeven_activation_by_type") or {}
+    activation = float(activation_by_type.get(stock_type, 0.0))
+    peak = float(ctx.peak_price or ctx.current_price or 0)
+    activated = mode == "breakeven" and peak >= ctx.avg_cost * (1 + activation)
+    stop = ctx.avg_cost if activated else ctx.avg_cost * (1 - rate)
     low = float(ctx.row.get("low", ctx.current_price)) if ctx.row is not None else ctx.current_price
     triggered = low <= stop
     return RuleResult(
         triggered=triggered,
         action="clear" if triggered else "hold",
-        reason=f"最低价{low:.2f} ≤ 止损线{stop:.2f}（成本{ctx.avg_cost:.2f}×{1-rate:.0%})"
-               if triggered else f"未破硬止损{stop:.2f}",
-        detail={"stop_price": round(stop, 2), "low": round(low, 2), "rule": "hard_stop"},
+        reason=(f"最低价{low:.2f} ≤ 保本线{stop:.2f}（峰值已达到成本+{activation:.1%}）"
+                if activated else f"最低价{low:.2f} ≤ 固定止损线{stop:.2f}（成本×{1-rate:.0%}）")
+               if triggered else (f"未破保本线{stop:.2f}"
+                                 if mode == "breakeven" and activated else f"未破固定止损线{stop:.2f}"),
+        detail={"stop_price": round(stop, 2), "low": round(low, 2), "mode": mode,
+                "activated": activated, "peak_price": round(peak, 2),
+                "breakeven_activation": activation, "rule": "hard_stop"},
     )
 
 
@@ -291,9 +301,15 @@ def _build_schemas() -> dict[str, list[ParamField]]:
     ]
 
     s["hard_stop"] = [
-        ParamField("stop_loss_by_type", "按类型扣减率", "map",
-                   default={"A": 0.15, "B": 0.15, "C": 0.15, "D": 0.10},
-                   help="止损价 = 均价 × (1 - 扣减率)"),
+         ParamField("mode", "止损模式", "select", default="fixed",
+                    options=["fixed", "breakeven"],
+                    help="fixed=固定比例止损；breakeven=达到激活盈利后回撤至成本价保本止损"),
+         ParamField("stop_loss_by_type", "按类型扣减率", "map",
+                    default={"A": 0.15, "B": 0.15, "C": 0.15, "D": 0.10},
+                    help="止损价 = 均价 × (1 - 扣减率)"),
+         ParamField("breakeven_activation_by_type", "保本激活盈利阈值", "map",
+                    default={"A": 0.08, "B": 0.08, "C": 0.08, "D": 0.08},
+                    help="峰值达到均价 × (1 + 阈值) 后，止损线移至均价"),
     ]
 
     s["technical_stop"] = [

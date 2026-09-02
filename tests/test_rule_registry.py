@@ -57,6 +57,28 @@ def test_dispatch_unregistered_raises(reg):
         reg.get("buy", "not_a_real_type")
 
 
+def test_hard_stop_supports_fixed_and_breakeven_modes(reg):
+    from StockInvestmentTool.strategy.context import RuleContext
+
+    fixed = reg.dispatch("sell", "hard_stop", RuleContext(
+        avg_cost=100, current_price=84, peak_price=110,
+        row=__import__("pandas").Series({"low": 84}),
+        extra={"stock_type": "B"},
+    ), {"mode": "fixed", "stop_loss_by_type": {"B": 0.15}})
+    assert fixed.triggered is True
+    assert fixed.detail["stop_price"] == 85
+
+    breakeven = reg.dispatch("sell", "hard_stop", RuleContext(
+        avg_cost=100, current_price=99, peak_price=108,
+        row=__import__("pandas").Series({"low": 99}),
+        extra={"stock_type": "B"},
+    ), {"mode": "breakeven", "stop_loss_by_type": {"B": 0.15},
+        "breakeven_activation_by_type": {"B": 0.08}})
+    assert breakeven.triggered is True
+    assert breakeven.detail["stop_price"] == 100
+    assert breakeven.detail["activated"] is True
+
+
 def test_scheme_unified_rule_lookup():
     from StockInvestmentTool.core.scheme import load_scheme_from_dict
     scheme = load_scheme_from_dict({"name": "x", "buy_rules": [{"type": "support_level", "params": {}}]})

@@ -188,7 +188,7 @@ class PostPurchaseAdvisor:
 
     def _check_hard_stop(self, position: Position, ctx: AdvisorContext,
                          scheme, check_results: dict) -> Optional[ActionAdvice]:
-        """① 硬止损: 最近最低价 ≤ 均价 × (1 - 扣减率)"""
+        """① 硬止损: 固定比例止损或保本止损"""
         if position.avg_cost <= 0:
             return None
         rule = scheme.rule("sell", "hard_stop")
@@ -202,6 +202,7 @@ class PostPurchaseAdvisor:
             row=ctx.row,
             avg_cost=position.avg_cost,
             current_price=ctx.current_price,
+            peak_price=position.peak_price,
             extra={"stock_type": position.stock_type},
         ), params)
         detail = result.detail or {}
