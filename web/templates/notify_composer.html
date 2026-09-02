@@ -1,266 +1,28 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 通知中心{% endblock %}
 {% block head %}
-<style>
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-@media(max-width:700px){.grid2{grid-template-columns:1fr;}}
-.rule-box{border:1px solid var(--color-border);border-radius:6px;padding:14px;margin-bottom:12px;background:var(--color-surface-subtle);}
-.rule-box .rule-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;}
-.rule-box h4{font-size:14px;display:flex;align-items:center;gap:8px;}
-table.kv{width:100%;border-collapse:collapse;font-size:13px;}
-table.kv th,table.kv td{border:1px solid var(--color-border);padding:6px 10px;text-align:left;}
-table.kv th{background:var(--color-surface-subtle);font-weight:600;}
-.tag.instant{background:#fbe9e7;color:var(--color-danger);}
-.tag.batch{background:#e8f5e9;color:var(--color-success);}
-.divider{height:1px;background:var(--color-border);margin:18px 0;}
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;}
-.modal{background:var(--color-surface);border-radius:10px;padding:22px;max-width:620px;width:90%;}
-</style>
+<link rel="stylesheet" href="{{ static_asset('notify-composer.css') }}">
+<script src="{{ static_asset('notify-composer.js') }}" defer></script>
 {% endblock %}
 {% block body %}
 <div class="app">
-  <div class="header">
-    <div>
-      <h1><i class="fas fa-bell"></i> 通知中心</h1>
-      <div class="sub">何时通知 · 什么条件 · 什么渠道 —— 配置即时生效（免重启）</div>
-    </div>
-  {% set active = 'notify' %}{% include '_nav.html' %}
-  </div>
-
+  <div class="header"><div><h1><i class="fas fa-bell"></i> 通知中心</h1><div class="sub">何时通知 · 什么条件 · 什么渠道 —— 配置即时生效（免重启）</div></div>{% set active = 'notify' %}{% include '_nav.html' %}</div>
   <div class="notice"><strong>通知中心</strong> 业务通知、系统告警和投递台账分开查看；失败和死信请从投递台账处理。</div>
-
   <div class="page-context"><span class="note">先配置规则和渠道，再通过投递台账确认消息是否真正送达。</span><a class="ui-button ui-button-secondary ui-button-sm" href="/diagnostics"><i class="fas fa-stethoscope"></i> 查看系统诊断</a></div>
-
-  {% if error %}<div class="error" style="color:var(--color-danger);background:#fbe9e7;border-radius:6px;padding:12px;margin-bottom:14px;">{{ error }}</div>{% endif %}
-
-  <!-- 触发器 -->
+  {% if error %}<div class="error notify-error">{{ error }}</div>{% endif %}
   <div class="ui-card">
     <h2><i class="fas fa-filter"></i> 触发器规则（条件 × 时间 × 渠道）</h2>
     <div id="rules-list"></div>
-    <button class="ui-button ui-button-ghost ui-button-sm" onclick="addRule()"><i class="fas fa-plus"></i> 添加触发器</button>
-    <div style="margin-top:14px;">
-      <button class="ui-button ui-button-primary" onclick="saveRules()"><i class="fas fa-save"></i> 保存触发器（即时生效）</button>
-      <span class="help" id="save-hint"></span>
-    </div>
+    <button class="ui-button ui-button-ghost ui-button-sm" data-action="add-rule"><i class="fas fa-plus"></i> 添加触发器</button>
+    <div class="notify-save-actions"><button class="ui-button ui-button-primary" data-action="save-rules"><i class="fas fa-save"></i> 保存触发器（即时生效）</button><span class="help" id="save-hint"></span></div>
   </div>
-
-  <!-- 渠道 + 邮件 -->
   <div class="ui-card">
     <h2><i class="fas fa-paper-plane"></i> 渠道与邮件收件人</h2>
-    <div class="grid2">
-      <div class="ui-field"><label>webhook 渠道</label>
-        <select id="channel">
-          <option value="feishu">飞书 feishu</option>
-          <option value="wecom">企业微信 wecom</option>
-          <option value="email">邮件 email</option>
-        </select>
-        <span class="help" id="channel-status"></span>
-      </div>
-      <div class="ui-field"><label>邮件收件人（逗号分隔）</label>
-        <input id="email-to" placeholder="a@example.com,b@example.com">
-        <span class="help">保存到 .env EMAIL_TO（也补全 email 渠道发送）</span>
-      </div>
-    </div>
-    <div class="ui-field"><label>测试渠道 webhook URL（仅在需覆盖时填，留空用 .env）</label>
-      <input id="test-url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx">
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="ui-button ui-button-primary" onclick="saveMail()"><i class="fas fa-save"></i> 保存收件人</button>
-      <button class="ui-button ui-button-ghost" onclick="sendTest()"><i class="fas fa-paper-plane"></i> 测试发送</button>
-    </div>
+    <div class="grid2"><div class="ui-field"><label>webhook 渠道</label><select id="channel"><option value="feishu">飞书 feishu</option><option value="wecom">企业微信 wecom</option><option value="email">邮件 email</option></select><span class="help" id="channel-status"></span></div><div class="ui-field"><label>邮件收件人（逗号分隔）</label><input id="email-to" placeholder="a@example.com,b@example.com"><span class="help">保存到 .env EMAIL_TO（也补全 email 渠道发送）</span></div></div>
+    <div class="ui-field"><label>测试渠道 webhook URL（仅在需覆盖时填，留空用 .env）</label><input id="test-url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"></div>
+    <div class="notify-actions"><button class="ui-button ui-button-primary" data-action="save-mail"><i class="fas fa-save"></i> 保存收件人</button><button class="ui-button ui-button-ghost" data-action="send-test"><i class="fas fa-paper-plane"></i> 测试发送</button></div>
   </div>
-  <div class="ui-card">
-    <h2><i class="fas fa-list-check"></i> 投递台账</h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><select id="outbox-status" onchange="loadOutbox()"><option value="">全部状态</option><option>pending</option><option>sent</option><option>dead</option></select><button class="ui-button ui-button-ghost" onclick="retryDead()">重试全部死信</button><button class="ui-button ui-button-secondary" onclick="createSystemAlerts()">检查并生成系统告警</button></div>
-    <div id="outbox-summary" class="help">加载中…</div>
-    <div class="ui-table-wrap"><table class="kv"><thead><tr><th>ID</th><th>渠道</th><th>状态</th><th>尝试次数</th><th>创建时间</th><th>最近错误</th></tr></thead><tbody id="outbox-rows"></tbody></table></div>
-  </div>
+  <div class="ui-card"><h2><i class="fas fa-list-check"></i> 投递台账</h2><div class="notify-outbox-actions"><select id="outbox-status"><option value="">全部状态</option><option>pending</option><option>sent</option><option>dead</option></select><button class="ui-button ui-button-ghost" data-action="retry-dead">重试全部死信</button><button class="ui-button ui-button-secondary" data-action="create-system-alerts">检查并生成系统告警</button></div><div id="outbox-summary" class="help">加载中…</div><div class="ui-table-wrap"><table class="kv"><thead><tr><th>ID</th><th>渠道</th><th>状态</th><th>尝试次数</th><th>创建时间</th><th>最近错误</th></tr></thead><tbody id="outbox-rows"></tbody></table></div></div>
 </div>
-
-<script>
-let RULES=[];
-const SCHEDULE_MODES=[
-  {mode:'intraday',label:'盘中每 N 分钟'},
-  {mode:'post_close',label:'盘后定时(批次聚合)'},
-  {mode:'daily',label:'每日一次'},
-];
-const ADVICE_OPTIONS=['hold','buy_more','partial_sell','sell_all','adjust_stop'];
-
-function esc(s){return (s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-
-async function loadRules(){
-  const r=await fetch('/api/notify/rules');const d=await r.json();
-  if(d.status==='success'){RULES=d.rules||[];renderRules();loadConfig();}
-  else showUiMessage(d.error, 'error');
-}
-function renderRules(){
-  const el=document.getElementById('rules-list');el.innerHTML='';
-  RULES.forEach((rule,idx)=>{
-    const sched=rule.schedule||{};
-    const modeLabel=(SCHEDULE_MODES.find(m=>m.mode===sched.mode)||{sched:{}}).label||sched.mode;
-    const condLabels=(rule.conditions||[]).map(c=>condText(c)).join(' 且 ');
-    const on=rule.enabled!==false;
-    const box=document.createElement('div');box.className='rule-box';
-    box.innerHTML=`
-      <div class="rule-head">
-        <h4><span class="tag ${on?'on':'off'}">${on?'启用':'停用'}</span>
-          <span class="tag ${rule.priority==='instant'?'instant':'batch'}">${rule.priority==='instant'?'即时':'批次'}</span>
-          ${esc(rule.name)}</h4>
-        <div style="display:flex;gap:6px;">
-          <button class="ui-button ui-button-ghost ui-button-sm" onclick="toggleRule(${idx})">${on?'停用':'启用'}</button>
-          <button class="ui-button ui-button-ghost ui-button-sm" onclick="editRule(${idx})">编辑</button>
-          <button class="ui-button ui-button-danger ui-button-sm" onclick="delRule(${idx})">删除</button>
-        </div>
-      </div>
-      <div class="help" style="margin-bottom:8px;">条件: ${condLabels||'任意'}｜时间: ${modeLabel}（${sched.time||sched.interval_minutes+'分钟'}）｜渠道: ${esc(rule.channel)}</div>`;
-    el.appendChild(box);
-  });
-}
-
-let editingIdx=-1;
-function addRule(){editingIdx=-1;openEditor(defaultRule());}
-function editRule(idx){editingIdx=idx;openEditor({...(RULES[idx]),conditions:(RULES[idx].conditions||[]).map(c=>({...c}))});}
-async function delRule(idx){if(!await showUiConfirm('删除后将移除该触发器。', '删除触发器 '+RULES[idx].name))return;RULES.splice(idx,1);renderRules();}
-function toggleRule(idx){RULES[idx].enabled=!(RULES[idx].enabled!==false);renderRules();}
-function defaultRule(){return {id:'rule_'+Date.now(),name:'新触发器',enabled:true,logic:'AND',priority:'batch',channel:'feishu',schedule:{mode:'intraday',interval_minutes:10},conditions:[{type:'action',params:{advice_types:['partial_sell','sell_all']}}]};}
-
-function openEditor(rule){
-  editingIdx=editingIdx;
-  const condOpts=ADVICE_OPTIONS.map(a=>`<option value="${a}" ${(rule.conditions[0]?.params?.advice_types||[]).includes(a)?'selected':''}>${a}</option>`).join('');
-  const body=`
-    <div class="ui-field"><label>规则名</label><input id="e-name" value="${esc(rule.name)}"></div>
-    <div class="grid2">
-      <div class="ui-field"><label>时间模式</label><select id="e-mode">
-        ${SCHEDULE_MODES.map(m=>`<option value="${m.mode}" ${rule.schedule.mode===m.mode?'selected':''}>${m.label}</option>`).join('')}
-      </select></div>
-      <div class="ui-field"><label>渠道</label><select id="e-channel">
-        <option value="feishu" ${rule.channel==='feishu'?'selected':''}>飞书</option>
-        <option value="wecom" ${rule.channel==='wecom'?'selected':''}>企微</option>
-        <option value="email" ${rule.channel==='email'?'selected':''}>邮件</option>
-      </select></div>
-      <div class="ui-field" id="e-time-wrap"><label>时间点 HH:MM</label><input id="e-time" type="time" value="${rule.schedule.time||'15:35'}"></div>
-      <div class="ui-field" id="e-interval-wrap" style="display:none;"><label>间隔(分钟)</label><input id="e-interval" type="number" value="${rule.schedule.interval_minutes||10}"></div>
-    </div>
-    <div class="grid2">
-      <div class="ui-field"><label>优先级</label><select id="e-priority">
-        <option value="instant" ${rule.priority==='instant'?'selected':''}>即时（盘中单独发）</option>
-        <option value="batch" ${rule.priority==='batch'?'selected':''}>批次（盘后聚合为一条）</option>
-      </select></div>
-      <div class="ui-field"><label>触发类型</label><select id="e-condtype">
-        <option value="action" ${rule.conditions[0]?.type==='action'?'selected':''}>操作建议</option>
-        <option value="price_change" ${rule.conditions[0]?.type==='price_change'?'selected':''}>价格涨跌幅</option>
-      </select></div>
-    </div>
-    <div class="ui-field" id="e-advice-wrap"><label>操作建议类型</label><select id="e-advice" multiple size="4" style="min-height:90px;">${condOpts}</select></div>
-    <div class="ui-field" id="e-price-wrap" style="display:none;"><label>涨跌幅阈值%</label><input id="e-pct" type="number" value="3">
-      <select id="e-dir"><option value="up">上涨</option><option value="down">下跌</option></select></div>
-    <div class="ui-field"><label>邮件专用收件人（可选，留空用全局 EMAIL_TO）</label><input id="e-mto" value="${esc(rule.use_email_to||'')}"></div>
-    <div style="text-align:right;margin-top:8px;">
-      <button class="ui-button ui-button-primary" onclick="commitEditor()">确认</button>
-      <button class="ui-button ui-button-ghost" onclick="closeEditorModal()">取消</button>
-    </div>`;
-  showModal('编辑触发器',body);
-  syncModeFields();
-  document.getElementById('e-mode').onchange=syncModeFields;
-  document.getElementById('e-condtype').onchange=syncCondFields;
-  syncCondFields();
-}
-function syncModeFields(){
-  const mode=document.getElementById('e-mode').value;
-  document.getElementById('e-time-wrap').style.display=(mode==='intraday')?'none':'block';
-  document.getElementById('e-interval-wrap').style.display=(mode==='intraday')?'block':'none';
-}
-function syncCondFields(){
-  const t=document.getElementById('e-condtype').value;
-  document.getElementById('e-advice-wrap').style.display=(t==='action')?'block':'none';
-  document.getElementById('e-price-wrap').style.display=(t==='price_change')?'block':'none';
-}
-function commitEditor(){
-  const mode=document.getElementById('e-mode').value;
-  const condtype=document.getElementById('e-condtype').value;
-  let condition;
-  if(condtype==='action'){
-    const atypes=[...document.getElementById('e-advice').selectedOptions].map(o=>o.value);
-    condition={type:'action',params:{advice_types:atypes.length?atypes:['partial_sell','sell_all']}};
-  }else{
-    const dir=document.getElementById('e-dir').value;
-    const pct=parseFloat(document.getElementById('e-pct').value||3);
-    condition={type:'price_change',params:{direction:dir,pct:pct}};
-  }
-  const sched={mode};
-  if(mode==='intraday')sched.interval_minutes=parseInt(document.getElementById('e-interval').value||10);
-  else sched.time=document.getElementById('e-time').value||'15:35';
-  const rule={
-    id:(editingIdx>=0?RULES[editingIdx].id:'rule_'+Date.now()),
-    name:document.getElementById('e-name').value||'新触发器',
-    enabled:true, logic:'AND', conditions:[condition], schedule:sched,
-    channel:document.getElementById('e-channel').value,
-    priority:document.getElementById('e-priority').value,
-    use_email_to:document.getElementById('e-mto').value,
-  };
-  if(editingIdx>=0)RULES[editingIdx]=rule;else RULES.push(rule);
-  closeEditorModal();renderRules();
-}
-function showModal(title,html){
-  document.getElementById('modal-title').textContent=title;
-  document.getElementById('modal-body').innerHTML=html;
-  document.getElementById('modal-bg').style.display='flex';
-}
-function closeEditorModal(){document.getElementById('modal-bg').style.display='none';}
-
-async function saveRules(){
-  const r=await fetch('/api/notify/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:RULES})});
-  const d=await r.json();
-  if(d.status==='success'){showUiMessage('触发器已保存，即时生效', 'success');document.getElementById('save-hint').textContent='已保存 '+d.count+' 条，无需重启';}
-  else showUiMessage('保存失败: '+d.error, 'error');
-}
-
-async function loadConfig(){
-  const r=await fetch('/api/notify/config');const d=await r.json();
-  if(d.status!=='success')return;
-  const w=d.webhook||{};const m=d.mail||{};
-  document.getElementById('channel').value=w.channel||'feishu';
-  document.getElementById('channel-status').innerHTML=
-    `飞书 <span class="status-tag ${w.feishu_configured?'status-healthy':'status-empty'}">${w.feishu_configured?'✓':'未配'}</span> | `+
-    `企微 <span class="status-tag ${w.wecom_configured?'status-healthy':'status-empty'}">${w.wecom_configured?'✓':'未配'}</span> | `+
-    `邮件 <span class="status-tag ${m.email_configured?'status-healthy':'status-empty'}">${m.email_configured?'✓':'未配'}</span>`;
-  document.getElementById('email-to').value=(m.email_to_addresses||[]).join(',');
-}
-async function saveMail(){
-  const to=document.getElementById('email-to').value;
-  const r=await fetch('/api/notify/mail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to})});
-  const d=await r.json();
-  d.status==='success'?showUiMessage('收件人已保存', 'success'):showUiMessage('保存失败: '+d.error, 'error');
-}
-async function sendTest(){
-  const channel=document.getElementById('channel').value;
-  const url=document.getElementById('test-url').value;
-  const to=document.getElementById('email-to').value;
-  const r=await fetch('/api/notify/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel,url,to})});
-  const d=await r.json();
-  d.status==='success'?showUiMessage('测试消息已发送（渠道 '+channel+'）', 'success'):showUiMessage('发送失败: '+d.error, 'error');
-}
-async function loadOutbox(){
-  const status=document.getElementById('outbox-status').value;
-  const response=await fetch('/api/notify/outbox'+(status?'?status='+encodeURIComponent(status):'')); const data=await response.json();
-  if(data.status!=='success'){document.getElementById('outbox-summary').textContent=data.error||'加载失败';return;}
-  const counts=data.counts||{};
-  document.getElementById('outbox-summary').textContent=`待发送 ${counts.pending||0} · 已发送 ${counts.sent||0} · 死信 ${counts.dead||0}`;
-  document.getElementById('outbox-rows').innerHTML=(data.items||[]).map(item=>`<tr><td>${item.id}</td><td>${item.channel}</td><td>${item.status}</td><td>${item.attempts}</td><td>${item.created_at||''}</td><td>${item.last_error||''} ${item.status==='dead'?`<button class="ui-button ui-button-secondary ui-button-sm" onclick="retryOne(${item.id})">重试</button>`:''}</td></tr>`).join('') || '<tr><td colspan="6">暂无投递记录</td></tr>';
-}
-async function retryOne(id){return UI_UTILS.once('notify:retry:'+id, async () => {await UI_UTILS.fetchJson('/api/notify/outbox/'+id+'/retry',{method:'POST'});loadOutbox();}).catch(error => showUiMessage(error.message || '重试失败', 'error'));}
-async function retryDead(){return UI_UTILS.once('notify:retry-dead', async () => {await UI_UTILS.fetchJson('/api/notify/outbox/retry-dead',{method:'POST'});loadOutbox();}).catch(error => showUiMessage(error.message || '重试失败', 'error'));}
-async function createSystemAlerts(){const r=await fetch('/api/system/alerts',{method:'POST'});const d=await r.json();showUiMessage('已生成 '+(d.outbox_ids||[]).length+' 条系统告警', 'success');loadOutbox();}
-
-loadRules();
-loadOutbox();
-</script>
-
-<!-- 编辑弹窗 -->
-<div class="modal-bg" id="modal-bg" style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;">
-  <div class="modal" style="background:var(--color-surface);border-radius:10px;padding:22px;max-width:620px;width:90%;">
-    <h3 id="modal-title" style="margin-bottom:14px;"></h3>
-    <div id="modal-body"></div>
-  </div>
-</div>
+<div class="modal-bg" id="modal-bg"><div class="modal"><h3 id="modal-title"></h3><div id="modal-body"></div></div></div>
 {% endblock %}
