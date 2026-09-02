@@ -261,8 +261,8 @@ class MarketCollector:
         """全市场日线增量同步（核心）。
 
         Args:
-            start_date: 起始日期 YYYY-MM-DD（默认近3年）
-            end_date: 结束日期（默认昨天）
+            start_date: 起始日期 YYYY-MM-DD（必须显式传入）
+            end_date: 结束日期 YYYY-MM-DD（必须显式传入）
             symbols: 限定标的列表（None=全市场）
             include_etf / include_index: 是否包含 ETF / 指数
             max_symbols: 最多处理多少只（测试用）
@@ -276,9 +276,11 @@ class MarketCollector:
         Returns:
             dict: 统计（新增行数/失败数/耗时）
         """
-        end_date = end_date or (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        if start_date is None:
-            start_date = (datetime.now() - timedelta(days=3 * 365)).strftime("%Y-%m-%d")
+        if not start_date or not end_date:
+            raise ValueError(
+                "sync_daily 必须显式传入 start_date 和 end_date；"
+                "禁止隐式拉取历史区间"
+            )
 
         if symbols is None:
             items = self.list_market(include_etf=include_etf,

@@ -144,21 +144,16 @@ def run_daily_digest(mgr=None) -> dict:
 
 
 def run_warehouse_daily() -> dict:
-    """数据仓库每日离线采集：增量日线 → 因子计算 → 新股PE/PB回补。
-
-    由 WAREHOUSE_DAILY_SYNC=1 开启（见 run_daily_tasks ④'）。
-    历史深度取 WAREHOUSE_YEARS（默认3年），增量只补缺失日期（方案B）。
-    """
+    """数据仓库每日离线采集：仅采集当前明确日期。"""
     logger.info("=== 数据仓库离线采集开始 ===")
-    import os as _os
-    years = int(_os.getenv("WAREHOUSE_YEARS", "3"))
     from StockInvestmentTool.warehouse.collector import MarketCollector
 
     result = {}
     c = MarketCollector()
-    start_date = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
+    start_date = datetime.now().strftime("%Y-%m-%d")
+    end_date = start_date
     sync_res = c.sync_daily(
-        start_date=start_date,
+        start_date=start_date, end_date=end_date,
         include_etf=True,
         include_index=False,
         source="tencent",
@@ -217,9 +212,10 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
                                   progress=round(processed / total * 100) if total else 0,
                                   processed=processed, total=total, current_item=current)
 
-        years = int(os.getenv("WAREHOUSE_YEARS", "3"))
-        start_date = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
-        end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        # Scheduled collection is an incremental daily job. Historical
+        # backfills must use an explicit, operator-supplied date range.
+        start_date = run_date
+        end_date = run_date
         child_statuses = []
         store.update_progress(run_id, phase="获取股票清单", progress=1)
         result["daily"] = MarketCollector().sync_daily(
@@ -506,8 +502,10 @@ def _schedule_configured_data_tasks(scheduler) -> None:
 
     def run_task(task_key):
         from StockInvestmentTool.ops.task_execution import execute_task, execute_pipeline
+        trading_date = _today_text()
         payload = {
             "trigger_type": "scheduled", "requested_by": "scheduler",
+            "period_start": trading_date, "period_end": trading_date,
         }
         if task_key == "stock_daily_capture":
             configured_keys = TaskCenter(management_db_path()).active_configs()

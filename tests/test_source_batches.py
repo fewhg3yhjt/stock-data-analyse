@@ -86,3 +86,9 @@ def test_small_batch_tencent_capture_keeps_legacy_daily_path(tmp_path, monkeypat
     assert batch["skipped_symbols"] == 0
     assert batch["row_count"] == 4
     assert pd.read_parquet(batch["raw_path"]).shape[0] == 4
+
+
+def test_daily_capture_requires_explicit_date_range(tmp_path):
+    collector = MarketCollector(warehouse=Warehouse(tmp_path / "warehouse"), query_interval=0)
+    with pytest.raises(ValueError, match="必须显式传入"):
+        collector.sync_daily(symbols=["sh600000"], source="tencent", target="raw:tencent")

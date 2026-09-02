@@ -134,9 +134,8 @@ python -m StockInvestmentTool.notifier --test
 # 首建：同步全市场代码清单 + 全量日线（默认近 3 年）
 python -m StockInvestmentTool.warehouse init [--years 3] [--max-symbols N]
 
-# 增量同步日线（每日收盘后跑一次，只补缺失日期）
-# 增量同步日线（每日收盘后跑一次，只补缺失日期，自动断点续传）
-python -m StockInvestmentTool.warehouse sync [--start YYYY-MM-DD] [--source tencent] [--target daily|raw:tencent]
+# 增量同步日线（必须显式指定日期，只补缺失日期，自动断点续传）
+python -m StockInvestmentTool.warehouse sync --start YYYY-MM-DD --end YYYY-MM-DD [--source tencent] [--target daily|raw:tencent]
 
 # 计算全市场因子宽表（MA/量比/乖离/动量/波动率）
 python -m StockInvestmentTool.warehouse factors
