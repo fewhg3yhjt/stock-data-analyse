@@ -66,7 +66,9 @@ function renderIndicators(){
     const heading=document.createElement('div'); heading.className='indicator-group-title'; heading.innerHTML=`<span class="tag ${color}">${label}</span><span>${items.length} 项</span>`; target.appendChild(heading);
     items.forEach(item=>{
       const row=document.createElement('button'); row.className='indicator-row'; row.type='button';
-       row.innerHTML=`<strong>${escapeHtml(item.name)} <span class="indicator-info" title="查看指标说明">!</span> ${item.source==='custom' ? '<span class="tag gray">自定义</span>' : '<span class="tag gray">内置</span>'} ${item.enabled===false ? '<span class="tag off">已停用</span>' : ''}</strong><code>${escapeHtml(item.expr || 'Python 代码指标')}</code><span>${escapeHtml(item.description || item.meaning || '暂无说明')}</span>`;
+        const params=item.parameters ? Object.entries(item.parameters).map(([k,v])=>`${escapeHtml(k)}=${escapeHtml(v)}`).join(' · ') : '';
+        const current=item.current_values&&item.current_values.length ? `当前：${item.current_values.slice(0,3).map(v=>`${escapeHtml(v.name||v.symbol)}=${escapeHtml(v.value)}`).join('；')}` : '';
+        row.innerHTML=`<strong>${escapeHtml(item.name)} <span class="indicator-info" title="查看指标说明">!</span> ${item.source==='custom' ? '<span class="tag gray">自定义</span>' : '<span class="tag gray">内置</span>'} ${item.enabled===false ? '<span class="tag off">已停用</span>' : ''}</strong><code>${escapeHtml(item.expr || '业务状态/持仓计算')}</code><span>${escapeHtml(item.description || item.meaning || '暂无说明')}</span>${params ? `<small class="indicator-params">参数：${params}</small>` : ''}${current ? `<small class="indicator-params">${current}</small>` : ''}`;
        row.querySelector('.indicator-info').onclick=(event)=>{event.stopPropagation();showIndicatorHelp(event.currentTarget,item);};
        if(['base','composite','code'].includes(item.kind)) row.onclick=()=>{document.getElementById('preview-expr').value=item.name; previewExpression();};
       if(item.editable){

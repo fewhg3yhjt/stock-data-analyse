@@ -48,6 +48,11 @@ class IndicatorDocumentationRegistry:
             "volatility": IndicatorDocumentation("描述价格近期波动程度的统计值", "由分析引擎根据日收益率波动计算，具体窗口以分析结果为准", "日线 close 序列", "波动率高表示价格变化幅度较大，不代表方向"),
             "pe": IndicatorDocumentation("市盈率，用于观察价格相对每股收益的估值水平", "PE = 股票价格 / 每股收益，项目沿用数据源提供的 PE(TTM)", "需要 PE(TTM) 基本行情字段", "负 PE 或缺失 PE 不应被解释为低估"),
             "pe_percentile": IndicatorDocumentation("当前 PE 在历史 PE 样本中的百分位", "将当前 PE 与可用历史 PE 样本排序后计算所处百分位", "需要连续的历史 PE 数据", "百分位越低只表示历史相对位置较低，不单独构成买入结论"),
+            "year_high": IndicatorDocumentation("滚动前高，用于左侧止盈的参考高点", "在指定回看窗口内取日线 high 的最大值；默认窗口为 252 个交易日", "日线 high 序列；窗口可在策略参数中调整", "这是滚动参考高点，不等于持仓以来峰值"),
+            "position_peak_price": IndicatorDocumentation("持仓以来的价格峰值，用于右侧移动止盈", "从首次建仓日起，持续取日线最高价与分钟实时价格中的最大值", "持仓买入记录、日线 high、分钟 close/high（如有）", "按持仓状态维护，不是普通日线指标"),
+            "position_drawdown": IndicatorDocumentation("当前价格相对持仓峰值的回撤比例", "(持仓峰值 - 当前价) / 持仓峰值", "持仓峰值与最新实时价格", "正数表示回撤；达到策略阈值后才触发右侧移动止盈"),
+            "right_side_trigger_price": IndicatorDocumentation("右侧移动止盈触发价", "持仓峰值 × (1 - 当前股票类型的回撤阈值)", "持仓峰值、当前股票类型和策略中的回撤阈值", "只有进入右侧跟踪阶段后才作为卖出判断"),
+            "position_phase": IndicatorDocumentation("持仓当前所处的策略阶段", "由交易、突破和止盈/止损事件推进状态机", "持仓交易记录、当前价格与策略判断", "阶段决定哪些策略规则当前生效"),
         }
         items.update({
             "止盈参考线": IndicatorDocumentation("以 MA20 的 95% 作为参考价格线", "0.95 × MA20"),

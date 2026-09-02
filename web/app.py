@@ -320,8 +320,58 @@ def api_indicators():
         from StockInvestmentTool.config import Config
         catalog_path = Config.BASE_DIR / "config" / "metrics" / "catalog.yaml"
         catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8")) or {}
+        position_examples = {}
+        try:
+            from StockInvestmentTool.portfolio.manager import PortfolioManager
+            from StockInvestmentTool.portfolio.dashboard import DashboardService
+            from StockInvestmentTool.portfolio.position_levels import (
+                calculate_position_drawdown,
+                calculate_right_side_trigger_price,
+                calculate_year_high,
+            )
+            from StockInvestmentTool.portfolio.monitor import PriceMonitor
+            manager = PortfolioManager()
+            monitor = PriceMonitor()
+            live_quotes = DashboardService(manager)._realtime_enhance(
+                [p.stock_code for p in manager.storage.get_open_positions()]
+            )
+            for position in manager.storage.get_open_positions():
+                key = str(position.stock_code).lower().replace(".", "")
+                frame = monitor.fetch_kline(position.stock_code)
+                year_high = calculate_year_high(frame)
+                from StockInvestmentTool.portfolio.position_levels import calculate_position_peak
+                from StockInvestmentTool.portfolio.trade_metrics import load_local_minute
+                live = live_quotes.get(key, {})
+                current = float(live.get("price") or position.current_price or 0) or None
+                peak_info = calculate_position_peak(
+                    daily=frame, minute=load_local_minute(position.stock_code),
+                    buy_date=position.buy_date, buy_price=position.avg_cost,
+                    current_price=current,
+                )
+                peak = peak_info.get("value") or float(position.peak_price or 0) or None
+                drawdown = calculate_position_drawdown(peak, current)
+                trigger = None
+                try:
+                    scheme = SchemeRegistry().get(position.scheme_name)
+                    right = scheme.rule("sell", "right_side_trailing")
+                    thresholds = (right.params or {}).get("drawdown_by_type", {}) if right else {}
+                    threshold = thresholds.get(position.stock_type)
+                    trigger = calculate_right_side_trigger_price(peak, threshold)
+                except Exception:
+                    pass
+                position_examples[key] = {
+                    "symbol": position.stock_code, "name": position.stock_name,
+                    "year_high": round(year_high, 4) if year_high else None,
+                    "position_peak_price": round(peak, 4) if peak else None,
+                    "position_drawdown": round(drawdown * 100, 2) if drawdown is not None else None,
+                    "right_side_trigger_price": trigger,
+                    "position_phase": position.position_phase,
+                }
+        except Exception as exc:
+            logger.warning("业务指标当前值读取失败: %s", exc)
+
         for metric in catalog.get("metrics", []):
-            if metric.get("category") != "业务指标":
+            if metric.get("category") not in ("业务指标", "业务状态"):
                 continue
             key = str(metric.get("key") or "")
             if not key or key in {item["name"] for item in groups["business"]}:
@@ -335,6 +385,11 @@ def api_indicators():
                 "calculation": metric.get("definition", "") or "由持仓运行状态维护",
                 "data_requirements": "持仓记录、持仓运行状态与最新行情",
                 "notes": "业务指标，不参与普通日线指标表达式计算。",
+                "parameters": metric.get("parameters", {}),
+                "current_values": [
+                    {"symbol": item["symbol"], "name": item["name"], "value": item.get(key)}
+                    for item in position_examples.values() if (item.get(key) is not None)
+                ],
                 "applies_to": metric.get("applies_to", ["stock", "etf"]),
                 "source": "builtin",
                 "editable": False,

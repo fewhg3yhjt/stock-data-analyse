@@ -158,21 +158,40 @@ class PositionRuntimeService:
         avg_cost = summary["average_cost"]
         cost_basis = summary["cost_basis"]
 
-        # 后高/低点：用上一次持久化值增量推进，避免回退
+        # 后高/低点：统一使用持仓以来日线收盘价 + 分钟收盘价口径；
+        # 旧快照仍作为边界值，避免历史状态因升级而回退。
         highest = float(prior["highest_since_entry"]) if prior and prior["highest_since_entry"] is not None else price
         lowest = float(prior["lowest_since_entry"]) if prior and prior["lowest_since_entry"] is not None else price
-        if price is not None:
-            if highest is None or price > highest:
-                highest = price
-            if lowest is None or price < lowest:
-                lowest = price
+        try:
+            from StockInvestmentTool.portfolio.position_levels import calculate_position_peak
+            from StockInvestmentTool.portfolio.trade_metrics import load_local_minute
+            from StockInvestmentTool.portfolio.monitor import PriceMonitor
+            daily = PriceMonitor().fetch_kline(cycle["symbol"], start_date=cycle["opened_at"])
+            peak = calculate_position_peak(
+                daily=daily, minute=load_local_minute(cycle["symbol"]),
+                buy_date=cycle["opened_at"] or "", buy_price=avg_cost,
+                current_price=price,
+            )
+            if peak.get("value") is not None:
+                highest = float(peak["value"])
+            if price is not None:
+                lowest = min(float(lowest or price), float(price))
+        except Exception as exc:
+            logger.debug("统一持仓峰值计算失败，使用增量状态: %s", exc)
+            if price is not None:
+                if highest is None or price > highest:
+                    highest = price
+                if lowest is None or price < lowest:
+                    lowest = price
         highest = highest if highest is not None else price
         lowest = lowest if lowest is not None else price
 
         unrealized = (price - avg_cost) * qty if price is not None and avg_cost is not None else None
         unrealized_pct = (price / avg_cost - 1.0) if price is not None and avg_cost else None
         max_profit_pct = (highest / avg_cost - 1.0) if highest is not None and avg_cost else 0.0
-        drawdown = (price / highest - 1.0) if price is not None and highest else 0.0
+        from StockInvestmentTool.portfolio.position_levels import calculate_position_drawdown
+        drawdown_value = calculate_position_drawdown(highest, price)
+        drawdown = -drawdown_value if drawdown_value is not None else 0.0
         as_of = price_date or now_utc()[:10]
         holding = _holding_days(cycle["opened_at"], as_of)
 

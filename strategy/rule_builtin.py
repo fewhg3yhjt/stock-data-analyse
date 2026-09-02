@@ -300,6 +300,10 @@ def _build_schemas() -> dict[str, list[ParamField]]:
     ]
 
     s["left_side_fixed"] = [
+        ParamField("year_high_window", "前高回看交易日数", "number", default=252, min=20, max=2000,
+                   help="在最近多少个交易日内寻找前高；默认 252 日约一年"),
+        ParamField("year_high_price_field", "前高计算价格字段", "select", default="high",
+                   options=["high", "close"], help="用每日最高价或收盘价计算滚动前高"),
         ParamField("zones", "止盈区间", "map_list",
                    default=[
                        {"name": "预警区", "range": [0.90, 0.95], "sell_ratio": 0.20},

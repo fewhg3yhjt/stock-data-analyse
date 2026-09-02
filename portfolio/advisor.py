@@ -116,7 +116,9 @@ class PostPurchaseAdvisor:
 
     def compute_context(self, kline: pd.DataFrame,
                         dividend_anchor: Optional[float] = None,
-                        scheme_snapshot: Optional[dict] = None) -> AdvisorContext:
+                        scheme_snapshot: Optional[dict] = None,
+                        year_high_window: int = 252,
+                        year_high_price_field: str = "high") -> AdvisorContext:
         """从最新 K 线计算全部参考价格"""
         ctx = AdvisorContext()
 
@@ -129,7 +131,10 @@ class PostPurchaseAdvisor:
         ctx.recent_low = float(last.get("low", 0))
         ctx.last_volume = float(last.get("volume", 0))
         ctx.vol_ma5 = float(last.get("vol_ma5", 0)) if "vol_ma5" in kline.columns else 0
-        ctx.year_high = float(kline["high"].tail(252).max())
+        from StockInvestmentTool.portfolio.position_levels import calculate_year_high
+        ctx.year_high = calculate_year_high(
+            kline, window=year_high_window, price_field=year_high_price_field
+        ) or 0.0
         ctx.ma20 = float(last.get("ma20", 0)) if "ma20" in kline.columns else 0
         ctx.ma60 = float(last.get("ma60", 0)) if "ma60" in kline.columns else 0
 
@@ -353,9 +358,8 @@ class PostPurchaseAdvisor:
         dd_threshold = None
         if drawdown_by_type:
             dd_threshold = drawdown_by_type.get(position.stock_type)
-        trigger_price = round(
-            position.peak_price * (1 - dd_threshold), 2
-        ) if dd_threshold and position.peak_price > 0 else None
+        from StockInvestmentTool.portfolio.position_levels import calculate_right_side_trigger_price
+        trigger_price = calculate_right_side_trigger_price(position.peak_price, dd_threshold)
 
         check_results["right_side"] = {
             "peak_price": round(position.peak_price, 2),
@@ -519,12 +523,26 @@ class PostPurchaseAdvisor:
                     reason=f"⚠️ 方案 '{position.scheme_name}' 加载失败，无法生成建议。请检查方案配置或升级方案。",
                 )
 
-        ctx = self.compute_context(kline, dividend_anchor, position.scheme_snapshot)
+        left_rule = scheme.rule("sell", "left_side_fixed")
+        left_params = left_rule.params if left_rule is not None else {}
+        ctx = self.compute_context(
+            kline, dividend_anchor, position.scheme_snapshot,
+            year_high_window=int(left_params.get("year_high_window", 252)),
+            year_high_price_field=str(left_params.get("year_high_price_field", "high")),
+        )
         try:
             from StockInvestmentTool.portfolio.trade_metrics import calculate_post_metrics, load_local_minute
+            from StockInvestmentTool.portfolio.position_levels import calculate_position_peak
+            minute = load_local_minute(position.stock_code)
+            peak = calculate_position_peak(
+                daily=kline, minute=minute, buy_date=position.buy_date,
+                buy_price=position.avg_cost, current_price=ctx.current_price,
+            )
+            if peak.get("value") is not None:
+                position.peak_price = peak["value"]
             metrics = calculate_post_metrics(
                 buy_date=position.buy_date, buy_price=position.avg_cost,
-                daily=kline, minute=load_local_minute(position.stock_code),
+                daily=kline, minute=minute,
                 as_of=__import__("datetime").datetime.now(),
             )
             ctx.post_high, ctx.post_low = metrics.post_high, metrics.post_low
