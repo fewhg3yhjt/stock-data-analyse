@@ -929,6 +929,32 @@ class DashboardService:
 
     # ── 页面二 · 持仓（作战仓）──────────────────────────
 
+    def _position_profit_summary(self, positions: list, current_price: float | None) -> dict:
+        """计算持仓卡片展示用的完整收益，不包含手续费。"""
+        realized = 0.0
+        invested = 0.0
+        shares = sum(float(p.total_shares or 0) for p in positions)
+        for position in positions:
+            for txn in self.manager.storage.get_transactions(position.id):
+                if txn.trans_type in ("buy", "correction") and txn.trans_type == "buy":
+                    invested += float(txn.amount or 0)
+                elif txn.trans_type in ("sell", "sell_all"):
+                    realized += float(txn.pnl or 0)
+        cost = sum(float(p.total_cost or 0) for p in positions)
+        if current_price not in (None, 0):
+            unrealized = float(current_price) * shares - cost
+        else:
+            unrealized = sum(float(p.unrealized_pnl or 0) for p in positions)
+        if invested <= 0:
+            invested = cost
+        total = realized + unrealized
+        return {
+            "realized_pnl": round(realized, 2),
+            "unrealized_pnl": round(unrealized, 2),
+            "total_pnl": round(total, 2),
+            "total_pnl_pct": round(total / invested * 100, 2) if invested else 0.0,
+        }
+
     def war_room(self) -> dict:
         """持仓页：账户总览 + 每只持仓最新指令与点位。
 
@@ -987,6 +1013,7 @@ class DashboardService:
                     )
             if live_price not in (None, 0):
                 row["current_price"] = round(float(live_price), 4)
+            row.update(self._position_profit_summary(ps, live_price))
             live_total_market_value += float(row.get("market_value") or 0)
             live_total_pnl += float(row.get("unrealized_pnl") or 0)
             advice = self.manager.storage.get_latest_advice(p.id)

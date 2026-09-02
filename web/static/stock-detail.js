@@ -236,7 +236,40 @@ window.StockDetail = (function(){
       kCloses.forEach(scan); kHighs.forEach(scan); kLows.forEach(scan);
       (kLines||[]).forEach(l => scan(l.value));
       if (!isFinite(yMin)){ yMin = 0; yMax = 1; }
-      const pad = (yMax - yMin) * 0.05 || 0.1;
+       const pad = (yMax - yMin) * 0.05 || 0.1;
+
+       function visibleRange(payload){
+         const n = chartDates.length;
+         let startValue = payload && payload.startValue;
+         let endValue = payload && payload.endValue;
+         let start = payload && payload.start;
+         let end = payload && payload.end;
+         if (payload && payload.batch && payload.batch.length){
+           const b = payload.batch[0];
+           startValue = b.startValue ?? startValue; endValue = b.endValue ?? endValue;
+           start = b.start ?? start; end = b.end ?? end;
+         }
+         if (startValue !== undefined && endValue !== undefined){
+           return [Math.max(0, Number(startValue)), Math.min(n - 1, Number(endValue))];
+         }
+         const option = chart.getOption().dataZoom || [];
+         const dz = option.find(z => z.xAxisIndex !== undefined) || {};
+         const s = Number(start ?? dz.start ?? 0), e = Number(end ?? dz.end ?? 100);
+         return [Math.max(0, Math.floor((s / 100) * (n - 1))), Math.min(n - 1, Math.ceil((e / 100) * (n - 1)))];
+       }
+       function visiblePriceBounds(payload){
+         const range = visibleRange(payload);
+         let low = Infinity, high = -Infinity;
+         const scanVisible = values => values.slice(range[0], range[1] + 1).forEach(v => {
+           const n = Number(v); if (!isNaN(n)){ low = Math.min(low, n); high = Math.max(high, n); }
+         });
+         scanVisible(kCloses); scanVisible(kHighs); scanVisible(kLows);
+         ['ma5','ma10','ma20','ma60'].forEach(name => { if (kMas[name]) scanVisible(kMas[name]); });
+         (kLines || []).forEach(line => { const n = Number(line.value); if (!isNaN(n)){ low = Math.min(low, n); high = Math.max(high, n); } });
+         if (!isFinite(low)) return null;
+         const margin = (high - low) * 0.08 || Math.max(Math.abs(low) * 0.01, 0.01);
+         return {min: low - margin, max: high + margin};
+       }
 
       const hasOHLC = kOpens.some(v => v !== null && v !== undefined);
       const klineData = kDates.map((_, i) => [kOpens[i], kCloses[i], kLows[i], kHighs[i]]);
@@ -330,7 +363,12 @@ window.StockDetail = (function(){
           data:kLines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))
         };
       }
-      chart.setOption(opt, true);
+       chart.setOption(opt, true);
+       chart.off('datazoom');
+       chart.on('datazoom', function(payload){
+         const bounds = visiblePriceBounds(payload);
+         if (bounds) chart.setOption({yAxis:[{min:bounds.min, max:bounds.max}]}, false);
+       });
       // 显式同步到默认视图，避免 ECharts 或复用的 dataZoom 状态覆盖初始范围。
       try{
         chart.dispatchAction({type:'dataZoom', dataZoomIndex:1, start:0, end:100});

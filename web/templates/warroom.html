@@ -173,9 +173,13 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
         <div class="pos-grid">
           <div class="pos-metric"><div class="v">{{ "%.0f"|format(p.total_shares or 0) }}</div><div class="l">持仓股数{% if p.batch_count and p.batch_count>1 %}（{{ p.batch_count }}批）{% endif %}</div></div>
           <div class="pos-metric"><div class="v">{{ p.avg_cost }}</div><div class="l">持仓均价</div></div>
-          <div class="pos-metric"><div class="v">{{ p.current_price }}</div><div class="l">当前价</div></div>
-          <div class="pos-metric"><div class="v">{{ "%.0f"|format(p.market_value or 0) }}</div><div class="l">市值(元)</div></div>
-          <div class="pos-metric stop"><div class="v">{{ p.stop_loss_price }}</div><div class="l">🚨硬止损线</div></div>
+           <div class="pos-metric"><div class="v">{{ p.current_price }}</div><div class="l">当前价</div></div>
+           <div class="pos-metric"><div class="v">{{ "%.0f"|format(p.market_value or 0) }}</div><div class="l">市值(元)</div></div>
+           <div class="pos-metric"><div class="v {{ 'gain' if (p.unrealized_pnl or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.unrealized_pnl or 0) }}</div><div class="l">浮动盈亏(元)</div></div>
+           <div class="pos-metric"><div class="v {{ 'gain' if (p.realized_pnl or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.realized_pnl or 0) }}</div><div class="l">已实现收益(元)</div></div>
+           <div class="pos-metric"><div class="v {{ 'gain' if (p.total_pnl or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.total_pnl or 0) }}</div><div class="l">累计总收益(元)</div></div>
+           <div class="pos-metric"><div class="v {{ 'gain' if (p.total_pnl_pct or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.total_pnl_pct or 0) }}%</div><div class="l">累计收益率</div></div>
+           <div class="pos-metric stop"><div class="v">{{ p.stop_loss_price }}</div><div class="l">🚨硬止损线</div></div>
           <div class="pos-metric peak" title="自买入以来的最高价，右侧回撤止盈线 = 峰值 × 95%/97%"><div class="v">{{ p.peak_price }}</div><div class="l">📈持仓峰值(止盈锚)</div></div>
           {% if p.left_side %}
           <div class="pos-metric warn"><div class="v">{{ p.left_side.year_high }}</div><div class="l">💡止盈预警区(前高{{ p.left_side.pct_of_year_high }}%)</div></div>
