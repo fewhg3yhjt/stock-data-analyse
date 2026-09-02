@@ -32,8 +32,10 @@ def list_schemes() -> list[str]:
 
 
 def read_scheme(name: str) -> str:
-    path = SCHEMES_DIR / f"{name}.yaml"
-    if not path.exists():
+    # 用户方案由 scheme_store 保存在 custom/，管理页也要能直接编辑它们。
+    paths = (SCHEMES_DIR / f"{name}.yaml", SCHEMES_DIR / "custom" / f"{name}.yaml")
+    path = next((candidate for candidate in paths if candidate.exists()), None)
+    if path is None:
         raise FileNotFoundError(f"方案不存在: {name}")
     return path.read_text(encoding="utf-8")
 

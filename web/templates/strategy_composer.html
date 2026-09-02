@@ -554,10 +554,15 @@ async function loadSchemeList(){
   openModal('方案列表');
 }
 async function editScheme(name){
-  closeModal();
-  const r=await fetch('/schemes/raw?name='+encodeURIComponent(name));
-  const d=await r.json();
-  if(d.status==='success'){ loadFromYaml(d.content); }
+  try{
+    closeModal();
+    const r=await fetch('/schemes/raw?name='+encodeURIComponent(name));
+    const d=await r.json();
+    if(d.status!=='success') throw new Error(d.error||'读取方案失败');
+    await loadFromYaml(d.content);
+  }catch(e){
+    showUiMessage('读取方案失败: '+e.message, 'error');
+  }
 }
 async function loadFromYaml(content){
   const r=await fetch('/api/schemes/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});
