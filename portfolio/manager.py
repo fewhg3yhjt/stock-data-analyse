@@ -101,6 +101,10 @@ class PortfolioManager:
         dividend_anchor = None
         last = kline.iloc[-1] if len(kline) else None
         current_price = float(last["close"]) if last is not None else cost
+        from StockInvestmentTool.portfolio.fees import calculate_trade_fees
+        entry_fee = calculate_trade_fees(
+            shares * cost, stock_type=stock_type, direction="buy"
+        ).total
 
         position = Position(
             portfolio_id=portfolio_id,
@@ -110,8 +114,8 @@ class PortfolioManager:
             scheme_name=scheme_name,
             scheme_snapshot=snapshot_scheme(scheme),
             total_shares=shares,
-            avg_cost=cost,
-            total_cost=shares * cost,
+            avg_cost=(shares * cost + entry_fee) / shares,
+            total_cost=shares * cost + entry_fee,
             current_price=current_price,
             peak_price=current_price,
             position_phase=PHASE_ACCUMULATING,
@@ -128,7 +132,7 @@ class PortfolioManager:
             position_id=position.id, trans_type=TXN_BUY,
             date=buy_date, price=cost, shares=shares,
             amount=shares * cost, reason="建仓",
-        ), -shares * cost)
+            ), -(shares * cost + entry_fee))
 
         # 初始建议
         self._save_advice(position, kline, dividend_anchor)
@@ -240,6 +244,15 @@ class PortfolioManager:
         date = date or datetime.now().strftime("%Y-%m-%d")
         amount = price * shares
 
+        if trans_type in (TXN_BUY, TXN_SELL, TXN_SELL_ALL):
+            from StockInvestmentTool.portfolio.fees import calculate_trade_fees
+            fee = calculate_trade_fees(
+                amount, stock_type=position.stock_type,
+                direction="sell" if trans_type in (TXN_SELL, TXN_SELL_ALL) else "buy",
+            ).total
+        else:
+            fee = float(fee or 0)
+
         txn_pnl = 0.0
         if trans_type == TXN_BUY:
             position = self._apply_buy(position, price, shares, fee)
@@ -279,12 +292,13 @@ class PortfolioManager:
     def _apply_buy(self, p: Position, price: float, shares: float, fee: float) -> Position:
         """买入: 份额增加, 均价加权, 批次++, 扣现金"""
         old_cost = p.avg_cost * p.total_shares
+        buy_cost = price * shares + fee
         new_total = p.total_shares + shares
         if new_total <= 0:
             raise ValueError("买入后份额必须为正")
-        p.avg_cost = (old_cost + price * shares) / new_total
+        p.avg_cost = (old_cost + buy_cost) / new_total
         p.total_shares = new_total
-        p.total_cost += price * shares
+        p.total_cost += buy_cost
         p.buy_stage = min(p.buy_stage + 1, 3)
         if p.buy_stage >= 3:
             p.position_phase = self._phase_after(p.position_phase, EVENT_BOUGHT)

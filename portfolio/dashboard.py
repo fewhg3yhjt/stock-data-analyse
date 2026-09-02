@@ -970,7 +970,7 @@ class DashboardService:
         for position in positions:
             for txn in self.manager.storage.get_transactions(position.id):
                 if txn.trans_type in ("buy", "correction") and txn.trans_type == "buy":
-                    invested += float(txn.amount or 0)
+                    invested += float(txn.amount or 0) + float(txn.fee or 0)
                 elif txn.trans_type in ("sell", "sell_all"):
                     realized += float(txn.pnl or 0)
         cost = sum(float(p.total_cost or 0) for p in positions)
@@ -1097,7 +1097,8 @@ class DashboardService:
                     if t.trans_type in ("buy", "sell", "sell_all", "dividend"):
                         txns.append({**t.to_dict(),
                                      "stock_code": p.stock_code,
-                                     "stock_name": p.stock_name})
+                                      "stock_name": p.stock_name,
+                                      "stock_type": p.stock_type})
             txns.sort(key=lambda x: (x.get("date") or ""), reverse=True)
             return txns[:100]
         except Exception as e:

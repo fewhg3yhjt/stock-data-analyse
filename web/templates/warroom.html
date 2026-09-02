@@ -115,7 +115,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
       {% if data.history_txns %}
       <div class="ui-table-wrap" style="overflow-x:auto;">
         <table class="ui-table">
-          <thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>盈亏</th><th>说明</th></tr></thead>
+          <thead><tr><th>日期</th><th>股票</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>费用</th><th>盈亏</th><th>说明</th></tr></thead>
           <tbody>
           {% for t in data.history_txns %}
             <tr>
@@ -125,6 +125,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
               <td>{{ "%.2f"|format(t.price) }}</td>
               <td>{{ "{:,.0f}".format(t.shares) }}</td>
               <td>{{ "{:,.0f}".format(t.amount) }}</td>
+              <td>{{ "%.2f"|format(t.fee or 0) }}</td>
               <td class="{{ 'red' if (t.pnl or 0)>=0 else 'green' }}">{{ "%+.2f"|format(t.pnl) if t.pnl else '—' }}</td>
               <td style="font-size:12px;color:var(--color-text-subtle);">{{ t.reason }}</td>
             </tr>
