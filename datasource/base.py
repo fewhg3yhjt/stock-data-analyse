@@ -171,14 +171,13 @@ class WarehouseSource:
 
     def fetch_daily_series(self, code: str, days: int = 750) -> pd.DataFrame:
         """个股图表单查询：取最近 N 个交易日的原始日线（tail(days)）。"""
-        from datetime import datetime, timedelta
-
         code_nodot = self._validated_code(code)
         days = int(days)
         if days < 1 or days > 5000:
             raise ValueError("days 必须在 1 到 5000 之间")
-        end = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        df = self._load_published_daily(code_nodot, None, end, days=days)
+        # 不传 end_date，让访问层加载全部已发布分区，再按交易日 tail；
+        # 传入当前日期会把月份选择收窄到当月，图表只能显示一根最新 K 线。
+        df = self._load_published_daily(code_nodot, None, None, days=days)
         return df.tail(days)
 
     def _load_published_daily(self, code: str, start: str, end: str,

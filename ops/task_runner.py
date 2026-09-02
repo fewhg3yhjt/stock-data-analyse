@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import threading
+import logging
 from pathlib import Path
 from typing import Callable, Optional
 
 from StockInvestmentTool.ops.job_runs import JobRunStore
 from StockInvestmentTool.ops.task_center import TaskCenter
+
+logger = logging.getLogger(__name__)
 
 
 class TaskRunner:
@@ -68,7 +71,12 @@ class TaskRunner:
         finally:
             stop_heartbeat.set()
             heartbeat_thread.join(timeout=1)
-            self.jobs.release_lock(lock_key, run_id)
+            try:
+                self.jobs.release_lock(lock_key, run_id)
+            except Exception as exc:  # noqa: BLE001
+                # 任务结果已经落库，释放锁失败不能把成功任务改成异常；
+                # 下次启动/定期回收会清理过期锁。
+                logger.warning("任务锁释放失败，将由过期回收处理: %s", exc)
 
     def _heartbeat_loop(self, lock_key: str, run_id: int, stop: threading.Event,
                         lease_seconds: int = 600) -> None:

@@ -56,9 +56,13 @@ class DatasetAccess:
         if partition_versions:
             versions = {month: {"version_id": version_id} for month, version_id in partition_versions.items()}
         if not versions:
-            if not allow_legacy:
-                raise DatasetAccessError(f"没有 Published Dataset: {dataset_name}")
-            return self._load_legacy(dataset_name, months, start_date, end_date, symbols)
+            if not months:
+                months = self._local_months(dataset_name)
+            return self._load_local_fallback(
+                dataset_name, months, start_date, end_date, symbols,
+                reason="没有 Published Dataset",
+                quality_status="LEGACY" if allow_legacy else "WARNING",
+            )
         if partition_type == "snapshot":
             if start_date or end_date:
                 # Snapshot reads are as-of reads: use the newest snapshot that
@@ -75,24 +79,50 @@ class DatasetAccess:
         contexts = {}
         for month in months:
             current = versions.get(month)
-            if not current:
-                raise DatasetAccessError(f"分区没有正式版本: {dataset_name}/{month}")
-            version, quality = self._version_context(current["version_id"])
-            if not self._quality_allowed(quality, required_quality):
-                raise DatasetAccessError(f"正式版本质量不满足要求: {dataset_name}/{month}")
-            path = Path(version["published_path"] or "")
-            if not path.exists():
-                raise DatasetAccessError(f"正式文件不存在: {path}")
-            import hashlib
-            if hashlib.sha256(path.read_bytes()).hexdigest() != version["checksum"]:
-                raise DatasetAccessError(f"正式文件 checksum 不匹配: {path}")
+            path = None
+            version = None
+            quality = None
+            fallback_reason = None
+            if current:
+                try:
+                    version, quality = self._version_context(current["version_id"])
+                    path = Path(version["published_path"] or "")
+                    if not path.exists():
+                        path = None
+                        fallback_reason = "正式文件不存在"
+                    elif not self._quality_allowed(quality, required_quality):
+                        fallback_reason = "正式版本质量不满足要求"
+                    else:
+                        import hashlib
+                        if hashlib.sha256(path.read_bytes()).hexdigest() != version["checksum"]:
+                            fallback_reason = "正式文件 checksum 不匹配"
+                except DatasetAccessError as exc:
+                    fallback_reason = str(exc)
+            else:
+                fallback_reason = "分区没有正式版本"
+
+            if path is None:
+                path = self._local_partition_path(dataset_name, month)
+            if path is None or not path.exists():
+                raise DatasetAccessError(
+                    f"{dataset_name}/{month} 没有可读取的本地分区"
+                )
+            if fallback_reason:
+                # 治理信息保留用于诊断，但不阻断当前数据读取。
+                import logging
+                logging.getLogger(__name__).warning(
+                    "%s/%s 读取降级: %s，直接读取本地分区 %s",
+                    dataset_name, month, fallback_reason, path,
+                )
             frame = pd.read_parquet(path)
             frames.append(frame)
-            contexts[month] = {"version_id": version["version_id"],
-                               "quality_status": version["quality_status"],
-                               "sources": json.loads(version["source_batches"] or "[]"),
-                               "input_versions": json.loads(version["input_versions"] or "{}"),
-                               "generated_at": version["created_at"]}
+            contexts[month] = {
+                "version_id": version["version_id"] if version else "",
+                "quality_status": (version or {}).get("quality_status", "WARNING"),
+                "sources": json.loads((version or {}).get("source_batches", "[]") or "[]"),
+                "input_versions": json.loads((version or {}).get("input_versions", "{}") or "{}"),
+                "generated_at": (version or {}).get("created_at"),
+            }
         data = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
         filtered = self._filter(data, start_date, end_date, symbols)
         partition_versions = {k: v["version_id"] for k, v in versions.items() if k in months}
@@ -142,11 +172,65 @@ class DatasetAccess:
         rank = {"PASS": 2, "WARNING": 1, "FAIL": 0}
         return rank.get(quality["status"], -1) >= rank.get(required, 1)
 
+    def _local_partition_path(self, dataset_name: str, month: str) -> Path | None:
+        """返回本地分区路径；文件存在即可读，不依赖治理索引。"""
+        if dataset_name == "stock_daily":
+            return self.warehouse.daily_partition(month)
+        if dataset_name == "indicators":
+            return self.warehouse.indicator_dir / f"{month}.parquet"
+        return None
+
+    def _local_months(self, dataset_name: str) -> list[str]:
+        """列出本地已有分区，供治理索引缺失时读取。"""
+        if dataset_name == "stock_daily":
+            return self.warehouse.available_months("daily")
+        if dataset_name == "indicators":
+            return self.warehouse.available_months("indicator")
+        return []
+
+    def _load_local_fallback(self, dataset_name, months, start_date, end_date, symbols,
+                             reason: str, quality_status: str = "WARNING"):
+        """索引不可用时直接读本地分区，治理异常只记录不阻断。"""
+        frames = []
+        loaded_months = []
+        for month in months:
+            path = self._local_partition_path(dataset_name, month)
+            if path is None or not path.exists():
+                continue
+            frames.append(pd.read_parquet(path))
+            loaded_months.append(month)
+        if not frames:
+            raise DatasetAccessError(f"{reason}: {dataset_name}")
+        import logging
+        logging.getLogger(__name__).warning(
+            "%s，直接读取本地分区: %s", reason, ",".join(loaded_months)
+        )
+        data = pd.concat(frames, ignore_index=True)
+        filtered = self._filter(data, start_date, end_date, symbols)
+        returned_start = self._min_date(filtered)
+        returned_end = self._max_date(filtered)
+        return DatasetResult(filtered, {
+            "dataset": dataset_name,
+            "dataset_refs": {dataset_name: {
+                "partition_versions": {}, "quality_status": quality_status,
+            }},
+            "indicator_refs": {}, "partition_versions": {},
+            "sources": [], "generated_at": None,
+            "requested_start": start_date, "requested_end": end_date,
+            "returned_start": returned_start, "returned_end": returned_end,
+            "data_as_of": returned_end, "quality_status": quality_status,
+            "source": "local_partition_fallback",
+            "fallback_used": True, "fallback_reason": reason,
+        })
+
     def _load_legacy(self, dataset_name, months, start_date, end_date, symbols):
-        if dataset_name != "stock_daily":
-            raise DatasetAccessError(f"不支持旧路径兼容读取: {dataset_name}")
-        frames = [self.warehouse.read_daily(month) for month in months]
+        frames = []
+        for month in months:
+            path = self._local_partition_path(dataset_name, month)
+            frames.append(pd.read_parquet(path) if path and path.exists() else None)
         frames = [frame for frame in frames if frame is not None and not frame.empty]
+        if not frames:
+            raise DatasetAccessError(f"没有可读取的本地分区: {dataset_name}")
         data = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
         filtered = self._filter(data, start_date, end_date, symbols)
         returned_start = self._min_date(filtered)

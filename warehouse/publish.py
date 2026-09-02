@@ -60,22 +60,22 @@ class Publisher:
                 (dataset_name, partition, lock_key))
 
     def publish(self, version_id: str) -> dict:
-        conn = sqlite3.connect(self.warehouse.meta_db_path)
+        # 用 SQLite 写事务串行化发布，不再创建/依赖持久化发布锁。
+        # 文件仍通过临时文件 + os.replace 原子切换，避免业务读到半文件。
+        conn = sqlite3.connect(self.warehouse.meta_db_path, timeout=self.lock_timeout)
         try:
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT dataset_name,partition_key,candidate_path,quality_status,publish_status FROM dataset_versions WHERE version_id=?", (version_id,)).fetchone()
             if not row or row[3] not in ("PASS", "WARNING"):
                 raise ValueError("版本不存在或质量不允许发布")
-            lock_key = self._acquire_partition_lock(row[0], row[1])
-        except (ValueError, PublishLockError):
-            conn.close()
-            raise
-        try:
-            result = self._publish_locked(conn, version_id, row, lock_key)
+            result = self._publish_locked(conn, version_id, row, "")
             conn.commit()
             return result
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
-            self._release_partition_lock(row[0], row[1], lock_key)
 
     def _publish_locked(self, conn, version_id: str, row, lock_key: str) -> dict:
         candidate = Path(row[2] or "")
