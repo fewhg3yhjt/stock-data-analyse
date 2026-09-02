@@ -62,6 +62,8 @@ def test_api_rules_schema(client):
     assert d["status"] == "success"
     assert any(x["kind"] == "buy" for x in d["rules"])
     assert any(x["kind"] == "sell" for x in d["rules"])
+    trend = next(x for x in d["rules"] if x["type"] == "trend_following")
+    assert any(field["key"] == "conditions" for field in trend["schema"])
 
 
 def test_compose_roundtrip(client):
@@ -117,6 +119,16 @@ def test_builtin_scheme_delete_protected(client):
 def test_builtin_scheme_toggle_and_default_protected(client):
     assert client.post("/api/schemes/toggle", json={"name": "default_value", "enabled": False}).status_code == 400
     assert client.post("/api/schemes/default", json={"name": "default_value"}).status_code == 400
+
+
+def test_scheme_list_exposes_indicator_bindings(client):
+    response = client.get("/api/schemes/list")
+    assert response.status_code == 200
+    scheme = next(item for item in response.get_json()["schemes"]
+                  if item["name"] == "right_aggressive_growth")
+    support = next(rule for rule in scheme["buy_rules"] if rule["type"] == "support_level")
+    keys = {item["key"] for item in support["indicator_refs"]}
+    assert {"ma60", "low_3m", "year_low", "dividend_anchor_4pct"} <= keys
 
 
 def test_validate_run_returns_backtest_result(client):

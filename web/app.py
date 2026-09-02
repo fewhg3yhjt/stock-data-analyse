@@ -289,7 +289,7 @@ def api_indicators():
         custom = {x["name"]: x for x in __import__(
             "StockInvestmentTool.indicators.store", fromlist=["list_indicators"]
         ).list_indicators()}
-        groups = {"base": [], "composite": [], "code": [], "business": [], "decision": []}
+        groups = {"base": [], "composite": [], "code": [], "business": [], "valuation": [], "decision": []}
         for name in reg.all_names():
             d = reg.get(name)
             if d is None:
@@ -371,14 +371,15 @@ def api_indicators():
             logger.warning("业务指标当前值读取失败: %s", exc)
 
         for metric in catalog.get("metrics", []):
-            if metric.get("category") not in ("业务指标", "业务状态"):
+            if metric.get("category") not in ("业务指标", "业务状态", "估值指标"):
                 continue
             key = str(metric.get("key") or "")
-            if not key or key in {item["name"] for item in groups["business"]}:
+            kind = "valuation" if metric.get("category") == "估值指标" else "business"
+            if not key or key in {item["name"] for item in groups[kind]}:
                 continue
-            groups["business"].append({
+            groups[kind].append({
                 "name": key,
-                "kind": "business",
+                "kind": kind,
                 "expr": metric.get("name", key),
                 "description": metric.get("definition", ""),
                 "meaning": metric.get("definition", ""),
@@ -1474,6 +1475,51 @@ def api_schemes_impact():
         return flask.jsonify({"status": "error", "error": str(e)}), 404
 
 
+def _scheme_indicator_refs(rule: dict) -> list[dict]:
+    """Return the concrete indicators/decision inputs consumed by one rule."""
+    refs = {
+        "dividend_anchor": ("股息率估值锚", "valuation", "极端低估锚"),
+        "dividend_anchor_4pct": ("股息率4%估值锚", "valuation", "极端低估锚"),
+        "ma20": ("MA20", "technical", "趋势跟随/回调支撑"),
+        "ma60": ("MA60", "technical", "支撑位候选"),
+        "ma240": ("MA240", "technical", "支撑位候选"),
+        "low_3m": ("近3月低点", "technical", "支撑位候选"),
+        "year_low": ("年内低点", "technical", "支撑位候选"),
+        "year_high": ("滚动前高", "business", "左侧止盈参考"),
+        "vol_ma5": ("成交量5日均线", "technical", "放量判断"),
+        "peak_price": ("持仓峰值", "business", "右侧回撤计算"),
+        "trend_bullish": ("趋势向上", "decision", "趋势跟随前置条件"),
+        "market_bull_early": ("市场牛市早期", "decision", "趋势跟随前置条件"),
+        "rebound_lt_10pct": ("反弹幅度低于10%", "decision", "趋势跟随前置条件"),
+        "not_cyclical": ("非强周期", "decision", "趋势跟随前置条件"),
+    }
+    params = rule.get("params") or {}
+    names: list[tuple[str, str]] = []
+    for value in params.get("support_sources") or []:
+        names.append((str(value), "支撑位候选"))
+    for stage in params.get("buy_stages") or []:
+        if isinstance(stage, dict) and stage.get("use_special"):
+            names.append((str(stage["use_special"]), "买入批次"))
+    if rule.get("type") == "trend_following":
+        names.extend((str(value), "趋势跟随前置条件") for value in params.get("conditions") or [])
+    if rule.get("type") == "technical_stop":
+        names.extend([("vol_ma5", "放量判断"), ("strong_support", "强支撑跌破")])
+    if rule.get("type") == "left_side_fixed":
+        names.append((str(params.get("reference_price", "year_high")), "左侧止盈参考"))
+    if rule.get("type") == "right_side_trailing":
+        names.append(("peak_price", "右侧回撤计算"))
+
+    result = []
+    seen = set()
+    for key, role in names:
+        if key in seen:
+            continue
+        seen.add(key)
+        label, kind, default_role = refs.get(key, (key, "expression", role))
+        result.append({"key": key, "name": label, "kind": kind, "role": role or default_role})
+    return result
+
+
 @web_app.route("/api/schemes/list", methods=["GET"])
 def api_schemes_list():
     """列出全部方案（内置 + 用户，含启停/默认），供方案管理页（FR-2.5）。"""
@@ -1487,15 +1533,21 @@ def api_schemes_list():
                 "name": s.name, "version": s.version,
                 "description": s.description,
                 "applicable_types": list(s.applicable_types),
-                "strategy_spec": SchemeRegistry().get(s.name).strategy_spec,
-                "buy_rules": [{"type": r.type, "params": r.params} for r in SchemeRegistry().get(s.name).buy_rules],
-                "sell_rules": [{"type": r.type, "params": r.params} for r in SchemeRegistry().get(s.name).sell_rules],
                 "enabled": True, "default": False, "is_builtin": True,
                 "source": s.source,
             }
             for s in registry.list()
             if s.name in builtin_names
         ]
+        for item in builtin:
+            scheme = registry.get(item["name"])
+            item["strategy_spec"] = scheme.strategy_spec
+            item["buy_rules"] = [{"type": r.type, "params": r.params,
+                                  "indicator_refs": _scheme_indicator_refs({"type": r.type, "params": r.params})}
+                                 for r in scheme.buy_rules]
+            item["sell_rules"] = [{"type": r.type, "params": r.params,
+                                   "indicator_refs": _scheme_indicator_refs({"type": r.type, "params": r.params})}
+                                  for r in scheme.sell_rules]
         # SchemeRegistry 可能同时扫描 schemes/ 和 schemes/custom/；
         # 自定义方案不要再被作为内置方案重复返回，指标 YAML 也不是策略方案。
         user = [item for item in scheme_store.list_scheme_stores()
@@ -1503,6 +1555,15 @@ def api_schemes_list():
                 and item.get("name") != "indicators"]
         for item in user:
             item["default"] = scheme_store.is_default(item["name"])
+            scheme = registry.get(item["name"]) if registry.has(item["name"]) else None
+            if scheme:
+                item["strategy_spec"] = scheme.strategy_spec
+                item["buy_rules"] = [{"type": r.type, "params": r.params,
+                                      "indicator_refs": _scheme_indicator_refs({"type": r.type, "params": r.params})}
+                                     for r in scheme.buy_rules]
+                item["sell_rules"] = [{"type": r.type, "params": r.params,
+                                       "indicator_refs": _scheme_indicator_refs({"type": r.type, "params": r.params})}
+                                      for r in scheme.sell_rules]
         return flask.jsonify({"status": "success", "schemes": builtin + user})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 500

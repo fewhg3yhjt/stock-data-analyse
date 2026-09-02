@@ -274,6 +274,9 @@ def _build_schemas() -> dict[str, list[ParamField]]:
     ]
 
     s["trend_following"] = [
+        ParamField("conditions", "前置条件", "list", default=[
+            "trend_bullish", "market_bull_early", "rebound_lt_10pct", "not_cyclical"
+        ], help="趋势跟随必须同时满足的指标/决策输入"),
         ParamField("rebound_limit_pct", "反弹幅度上限%", "number", default=10, max=100),
         ParamField("require_market", "市场状态要求", "select",
                    default="牛市初期",
@@ -295,11 +298,15 @@ def _build_schemas() -> dict[str, list[ParamField]]:
 
     s["technical_stop"] = [
         ParamField("volume_surge_ratio", "放量倍数", "number", default=1.8, min=1.0),
+        ParamField("support_source", "跌破指标", "select", default="strong",
+                   options=["strong", "weak", "ma60"]),
         ParamField("technical_stop_enabled", "启停", "select", default=True,
                    options=[True, False]),
     ]
 
     s["left_side_fixed"] = [
+        ParamField("reference_price", "止盈参考指标", "select", default="year_high",
+                   options=["year_high"]),
         ParamField("year_high_window", "前高回看交易日数", "number", default=252, min=20, max=2000,
                    help="在最近多少个交易日内寻找前高；默认 252 日约一年"),
         ParamField("year_high_price_field", "前高计算价格字段", "select", default="high",

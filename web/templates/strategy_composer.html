@@ -183,7 +183,11 @@ function schemeSpecHtml(spec){
   return Object.entries(spec).map(([key,value])=>`<div><b>${escText(key)}：</b>${escText(Array.isArray(value)?value.join('；'):value)}</div>`).join('');
 }
 function ruleSummaryHtml(rules, kind){
-  return (rules||[]).map(rule=>{const guide=RULE_GUIDE[rule.type]||[rule.type,'运行时按该规则配置判断。']; return `<div class="rule-guide"><b>${kind==='buy'?'买点':'卖点'}：${escText(guide[0])}</b><br>${escText(guide[1])}</div>`;}).join('');
+  return (rules||[]).map(rule=>{
+    const guide=RULE_GUIDE[rule.type]||[rule.type,'运行时按该规则配置判断。'];
+    const refs=(rule.indicator_refs||[]).map(ref=>`<span class="tag tag-indicator" title="${escText(ref.role)}">${escText(ref.name)} <code>${escText(ref.key)}</code></span>`).join('');
+    return `<div class="rule-guide"><b>${kind==='buy'?'买点':'卖点'}：${escText(guide[0])}</b><br>${escText(guide[1])}${refs?`<div class="indicator-binding"><b>关联指标/输入：</b>${refs}</div>`:''}</div>`;
+  }).join('');
 }
 async function loadSchemeOverview(){
   try{
@@ -212,7 +216,7 @@ async function loadIndicators(){
 function renderIndicators(){
   const q=(document.getElementById('ind-search').value||'').toLowerCase();
   const el=document.getElementById('ind-list');el.innerHTML='';
-    const groups=[['基础','base','#e8f5e9'],['组合','composite','#fff8e1'],['代码','code','#e3f2fd'],['业务','business','#f3f4f6'],['决策规则','decision','#fbe9e7']];
+    const groups=[['基础','base','#e8f5e9'],['组合','composite','#fff8e1'],['代码','code','#e3f2fd'],['估值','valuation','#fff3e0'],['业务','business','#f3f4f6'],['决策规则','decision','#fbe9e7']];
   for(const [label,key,bg] of groups){
     const items=(INDICATORS[key]||[]).filter(i=>i.name.toLowerCase().includes(q));
     if(!items.length)continue;
@@ -339,8 +343,14 @@ function addListRow(btn,key){
 
 function listRowHtml(type, item, key){
   if(type==='list'){
+    if(key==='conditions'){
+      const options=[['trend_bullish','趋势向上 (trend_bullish)'],['market_bull_early','市场牛市早期 (market_bull_early)'],['rebound_lt_10pct','反弹幅度低于10% (rebound_lt_10pct)'],['not_cyclical','非强周期 (not_cyclical)']];
+      const known=options.some(([v])=>String(v)===String(item));
+      const custom=known?'':`<option value="${escapeAttr(item)}" selected>当前输入：${escapeAttr(item)}</option>`;
+      return `<div class="list-row"><select data-list-value>${custom}${options.map(([v,t])=>`<option value="${v}" ${String(v)===String(item)?'selected':''}>${t}</option>`).join('')}</select><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+    }
     if(key==='support_sources'){
-      const options=[['dividend_anchor','股息率估值锚'],['ma60','MA60 · 60日均线'],['low_3m','近3月低点'],['year_low','年内低点'],['ma20','MA20 · 20日均线'],['ma240','MA240 · 240日均线'],['dual_ma_low','双均线低点'],['dividend_anchor_4pct','股息率估值锚（4%）']];
+       const options=[['dividend_anchor','股息率估值锚 (dividend_anchor)'],['ma60','MA60 (ma60)'],['low_3m','近3月低点 (low_3m)'],['year_low','年内低点 (year_low)'],['ma20','MA20 (ma20)'],['ma240','MA240 (ma240)'],['dual_ma_low','双均线低点 (dual_ma_low)'],['dividend_anchor_4pct','股息率4%估值锚 (dividend_anchor_4pct)']];
       const known=options.some(([v])=>String(v)===String(item));
       const custom=known?'':`<option value="${escapeAttr(item)}" selected>当前表达式：${escapeAttr(item)}</option>`;
       return `<div class="list-row"><select data-list-value>${custom}${options.map(([v,t])=>`<option value="${v}" ${String(v)===String(item)?'selected':''}>${t}</option>`).join('')}</select><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
