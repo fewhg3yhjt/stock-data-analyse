@@ -162,9 +162,11 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
                data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="buy" title="加仓"><i class="fas fa-plus"></i> 加仓</button>
             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-warning);"
                data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="sell" title="减仓"><i class="fas fa-minus"></i> 减仓</button>
-            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#9c27b0;"
+             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:#9c27b0;"
                data-action="openOp" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" data-type="dividend" title="分红"><i class="fas fa-coins"></i> 分红</button>
-            <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-danger);"
+             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
+               data-action="openAlert" data-code="{{ p.stock_code }}" data-name="{{ p.stock_name }}" title="配置后高/成本目标价通知"><i class="fas fa-bell"></i> 目标价提醒</button>
+             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-danger);"
                data-action="deletePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
           </span>
         </div>
@@ -228,6 +230,33 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
       <button class="ui-button" style="padding:8px 16px;border:1px solid #e0e4ea;border-radius:6px;background:#f8f9fb;color:#6b7280;cursor:pointer;" onclick="closeOp()">取消</button>
       <button class="ui-button" style="padding:8px 16px;border:none;border-radius:6px;background:var(--color-info);color:#fff;cursor:pointer;" onclick="submitOp()">确认</button>
     </div>
+  </div>
+</div>
+<!-- 持仓目标价提醒弹窗 -->
+<div id="alert-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1500;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:10px;padding:20px 24px;width:480px;max-width:92%;box-shadow:0 8px 30px rgba(0,0,0,.2);">
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:16px;font-weight:700;margin-bottom:14px;">
+      <span id="alert-title">目标价提醒</span>
+      <button style="border:0;background:none;font-size:22px;cursor:pointer;color:#6b7280;" onclick="closeAlert()">&times;</button>
+    </div>
+    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">规则类型</label>
+      <select id="alert-rule-type" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;">
+        <option value="high_minus_cost_pct">(后高 - 成本) × % + 成本</option>
+        <option value="high_pct">后高 × %</option>
+      </select>
+    </div>
+    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">触发方向</label>
+      <select id="alert-direction" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;">
+        <option value="below">现价 ≤ 目标价（回撤提醒）</option>
+        <option value="above">现价 ≥ 目标价（冲高提醒）</option>
+      </select>
+    </div>
+    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">阈值 %（如 90 或 98）</label>
+      <input id="alert-pct" type="number" min="1" max="100" step="0.1" placeholder="90" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;">
+    </div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:8px;">已有规则</div>
+    <ul id="alert-list" style="list-style:none;margin:0 0 14px;padding:0;"></ul>
+    <button class="ui-button ui-button-primary" style="width:100%;justify-content:center;" onclick="submitAlertRule()"><i class="fas fa-check"></i> 添加规则</button>
   </div>
 </div>
 <script>
@@ -359,6 +388,59 @@ async function deletePos(id, name){
     } else { showUiMessage(d.error || '删除失败', 'error'); }
   } catch(e){ showUiMessage('删除失败: ' + e.message, 'error'); }
 }
+// ── 持仓目标价提醒 ────────────────────────────────
+let alertCode = '', alertName = '';
+async function openAlert(_id, code, name){
+  alertCode = code || ''; alertName = name || code || '';
+  document.getElementById('alert-title').textContent = '目标价提醒 — ' + alertName;
+  document.getElementById('alert-pct').value = '';
+  await loadAlertRules();
+  document.getElementById('alert-modal').style.display = 'flex';
+}
+function closeAlert(){ document.getElementById('alert-modal').style.display = 'none'; }
+async function loadAlertRules(){
+  const list = document.getElementById('alert-list');
+  list.innerHTML = '<li style="color:#6b7280;font-size:13px;">加载中...</li>';
+  try {
+    const res = await fetch('/api/position/' + encodeURIComponent(alertCode) + '/alert-rules');
+    const data = await res.json();
+    if (data.status !== 'success' || !data.rules || !data.rules.length){
+      list.innerHTML = '<li style="color:#6b7280;font-size:13px;">暂无规则</li>'; return;
+    }
+    list.replaceChildren(...data.rules.map(rule => {
+      const li = document.createElement('li');
+      li.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f8f9fb;border:1px solid #e0e4ea;border-radius:6px;margin-bottom:6px;font-size:13px;';
+      const label = (rule.rule_type === 'high_minus_cost_pct' ? '(后高-成本)×' : '后高×') + rule.threshold_pct + '% · ' + (rule.direction === 'below' ? '回撤(现价≤)' : '冲高(现价≥)');
+      li.append(document.createTextNode(label));
+      const button = document.createElement('button');
+      button.className = 'ui-button ui-button-danger'; button.style.cssText = 'padding:3px 8px;font-size:12px;'; button.textContent = '删除';
+      button.onclick = () => deleteAlertRule(rule.rule_id);
+      li.append(button);
+      return li;
+    }));
+  } catch(e){ list.innerHTML = '<li style="color:#c62828;font-size:13px;">规则加载失败</li>'; }
+}
+async function submitAlertRule(){
+  const threshold = document.getElementById('alert-pct').value;
+  if (!threshold){ showUiMessage('请填写阈值百分比', 'error'); return; }
+  try {
+    const res = await fetch('/api/position/' + encodeURIComponent(alertCode) + '/alert-rules', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({rule_type:document.getElementById('alert-rule-type').value, direction:document.getElementById('alert-direction').value, threshold_pct:threshold})
+    });
+    const data = await res.json();
+    if (data.status === 'success'){ showUiMessage('规则已添加', 'success'); document.getElementById('alert-pct').value = ''; await loadAlertRules(); }
+    else showUiMessage(data.error || '规则添加失败', 'error');
+  } catch(e){ showUiMessage('规则添加失败: ' + e.message, 'error'); }
+}
+async function deleteAlertRule(ruleId){
+  try {
+    const res = await fetch('/api/position/' + encodeURIComponent(alertCode) + '/alert-rules/' + encodeURIComponent(ruleId), {method:'DELETE'});
+    const data = await res.json();
+    if (data.status === 'success'){ showUiMessage('规则已删除', 'success'); await loadAlertRules(); }
+    else showUiMessage(data.error || '规则删除失败', 'error');
+  } catch(e){ showUiMessage('规则删除失败: ' + e.message, 'error'); }
+}
 document.addEventListener('click', function(e){
   const el = e.target.closest('[data-action]');
   if (!el) return;
@@ -367,6 +449,7 @@ document.addEventListener('click', function(e){
   else if (a === 'toggleReturn') toggleReturn(el);
   else if (a === 'openOp') openOp(Number(el.dataset.id), el.dataset.name, el.dataset.type);
   else if (a === 'deletePos') deletePos(Number(el.dataset.id), el.dataset.name);
+  else if (a === 'openAlert') openAlert(null, el.dataset.code, el.dataset.name);
 });
 </script>
 {% endblock %}
