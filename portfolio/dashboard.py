@@ -800,6 +800,16 @@ class DashboardService:
                 basic["entry_price"] = cb["cost_price"]
                 basic["entry_date"] = pos.buy_date
                 basic["shares"] = cb["shares"]
+                # 历史收益曲线使用收盘价；详情顶部的持仓收益使用同一轮实时价。
+                live_price = basic.get("price")
+                if returns is not None and live_price not in (None, 0):
+                    live_price = float(live_price)
+                    cost_price = float(cb["cost_price"])
+                    shares = float(cb["shares"])
+                    returns["latest_price"] = round(live_price, 4)
+                    returns["latest_price_source"] = basic.get("snapshot_time") or "realtime"
+                    returns["ret_pct_latest"] = round((live_price / cost_price - 1) * 100, 2) if cost_price else None
+                    returns["ret_amount_latest"] = round((live_price - cost_price) * shares, 2)
         else:
             entry_price = None
             entry_date = ""

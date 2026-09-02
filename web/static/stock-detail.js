@@ -75,10 +75,11 @@ window.StockDetail = (function(){
     const showReturn = kind === 'position' || !!opts.onSimEntry;
     const retBlock = (showReturn && ret) ? `
       <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin-top:8px;">
-        <span>${kind==='position'?'实际收益率':'模拟收益率'} ${pctHtml(ret.ret_pct_latest)}</span>
+        <span>${kind==='position'?'实际收益率':'模拟收益率'} ${pctHtml(ret.ret_pct_latest)}${kind==='position' && ret.latest_price ? ' <small style="color:var(--color-text-subtle)">(按实时价)</small>' : ''}</span>
         ${kind==='position' ? `<span>浮动盈亏 <b style="color:${color(ret.ret_amount_latest)}">${fmt(ret.ret_amount_latest)} 元</b></span>` : ''}
         <span>入场价 <b>${fmt(hasEntry)}</b></span>
-        <span>最新收盘 <b>${fmt(ret.latest_close)}</b></span>
+        <span>${kind==='position' && ret.latest_price ? '当前实时价' : '最新收盘'} <b>${fmt(kind==='position' && ret.latest_price ? ret.latest_price : ret.latest_close)}</b></span>
+        ${kind==='position' && ret.latest_price ? `<span style="color:var(--color-text-subtle)">最新收盘 <b>${fmt(ret.latest_close)}</b></span>` : ''}
       </div>` : '';
 
     function mcapFmt(v){
