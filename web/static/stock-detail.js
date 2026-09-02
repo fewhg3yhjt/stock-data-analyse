@@ -369,18 +369,18 @@ window.StockDetail = (function(){
         const type = point.type || '';
         const label = tradeLabels[type] || type || '交易';
         const color = tradeColors[type] || '#64748b';
+        const isBuy = type === 'buy';
         return {
           name: label, coord: [point.index, point.price], value: label + ' ' + point.price,
-          itemStyle: {color: color}, symbol: type === 'buy' ? 'arrow' : 'pin',
-          symbolRotate: type === 'buy' ? 180 : 0, symbolSize: 28,
-          label: {show:true, formatter:label, color:color, fontSize:10,
-                  position:type === 'buy' ? 'bottom' : 'top'},
+          itemStyle: {color: color}, symbol: 'triangle',
+          symbolRotate: isBuy ? 0 : 180, symbolSize: 12,
+          label: {show:false},
           tradePoint: point
         };
       });
       if (tradePoints.length){
         series[0].markPoint = {
-          symbol:'pin', symbolSize:30, label:{show:true}, data:tradePoints,
+          symbol:'triangle', symbolSize:12, label:{show:false}, data:tradePoints,
           tooltip:{formatter:function(params){
             const p = params.data.tradePoint || {};
             const label = tradeLabels[p.type] || p.type || '交易';
