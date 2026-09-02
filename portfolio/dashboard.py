@@ -1158,31 +1158,54 @@ class DashboardService:
         return result
 
     def board_index_kline(self, name: str, days: int = 120) -> dict:
-        """同花顺行业板块指数历史（akshare）。name: 板块名如 '半导体'"""
-        try:
-            import akshare as ak
-            import pandas as pd
+        """从已发布的 industry_daily 读取板块历史，不在页面请求时访问 AkShare。"""
+        import pandas as pd
 
-            end = datetime.now().strftime("%Y%m%d")
-            start = (datetime.now().replace(year=datetime.now().year - 1)).strftime("%Y%m%d")
-            df = ak.stock_board_industry_index_ths(symbol=name, start_date=start, end_date=end)
-            df = df.tail(days)
-            return {
-                "name": name,
-                "dates": [str(d)[:10] for d in df["date"]],
-                "close": [round(float(x), 2) for x in df["close"]],
-            }
+        name = str(name or "").strip()
+        result = {"name": name, "dates": [], "close": []}
+        if not name:
+            return result
+        try:
+            from StockInvestmentTool.warehouse.storage import Warehouse
+
+            warehouse = Warehouse()
+            frames = []
+            for month in warehouse.available_months("industry_daily"):
+                frame = warehouse._read_partition(warehouse.base_dir / "industry_daily", month)
+                if frame is not None and not frame.empty:
+                    frames.append(frame)
+            if not frames:
+                return {**result, "error": "暂无板块日线数据"}
+            df = pd.concat(frames, ignore_index=True)
+            df = df[df["industry_name"].astype(str) == name].copy()
+            if df.empty:
+                return {**result, "error": f"未找到板块: {name}"}
+            df["trading_date"] = pd.to_datetime(df["trading_date"], errors="coerce")
+            df["close"] = pd.to_numeric(df["close"], errors="coerce")
+            df = (df.dropna(subset=["trading_date", "close"])
+                    .drop_duplicates("trading_date")
+                    .sort_values("trading_date")
+                    .tail(max(1, int(days))))
+            result["dates"] = [d.strftime("%Y-%m-%d") for d in df["trading_date"]]
+            result["close"] = [round(float(value), 2) for value in df["close"]]
+            return result
         except Exception as e:
             logger.warning("板块指数 %s 获取失败: %s", name, e)
-            return {"name": name, "dates": [], "close": [], "error": str(e)[:80]}
+            return {**result, "error": str(e)[:80]}
 
     def board_names(self) -> list[str]:
-        """同花顺行业板块名列表（大盘页下拉用）。"""
+        """从最新 industry_daily 分区读取板块名称列表。"""
         try:
-            import akshare as ak
+            from StockInvestmentTool.warehouse.storage import Warehouse
 
-            df = ak.stock_board_industry_name_ths()
-            return list(df["name"])
+            warehouse = Warehouse()
+            months = warehouse.available_months("industry_daily")
+            if not months:
+                return []
+            frame = warehouse._read_partition(warehouse.base_dir / "industry_daily", months[-1])
+            if frame is None or frame.empty:
+                return []
+            return sorted({str(name) for name in frame["industry_name"].dropna() if str(name).strip()})
         except Exception as e:
             logger.warning("行业板块列表获取失败: %s", e)
             return []

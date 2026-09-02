@@ -319,6 +319,8 @@ class Warehouse:
         """已落盘的分区月份列表（升序）"""
         if kind == "indicator":
             directory = self.indicator_dir
+        elif kind == "industry_daily":
+            directory = self.base_dir / "industry_daily"
         else:
             directory = self.daily_dir
         months = sorted(p.stem for p in directory.glob("*.parquet"))
