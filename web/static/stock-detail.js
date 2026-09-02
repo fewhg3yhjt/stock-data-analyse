@@ -150,7 +150,6 @@ window.StockDetail = (function(){
       <div class="kline-wrap">
         <div id="krange" style="font-size:12px;color:var(--color-text-subtle);padding:2px 0 0;"></div>
         <div class="chart kline-chart" style="width:100%;height:470px;"></div>
-        ${showReturn ? `<div class="returns-chart" style="width:100%;height:220px;margin-top:10px;"></div>` : ''}
       </div>
       <div class="intraday-wrap" style="display:none;">
         ${hasTrend ? `<div class="chart intraday-trend-chart" style="width:100%;height:240px;"></div>` : '<div style="font-size:12px;color:var(--color-text-subtle);padding:10px 0;">暂无盘中快照数据</div>'}
@@ -162,7 +161,6 @@ window.StockDetail = (function(){
     const klineEl = container.querySelector('.kline-chart');
     const volEl = container.querySelector('.volume-chart');
     const trendEl = container.querySelector('.intraday-trend-chart');
-    const retEl = container.querySelector('.returns-chart');
 
     let activeTab = 'kline';
     function switchTab(tab){
@@ -179,7 +177,7 @@ window.StockDetail = (function(){
       if (iw) iw.style.display = (tab === 'trend') ? '' : 'none';
       const tryRender = function(){
         let ok;
-        if (tab === 'kline'){ ok = renderKlineVolume() && renderRet(); }
+        if (tab === 'kline'){ ok = renderKlineVolume(); }
         else { ok = renderTrend(); }
         if (!ok) setTimeout(tryRender, 80);
       };
@@ -197,15 +195,7 @@ window.StockDetail = (function(){
     const kMas = h.mas || {};
     const kLines = d.lines || [];
 
-    // 收益折线数据
-    let retData = null;
-    if (showReturn && ret && ret.dates && ret.dates.length){
-      retData = { dates: ret.dates, series:[
-        {name: kind==='position'?'实际收益%':'模拟收益%', key:'ret_pct', data: ret.ret_pct}
-      ]};
-    }
-
-    // 绘制 K线(蜡烛+均线+点位) / 成交量 / 盘中走势 / 收益 —— 直接用 echarts
+    // 绘制 K线(蜡烛+均线+点位) / 成交量 / 盘中走势 —— 直接用 echarts
     let drew = false;
     const charts = [];
     function sized(el){
@@ -429,30 +419,12 @@ window.StockDetail = (function(){
       return true;
     }
 
-    function renderRet(){
-      if (!window.echarts || !retData) return false;
-      if (!retEl || !sized(retEl)) return false;
-      disposeChart(retEl);
-      const chart = window.StockChart?.mount(retEl) || echarts.init(retEl);
-      charts.push(chart);
-      chart.setOption({
-        tooltip:{trigger:'axis'}, legend:{top:0}, animation:false,
-        grid:{left:55, right:30, top:34, bottom:40},
-        xAxis:{type:'category', data:retData.dates, boundaryGap:false},
-        yAxis:{type:'value', scale:true, axisLabel:{formatter:'{value}%'}},
-        dataZoom:[{type:'inside'}],
-        series:[{name:retData.series[0].name, type:'line', data:retData.series[0].data,
-                 showSymbol:false, lineStyle:{width:1.5,color:'#e67e22'}, itemStyle:{color:'#e67e22'}}]
-      }, true);
-      return true;
-    }
     function draw(){
       if (!window.echarts) return false;
       let any = false;
       if (activeTab === 'kline'){
         if (!sized(klineEl)) return false;   // 等容器布局完成再画
         if (renderKlineVolume()) any = true;
-        if (showReturn && renderRet()) any = true;
       } else {
         if (!sized(trendEl)) return false;
         if (renderTrend()) any = true;

@@ -918,6 +918,161 @@ class DashboardService:
             "cost_price": cost_price,
         }
 
+    def position_returns(self, position_id: int) -> dict:
+        """持仓收益工作台：实际持仓 / 模拟方案 / 大盘基准 / 买入持有 四条收益曲线。
+
+        统一以建仓日为起点，四条曲线共用同一日期轴。
+        模拟方案用当前策略从建仓日回测；大盘基准按股票前缀映射宽基指数。
+        """
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+        import pandas as pd
+
+        p = self.manager.storage.get_position(position_id)
+        if p is None:
+            raise ValueError(f"持仓不存在: {position_id}")
+        code = p.stock_code
+        norm = StockDataFetcher.normalize_code(code)
+        cb = self.manager.cost_basis(position_id)
+        buy_date = p.buy_date
+
+        # ①/④ 实际收益 + 买入持有：用全量日线（含建仓前预热）
+        an = self._stock_analysis(code)
+        kline = an["kline"]
+        actual = self._compute_return(kline, start_date=buy_date,
+                                      cost_price=cb["cost_price"], shares=cb["shares"]) or {}
+        dates = actual.get("dates") or []
+        actual_series = actual.get("ret_pct") or []
+
+        # 买入持有：从建仓日首日收盘为基准，close / base - 1
+        buy_hold_series = []
+        base = None
+        if kline is not None and not kline.empty:
+            mask = pd.to_datetime(kline["date"]) >= pd.Timestamp(buy_date)
+            window = kline[mask].reset_index(drop=True)
+            if not window.empty:
+                base = float(window["close"].iloc[0]) or 1.0
+                buy_hold_series = [round((float(c) / base - 1) * 100, 2) for c in window["close"]]
+        # 若 dates 与 buy_hold 长度不一致，用实际收益日期轴为准重对齐
+        if not dates and buy_hold_series:
+            dates = [str(d)[:10] for d in window["date"]]
+            actual_series = [None] * len(buy_hold_series)
+
+        # ② 模拟方案收益：用当前策略从建仓日回测
+        simulation_series = []
+        try:
+            from StockInvestmentTool.backtest.engine import BacktestEngine
+            from StockInvestmentTool.portfolio.models import load_snapshot_scheme
+            scheme = load_snapshot_scheme(p.scheme_snapshot)
+            if scheme is None:
+                scheme = SchemeRegistry().get(p.scheme_name)
+            engine = BacktestEngine(
+                kline, initial_cash=scheme.backtest.initial_cash,
+                stock_type=p.stock_type, scheme=scheme,
+            )
+            result = engine.run_custom(
+                trail_threshold=float(getattr(scheme.risk, "drawdown_stop", 0.05) or 0.05),
+                offset=0.0,
+            )
+            equity = (result.get("backtest") or {}).get("equity_curve") or []
+            eq_pairs = []
+            for item in equity:
+                if isinstance(item, dict):
+                    eq_pairs.append((str(item.get("date"))[:10], float(item.get("total_asset"))))
+            if eq_pairs:
+                sim_dates = {d for d, _ in eq_pairs}
+                sim_by_date = dict(eq_pairs)
+                first_cash = eq_pairs[0][1] if eq_pairs else 0.0
+                # 与统一日期轴对齐，只取建仓日之后的点，缺失用前值填充
+                last_val = None
+                simulation_series = []
+                for d in dates:
+                    val = sim_by_date.get(d)
+                    if val is None:
+                        # 找该日期前最近的已知权益值
+                        prior = [v for dd, v in eq_pairs if dd <= d]
+                        val = prior[-1] if prior else None
+                    if val is not None:
+                        last_val = val
+                    if last_val and first_cash:
+                        simulation_series.append(round((last_val / first_cash - 1) * 100, 2))
+                    else:
+                        simulation_series.append(None)
+        except Exception as e:
+            logger.warning("模拟方案收益计算失败 %s: %s", code, e)
+            simulation_series = [None] * len(dates)
+
+        # ③ 大盘基准收益：按前缀映射
+        market_series = self._benchmark_returns(code, dates)
+
+        return {
+            "position_id": position_id, "stock_code": code,
+            "stock_name": p.stock_name, "buy_date": buy_date,
+            "dates": dates, "actual": actual_series,
+            "simulation": simulation_series, "market": market_series,
+            "buy_hold": buy_hold_series if len(buy_hold_series) == len(dates) else actual_series,
+            "actual_latest": actual.get("ret_pct_latest"),
+            "simulation_latest": self._last_number(simulation_series),
+            "buy_hold_latest": self._last_number(buy_hold_series),
+            "benchmark_code": self._benchmark_code(code),
+        }
+
+    @staticmethod
+    def _last_number(values):
+        for v in reversed(list(values)):
+            if v is not None:
+                return v
+        return None
+
+    def _benchmark_code(self, code: str) -> str:
+        """按股票前缀匹配基准宽基指数代码。"""
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+        try:
+            norm = StockDataFetcher.normalize_code(code)
+        except Exception:
+            norm = code
+        n = norm.lower().replace(".", "")
+        if n.startswith("sh6"):
+            return "sh.000001"      # 上海主板 → 上证指数
+        if n.startswith("sz3"):
+            return "sz.399006"      # 创业板 → 创业板指
+        if n.startswith("sz"):
+            return "sz.399001"      # 深圳主板 → 深证成指
+        if n.startswith("sh5"):
+            return "sh.000300"      # 上海 ETF → 沪深300
+        return "sh.000300"
+
+    def _benchmark_returns(self, code: str, dates: list[str]) -> list:
+        """从基准指数取建仓日起的收益序列，按 dates 对齐。"""
+        benchmark = self._benchmark_code(code)
+        try:
+            import pandas as pd
+            from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+            with StockDataFetcher() as fetcher:
+                df = fetcher.get_kline(benchmark, fields="date,close")
+            if df is None or df.empty:
+                return [None] * len(dates)
+            df = df.sort_values("date").reset_index(drop=True)
+            if not dates:
+                return []
+            base = None
+            series = []
+            idx = 0
+            for d in dates:
+                # 找到 >= 该日期的基准收盘
+                while idx < len(df) and str(df["date"].iloc[idx])[:10] < d:
+                    idx += 1
+                if idx >= len(df):
+                    series.append(series[-1] if series else None)
+                    continue
+                close = float(df["close"].iloc[idx])
+                if base is None:
+                    base = close or 1.0
+                series.append(round((close / base - 1) * 100, 2))
+            return series
+        except Exception as e:
+            logger.warning("大盘基准收益获取失败 %s: %s", benchmark, e)
+            return [None] * len(dates)
+
     def _observe_one(self, item: dict) -> dict:
         """计算单只观察标的全套字段（技术面走统一 _stock_analysis 入口）。"""
         code = (item.get("code") or "").lower()

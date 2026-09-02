@@ -64,7 +64,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .metric-grid .m .l{font-size:11px;color:var(--color-text-subtle);}
 .metric-grid .m .v{font-size:14px;font-weight:600;}
 .detail-tabs{display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--color-border);padding-bottom:8px;}.detail-tab{border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-subtle);border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;}.detail-tab.active{background:var(--color-info);border-color:var(--color-info);color:#fff;}.detail-panel{min-height:30px;}.strategy-points{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:12px;}.strategy-point{display:flex;flex-direction:column;padding:9px 10px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.strategy-point span{font-size:12px;color:var(--color-text-subtle);}.strategy-point b{font-size:16px;margin:2px 0;}.strategy-point small{font-size:11px;color:var(--color-text-subtle);line-height:1.5;}.strategy-advice{padding:10px 12px;border-left:3px solid var(--color-warning);background:#fff8e1;border-radius:0 5px 5px 0;font-size:13px;}
-.strategy-summary{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.strategy-meta{font-size:14px;font-weight:600;margin-bottom:6px;}.strategy-spec .spec-line{font-size:12px;color:var(--color-text-subtle);line-height:1.7;}.records-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}.records-title{font-size:14px;font-weight:600;}.records-table{width:100%;border-collapse:collapse;font-size:12px;}.records-table th,.records-table td{border:1px solid var(--color-border);padding:6px 8px;text-align:left;}.records-table th{background:var(--color-surface);font-weight:600;}.weights{font-size:12px;margin-bottom:8px;}.operation-row td input,.operation-row td select{width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid var(--color-border);border-radius:4px;font-size:12px;}.notify-summary{margin-bottom:10px;}.notify-group{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.notify-group-title{font-size:13px;font-weight:600;margin-bottom:8px;}.notify-check{display:block;font-size:13px;padding:3px 0;cursor:pointer;}.notify-check input{margin-right:6px;}.notify-foot{display:flex;justify-content:space-between;align-items:center;}
+.strategy-summary{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.strategy-meta{font-size:14px;font-weight:600;margin-bottom:6px;}
+.scheme-switch{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}.scheme-switch select{flex:1;min-width:200px;padding:6px 8px;border:1px solid var(--color-border);border-radius:5px;font-size:13px;}.strategy-spec .spec-line{font-size:12px;color:var(--color-text-subtle);line-height:1.7;}.records-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}.records-title{font-size:14px;font-weight:600;}.records-table{width:100%;border-collapse:collapse;font-size:12px;}.records-table th,.records-table td{border:1px solid var(--color-border);padding:6px 8px;text-align:left;}.records-table th{background:var(--color-surface);font-weight:600;}.weights{font-size:12px;margin-bottom:8px;}.operation-row td input,.operation-row td select{width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid var(--color-border);border-radius:4px;font-size:12px;}.notify-summary{margin-bottom:10px;}.notify-group{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.notify-group-title{font-size:13px;font-weight:600;margin-bottom:8px;}.notify-check{display:block;font-size:13px;padding:3px 0;cursor:pointer;}.notify-check input{margin-right:6px;}.notify-foot{display:flex;justify-content:space-between;align-items:center;}
+.returns-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;}.returns-stat{display:flex;flex-direction:column;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.returns-stat span{font-size:12px;color:var(--color-text-subtle);}.returns-stat b{font-size:18px;margin-top:2px;}
 </style>
 {% endblock %}
 {% block body %}
@@ -149,18 +151,10 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
        <div class="pos" data-position-card data-code="{{ p.stock_code }}" style="cursor:pointer;">
         <div class="pos-head">
           <span class="name">{{ p.stock_name }} <span class="code">{{ p.stock_code }}</span></span>
-           <span>
-             <span class="tag gray">{{ p.scheme_name }}</span>
-             <span class="tag blue">类型{{ p.stock_type }}</span>
-             <span class="tag {% if (p.unrealized_pnl_pct or 0)>=0 %}red{% else %}green{% endif %}">{{ "%+.2f"|format(p.unrealized_pnl_pct or 0) }}%</span>
-             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
-                data-action="toggleReturn" data-code="{{ p.stock_code }}" data-kind="position" data-start="{{ p.buy_date }}" data-cost="{{ p.avg_cost }}"
-                title="累计收益率折线图"><i class="fas fa-chart-line"></i> 收益</button>
-             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;"
-                data-action="openAlert" data-code="{{ p.stock_code }}" data-name="{{ p.stock_name }}" title="配置后高/成本目标价通知"><i class="fas fa-bell"></i> 目标价提醒</button>
-             <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-danger);"
-                data-action="deletePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
-           </span>
+            <span>
+              <button class="ui-button ui-button-secondary" style="padding:4px 12px;font-size:12px;margin-left:8px;color:var(--color-danger);"
+                 data-action="deletePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
+            </span>
         </div>
         <div class="pos-grid">
           <div class="pos-metric"><div class="v">{{ "%.0f"|format(p.total_shares or 0) }}</div><div class="l">持仓股数{% if p.batch_count and p.batch_count>1 %}（{{ p.batch_count }}批）{% endif %}</div></div>
@@ -178,12 +172,19 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
              <button type="button" class="detail-tab" data-detail-tab="strategy" onclick="switchDetailTab(this.closest('.detail-box'),'strategy');event.stopPropagation();">策略</button>
              <button type="button" class="detail-tab" data-detail-tab="records" onclick="switchDetailTab(this.closest('.detail-box'),'records');event.stopPropagation();">操作记录</button>
              <button type="button" class="detail-tab" data-detail-tab="notify" onclick="switchDetailTab(this.closest('.detail-box'),'notify');event.stopPropagation();">消息通知</button>
+             <button type="button" class="detail-tab" data-detail-tab="returns" onclick="switchDetailTab(this.closest('.detail-box'),'returns');event.stopPropagation();loadReturnsTab(this.closest('.detail-box'));">收益</button>
            </div>
            <div class="detail-panel detail-panel-trend"></div>
-           <div class="detail-panel detail-panel-strategy" style="display:none;">
-             <div class="strategy-summary">
-               <div class="strategy-meta"><b>{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}</b> · 版本 {{ p.strategy.version if p.strategy else '1.0' }}</div>
-               <div class="strategy-spec">
+            <div class="detail-panel detail-panel-strategy" style="display:none;" data-position="{{ p.id }}">
+              <div class="strategy-summary">
+                <div class="strategy-meta"><b>{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}</b> · 版本 {{ p.strategy.version if p.strategy else '1.0' }}</div>
+                <div class="scheme-switch">
+                  <select class="scheme-select"><option value="">当前方案：{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}</option>
+                    {% for s in schemes %}<option value="{{ s.name }}">{{ s.name }} — {{ s.description }}</option>{% endfor %}
+                  </select>
+                  <button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="switchScheme(this)">保存切换</button>
+                </div>
+                <div class="strategy-spec">
                  {% if p.strategy and p.strategy.strategy_spec %}
                    {% for k, v in p.strategy.strategy_spec.items() %}<div class="spec-line"><b>{{ k }}：</b>{{ v if v is not string else v }}</div>{% endfor %}
                  {% else %}<div class="spec-line">按当前方案 {{ p.scheme_name }} 的策略规则执行。</div>{% endif %}
@@ -228,13 +229,19 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
                  <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="stop-logic" checked>逻辑止损触发</label>
                </div>
                <div class="notify-foot"><span class="note">通知渠道：邮件（收件人沿用 EMAIL_TO 配置）</span><button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="saveNotifyConfig(this)"><i class="fas fa-save"></i> 保存通知配置</button></div>
-             </form>
-           </div>
-         </div>
-        <div class="return-box" style="display:none;margin-top:10px;padding:12px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;">
-          <div class="return-loading" style="color:var(--color-text-subtle);font-size:13px;">收益加载中…</div>
-        </div>
-        {% if p.fundamental %}
+              </form>
+            </div>
+            <div class="detail-panel detail-panel-returns" style="display:none;" data-position="{{ p.id }}">
+              <div class="returns-summary">
+                <div class="returns-stat"><span>实际持仓收益</span><b class="ret-actual">—</b></div>
+                <div class="returns-stat"><span>模拟方案收益</span><b class="ret-sim">—</b></div>
+                <div class="returns-stat"><span>大盘基准</span><b class="ret-bench">—</b></div>
+                <div class="returns-stat"><span>买入持有</span><b class="ret-bh">—</b></div>
+              </div>
+              <div class="chart returns-chart" style="width:100%;height:340px;"><div class="empty">收益加载中…</div></div>
+            </div>
+          </div>
+         {% if p.fundamental %}
         <div class="fund">📊 营收 {{ p.fundamental.revenue or '—' }}亿 · 净利 {{ p.fundamental.net_profit or '—' }}亿 · 增速 {{ p.fundamental.revenue_yoy or '—' }}% · ROE {{ p.fundamental.roe or '—' }}%（{{ p.fundamental.date }}）</div>
         {% endif %}
         {% if p.advice %}
@@ -256,49 +263,6 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 
 </div>
 <!-- 持仓操作弹窗（加仓/减仓/分红） -->
-<div id="op-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1500;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:10px;padding:20px 24px;width:380px;max-width:92%;box-shadow:0 8px 30px rgba(0,0,0,.2);">
-    <div style="font-size:16px;font-weight:700;margin-bottom:14px;" id="op-title">操作</div>
-    <div id="op-stock" style="font-size:13px;color:#6b7280;margin-bottom:12px;"></div>
-    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">成交价格</label>
-      <input id="op-price" type="number" step="any" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="成交价"></div>
-    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">份额（分红填每股分红）</label>
-      <input id="op-shares" type="number" step="any" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="股数"></div>
-    <div class="ui-field" style="margin-bottom:14px;"><label style="font-size:13px;color:#6b7280;">备注</label>
-      <input id="op-reason" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;" placeholder="操作理由（可选）"></div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button class="ui-button" style="padding:8px 16px;border:1px solid #e0e4ea;border-radius:6px;background:#f8f9fb;color:#6b7280;cursor:pointer;" onclick="closeOp()">取消</button>
-      <button class="ui-button" style="padding:8px 16px;border:none;border-radius:6px;background:var(--color-info);color:#fff;cursor:pointer;" onclick="submitOp()">确认</button>
-    </div>
-  </div>
-</div>
-<!-- 持仓目标价提醒弹窗 -->
-<div id="alert-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:1500;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:10px;padding:20px 24px;width:480px;max-width:92%;box-shadow:0 8px 30px rgba(0,0,0,.2);">
-    <div style="display:flex;justify-content:space-between;align-items:center;font-size:16px;font-weight:700;margin-bottom:14px;">
-      <span id="alert-title">目标价提醒</span>
-      <button style="border:0;background:none;font-size:22px;cursor:pointer;color:#6b7280;" onclick="closeAlert()">&times;</button>
-    </div>
-    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">规则类型</label>
-      <select id="alert-rule-type" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;">
-        <option value="high_minus_cost_pct">(后高 - 成本) × % + 成本</option>
-        <option value="high_pct">后高 × %</option>
-      </select>
-    </div>
-    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">触发方向</label>
-      <select id="alert-direction" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;">
-        <option value="below">现价 ≤ 目标价（回撤提醒）</option>
-        <option value="above">现价 ≥ 目标价（冲高提醒）</option>
-      </select>
-    </div>
-    <div class="ui-field" style="margin-bottom:12px;"><label style="font-size:13px;color:#6b7280;">阈值 %（如 90 或 98）</label>
-      <input id="alert-pct" type="number" min="1" max="100" step="0.1" placeholder="90" style="width:100%;padding:8px 10px;border:1px solid #e0e4ea;border-radius:6px;font-size:14px;">
-    </div>
-    <div style="font-size:13px;color:#6b7280;margin-bottom:8px;">已有规则</div>
-    <ul id="alert-list" style="list-style:none;margin:0 0 14px;padding:0;"></ul>
-    <button class="ui-button ui-button-primary" style="width:100%;justify-content:center;" onclick="submitAlertRule()"><i class="fas fa-check"></i> 添加规则</button>
-  </div>
-</div>
 <script>
 const typeLabels={buy:'加仓',sell:'减仓',sell_all:'清仓',dividend:'分红',correction:'纠错'};
 const stockTypeLabel={stock:'股票',etf:'ETF'};
@@ -424,173 +388,76 @@ async function saveNotifyConfig(btn){
     else showUiMessage(d.error || '保存失败', 'error');
   }catch(e){ showUiMessage('保存失败：' + e.message, 'error'); }
 }
-async function toggleReturn(btn){
-  const box = btn.closest('.pos').querySelector('.return-box');
-  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
-  box.style.display = 'block';
-  box.dataset.code = btn.dataset.code;
-  box.dataset.cost = btn.dataset.cost || '';
-  box.innerHTML = '<div class="return-loading" style="color:var(--color-text-subtle);font-size:13px;">加载中…</div>';
-  // 首次渲染：加周期切换 + 图表容器
-  const code = btn.dataset.code;
-  const cost = box.dataset.cost;
-  box.innerHTML =
-    '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">' +
-    '<button class="ui-button ui-button-secondary pbtn" data-p="day" style="padding:4px 12px;font-size:12px;background:var(--color-info);color:#fff;" onclick="loadStockChart(this)">日线</button>' +
-    '<button class="ui-button ui-button-secondary pbtn" data-p="week" style="padding:4px 12px;font-size:12px;" onclick="loadStockChart(this)">周线</button>' +
-    '<button class="ui-button ui-button-secondary pbtn" data-p="month" style="padding:4px 12px;font-size:12px;" onclick="loadStockChart(this)">月线</button>' +
-    '<span style="font-size:12px;color:#6b7280;align-self:center;">收盘+指标 | 双线收益率</span>' +
-    '</div>' +
-    '<div class="chart" style="width:100%;height:300px;"></div>';
-  loadStockChart(box.querySelector('.pbtn'));
-}
-async function loadStockChart(btn){
-  const box = btn.closest('.return-box');
-  const code = box.dataset.code;
-  const cost = box.dataset.cost;
-  const period = btn.dataset.p;
-  box.querySelectorAll('.pbtn').forEach(b => { b.style.background = b===btn?'var(--color-info)':''; b.style.color = b===btn?'#fff':''; });
-  const chartEl = box.querySelector('.chart');
-  const fd = new FormData();
-  fd.append('code', code); fd.append('period', period);
-  if (cost) fd.append('cost_price', cost);
-  fd.append('metrics', 'ma20,ma60');
-  try {
-    const res = await fetch('/api/chart/stock', { method: 'POST', body: fd });
+let returnsLoadedByPosition = {};
+async function loadReturnsTab(box){
+  const panel = box.querySelector('.detail-panel-returns');
+  if (!panel) return;
+  const positionId = panel.dataset.position;
+  if (returnsLoadedByPosition[positionId]) return;
+  returnsLoadedByPosition[positionId] = true;
+  const chartEl = panel.querySelector('.returns-chart');
+  try{
+    const res = await fetch('/api/portfolio/position/' + positionId + '/returns');
     const d = await res.json();
     if (d.status !== 'success'){ chartEl.innerHTML = '<span style="color:#c62828;font-size:13px;">' + d.error + '</span>'; return; }
-    // 用 ECharts 渲染：收盘+指标 主图，收益率双线叠加
+    panel.querySelector('.ret-actual').textContent = d.actual_latest != null ? (d.actual_latest>0?'+':'') + d.actual_latest + '%' : '—';
+    panel.querySelector('.ret-sim').textContent = d.simulation_latest != null ? (d.simulation_latest>0?'+':'') + d.simulation_latest + '%' : '—';
+    panel.querySelector('.ret-bench').textContent = d.market && d.market.length ? ((d.market[d.market.length-1]>0?'+':'') + d.market[d.market.length-1] + '%') : '—';
+    panel.querySelector('.ret-bh').textContent = d.buy_hold_latest != null ? (d.buy_hold_latest>0?'+':'') + d.buy_hold_latest + '%' : '—';
+    const dates = d.dates || [];
     const chart = StockChart.mount(chartEl);
-    const series = [{ name:'收盘', type:'line', data:d.closes, showSymbol:false, lineStyle:{width:1.6,color:'#1a73e8'}, itemStyle:{color:'#1a73e8'} }];
-    (d.metrics||[]).forEach(m => {
-      series.push({ name:m.name, type:'line', data:m.data, showSymbol:false,
-        lineStyle:{width:1.0,color:m.name==='ma20'?'#e67e22':'#27ae60'}, itemStyle:{color:m.name==='ma20'?'#e67e22':'#27ae60'} });
-    });
+    const mk = (name, data, color, dashed) => ({name, type:'line', data:data||[], showSymbol:false,
+      lineStyle:{width:1.5, color, type:dashed?'dashed':'solid'}, itemStyle:{color}});
+    const series = [
+      mk('实际持仓收益%', d.actual, '#dc3545'),
+      mk('模拟方案收益%', d.simulation, '#1a73e8'),
+      mk('大盘基准%', d.market, '#9e9e9e', true),
+      mk('买入持有收益%', d.buy_hold, '#28a745', true),
+    ].filter(s => (s.data||[]).length);
     chart.setOption({
       tooltip:{trigger:'axis'}, legend:{top:0, type:'scroll'},
-      grid:{left:55,right:30,top:34,bottom:50},
-      xAxis:{type:'category', data:d.dates, boundaryGap:false},
-      yAxis:[{type:'value', scale:true},
-             {type:'value', scale:true, position:'right', axisLabel:{formatter:'{value}%'}}],
+      grid:{left:55,right:24,top:34,bottom:40},
+      xAxis:{type:'category', data:dates, boundaryGap:false},
+      yAxis:{type:'value', scale:true, axisLabel:{formatter:'{value}%'}},
       dataZoom:[{type:'inside'},{type:'slider',height:16}],
-      series: series.concat([
-        d.ret_cost && d.ret_cost.length ? {name:'成本收益%', type:'line', data:d.ret_cost, showSymbol:false,
-          yAxisIndex:1, lineStyle:{width:1.2,type:'dashed',color:'#dc3545'}, itemStyle:{color:'#dc3545'}} : {},
-        d.ret_price && d.ret_price.length ? {name:'价格收益%', type:'line', data:d.ret_price, showSymbol:false,
-          yAxisIndex:1, lineStyle:{width:1.2,type:'dashed',color:'#9e9e9e'}, itemStyle:{color:'#9e9e9e'}} : {}
-      ])
+      series,
     }, true);
-  } catch(e) { chartEl.innerHTML = '<span style="color:#c62828;font-size:13px;">加载失败</span>'; }
+  }catch(e){ chartEl.innerHTML = '<span style="color:#c62828;font-size:13px;">收益加载失败：' + e.message + '</span>'; }
 }
-// ── 持仓操作弹窗（加仓/减仓/分红）───────────────────
-let curOpPos = null, curOpType = null;
-function openOp(id, name, type){
-  curOpPos = id; curOpType = type;
-  const labels = {buy:'加仓', sell:'减仓', dividend:'分红'};
-  document.getElementById('op-title').textContent = labels[type] || '操作';
-  document.getElementById('op-stock').textContent = name + (type==='dividend' ? '（分红）' : '');
-  document.getElementById('op-price').value = '';
-  document.getElementById('op-shares').value = '';
-  document.getElementById('op-reason').value = '';
-  const m = document.getElementById('op-modal');
-  m.style.display = 'flex';
-}
-function closeOp(){ document.getElementById('op-modal').style.display = 'none'; }
-async function submitOp(){
-  const price = parseFloat(document.getElementById('op-price').value);
-  const shares = parseFloat(document.getElementById('op-shares').value || 0);
-  const reason = document.getElementById('op-reason').value.trim();
-  if (!price || price <= 0){ showUiMessage('请填写成交价格', 'error'); return; }
-  if (curOpType !== 'dividend' && (!shares || shares <= 0)){ showUiMessage('请填写份额', 'error'); return; }
-  const fd = new FormData();
-  fd.append('type', curOpType); fd.append('price', price);
-  fd.append('shares', shares); fd.append('reason', reason);
-  try {
-    const res = await fetch('/portfolio/' + curOpPos + '/transaction', { method: 'POST', body: fd });
-    const d = await res.json();
-    if (d.status === 'success'){
-      showUiMessage('操作成功' + (d.pnl != null ? '，盈亏 ' + d.pnl.toFixed(2) : ''), 'success');
-      closeOp(); setTimeout(() => location.reload(), 700);
-    } else { showUiMessage(d.error || '操作失败', 'error'); }
-  } catch(e){ showUiMessage('操作失败: ' + e.message, 'error'); }
-}
-// ── 删除持仓（危险，需弹窗确认）────────────────────
-async function deletePos(id, name){
-  if (!await showUiConfirm('将还原占用资金，并删除该持仓全部交易与建议记录。此操作不可恢复！', '删除持仓「' + name + '」')) return;
-  try {
-    const res = await fetch('/portfolio/' + id + '/delete', { method: 'POST' });
-    const d = await res.json();
-    if (d.status === 'success'){
-      showUiMessage('已删除「' + name + '」，还原资金 ' + (d.restored_cash||0).toFixed(2) + ' 元', 'success');
-      setTimeout(() => location.reload(), 700);
-    } else { showUiMessage(d.error || '删除失败', 'error'); }
-  } catch(e){ showUiMessage('删除失败: ' + e.message, 'error'); }
-}
-// ── 持仓目标价提醒 ────────────────────────────────
-let alertCode = '', alertName = '';
-async function openAlert(_id, code, name){
-  alertCode = code || ''; alertName = name || code || '';
-  document.getElementById('alert-title').textContent = '目标价提醒 — ' + alertName;
-  document.getElementById('alert-pct').value = '';
-  await loadAlertRules();
-  document.getElementById('alert-modal').style.display = 'flex';
-}
-function closeAlert(){ document.getElementById('alert-modal').style.display = 'none'; }
-async function loadAlertRules(){
-  const list = document.getElementById('alert-list');
-  list.innerHTML = '<li style="color:#6b7280;font-size:13px;">加载中...</li>';
-  try {
-    const res = await fetch('/api/position/' + encodeURIComponent(alertCode) + '/alert-rules');
-    const data = await res.json();
-    if (data.status !== 'success' || !data.rules || !data.rules.length){
-      list.innerHTML = '<li style="color:#6b7280;font-size:13px;">暂无规则</li>'; return;
-    }
-    list.replaceChildren(...data.rules.map(rule => {
-      const li = document.createElement('li');
-      li.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f8f9fb;border:1px solid #e0e4ea;border-radius:6px;margin-bottom:6px;font-size:13px;';
-      const label = (rule.rule_type === 'high_minus_cost_pct' ? '(后高-成本)×' : '后高×') + rule.threshold_pct + '% · ' + (rule.direction === 'below' ? '回撤(现价≤)' : '冲高(现价≥)');
-      li.append(document.createTextNode(label));
-      const button = document.createElement('button');
-      button.className = 'ui-button ui-button-danger'; button.style.cssText = 'padding:3px 8px;font-size:12px;'; button.textContent = '删除';
-      button.onclick = () => deleteAlertRule(rule.rule_id);
-      li.append(button);
-      return li;
-    }));
-  } catch(e){ list.innerHTML = '<li style="color:#c62828;font-size:13px;">规则加载失败</li>'; }
-}
-async function submitAlertRule(){
-  const threshold = document.getElementById('alert-pct').value;
-  if (!threshold){ showUiMessage('请填写阈值百分比', 'error'); return; }
-  try {
-    const res = await fetch('/api/position/' + encodeURIComponent(alertCode) + '/alert-rules', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({rule_type:document.getElementById('alert-rule-type').value, direction:document.getElementById('alert-direction').value, threshold_pct:threshold})
-    });
-    const data = await res.json();
-    if (data.status === 'success'){ showUiMessage('规则已添加', 'success'); document.getElementById('alert-pct').value = ''; await loadAlertRules(); }
-    else showUiMessage(data.error || '规则添加失败', 'error');
-  } catch(e){ showUiMessage('规则添加失败: ' + e.message, 'error'); }
-}
-async function deleteAlertRule(ruleId){
-  try {
-    const res = await fetch('/api/position/' + encodeURIComponent(alertCode) + '/alert-rules/' + encodeURIComponent(ruleId), {method:'DELETE'});
-    const data = await res.json();
-    if (data.status === 'success'){ showUiMessage('规则已删除', 'success'); await loadAlertRules(); }
-    else showUiMessage(data.error || '规则删除失败', 'error');
-  } catch(e){ showUiMessage('规则删除失败: ' + e.message, 'error'); }
-}
+  // ── 删除持仓（危险，需弹窗确认）────────────────────
+ async function switchScheme(btn){
+   const panel = btn.closest('.detail-panel-strategy');
+   const select = panel.querySelector('.scheme-select');
+   const positionId = panel.dataset.position;
+   const scheme = select.value;
+   if (!scheme){ showUiMessage('请选择方案', 'error'); return; }
+   try{
+     const res = await fetch('/portfolio/' + positionId + '/scheme', {method:'POST', body:new URLSearchParams({scheme})});
+     const d = await res.json();
+     if (d.status === 'success'){ showUiMessage('方案已切换并重算点位', 'success'); setTimeout(()=>location.reload(), 600); }
+     else showUiMessage(d.error || '切换失败', 'error');
+   }catch(e){ showUiMessage('切换失败：' + e.message, 'error'); }
+ }
+ async function deletePos(id, name){
+   if (!await showUiConfirm('将还原占用资金，并删除该持仓全部交易与建议记录。此操作不可恢复！', '删除持仓「' + name + '」')) return;
+   try {
+     const res = await fetch('/portfolio/' + id + '/delete', { method: 'POST' });
+     const d = await res.json();
+     if (d.status === 'success'){
+       showUiMessage('已删除「' + name + '」，还原资金 ' + (d.restored_cash||0).toFixed(2) + ' 元', 'success');
+       setTimeout(() => location.reload(), 700);
+     } else { showUiMessage(d.error || '删除失败', 'error'); }
+   } catch(e){ showUiMessage('删除失败: ' + e.message, 'error'); }
+ }
 document.addEventListener('click', function(e){
   const el = e.target.closest('[data-action]');
   if (el) {
     const a = el.dataset.action;
-    if (a === 'toggleReturn') toggleReturn(el);
-    else if (a === 'openOp') openOp(Number(el.dataset.id), el.dataset.name, el.dataset.type);
-    else if (a === 'deletePos') deletePos(Number(el.dataset.id), el.dataset.name);
-    else if (a === 'openAlert') openAlert(null, el.dataset.code, el.dataset.name);
+    if (a === 'deletePos') deletePos(Number(el.dataset.id), el.dataset.name);
     return;
   }
   const card = e.target.closest('[data-position-card]');
-  if (!card || e.target.closest('a,button,input,select,textarea,.detail-box,.return-box,.advice')) return;
+  if (!card || e.target.closest('a,button,input,select,textarea,.detail-box,.advice')) return;
   toggleDetail(card, card.dataset.code);
 });
 </script>

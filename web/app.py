@@ -2126,6 +2126,20 @@ def api_position_notify_config_save(position_id):
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/portfolio/position/<int:position_id>/returns", methods=["GET"])
+def api_position_returns(position_id):
+    """持仓收益工作台：实际/模拟/大盘/买入持有 四条收益曲线。"""
+    from StockInvestmentTool.portfolio.dashboard import DashboardService
+    try:
+        data = DashboardService(_get_manager()).position_returns(position_id)
+        return flask.jsonify({"status": "success", **data})
+    except ValueError as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 404
+    except Exception as e:
+        logger.exception("持仓收益工作台失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/portfolio/export", methods=["GET"])
 def portfolio_export():
     """导出 Excel"""
@@ -2904,10 +2918,13 @@ def dashboard_warroom():
         mgr = _get_manager()
         mgr.sync_holdings_to_watchlist()  # 持仓自动进自选（去重，幂等）
         data = DashboardService(mgr).war_room()
-        return flask.render_template("warroom.html", data=data, error=None)
+        from StockInvestmentTool.core.registry import SchemeRegistry
+        schemes = [{"name": s.name, "description": s.description}
+                   for s in SchemeRegistry().list()]
+        return flask.render_template("warroom.html", data=data, schemes=schemes, error=None)
     except Exception as e:
         logger.exception("持仓页加载失败")
-        return flask.render_template("warroom.html", data=None, error=str(e))
+        return flask.render_template("warroom.html", data=None, schemes=[], error=str(e))
 
 
 @web_app.route("/dashboard/review", methods=["GET"])
