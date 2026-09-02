@@ -940,6 +940,7 @@ class DashboardService:
         # ① 实际持仓收益：逐日重放真实交易流水，后续加仓不会反向影响过去。
         an = self._stock_analysis(code)
         kline = an["kline"]
+        kline, latest_intraday = self._overlay_latest_minute(kline, norm)
         actual = self._actual_position_returns(kline, txns)
         dates = actual["dates"]
         actual_series = actual["series"]
@@ -970,8 +971,11 @@ class DashboardService:
             scheme = load_snapshot_scheme(p.scheme_snapshot)
             if scheme is None:
                 scheme = SchemeRegistry().get(p.scheme_name)
+            # 模拟策略仍按日线成交逻辑运行；如分钟数据补出了当天，
+            # 将该日权益向前值对齐，避免把盘中快照伪装成一笔日线交易。
+            simulation_kline = an["kline"]
             engine = BacktestEngine(
-                kline, initial_cash=scheme.backtest.initial_cash,
+                simulation_kline, initial_cash=scheme.backtest.initial_cash,
                 stock_type=p.stock_type, scheme=scheme,
             )
             result = engine.run_custom(
@@ -1023,7 +1027,52 @@ class DashboardService:
             "market_latest": self._last_number(market_series),
             "buy_hold_latest": self._last_number(buy_hold_series),
             "benchmark_code": self._benchmark_code(code),
+            "latest_price": latest_intraday["price"] if latest_intraday else None,
+            "latest_price_date": latest_intraday["date"] if latest_intraday else None,
+            "latest_price_source": "minute" if latest_intraday else "daily",
         }
+
+    @staticmethod
+    def _overlay_latest_minute(kline, code: str):
+        """将最近分钟收盘价并入收益曲线最后一天，历史仍使用日线收盘。"""
+        import pandas as pd
+        if kline is None or kline.empty:
+            return kline, None
+        try:
+            from StockInvestmentTool.warehouse.minute import MinuteStore
+
+            store = MinuteStore()
+            days = store.days()
+            if not days:
+                return kline, None
+            day = days[-1]
+            minute = store.read(day, code)
+            if minute is None or minute.empty:
+                return kline, None
+            minute = minute.dropna(subset=["close"])
+            if minute.empty:
+                return kline, None
+            latest = minute.sort_values("time").iloc[-1]
+            price = float(latest["close"])
+            result = kline.copy()
+            result["date"] = pd.to_datetime(result["date"])
+            target = pd.Timestamp(day)
+            match = result["date"] == target
+            if match.any():
+                result.loc[match, "close"] = price
+            elif target > result["date"].max():
+                row = {column: None for column in result.columns}
+                row.update({"date": target, "close": price})
+                result = pd.concat([result, pd.DataFrame([row])], ignore_index=True)
+            else:
+                return result, None
+            return result.sort_values("date").reset_index(drop=True), {
+                "date": day, "price": round(price, 4),
+                "time": str(latest.get("time") or "")[:19],
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("收益曲线分钟数据覆盖失败 %s: %s", code, exc)
+            return kline, None
 
     @staticmethod
     def _actual_position_returns(kline, transactions: list[dict]) -> dict:
