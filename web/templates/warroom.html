@@ -67,6 +67,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .strategy-summary{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.strategy-meta{font-size:14px;font-weight:600;margin-bottom:6px;}
 .scheme-switch{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}.scheme-switch select{flex:1;min-width:200px;padding:6px 8px;border:1px solid var(--color-border);border-radius:5px;font-size:13px;}.strategy-spec .spec-line{font-size:12px;color:var(--color-text-subtle);line-height:1.7;}.records-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}.records-title{font-size:14px;font-weight:600;}.records-table{width:100%;border-collapse:collapse;font-size:12px;}.records-table th,.records-table td{border:1px solid var(--color-border);padding:6px 8px;text-align:left;}.records-table th{background:var(--color-surface);font-weight:600;}.weights{font-size:12px;margin-bottom:8px;}.operation-row td input,.operation-row td select{width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid var(--color-border);border-radius:4px;font-size:12px;}.notify-summary{margin-bottom:10px;}.notify-group{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.notify-group-title{font-size:13px;font-weight:600;margin-bottom:8px;}.notify-check{display:block;font-size:13px;padding:3px 0;cursor:pointer;}.notify-check input{margin-right:6px;}.notify-foot{display:flex;justify-content:space-between;align-items:center;}
 .returns-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;}.returns-stat{display:flex;flex-direction:column;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.returns-stat span{font-size:12px;color:var(--color-text-subtle);}.returns-stat b{font-size:18px;margin-top:2px;}
+.notify-signal-row{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid var(--color-border);}.notify-signal-row:last-child{border-bottom:0;}.notify-signal-main{display:flex;flex-direction:column;gap:2px;flex:1;}.notify-signal-main small{font-size:11px;color:var(--color-text-subtle);line-height:1.5;}.notify-status{font-size:11px;padding:2px 7px;border-radius:4px;white-space:nowrap;}.notify-status.triggered{background:#fbe9e7;color:var(--color-danger);}.notify-status.waiting{background:#eceff1;color:var(--color-text-subtle);}
 </style>
 {% endblock %}
 {% block body %}
@@ -212,22 +213,16 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
                {% endfor %}
              </tbody></table>
            </div>
-           <div class="detail-panel detail-panel-notify" style="display:none;">
-             <div class="notify-summary note">满足勾选的策略买卖点时发送邮件通知，默认全部开启；只影响通知，不影响策略本身的判断和建议。</div>
-             <form class="notify-form" data-position="{{ p.id }}" onclick="event.stopPropagation();">
-               <div class="notify-group"><div class="notify-group-title">买入 / 加仓信号</div>
-                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="buy-support-weak" checked>综合弱支撑触发</label>
-                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="buy-support-strong" checked>综合强支撑触发</label>
-                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="buy-extreme" checked>极端低估锚触发</label>
-                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="buy-trend" checked>趋势跟随加仓触发</label>
-               </div>
-               <div class="notify-group"><div class="notify-group-title">卖出 / 止损止盈信号</div>
-                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="stop-hard" checked>硬止损触发</label>
-                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="stop-technical" checked>技术止损触发</label>
-                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="take-left" checked>左侧固定止盈触发</label>
-                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="take-right" checked>右侧移动止盈触发</label>
-                 <label class="notify-check"><input type="checkbox" class="notify-signal" data-signal="stop-logic" checked>逻辑止损触发</label>
-               </div>
+            <div class="detail-panel detail-panel-notify" style="display:none;">
+              <div class="notify-summary note">满足勾选的策略买卖点时发送邮件通知。当前值和触发条件根据本次最新行情计算；通知开关只影响邮件，不影响策略建议。</div>
+              <form class="notify-form" data-position="{{ p.id }}" onclick="event.stopPropagation();">
+                {% for group, group_label in [('buy','买入 / 加仓信号'),('sell','卖出 / 止损止盈信号')] %}
+                <div class="notify-group"><div class="notify-group-title">{{ group_label }}</div>
+                  {% for signal in p.notify_signals if signal.group == group %}
+                  <label class="notify-check notify-signal-row"><input type="checkbox" class="notify-signal" data-signal="{{ signal.signal }}" {% if signal.enabled %}checked{% endif %}><span class="notify-signal-main"><b>{{ signal.name }}</b><small>{{ signal.detail }} · 动作：{{ signal.action }}</small></span><span class="notify-status {{ 'triggered' if signal.triggered else 'waiting' }}">{{ signal.status }}</span></label>
+                  {% endfor %}
+                </div>
+                {% endfor %}
                <div class="notify-foot"><span class="note">通知渠道：邮件（收件人沿用 EMAIL_TO 配置）</span><button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="saveNotifyConfig(this)"><i class="fas fa-save"></i> 保存通知配置</button></div>
               </form>
             </div>

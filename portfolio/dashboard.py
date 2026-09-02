@@ -1355,6 +1355,7 @@ class DashboardService:
                             "applicable_types": [], "strategy_spec": {},
                             "buy_rules": [], "sell_rules": []}
             row["strategy"] = strategy
+            row["notify_signals"] = self._notify_signal_details(row, p, strategy)
             positions.append(row)
         # 顶部账户汇总也采用同一批实时价格，避免明细和总览口径不一致。
         if positions:
@@ -1373,6 +1374,81 @@ class DashboardService:
             # 账户历史操作记录（按时间倒序，含所有股票/已平仓）
             "history_txns": self._history_transactions(),
         }
+
+    @staticmethod
+    def _notify_signal_details(row: dict, position, strategy: dict) -> list[dict]:
+        """将当前策略检查结果转为消息通知页签可读的状态明细。"""
+        from StockInvestmentTool.biz.signal_notify import ALL_SIGNALS, get_signals
+
+        checks = (row.get("advice") or {}).get("check_results") or {}
+        context = dict(checks.get("context") or {})
+        if row.get("current_price") not in (None, 0):
+            context["current_price"] = row["current_price"]
+        enabled = get_signals(position.id)
+        enabled = set(ALL_SIGNALS if enabled is None else enabled)
+        buy_more = checks.get("buy_more") or {}
+        rule_c = checks.get("rule_c") or {}
+        hard_stop = checks.get("hard_stop") or {}
+        technical = checks.get("technical_stop") or {}
+        left = checks.get("left_side") or {}
+        right = checks.get("right_side") or {}
+        logic = checks.get("logic_stop") or {}
+
+        rows = []
+        for signal, name, group, action in [
+            ("buy-support-weak", "综合弱支撑", "buy", "建议买入/加仓"),
+            ("buy-support-strong", "综合强支撑", "buy", "建议买入/加仓"),
+            ("buy-extreme", "极端低估锚", "buy", "建议买入/加仓"),
+            ("buy-trend", "趋势跟随", "buy", "建议加仓"),
+            ("stop-hard", "硬止损", "sell", "建议清仓"),
+            ("stop-technical", "技术止损", "sell", "建议清仓"),
+            ("take-left", "左侧固定止盈", "sell", "建议分批减仓"),
+            ("take-right", "右侧移动止盈", "sell", "建议清仓"),
+            ("stop-logic", "逻辑止损", "sell", "建议退出"),
+        ]:
+            current = "—"
+            threshold = "—"
+            status = "未触发"
+            detail = "当前方案未产生该检查项"
+            triggered = False
+            if signal.startswith("buy-support"):
+                target = {"buy-support-weak": "综合弱支撑", "buy-support-strong": "综合强支撑", "buy-extreme": "极端低估锚"}[signal]
+                if buy_more.get("label") == target:
+                    current = buy_more.get("current_price")
+                    threshold = buy_more.get("trigger_price")
+                    triggered = bool(buy_more.get("triggered"))
+                    status = "已触发" if triggered else "未触发"
+                    detail = f"当前价 {current}，触发价 {threshold}"
+                else:
+                    detail = f"当前待判断批次：{buy_more.get('label') or '无'}"
+            elif signal == "buy-trend":
+                triggered = bool(rule_c.get("triggered"))
+                status = "已触发" if triggered else "未触发"
+                detail = "满足趋势跟随条件" if triggered else "；".join(rule_c.get("failed") or []) or "未满足趋势条件"
+            elif signal == "stop-hard":
+                current, threshold = context.get("current_price"), hard_stop.get("stop_price")
+                triggered = bool(hard_stop.get("triggered")); status = "已触发" if triggered else "未触发"
+                detail = f"当前价 {current}，止损线 {threshold}"
+            elif signal == "stop-technical":
+                current, threshold = technical.get("recent_low"), technical.get("strong_support")
+                triggered = bool(technical.get("triggered")); status = "已触发" if triggered else "未触发"
+                detail = f"最近低点 {current}，强支撑 {threshold}，放量：{'是' if technical.get('volume_surge') else '否'}"
+            elif signal == "take-left":
+                current = context.get("current_price")
+                threshold = f"{left.get('zone_price_lo', '—')} ~ {left.get('zone_price_hi', '—')}"
+                triggered = bool(left.get("tier", 0)); status = "已触发" if triggered else "未触发"
+                detail = f"当前价 {current}，区间 {threshold}，档位 {left.get('tier', 0)}"
+            elif signal == "take-right":
+                current = context.get("current_price"); threshold = right.get("trigger_price") or right.get("peak_price")
+                triggered = bool(right.get("triggered")); status = "已触发" if triggered else "未触发"
+                detail = f"当前价 {current}，触发参考 {threshold}，峰值回撤 {right.get('drawdown_pct', '—')}%"
+            elif signal == "stop-logic":
+                triggered = bool(logic.get("triggered")); status = "已触发" if triggered else "未触发"
+                detail = logic.get("reason") or ("逻辑已证伪" if triggered else "逻辑仍有效/未提供")
+            rows.append({"signal": signal, "name": name, "group": group, "action": action,
+                         "enabled": signal in enabled, "status": status, "triggered": triggered,
+                         "current": current, "threshold": threshold, "detail": detail})
+        return rows
 
     @staticmethod
     def _history_transactions() -> list[dict]:
