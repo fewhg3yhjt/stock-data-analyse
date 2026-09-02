@@ -411,7 +411,8 @@ class DashboardService:
             logger.warning("资金流候选异常: %s", e)
         return out
 
-    def stock_dual_view(self, code: str, days: int = 750) -> dict:
+    def stock_dual_view(self, code: str, days: int = 750,
+                        transaction_points: Optional[list[dict]] = None) -> dict:
         """单只股票的「天周期历史 + 盘中快照」双视图数据（后端打通）。
 
         框1 天周期历史: OHLCV 取自 warehouse daily 分区；均线 MA5/10/20/60 直接
@@ -503,6 +504,7 @@ class DashboardService:
                     "pe": _number_list(hdf.get("pe_ttm", _pd.Series([None]*len(hdf)))),
                     "pb": _number_list(hdf.get("pb_mrq", _pd.Series([None]*len(hdf)))),
                     "mas": mas,
+                    "transaction_points": self._transaction_points(hdf, transaction_points),
                 }
         except Exception as e:
             logger.warning("天周期历史读取失败 %s: %s", code, e)
@@ -581,6 +583,30 @@ class DashboardService:
             logger.warning("盘中快照读取失败 %s: %s", code, e)
 
         return result
+
+    @staticmethod
+    def _transaction_points(hdf, transactions: Optional[list[dict]]) -> list[dict]:
+        """把持仓交易流水映射到日 K 日期和价格，供图表叠加标记。"""
+        if not transactions:
+            return []
+        dates = [str(value)[:10] for value in hdf["date"]]
+        points = []
+        for txn in transactions:
+            trade_date = str(txn.get("date") or "")[:10]
+            price = txn.get("price")
+            if not trade_date or price in (None, 0):
+                continue
+            matching = [i for i, value in enumerate(dates) if value >= trade_date]
+            if not matching:
+                continue
+            points.append({
+                "index": matching[0], "date": dates[matching[0]], "trade_date": trade_date,
+                "price": round(float(price), 4), "shares": round(float(txn.get("shares") or 0), 2),
+                "amount": round(float(txn.get("amount") or 0), 2),
+                "pnl": round(float(txn.get("pnl") or 0), 2),
+                "type": txn.get("trans_type") or "", "reason": txn.get("reason") or "",
+            })
+        return points
 
     def stock_chart_series(self, code: str, period: str = "day",
                            days: int = 120,
@@ -775,7 +801,14 @@ class DashboardService:
             "total_mcap": rt.get("total_mcap"),
         })
 
-        dual = self.stock_dual_view(norm)
+        detail_transactions = []
+        if kind == "position":
+            for candidate in self.manager.storage.get_open_positions():
+                if StockDataFetcher.normalize_code(candidate.stock_code) == norm:
+                    detail_transactions.extend(
+                        txn.to_dict() for txn in self.manager.storage.get_transactions(candidate.id)
+                    )
+        dual = self.stock_dual_view(norm, transaction_points=detail_transactions)
 
         lines = []
         if ctx.weak_support:

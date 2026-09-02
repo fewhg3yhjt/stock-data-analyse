@@ -363,6 +363,36 @@ window.StockDetail = (function(){
           data:kLines.map(l=>({name:l.name, yAxis:l.value, lineStyle:{type:'dashed', color:l.color||'#999'}}))
         };
       }
+      const tradeLabels = {buy:'买入', sell:'卖出', sell_all:'清仓', dividend:'分红', correction:'纠错'};
+      const tradeColors = {buy:'#16a34a', sell:'#dc2626', sell_all:'#dc2626', dividend:'#9333ea', correction:'#64748b'};
+      const tradePoints = (h.transaction_points || []).map(function(point){
+        const type = point.type || '';
+        const label = tradeLabels[type] || type || '交易';
+        const color = tradeColors[type] || '#64748b';
+        return {
+          name: label, coord: [point.index, point.price], value: label + ' ' + point.price,
+          itemStyle: {color: color}, symbol: type === 'buy' ? 'arrow' : 'pin',
+          symbolRotate: type === 'buy' ? 180 : 0, symbolSize: 28,
+          label: {show:true, formatter:label, color:color, fontSize:10,
+                  position:type === 'buy' ? 'bottom' : 'top'},
+          tradePoint: point
+        };
+      });
+      if (tradePoints.length){
+        series[0].markPoint = {
+          symbol:'pin', symbolSize:30, label:{show:true}, data:tradePoints,
+          tooltip:{formatter:function(params){
+            const p = params.data.tradePoint || {};
+            const label = tradeLabels[p.type] || p.type || '交易';
+            return '<b>' + label + '</b><br/>' +
+              '交易日：' + (p.trade_date || p.date || '—') + '<br/>' +
+              '价格：' + (p.price ?? '—') + '<br/>' +
+              '份额：' + (p.shares ?? '—') + '<br/>' +
+              '金额：' + (p.amount ?? '—') + '<br/>' +
+              (p.reason ? '说明：' + p.reason : '');
+          }}
+        };
+      }
        chart.setOption(opt, true);
        chart.off('datazoom');
        chart.on('datazoom', function(payload){
