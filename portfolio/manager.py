@@ -724,6 +724,9 @@ class PortfolioManager:
                  scheme_name: str = "default_value",
                  stock_type: str = "B") -> Simulation:
         """对标的跑一次模拟：拉数据算点位，存快照（同股票覆盖写）。"""
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+
+        stock_code = StockDataFetcher.normalize_code(stock_code)
         scheme = self.registry.get(scheme_name)
         snapshot = self._build_snapshot(stock_code, scheme, stock_type)
         return self.storage.upsert_simulation(Simulation(
@@ -766,6 +769,26 @@ class PortfolioManager:
 
     def delete_simulation(self, sim_id: int):
         self.storage.delete_simulation(sim_id)
+
+    def remove_watch_pool_item(self, stock_code: str) -> dict:
+        """从观察池移除一只非持仓股票的自选与模拟记录。"""
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+
+        normalized = StockDataFetcher.normalize_code(stock_code)
+        open_positions = self.storage.get_open_positions()
+        if any(StockDataFetcher.normalize_code(p.stock_code) == normalized for p in open_positions):
+            raise ValueError("持仓股票不能从观察池移除，请先处理持仓")
+
+        watch_ids = [w.id for w in self.storage.get_watchlist()
+                     if StockDataFetcher.normalize_code(w.stock_code) == normalized]
+        simulation_ids = [s.id for s in self.storage.get_simulations()
+                          if StockDataFetcher.normalize_code(s.stock_code) == normalized]
+        for item_id in watch_ids:
+            self.storage.delete_watchlist(item_id)
+        for sim_id in simulation_ids:
+            self.storage.delete_simulation(sim_id)
+        return {"stock_code": normalized, "watchlist_removed": len(watch_ids),
+                "simulations_removed": len(simulation_ids)}
 
     def get_simulation_by_code(self, stock_code: str) -> Optional[Simulation]:
         return self.storage.get_simulation_by_code(stock_code)

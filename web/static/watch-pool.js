@@ -19,7 +19,8 @@ function render(items) {
     } else if (item.next_action === 'review') {
       action = '<a class="ui-button ui-button-primary ui-button-sm" href="/dashboard/warroom">管理持仓</a>';
     }
-    return `<tr class="pool-row" data-code="${esc(item.code)}"><td><b>${esc(item.name)}</b><br><span class="note">${esc(item.code)}</span><br><button class="ui-button ui-button-secondary ui-button-sm detail-toggle" data-action="detail">展开K线</button></td><td><span class="tag blue">${stageLabels[item.next_action] || item.next_action}</span></td><td>${(item.sources || []).map(source => `<span class="tag gray">${esc({manual: '手动', strategy: '策略', holding: '持仓'}[source] || source)}</span>`).join(' ')}<br><span class="note">${esc(item.watch && item.watch.notes || item.observation && item.observation.instruction || '暂无原因')}</span></td><td>${item.simulation ? `方案 <b>${esc(item.simulation.scheme_name)}</b><br>模拟价 ${esc(item.simulation.current_price || '—')}<br>止损 ${esc(item.simulation.hard_stop || '—')}` : '尚未模拟'}</td><td>${item.holding ? `${esc(item.holding.total_shares)} 股<br>盈亏 ${esc(item.holding.unrealized_pnl_pct)}%` : '—'}</td><td>${action || '—'}</td></tr><tr data-detail-for="${esc(item.code)}"><td colspan="6"><div class="pool-detail"><div class="pool-detail-box">加载中...</div></div></td></tr>`;
+    const removeAction = item.holding ? '' : ` <button class="ui-button ui-button-danger ui-button-sm" data-action="remove" data-code="${esc(item.code)}">移除观察</button>`;
+    return `<tr class="pool-row" data-code="${esc(item.code)}"><td><b>${esc(item.name)}</b><br><span class="note">${esc(item.code)}</span><br><button class="ui-button ui-button-secondary ui-button-sm detail-toggle" data-action="detail">展开K线</button></td><td><span class="tag blue">${stageLabels[item.next_action] || item.next_action}</span></td><td>${(item.sources || []).map(source => `<span class="tag gray">${esc({manual: '手动', strategy: '策略', holding: '持仓'}[source] || source)}</span>`).join(' ')}<br><span class="note">${esc(item.watch && item.watch.notes || item.observation && item.observation.instruction || '暂无原因')}</span></td><td>${item.simulation ? `方案 <b>${esc(item.simulation.scheme_name)}</b><br>模拟价 ${esc(item.simulation.current_price || '—')}<br>止损 ${esc(item.simulation.hard_stop || '—')}` : '尚未模拟'}</td><td>${item.holding ? `${esc(item.holding.total_shares)} 股<br>盈亏 ${esc(item.holding.unrealized_pnl_pct)}%` : '—'}</td><td>${action || '—'}${removeAction}</td></tr><tr data-detail-for="${esc(item.code)}"><td colspan="6"><div class="pool-detail"><div class="pool-detail-box">加载中...</div></div></td></tr>`;
   }).join('') : '<tr><td colspan="6" class="empty">观察池暂无记录</td></tr>';
 }
 
@@ -40,6 +41,17 @@ async function addObservation(code) {
   const data = await fetchJson('/watchlist', {method: 'POST', body: new URLSearchParams({code: item.code, name: item.name, reason})});
   if (data.status === 'success') loadPool();
   else showUiMessage(data.error || '加入观察失败', 'error');
+}
+
+async function removeWatchPoolItem(code) {
+  const item = poolItems[code];
+  if (!item || item.holding) return showUiMessage('持仓股票不能从观察池移除', 'error');
+  if (!await showUiConfirm(`将移除 ${item.name || code} 的观察/自选和模拟记录，不影响真实持仓。`, '移除观察')) return;
+  const data = await fetchJson('/api/watch-pool/' + encodeURIComponent(code), {method: 'DELETE'});
+  if (data.status === 'success') {
+    showUiMessage('已从观察池移除', 'success');
+    loadPool();
+  } else showUiMessage(data.error || '移除失败', 'error');
 }
 
 async function openSimulation(code) {
@@ -103,6 +115,7 @@ document.addEventListener('click', event => {
   if (element.dataset.action === 'refresh') loadPool(true);
   else if (element.dataset.action === 'detail') { event.stopPropagation(); toggleDetail(code); }
   else if (element.dataset.action === 'observe') { event.stopPropagation(); addObservation(code); }
+  else if (element.dataset.action === 'remove') { event.stopPropagation(); removeWatchPoolItem(code); }
   else if (element.dataset.action === 'simulate') { event.stopPropagation(); openSimulation(code); }
   else if (element.dataset.action === 'close-modal') closeModal();
   else if (element.dataset.action === 'run-simulation') runSimulation();

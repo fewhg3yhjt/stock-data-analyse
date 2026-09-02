@@ -981,6 +981,19 @@ def api_watch_pool():
         return flask.jsonify({"status": "error", "error": str(e)}), 500
 
 
+@web_app.route("/api/watch-pool/<path:symbol>", methods=["DELETE"])
+def api_watch_pool_remove(symbol):
+    """手动从观察池移除非持仓股票的自选/模拟记录。"""
+    try:
+        result = _get_manager().remove_watch_pool_item(symbol)
+        return flask.jsonify({"status": "success", "result": result})
+    except ValueError as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+    except Exception as e:
+        logger.exception("移除观察池标的失败")
+        return flask.jsonify({"status": "error", "error": str(e)}), 500
+
+
 @web_app.route("/watch-pool", methods=["GET"])
 def watch_pool_page():
     return flask.render_template("watch_pool.html")
