@@ -65,6 +65,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
 .metric-grid .m .v{font-size:14px;font-weight:600;}
 .detail-tabs{display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--color-border);padding-bottom:8px;}.detail-tab{border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-subtle);border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;}.detail-tab.active{background:var(--color-info);border-color:var(--color-info);color:#fff;}.detail-panel{min-height:30px;}.strategy-points{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:12px;}.strategy-point{display:flex;flex-direction:column;padding:9px 10px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.strategy-point span{font-size:12px;color:var(--color-text-subtle);}.strategy-point b{font-size:16px;margin:2px 0;}.strategy-point small{font-size:11px;color:var(--color-text-subtle);line-height:1.5;}.strategy-advice{padding:10px 12px;border-left:3px solid var(--color-warning);background:#fff8e1;border-radius:0 5px 5px 0;font-size:13px;}
 .strategy-summary{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.strategy-meta{font-size:14px;font-weight:600;margin-bottom:6px;}
+.strategy-rules{margin-top:12px;border-top:1px solid var(--color-border);padding-top:10px;}.strategy-rules-title{font-size:13px;font-weight:600;margin-bottom:6px;}.strategy-rule-row{display:grid;grid-template-columns:130px 1fr auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--color-border);font-size:12px;}.strategy-rule-row small{color:var(--color-text-subtle);}.rule-triggered{color:var(--color-danger);}.rule-waiting{color:var(--color-text-subtle);}
 .scheme-switch{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}.scheme-switch select{flex:1;min-width:200px;padding:6px 8px;border:1px solid var(--color-border);border-radius:5px;font-size:13px;}.strategy-spec .spec-line{font-size:12px;color:var(--color-text-subtle);line-height:1.7;}.records-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}.records-title{font-size:14px;font-weight:600;}.records-table{width:100%;border-collapse:collapse;font-size:12px;}.records-table th,.records-table td{border:1px solid var(--color-border);padding:6px 8px;text-align:left;}.records-table th{background:var(--color-surface);font-weight:600;}.weights{font-size:12px;margin-bottom:8px;}.operation-row td input,.operation-row td select{width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid var(--color-border);border-radius:4px;font-size:12px;}.notify-summary{margin-bottom:10px;}.notify-group{margin-bottom:12px;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.notify-group-title{font-size:13px;font-weight:600;margin-bottom:8px;}.notify-check{display:block;font-size:13px;padding:3px 0;cursor:pointer;}.notify-check input{margin-right:6px;}.notify-foot{display:flex;justify-content:space-between;align-items:center;}
 .returns-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;}.returns-stat{display:flex;flex-direction:column;padding:10px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;}.returns-stat span{font-size:12px;color:var(--color-text-subtle);}.returns-stat b{font-size:18px;margin-top:2px;}
 .notify-signal-row{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid var(--color-border);}.notify-signal-row:last-child{border-bottom:0;}.notify-signal-main{display:flex;flex-direction:column;gap:2px;flex:1;}.notify-signal-main small{font-size:11px;color:var(--color-text-subtle);line-height:1.5;}.notify-status{font-size:11px;padding:2px 7px;border-radius:4px;white-space:nowrap;}.notify-status.triggered{background:#fbe9e7;color:var(--color-danger);}.notify-status.waiting{background:#eceff1;color:var(--color-text-subtle);}
@@ -98,13 +99,14 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
            onclick="openImport()" title="批量导入 xlsx 模板"><i class="fas fa-file-import"></i> 批量导入</button>
       </span>
     </div>
-    <div class="stat-grid">
-      <div class="stat-card"><div class="value">{{ data.summary.position_count or 0 }}</div><div class="label">总持仓只数</div></div>
-      <div class="stat-card blue"><div class="value">{{ "%.0f"|format(data.summary.total_cost or 0) }}</div><div class="label">总投入成本(元)</div></div>
-      <div class="stat-card blue"><div class="value">{{ "%.0f"|format(data.summary.total_market_value or 0) }}</div><div class="label">当前总市值(元)</div></div>
-      <div class="stat-card {% if (data.summary.total_pnl or 0)>0 %}red{% else %}green{% endif %}"><div class="value">{{ "%+.0f"|format(data.summary.total_pnl or 0) }}</div><div class="label">总浮动盈亏·未实现(元)</div></div>
-      <div class="stat-card {% if (data.summary.total_pnl_pct or 0)>0 %}red{% else %}green{% endif %}"><div class="value">{{ "%+.2f"|format(data.summary.total_pnl_pct or 0) }}%</div><div class="label">总浮动盈亏比例</div></div>
+    <div class="stat-grid account-stats">
+      <div class="stat-card blue"><div class="value">{{ "%.0f"|format((data.summary.total_market_value or 0) + (data.cash or 0)) }}</div><div class="label">总资产(元)</div></div>
+      <div class="stat-card blue"><div class="value">{{ "%.0f"|format(data.summary.total_market_value or 0) }}</div><div class="label">持仓市值(元)</div></div>
       <div class="stat-card"><div class="value">{{ "%.0f"|format(data.cash or 0) }}</div><div class="label">可用现金(元)</div></div>
+      <div class="stat-card {% if (data.summary.total_unrealized_pnl or 0)>=0 %}red{% else %}green{% endif %}"><div class="value">{{ "%+.2f"|format(data.summary.total_unrealized_pnl or 0) }}</div><div class="label">浮动盈亏(元)</div></div>
+      <div class="stat-card {% if (data.summary.total_realized_pnl or 0)>=0 %}red{% else %}green{% endif %}"><div class="value">{{ "%+.2f"|format(data.summary.total_realized_pnl or 0) }}</div><div class="label">已实现收益(元)</div></div>
+      <div class="stat-card {% if (data.summary.total_pnl or 0)>=0 %}red{% else %}green{% endif %}"><div class="value">{{ "%+.2f"|format(data.summary.total_pnl or 0) }}</div><div class="label">累计总收益(元)</div></div>
+      <div class="stat-card"><div class="value">{{ data.summary.position_count or 0 }}</div><div class="label">持仓只数</div></div>
     </div>
     <div class="risk-banner {% if '危机' in data.risk_status %}crisis{% elif '防守' in data.risk_status %}warn{% else %}ok{% endif %}">
       <i class="fas fa-flag"></i> 账户风险状态：{{ data.risk_status }}
@@ -198,10 +200,13 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
                {% if p.hard_cap %}<div class="strategy-point"><span>止盈硬上限</span><b>{{ p.hard_cap }}</b><small>达到后不再追高</small></div>{% endif %}
                {% if p.right_side %}<div class="strategy-point"><span>右侧移动止盈</span><b>{{ p.right_side.trigger_price if p.right_side.trigger_price else p.right_side.peak_price }}</b><small>峰值 {{ p.right_side.peak_price }}，回撤 {{ p.right_side.drawdown_pct }}% 后触发</small></div>{% endif %}
                {% if p.buy_more %}<div class="strategy-point"><span>补仓线</span><b>{{ p.buy_more.trigger_price }}</b><small>{{ p.buy_more.label }}</small></div>{% endif %}
-             </div>
-             {% if p.advice %}<div class="strategy-advice"><b>当前操作建议：{{ p.advice_label }}</b><br><span>{{ p.advice.reason }}</span></div>{% else %}<div class="empty">暂无策略建议</div>{% endif %}
+              </div>
+              <div class="strategy-rules"><div class="strategy-rules-title">规则当前状态</div>
+                {% for signal in p.notify_signals %}<div class="strategy-rule-row"><span>{{ signal.name }}</span><small>{{ signal.detail }} · {{ signal.action }}</small><b class="{{ 'rule-triggered' if signal.triggered else 'rule-waiting' }}">{{ signal.status }}</b></div>{% endfor %}
+              </div>
+              {% if p.advice %}<div class="strategy-advice"><b>当前操作建议：{{ p.advice_label }}</b><br><span>{{ p.advice.reason }}</span></div>{% else %}<div class="empty">暂无策略建议</div>{% endif %}
            </div>
-           <div class="detail-panel detail-panel-records" style="display:none;" data-position="{{ p.id }}" data-stock-type="{{ p.stock_type }}">
+            <div class="detail-panel detail-panel-records" style="display:none;" data-position="{{ p.id }}" data-stock-type="{{ p.stock_type }}" data-total-shares="{{ p.total_shares }}">
              <div class="records-bar">
                <span class="records-title">操作记录（时间倒序）</span>
                <button type="button" class="ui-button ui-button-primary ui-button-sm" data-action="add-operation" onclick="addOperationRow(this)"><i class="fas fa-plus"></i> 操作</button>
@@ -233,6 +238,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
                 <div class="returns-stat"><span>大盘基准</span><b class="ret-bench">—</b></div>
                 <div class="returns-stat"><span>买入持有</span><b class="ret-bh">—</b></div>
               </div>
+              <div class="returns-note note"></div>
               <div class="chart returns-chart" style="width:100%;height:340px;"><div class="empty">收益加载中…</div></div>
             </div>
           </div>
@@ -332,7 +338,12 @@ function addOperationRow(btn){
   tbody.insertBefore(tr, tbody.firstChild);
   tr.querySelector('.op-price').addEventListener('input', () => recomputeOperationRow(panel, tr));
   tr.querySelector('.op-shares').addEventListener('input', () => recomputeOperationRow(panel, tr));
-  tr.querySelector('.op-type').addEventListener('change', () => recomputeOperationRow(panel, tr));
+  tr.querySelector('.op-type').addEventListener('change', () => {
+    if (tr.querySelector('.op-type').value === 'sell_all') {
+      tr.querySelector('.op-shares').value = panel.dataset.totalShares || '';
+    }
+    recomputeOperationRow(panel, tr);
+  });
   const confirmBtn = document.createElement('button');
   confirmBtn.type = 'button'; confirmBtn.className = 'ui-button ui-button-primary ui-button-sm';
   confirmBtn.textContent = '确认';
@@ -399,6 +410,7 @@ async function loadReturnsTab(box){
     panel.querySelector('.ret-sim').textContent = d.simulation_latest != null ? (d.simulation_latest>0?'+':'') + d.simulation_latest + '%' : '—';
     panel.querySelector('.ret-bench').textContent = d.market && d.market.length ? ((d.market[d.market.length-1]>0?'+':'') + d.market[d.market.length-1] + '%') : '—';
     panel.querySelector('.ret-bh').textContent = d.buy_hold_latest != null ? (d.buy_hold_latest>0?'+':'') + d.buy_hold_latest + '%' : '—';
+    panel.querySelector('.returns-note').textContent = '建仓日：' + (d.buy_date || '—') + ' · 基准：' + (d.benchmark_code || '—') + ' · 最后一天：' + (d.latest_price_date || '—') + ' ' + (d.latest_price_source === 'minute' ? '分钟实时价' : '日线收盘');
     const dates = d.dates || [];
     const chart = StockChart.mount(chartEl);
     const mk = (name, data, color, dashed) => ({name, type:'line', data:data||[], showSymbol:false,
