@@ -23,11 +23,10 @@ def client():
     ("path", "active"),
     [
         ("/", "workbench"),
-        ("/analyze", "analyze"),
+        ("/strategy-simulation", "simulation"),
         ("/market", "market"),
         ("/dashboard/observe", "observe"),
         ("/watchlist", "watchlist"),
-        ("/simulation", "simulation"),
         ("/strategy", "strategy"),
         ("/indicator-center", "indicators"),
         ("/strategy-composer", "composer"),
@@ -67,7 +66,7 @@ def test_watch_pool_contains_expandable_kline_detail(client):
     html = response.get_data(as_text=True)
     assert "/static/stock-detail.js" in html
     assert "展开K线" in html
-    assert "StockDetail.load" in html
+    assert "StockDetail.load" in Path(__file__).parents[1].joinpath("web/static/watch-pool.js").read_text()
     assert "选择策略模拟" in html
     assert "运行策略模拟" in html
 
@@ -105,21 +104,25 @@ def test_workbench_exposes_market_discovery(client):
     assert 'href="/operation-points"' in html
 
 
-def test_home_is_workbench_and_analyze_is_form(client):
+def test_home_is_workbench_and_strategy_simulation_is_form(client):
     home = client.get("/")
     assert home.status_code == 200
     assert "完整投资流程" in home.get_data(as_text=True)
-    analyze = client.get("/analyze?code=sh600900&name=长江电力")
-    assert analyze.status_code == 200
-    assert "分析参数" in analyze.get_data(as_text=True)
+    simulation = client.get("/strategy-simulation?code=sh600900&name=长江电力&stock_type=A&scheme=right_aggressive_growth")
+    assert simulation.status_code == 200
+    html = simulation.get_data(as_text=True)
+    assert "策略模拟参数" in html
+    assert 'value="sh600900"' in html
+    assert 'value="长江电力"' in html
+    assert "策略模拟" in html
 
 
-def test_analyze_marks_visible_research_navigation_active(client):
-    html = client.get("/analyze").get_data(as_text=True)
+def test_strategy_simulation_marks_visible_research_navigation_active(client):
+    html = client.get("/strategy-simulation").get_data(as_text=True)
 
     primary = html.split('<div class="nav-secondary">', 1)[0]
     assert '<a href="/research" class="active">研究</a>' in primary
-    assert '<a href="/analyze" class="active">个股分析</a>' in html
+    assert '<a href="/strategy-simulation" class="active">策略模拟</a>' in html
 
 
 def test_workbench_data_status_uses_safe_status_classes(client):
@@ -133,10 +136,15 @@ def test_workbench_data_status_uses_safe_status_classes(client):
     assert ".tag.status-running" in css
 
 
-def test_legacy_stock_link_redirects_to_analyze(client):
+def test_stock_link_redirects_to_strategy_simulation(client):
     response = client.get("/?code=sh600900&name=长江电力")
     assert response.status_code == 302
-    assert response.headers["Location"].startswith("/analyze?")
+    assert response.headers["Location"].startswith("/strategy-simulation?")
+
+
+def test_removed_legacy_analysis_and_simulation_pages(client):
+    assert client.get("/analyze").status_code == 404
+    assert client.get("/simulation").status_code == 404
 
 
 def test_removed_task_center_route_is_not_available(client):
@@ -145,12 +153,11 @@ def test_removed_task_center_route_is_not_available(client):
 
 def _href_for_active(active: str) -> str:
     return {
-        "analyze": "/analyze",
         "workbench": "/workbench",
         "market": "/market",
         "observe": "/dashboard/observe",
         "watchlist": "/watchlist",
-        "simulation": "/simulation",
+        "simulation": "/strategy-simulation",
         "strategy": "/research",
         "indicators": "/research",
         "composer": "/research",
