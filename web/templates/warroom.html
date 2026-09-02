@@ -174,10 +174,10 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
         </div>
          <div class="detail-box" style="display:none;margin-top:10px;padding:12px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;">
            <div class="detail-tabs" onclick="event.stopPropagation();">
-             <button type="button" class="detail-tab active" data-detail-tab="trend">趋势</button>
-             <button type="button" class="detail-tab" data-detail-tab="strategy">策略</button>
-             <button type="button" class="detail-tab" data-detail-tab="records">操作记录</button>
-             <button type="button" class="detail-tab" data-detail-tab="notify">消息通知</button>
+             <button type="button" class="detail-tab active" data-detail-tab="trend" onclick="switchDetailTab(this.closest('.detail-box'),'trend');event.stopPropagation();">趋势</button>
+             <button type="button" class="detail-tab" data-detail-tab="strategy" onclick="switchDetailTab(this.closest('.detail-box'),'strategy');event.stopPropagation();">策略</button>
+             <button type="button" class="detail-tab" data-detail-tab="records" onclick="switchDetailTab(this.closest('.detail-box'),'records');event.stopPropagation();">操作记录</button>
+             <button type="button" class="detail-tab" data-detail-tab="notify" onclick="switchDetailTab(this.closest('.detail-box'),'notify');event.stopPropagation();">消息通知</button>
            </div>
            <div class="detail-panel detail-panel-trend"></div>
            <div class="detail-panel detail-panel-strategy" style="display:none;">
