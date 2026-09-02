@@ -1858,6 +1858,40 @@ def api_stock_lookup():
         return flask.jsonify({"status": "error", "error": str(e)}), 400
 
 
+@web_app.route("/api/stock/search", methods=["GET"])
+def api_stock_search():
+    """按股票名称或代码搜索标的，返回可用于建仓绑定的标准信息。"""
+    query = (flask.request.args.get("q") or "").strip()
+    if len(query) < 1:
+        return flask.jsonify({"status": "success", "items": []})
+    try:
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+
+        pattern = f"%{query}%"
+        warehouse = Warehouse()
+        conn = warehouse._conn()
+        try:
+            rows = conn.execute(
+                """SELECT code,name,type,board FROM instruments
+                   WHERE code LIKE ? OR name LIKE ?
+                   ORDER BY CASE WHEN name=? THEN 0 WHEN code=? THEN 1 ELSE 2 END, code
+                   LIMIT 20""",
+                (pattern, pattern, query, query),
+            ).fetchall()
+        finally:
+            conn.close()
+        items = []
+        for code, name, asset_type, board in rows:
+            normalized = StockDataFetcher.normalize_code(code)
+            items.append({"code": normalized, "name": name or normalized,
+                          "asset_type": asset_type or "stock", "board": board or ""})
+        return flask.jsonify({"status": "success", "items": items})
+    except Exception as e:
+        logger.warning("股票名称搜索失败 %s: %s", query, e)
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
 @web_app.route("/portfolio/add", methods=["GET", "POST"])
 def portfolio_add():
     """新建持仓"""

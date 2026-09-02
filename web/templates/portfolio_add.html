@@ -36,7 +36,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
       <div class="form-row">
         <div class="ui-field"><label>股票代码 *</label><input name="code" id="add-code" value="{{ prefill.code }}" placeholder="sh.600900" required onblur="classifyStock();lookupName()">
           <span class="hint" id="classify-hint">6xx/9xx 沪市 · 0xx/2xx/3xx 深市 · 输入代码后自动识别类型</span></div>
-        <div class="ui-field"><label>股票名称 *</label><input name="name" value="{{ prefill.name }}" placeholder="长江电力" required></div>
+        <div class="ui-field"><label>股票名称 *</label><input name="name" id="add-name" value="{{ prefill.name }}" placeholder="输入名称搜索，如许继电气" list="stock-name-options" autocomplete="off" required><datalist id="stock-name-options"></datalist><span class="hint" id="name-hint">输入名称后选择对应标的，系统会自动回填股票代码</span></div>
       </div>
       <div class="form-row">
         <div class="ui-field"><label>持有份额 *</label><input name="shares" type="number" min="0" step="100" required></div>
@@ -130,6 +130,33 @@ document.getElementById('add-form').addEventListener('submit', async e => {
     btn.disabled = false;
     btn.innerHTML = originalText;
   }
+});
+let nameSearchTimer;
+document.getElementById('add-name').addEventListener('input', function(){
+  const query=this.value.trim(); clearTimeout(nameSearchTimer);
+  if(!query){ return; }
+  nameSearchTimer=setTimeout(async ()=>{
+    try{
+      const response=await fetch('/api/stock/search?q='+encodeURIComponent(query));
+      const data=await response.json();
+      const list=document.getElementById('stock-name-options');
+      list.replaceChildren(...(data.items||[]).map(item=>{
+        const option=document.createElement('option');
+        option.value=item.name; option.label=item.code+(item.asset_type==='etf'?' · ETF':'');
+        option.dataset.code=item.code; option.dataset.assetType=item.asset_type; return option;
+      }));
+      document.getElementById('name-hint').textContent=(data.items||[]).length ? '下拉选择匹配标的，代码会自动回填' : '未找到匹配标的，请检查名称';
+    }catch(e){ document.getElementById('name-hint').textContent='名称搜索失败'; }
+  },250);
+});
+document.getElementById('add-name').addEventListener('change', function(){
+  const option=Array.from(document.getElementById('stock-name-options').options).find(o=>o.value===this.value);
+  if(!option) return;
+  document.getElementById('add-code').value=option.dataset.code || '';
+  const typeMap={stock:'B',etf:'E'};
+  if(typeMap[option.dataset.assetType]) document.getElementById('add-stock-type').value=typeMap[option.dataset.assetType];
+  document.getElementById('classify-hint').textContent='已绑定: '+option.dataset.code+'（'+(option.dataset.assetType==='etf'?'场内 ETF':'股票')+'）';
+  fillPriceByDate();
 });
 document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('add-code').value) classifyStock();
