@@ -21,6 +21,10 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
 .mode-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;}
 .modal{background:var(--color-surface);border-radius:10px;padding:20px;max-width:520px;width:90%;}
+.help{font-size:12px;color:var(--color-text-subtle);line-height:1.6;}
+.config-help{font-size:12px;color:var(--color-text-subtle);margin:-4px 0 10px;line-height:1.65;}
+.unit-input{display:flex;align-items:center;gap:6px;}.unit-input input{flex:1;}.unit-input span{font-size:13px;color:var(--color-text-subtle);}
+.list-row{display:flex;gap:7px;align-items:center;margin-bottom:6px;}.list-row input,.list-row select{flex:1;min-width:0;}
 .scheme-overview{margin-bottom:18px;}.scheme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;}.scheme-card{border:1px solid var(--color-border);border-radius:8px;padding:14px;background:var(--color-surface-subtle);}.scheme-card h3{font-size:15px;margin-bottom:5px;}.scheme-card p{font-size:13px;color:var(--color-text-subtle);min-height:42px;margin-bottom:8px;}.scheme-card .scheme-actions{display:flex;gap:7px;flex-wrap:wrap;}.scheme-guide{border-left:3px solid var(--color-info);padding:8px 12px;margin:8px 0 12px;background:var(--color-surface-subtle);font-size:13px;line-height:1.7;}.rule-guide{margin:-5px 0 10px;padding:8px 10px;border-radius:5px;background:var(--color-surface);border:1px dashed var(--color-border);font-size:12px;color:var(--color-text-subtle);line-height:1.65;}.rule-guide b{color:var(--color-text);}
 </style>
 {% endblock %}
@@ -63,11 +67,13 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
         <input id="f-desc" placeholder="方案说明"></div>
       <div class="ui-field"><label>适用类型</label>
         <div id="f-types" style="display:flex;gap:8px;flex-wrap:wrap;">
-          <span class="tag" data-t="A">A</span><span class="tag" data-t="B">B</span>
-          <span class="tag" data-t="C">C</span><span class="tag" data-t="D">D</span>
-          <span class="tag" data-t="E">E</span>
+          <span class="tag" data-t="A">A 高成长</span><span class="tag" data-t="B">B 价值白马</span>
+          <span class="tag" data-t="C">C 强周期</span><span class="tag" data-t="D">D 深度价值</span>
+          <span class="tag" data-t="E">E 场内 ETF/基金</span>
         </div>
+        <div class="config-help">适用类型决定这套方案能用于哪些标的，也会影响止损、止盈和仓位规则。</div>
       </div>
+      <div id="strategy-guide" class="scheme-guide"><b>运行顺序：</b>先判断适用类型；然后按优先级检查卖出风险；没有卖出触发时，再判断买入/加仓条件。规则只生成建议，不会自动下单。</div>
 
       <div style="margin:6px 0 4px;font-weight:600;font-size:14px;"><i class="fas fa-cart-plus"></i> 买点规则</div>
       <div id="buy-rules"></div>
@@ -83,11 +89,12 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
         <button class="ui-button ui-button-ghost ui-button-sm" onclick="addRule('sell')"><i class="fas fa-plus"></i> 添加卖点规则</button>
       </div>
 
-      <div style="font-weight:600;font-size:14px;margin-bottom:8px;"><i class="fas fa-shield"></i> 风控</div>
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px;"><i class="fas fa-shield"></i> 风控参数</div>
+      <div class="config-help">风控优先于买入：出现止损条件时先给出卖出建议；这里只生成建议，不会自动下单。</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div class="ui-field"><label>回撤止盈阈值</label><input id="r-drawdown" type="number" step="0.01" value="0.08"></div>
-        <div class="ui-field"><label>回撤保护最小利润</label><input id="r-minprof" type="number" step="0.01" value="0.06"></div>
-        <div class="ui-field"><label>放量倍数</label><input id="r-surge" type="number" step="0.1" value="1.8"></div>
+        <div class="ui-field"><label>回撤止盈阈值 <span class="help">从峰值回落多少触发保护</span></label><div class="unit-input"><input id="r-drawdown" type="number" min="0" max="100" step="0.1" value="8"><span>%</span></div></div>
+        <div class="ui-field"><label>回撤保护最小利润 <span class="help">曾经达到多少浮盈才启用</span></label><div class="unit-input"><input id="r-minprof" type="number" min="0" max="100" step="0.1" value="6"><span>%</span></div></div>
+        <div class="ui-field"><label>放量倍数 <span class="help">成交量达到 5 日均量的倍数</span></label><div class="unit-input"><input id="r-surge" type="number" min="0" step="0.1" value="1.8"><span>倍</span></div></div>
         <div class="ui-field"><label>技术止损</label><select id="r-tech"><option value="true">启用</option><option value="false">停用</option></select></div>
       </div>
 
@@ -281,8 +288,16 @@ function renderRule(kind, rule){
 
 function renderField(f, rule){
   const key=f.key,label=f.label,type=f.type,def=(rule.params&&rule.params[key]!==undefined)?rule.params[key]:f.default;
+  if(key==='buy_stages'){
+    const rows=(Array.isArray(def)?def:[]).map(item=>listRowHtml(type,item,key)).join('');
+    return `<div class="ui-field"><label>买入批次 <span class="help">达到对应价格条件后买入的仓位比例，所有批次合计应为 100%</span></label><div data-f="${key}" data-list-type="${type}" class="custom-list">${rows}</div><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 添加买入批次</button></div>`;
+  }
+  if(key==='zones'){
+    const rows=(Array.isArray(def)?def:[]).map(item=>listRowHtml(type,item,key)).join('');
+    return `<div class="ui-field"><label>止盈区间 <span class="help">价格达到前高的区间后，按比例分批减仓</span></label><div data-f="${key}" data-list-type="${type}" class="custom-list">${rows}</div><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 添加止盈区间</button></div>`;
+  }
   if(type==='map_list'||type==='list'){
-    const rows=(Array.isArray(def)?def:[]).map(item=>listRowHtml(type,item)).join('');
+    const rows=(Array.isArray(def)?def:[]).map(item=>listRowHtml(type,item,key)).join('');
     return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
       <div data-f="${key}" data-list-type="${type}" class="custom-list">${rows}</div>
       <button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 加一行</button></div>`;
@@ -293,8 +308,21 @@ function renderField(f, rule){
       <select data-f="${key}">${opts}<option value="" selected>默认</option></select></div>`;
   }
   if(type==='map'){
+    if(['stop_loss_by_type','drawdown_by_type','ratio_by_type'].includes(key)){
+      const labels={A:'A 高成长',B:'B 价值白马',C:'C 强周期',D:'D 深度价值',E:'E 场内 ETF/基金'};
+      const values=def||{};
+      const isPercent=['stop_loss_by_type','drawdown_by_type','ratio_by_type'].includes(key);
+      return `<div class="ui-field"><label>${label} <span class="help">${f.help||'按股票类型分别配置'}；不同类型不会互相覆盖。</span></label><div class="type-map">${Object.entries(labels).map(([t,text])=>{
+        const value=values[t]!=null ? (isPercent?Number(values[t])*100:values[t]) : '';
+        return `<label>${text}<div class="unit-input"><input data-map="${key}" data-map-key="${t}" type="number" min="0" ${isPercent?'max="100" step="0.1"':'step="0.1"'} value="${escapeAttr(value)}"><span>${isPercent?'%':'倍'}</span></div></label>`;
+      }).join('')}</div></div>`;
+    }
     return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
       <textarea data-f="${key}" placeholder='JSON 键值，如 {"A":0.15,"B":0.15}'>${JSON.stringify(def||{})}</textarea></div>`;
+  }
+  if(type==='number' && ['half_profit_threshold','base_discount','offset'].includes(key)){
+    const value=Number(def||0)*100;
+    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label><div class="unit-input"><input data-f="${key}" type="number" min="${key==='offset'?-20:0}" max="${key==='offset'?20:100}" step="0.1" value="${escapeAttr(value)}"><span>%</span></div></div>`;
   }
   return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
     <input data-f="${key}" type="${type==='number'?'number':'text'}" value="${def!=null?def:''}"></div>`;
@@ -303,28 +331,78 @@ function renderField(f, rule){
 function addListRow(btn,key){
   const host=btn.previousElementSibling;
   const type=host.dataset.listType;
-  const row=document.createElement('div'); row.innerHTML=listRowHtml(type, type==='list'?'':{});
+  const row=document.createElement('div'); row.innerHTML=listRowHtml(type, type==='list'?'':{}, key);
   row.firstElementChild.querySelector('button').onclick=()=>row.firstElementChild.remove();
   host.appendChild(row);
   schedulePreview();
 }
 
-function listRowHtml(type, item){
+function listRowHtml(type, item, key){
   if(type==='list'){
+    if(key==='support_sources'){
+      const options=[['dividend_anchor','股息率估值锚'],['ma60','MA60 · 60日均线'],['low_3m','近3月低点'],['year_low','年内低点'],['ma20','MA20 · 20日均线'],['ma240','MA240 · 240日均线'],['dual_ma_low','双均线低点'],['dividend_anchor_4pct','股息率估值锚（4%）']];
+      const known=options.some(([v])=>String(v)===String(item));
+      const custom=known?'':`<option value="${escapeAttr(item)}" selected>当前表达式：${escapeAttr(item)}</option>`;
+      return `<div class="list-row"><select data-list-value>${custom}${options.map(([v,t])=>`<option value="${v}" ${String(v)===String(item)?'selected':''}>${t}</option>`).join('')}</select><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+    }
     return `<div class="list-row"><input data-list-value value="${escapeAttr(item||'')}" placeholder="指标名或表达式"><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+  }
+  if(key==='buy_stages'){
+    const obj=(item&&typeof item==='object')?item:{};
+    const stage=Object.prototype.hasOwnProperty.call(obj,'use_special')?'special':String(obj.position_index)==='1'?'weak':'strong';
+    return `<div class="list-row buy-stage-row"><select data-stage><option value="weak" ${stage==='weak'?'selected':''}>综合弱支撑（第二低）</option><option value="strong" ${stage==='strong'?'selected':''}>综合强支撑（最低）</option><option value="special" ${stage==='special'?'selected':''}>极端低估锚（股息率4%）</option></select><input data-stage-ratio type="number" min="0" max="100" step="1" value="${escapeAttr(Number(obj.ratio||0)*100)}" placeholder="买入比例"><span class="help">%</span><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+  }
+  if(key==='zones'){
+    const obj=(item&&typeof item==='object')?item:{}; const range=Array.isArray(obj.range)?obj.range:[0,0];
+    const names=['预警区','第一止盈区','第二止盈区'];
+    const customName=names.includes(obj.name)?'':`<option value="${escapeAttr(obj.name||'止盈区间')}" selected>${escapeAttr(obj.name||'止盈区间')}</option>`;
+    return `<div class="list-row zone-row"><select data-zone-name>${customName}${names.map(name=>`<option value="${name}" ${name===obj.name?'selected':''}>${name}</option>`).join('')}</select><input data-zone-low type="number" min="0" max="100" step="1" value="${escapeAttr(Number(range[0]||0)*100)}" placeholder="前高下限"><span class="help">至</span><input data-zone-high type="number" min="0" max="100" step="1" value="${escapeAttr(Number(range[1]||0)*100)}" placeholder="前高上限"><input data-zone-ratio type="number" min="0" max="100" step="1" value="${escapeAttr(Number(obj.sell_ratio||0)*100)}" placeholder="减仓比例"><span class="help">%</span><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+  }
+  if(key==='buy_stages'){
+    const obj=(item&&typeof item==='object')?item:{};
+    const stage=Object.prototype.hasOwnProperty.call(obj,'use_special')?'special':String(obj.position_index)==='1'?'weak':'strong';
+    return `<div class="list-row buy-stage-row"><select data-stage><option value="weak" ${stage==='weak'?'selected':''}>综合弱支撑（第二低）</option><option value="strong" ${stage==='strong'?'selected':''}>综合强支撑（最低）</option><option value="special" ${stage==='special'?'selected':''}>极端低估锚（股息率4%）</option></select><input data-stage-ratio type="number" min="0" max="100" step="1" value="${escapeAttr(Number(obj.ratio||0)*100)}" placeholder="买入比例"><span class="help">%</span><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+  }
+  if(key==='zones'){
+    const obj=(item&&typeof item==='object')?item:{}; const range=Array.isArray(obj.range)?obj.range:[0,0];
+    return `<div class="list-row zone-row"><span class="help">${escapeAttr(obj.name||'止盈区间')}</span><input data-zone-low type="number" min="0" max="100" step="1" value="${escapeAttr(Number(range[0]||0)*100)}" placeholder="下限"><span class="help">至</span><input data-zone-high type="number" min="0" max="100" step="1" value="${escapeAttr(Number(range[1]||0)*100)}" placeholder="上限"><input data-zone-ratio type="number" min="0" max="100" step="1" value="${escapeAttr(Number(obj.sell_ratio||0)*100)}" placeholder="减仓比例"><span class="help">%</span><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
   }
   const obj=(item&&typeof item==='object')?item:{};
   const keys=Object.keys(obj).length?Object.keys(obj):['label','position_index','ratio'];
-  return `<div class="list-row map-list-row">${keys.map(k=>`<input data-list-key="${escapeAttr(k)}" data-key-name="${escapeAttr(k)}" value="${escapeAttr(Array.isArray(obj[k])?JSON.stringify(obj[k]):obj[k])}" placeholder="${escapeAttr(k)}">`).join('')}<button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
+  return `<div class="list-row map-list-row">${keys.map(k=>{
+    if(k==='position_index') return `<select data-list-key="${k}" data-key-name="${k}"><option value="1" ${Number(obj[k])===1?'selected':''}>综合弱支撑（第2低）</option><option value="0" ${Number(obj[k])===0?'selected':''}>综合强支撑（最低）</option><option value="0.3" ${Number(obj[k])===0.3?'selected':''}>极端低估锚</option></select>`;
+    if(k==='ratio') return `<input data-list-key="${k}" data-key-name="${k}" type="number" min="0" max="100" step="1" value="${escapeAttr(Number(obj[k]||0)*100)}" placeholder="买入比例 %">`;
+    return `<input data-list-key="${escapeAttr(k)}" data-key-name="${escapeAttr(k)}" value="${escapeAttr(Array.isArray(obj[k])?JSON.stringify(obj[k]):obj[k])}" placeholder="${escapeAttr(k)}">`;
+  }).join('')}<button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
 }
 function escapeAttr(value){return String(value==null?'':value).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function collectList(target){
   if(target.dataset.listType==='list') return Array.from(target.querySelectorAll('[data-list-value]')).map(x=>x.value.trim()).filter(Boolean);
+  if(target.dataset.f==='buy_stages') return Array.from(target.querySelectorAll('.buy-stage-row')).map(row=>{
+    const stage=row.querySelector('[data-stage]').value;
+    const ratio=parseFloat(row.querySelector('[data-stage-ratio]').value||0)/100;
+    return stage==='special'?{label:'极端低估锚',use_special:'dividend_anchor_4pct',ratio}:{label:stage==='weak'?'综合弱支撑':'综合强支撑',position_index:stage==='weak'?1:0,ratio};
+  });
+  if(target.dataset.f==='zones') return Array.from(target.querySelectorAll('.zone-row')).map(row=>({
+    name:row.querySelector('[data-zone-name]').value,
+    range:[parseFloat(row.querySelector('[data-zone-low]').value||0)/100,parseFloat(row.querySelector('[data-zone-high]').value||0)/100],
+    sell_ratio:parseFloat(row.querySelector('[data-zone-ratio]').value||0)/100,
+  }));
+  if(target.dataset.f==='buy_stages') return Array.from(target.querySelectorAll('.buy-stage-row')).map(row=>{
+    const stage=row.querySelector('[data-stage]').value;
+    const ratio=parseFloat(row.querySelector('[data-stage-ratio]').value||0)/100;
+    return stage==='special'?{label:'极端低估锚',use_special:'dividend_anchor_4pct',ratio}:{label:stage==='weak'?'综合弱支撑':'综合强支撑',position_index:stage==='weak'?1:0,ratio};
+  });
+  if(target.dataset.f==='zones') return Array.from(target.querySelectorAll('.zone-row')).map(row=>({
+    name:row.querySelector('.help')?.textContent||'止盈区间',
+    range:[parseFloat(row.querySelector('[data-zone-low]').value||0)/100,parseFloat(row.querySelector('[data-zone-high]').value||0)/100],
+    sell_ratio:parseFloat(row.querySelector('[data-zone-ratio]').value||0)/100,
+  }));
   return Array.from(target.querySelectorAll('.map-list-row')).map(row=>{
     const out={}; row.querySelectorAll('[data-key-name]').forEach(input=>{
       let value=input.value.trim(); if(!value)return;
-      if(['position_index'].includes(input.dataset.keyName)) value=parseInt(value,10);
-      else if(['ratio','sell_ratio'].includes(input.dataset.keyName)) value=parseFloat(value);
+      if(['position_index'].includes(input.dataset.keyName)) value=parseFloat(value);
+      else if(['ratio','sell_ratio'].includes(input.dataset.keyName)) value=parseFloat(value)/100;
       else if(input.dataset.keyName==='range'){try{value=JSON.parse(value);}catch(e){}}
       out[input.dataset.keyName]=value;
     }); return out;
@@ -342,6 +420,14 @@ function collectRuleParams(ruleBox){
     else if(inp.tagName==='TEXTAREA'){ if(val.trim()){ try{params[key]=JSON.parse(val);}catch(e){params[key]=val;} } }
     else if(inp.type==='number'){ if(val!=='')params[key]=parseFloat(val); }
     else if(val!==''){ try{params[key]=JSON.parse(val);}catch(e){params[key]=val;} }
+  });
+  ruleBox.querySelectorAll('[data-map][data-map-key]').forEach(input=>{
+    const key=input.dataset.map;
+    params[key]=params[key]||{};
+    if(input.value!=='') params[key][input.dataset.mapKey]=parseFloat(input.value)/(key==='stop_loss_by_type'||key==='drawdown_by_type'||key==='ratio_by_type'?100:1);
+  });
+  ruleBox.querySelectorAll('[data-f="half_profit_threshold"],[data-f="base_discount"],[data-f="offset"]').forEach(inp=>{
+    if(inp.value!=='') params[inp.dataset.f]=parseFloat(inp.value)/100;
   });
   // 处理结构化 list/map_list
   ruleBox.querySelectorAll('.custom-list').forEach(listHost=>{
@@ -368,8 +454,8 @@ function collectModel(){
     buy_rules:collectAllRules('buy'),
     sell_rules:collectAllRules('sell'),
     risk:{
-      drawdown_stop:parseFloat(document.getElementById('r-drawdown').value||0.08),
-      min_profit_for_dd:parseFloat(document.getElementById('r-minprof').value||0.06),
+      drawdown_stop:parseFloat(document.getElementById('r-drawdown').value||8)/100,
+      min_profit_for_dd:parseFloat(document.getElementById('r-minprof').value||6)/100,
       volume_surge_threshold:parseFloat(document.getElementById('r-surge').value||1.8),
       technical_stop_enabled:document.getElementById('r-tech').value==='true',
       stop_loss_by_type:{}
@@ -470,6 +556,11 @@ async function loadFromYaml(content){
   if(d.status!=='success'){showUiMessage('解析失败: '+d.error, 'error');return;}
   const m=d.model;
   CURRENT_STRATEGY_SPEC=m.strategy_spec || {};
+  const guide=document.getElementById('strategy-guide');
+  if(guide){
+    const lines=Object.entries(CURRENT_STRATEGY_SPEC).map(([k,v])=>`<div><b>${escapeAttr(k)}：</b>${escapeAttr(Array.isArray(v)?v.join('；'):v)}</div>`).join('');
+    guide.innerHTML='<b>这套方案会这样运行：</b>'+(lines||'<div>先判断适用类型，再按卖出规则和买入规则依次评估；命中后生成操作建议，不自动下单。</div>');
+  }
   document.getElementById('f-name').value=m.name;
   document.getElementById('f-version').value=m.version;
   document.getElementById('f-desc').value=m.description;
@@ -478,8 +569,8 @@ async function loadFromYaml(content){
   document.getElementById('sell-rules').innerHTML='';
   for(const b of m.buy_rules||[]){renderRuleFromType('buy', b.type, b.params);}
   for(const s of m.sell_rules||[]){renderRuleFromType('sell', s.type, s.params);}
-  if(m.risk){Object.assign(document.getElementById('r-drawdown'),{value:m.risk.drawdown_stop});
-    document.getElementById('r-minprof').value=m.risk.min_profit_for_dd;
+  if(m.risk){Object.assign(document.getElementById('r-drawdown'),{value:(Number(m.risk.drawdown_stop||0)*100).toFixed(1)});
+    document.getElementById('r-minprof').value=(Number(m.risk.min_profit_for_dd||0)*100).toFixed(1);
     document.getElementById('r-surge').value=m.risk.volume_surge_threshold;
     document.getElementById('r-tech').value=m.risk.technical_stop_enabled?'true':'false';}
   if(m.backtest){document.getElementById('b-cash').value=m.backtest.initial_cash;
