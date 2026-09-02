@@ -811,7 +811,6 @@ class PortfolioManager:
         kline, dividend_anchor = self.monitor.fetch_context_data(code)
         ctx = self.advisor.compute_context(kline, dividend_anchor)
         market_state = dashboard_market_state(kline)
-        rate = PostPurchaseAdvisor._stop_loss_rate(scheme, stock_type)
         current = float(ctx.current_price or 0)
         yh = float(ctx.year_high or 0)
 
@@ -826,7 +825,7 @@ class PortfolioManager:
             "strong_support": _r(ctx.strong_support),
             "ma20": _r(ctx.ma20),
             "year_high": _r(yh),
-            "hard_stop": _r(current * (1 - rate)) if current else None,
+            "hard_stop": _r(self._compute_stop_loss(scheme, stock_type, current, current)) if current else None,
             "left_side_zone": [_r(yh * 0.9), _r(yh)] if yh else None,
             "hard_cap": _r(yh * 1.05) if yh else None,
             "analyzed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -877,13 +876,20 @@ class PortfolioManager:
         return scheme
 
     def _compute_stop_loss(self, scheme: Optional[SchemeConfig],
-                           stock_type: str, avg_cost: float) -> float:
-        """计算硬止损价 = 均价 × (1 - 扣减率)"""
+                           stock_type: str, avg_cost: float,
+                           peak_price: Optional[float] = None) -> float:
+        """计算当前动态止损价：固定比例止损或已激活的保本止损。"""
         rate = 0.10 if stock_type == "E" else 0.15
+        peak_price = float(peak_price or avg_cost)
         if scheme is not None:
             rule = scheme.rule("sell", "hard_stop")
             if rule is not None:
-                by_type = (rule.params or {}).get("stop_loss_by_type")
+                params = rule.params or {}
+                if str(params.get("mode", "fixed")).lower() == "breakeven":
+                    activation = (params.get("breakeven_activation_by_type") or {}).get(stock_type, 0.08)
+                    if peak_price >= avg_cost * (1 + float(activation)):
+                        return round(avg_cost, 2)
+                by_type = params.get("stop_loss_by_type")
                 if isinstance(by_type, dict) and by_type:
                     rate = float(by_type.get(stock_type, 0.10 if stock_type == "E" else 0.15))
             elif scheme.risk.stop_loss_by_type:

@@ -69,8 +69,8 @@ def test_hard_stop_supports_fixed_and_breakeven_modes(reg):
     assert fixed.detail["stop_price"] == 85
 
     breakeven = reg.dispatch("sell", "hard_stop", RuleContext(
-        avg_cost=100, current_price=99, peak_price=108,
-        row=__import__("pandas").Series({"low": 99}),
+        avg_cost=100, current_price=100, peak_price=108,
+        row=__import__("pandas").Series({"low": 100}),
         extra={"stock_type": "B"},
     ), {"mode": "breakeven", "stop_loss_by_type": {"B": 0.15},
         "breakeven_activation_by_type": {"B": 0.08}})

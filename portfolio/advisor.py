@@ -207,11 +207,17 @@ class PostPurchaseAdvisor:
         ), params)
         detail = result.detail or {}
         stop = float(detail.get("stop_price", position.avg_cost * 0.85))
+        # 保本止损激活后，动态止损线应同步到持仓点位，供页面和后续通知使用。
+        position.stop_loss_price = round(stop, 2)
         triggered = bool(result.triggered)
         check_results["hard_stop"] = {
             "stop_price": round(stop, 2),
             "recent_low": round(ctx.recent_low, 2),
             "triggered": triggered,
+            "mode": detail.get("mode", "fixed"),
+            "activated": bool(detail.get("activated", False)),
+            "peak_price": detail.get("peak_price"),
+            "breakeven_activation": detail.get("breakeven_activation"),
         }
         if triggered:
             return ActionAdvice(
