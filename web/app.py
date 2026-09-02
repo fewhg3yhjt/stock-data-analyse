@@ -415,8 +415,8 @@ def api_indicators():
             },
             "hard_stop": {
                 "name": "硬止损 / 保本止损",
-                "meaning": "可选择固定比例止损，或盈利达到激活阈值后回撤至成本价的保本止损。",
-                "calculation": "fixed：止损价 = average_cost × (1 - stop_loss_rate)；breakeven：峰值 >= average_cost × (1 + activation)，止损价上移至 average_cost。",
+                "meaning": "可选择固定比例止损，或按成本价反推保本止损价。",
+                "calculation": "fixed：止损价 = average_cost × (1 - stop_loss_rate)；breakeven：止损价 = average_cost ÷ (1 + activation)。",
                 "data_requirements": "持仓成本、当前价格、股票类型、策略风险配置",
                 "notes": "这是风险控制规则，不自动下单。",
             },

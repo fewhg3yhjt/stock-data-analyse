@@ -880,15 +880,13 @@ class PortfolioManager:
                            peak_price: Optional[float] = None) -> float:
         """计算当前动态止损价：固定比例止损或已激活的保本止损。"""
         rate = 0.10 if stock_type == "E" else 0.15
-        peak_price = float(peak_price or avg_cost)
         if scheme is not None:
             rule = scheme.rule("sell", "hard_stop")
             if rule is not None:
                 params = rule.params or {}
                 if str(params.get("mode", "fixed")).lower() == "breakeven":
                     activation = (params.get("breakeven_activation_by_type") or {}).get(stock_type, 0.08)
-                    if peak_price >= avg_cost * (1 + float(activation)):
-                        return round(avg_cost, 2)
+                    return round(avg_cost / (1 + float(activation)), 2)
                 by_type = params.get("stop_loss_by_type")
                 if isinstance(by_type, dict) and by_type:
                     rate = float(by_type.get(stock_type, 0.10 if stock_type == "E" else 0.15))

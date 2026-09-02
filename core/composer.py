@@ -115,6 +115,16 @@ def _validate_rule_params(doc: dict) -> None:
             if abs(sum(ratios) - 1.0) > 1e-6:
                 raise ValueError("support_level.buy_stages 的 ratio 总和必须为 1")
 
+    for rule in [r for r in doc.get("sell_rules", []) if r["type"] == "hard_stop"]:
+        params = rule.get("params") or {}
+        if str(params.get("mode", "fixed")).lower() == "breakeven":
+            thresholds = params.get("breakeven_activation_by_type") or {}
+            for stock_type, value in thresholds.items():
+                if float(value) < 0 or float(value) >= 1:
+                    raise ValueError(
+                        f"hard_stop.breakeven_activation_by_type[{stock_type}] 必须在 [0, 1) 之间"
+                    )
+
 
 def _build_doc(model: dict) -> dict:
     """把模型规整为标准方案 dict（供 safe_dump / load_scheme_from_dict）。"""

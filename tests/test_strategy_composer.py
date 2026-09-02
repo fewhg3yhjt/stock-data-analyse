@@ -85,6 +85,16 @@ def test_compose_missing_name_raises(client):
     assert r.status_code == 400
 
 
+def test_breakeven_threshold_must_keep_formula_denominator_positive(client):
+    model = _sample_model()
+    model["sell_rules"][0]["params"] = {
+        "mode": "breakeven",
+        "breakeven_activation_by_type": {"B": 1.0},
+    }
+    response = client.post("/api/schemes/compose", json=model)
+    assert response.status_code == 400
+
+
 def test_save_list_toggle_cleanup(client):
     model = _sample_model()
     yaml_out = client.post("/api/schemes/compose", json=model).get_json()["yaml"]
