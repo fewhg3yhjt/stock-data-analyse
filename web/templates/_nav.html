@@ -5,18 +5,17 @@
     <a href="/market" {% if active=='market' %}class="active"{% endif %}>市场</a>
     <a href="/watch-pool" {% if active in ('watchpool','observe','watchlist','simulation') %}class="active"{% endif %}>观察池</a>
     <a href="/dashboard/warroom" {% if active=='warroom' %}class="active"{% endif %}>持仓</a>
-    <a href="/research" {% if active in ('research','strategy','indicators','composer','analyze') %}class="active"{% endif %}>研究</a>
+    <a href="/research" {% if active in ('research','strategy','indicators','composer','simulation') %}class="active"{% endif %}>研究</a>
     <a href="/dashboard/review" {% if active=='review' %}class="active"{% endif %}>复盘</a>
     <a href="/system" {% if active in ('system','data','notify','settings') %}class="active"{% endif %}>系统</a>
   </div>
   {% if active == 'market' %}<div class="nav-secondary"><span>市场工具</span><a href="/market">行情概览</a><a href="/market-discovery">个股发现</a></div>{% endif %}
-  {% if active in ('research','strategy','indicators','composer','analyze') %}<div class="nav-secondary"><span>研究工具</span><a href="/analyze" {% if active=='analyze' %}class="active"{% endif %}>个股分析</a><a href="/indicator-center" {% if active=='indicators' %}class="active"{% endif %}>指标中心</a><a href="/strategy-composer" {% if active=='composer' %}class="active"{% endif %}>策略编排</a><a href="/strategy" {% if active=='strategy' %}class="active"{% endif %}>策略实验</a><a href="/operation-points">操作点位</a></div>{% endif %}
+  {% if active in ('research','strategy','indicators','composer','simulation') %}<div class="nav-secondary"><span>研究工具</span><a href="/strategy-simulation" {% if active=='simulation' %}class="active"{% endif %}>策略模拟</a><a href="/indicator-center" {% if active=='indicators' %}class="active"{% endif %}>指标中心</a><a href="/strategy-composer" {% if active=='composer' %}class="active"{% endif %}>策略编排</a><a href="/strategy" {% if active=='strategy' %}class="active"{% endif %}>策略实验</a><a href="/operation-points">操作点位</a></div>{% endif %}
   {% if active in ('system','data','notify','settings') %}<div class="nav-secondary"><span>系统工具</span><a href="/data-center">数据与任务</a><a href="/notify-center">通知告警</a><a href="/diagnostics">运行诊断</a><a href="/settings">系统管理</a></div>{% endif %}
   <span class="nav-legacy">
-    <a href="/analyze" {% if active=='analyze' %}class="active"{% endif %}>分析</a>
+    <a href="/strategy-simulation" {% if active=='simulation' %}class="active"{% endif %}>策略模拟</a>
     <a href="/dashboard/observe" {% if active=='observe' %}class="active"{% endif %}>观察</a>
     <a href="/watchlist" {% if active=='watchlist' %}class="active"{% endif %}>自选</a>
-    <a href="/simulation" {% if active=='simulation' %}class="active"{% endif %}>模拟</a>
     <a href="/indicator-center" {% if active=='indicators' %}class="active"{% endif %}>指标</a>
     <a href="/strategy-composer" {% if active=='composer' %}class="active"{% endif %}>编排器</a>
     <a href="/notify-center" {% if active=='notify' %}class="active"{% endif %}>通知</a>

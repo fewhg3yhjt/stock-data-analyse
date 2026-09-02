@@ -13,9 +13,9 @@ function render(items) {
     if (item.next_action === 'observe') {
       action = '<button class="ui-button ui-button-primary ui-button-sm observe-btn" data-action="observe">加入观察</button>';
     } else if (item.next_action === 'simulate') {
-      action = `<button class="ui-button ui-button-primary ui-button-sm simulate-btn" data-action="simulate" ${blocked ? 'disabled title="日线数据严重滞后"' : ''}>选择策略模拟</button>`;
+      action = `<a class="ui-button ui-button-primary ui-button-sm" href="/strategy-simulation?code=${encodeURIComponent(item.code)}&name=${encodeURIComponent(item.name)}&stock_type=${encodeURIComponent(item.stock_type || 'B')}">策略模拟</a>`;
     } else if (item.next_action === 'buy') {
-      action = `<a class="ui-button ui-button-secondary ui-button-sm" href="/simulation">查看模拟详情</a> ${blocked ? '<span class="tag red">数据滞后，禁止建仓</span>' : `<a class="ui-button ui-button-primary ui-button-sm" href="/portfolio/add?code=${encodeURIComponent(item.code)}&name=${encodeURIComponent(item.name)}&scheme=${encodeURIComponent(item.simulation.scheme_name)}">确认建仓</a>`}`;
+      action = `<a class="ui-button ui-button-secondary ui-button-sm" href="/strategy-simulation?code=${encodeURIComponent(item.code)}&name=${encodeURIComponent(item.name)}&stock_type=${encodeURIComponent(item.simulation.stock_type || 'B')}&scheme=${encodeURIComponent(item.simulation.scheme_name)}">策略模拟</a> ${blocked ? '<span class="tag red">数据滞后，禁止建仓</span>' : `<a class="ui-button ui-button-primary ui-button-sm" href="/portfolio/add?code=${encodeURIComponent(item.code)}&name=${encodeURIComponent(item.name)}&scheme=${encodeURIComponent(item.simulation.scheme_name)}">确认建仓</a>`}`;
     } else if (item.next_action === 'review') {
       action = '<a class="ui-button ui-button-primary ui-button-sm" href="/dashboard/warroom">管理持仓</a>';
     }

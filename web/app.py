@@ -219,15 +219,15 @@ def _run_analysis(task_id: str, code: str, name: str,
 
 @web_app.route("/", methods=["GET"])
 def index():
-    """主页：投资工作台；旧的带股票参数链接兼容到个股分析。"""
+    """主页：投资工作台；带股票参数时进入策略模拟。"""
     if flask.request.args.get("code") or flask.request.args.get("name"):
-        return flask.redirect(flask.url_for("stock_web.analyze_page", **flask.request.args))
+        return flask.redirect(flask.url_for("stock_web.strategy_simulation_page", **flask.request.args))
     return flask.render_template("workbench.html")
 
 
-@web_app.route("/analyze", methods=["GET"])
-def analyze_page():
-    """个股分析表单（原首页页面）。"""
+@web_app.route("/strategy-simulation", methods=["GET"])
+def strategy_simulation_page():
+    """策略模拟工作区。"""
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     last_year = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
 
@@ -246,7 +246,8 @@ def analyze_page():
                                  has_api_key=bool(Config.DEEPSEEK_API_KEY),
                                  prefill_code=flask.request.args.get("code", ""),
                                  prefill_name=flask.request.args.get("name", ""),
-                                  prefill_scheme=flask.request.args.get("scheme", ""))
+                                  prefill_scheme=flask.request.args.get("scheme", ""),
+                                  prefill_stock_type=flask.request.args.get("stock_type", "B"))
 
 
 @web_app.route("/schemes", methods=["GET"])
@@ -1676,7 +1677,7 @@ def indicator_center_page():
     return flask.render_template("indicator_center.html")
 
 
-@web_app.route("/analyze", methods=["POST"])
+@web_app.route("/strategy-simulation", methods=["POST"])
 def analyze():
     """执行分析（同步等待结果）"""
     code = flask.request.form.get("code", "").strip()
@@ -1688,7 +1689,7 @@ def analyze():
     do_api = flask.request.form.get("api") == "on"
     scheme_name = flask.request.form.get("scheme", "default_value").strip() or "default_value"
     stock_type = flask.request.form.get("stock_type", "B").strip().upper() or "B"
-    if stock_type not in ("A", "B", "C", "D"):
+    if stock_type not in ("A", "B", "C", "D", "E"):
         stock_type = "B"
     try:
         initial_cash = float(flask.request.form.get("initial_cash", "100000"))
@@ -2365,23 +2366,6 @@ def api_simulation_delete():
         return flask.jsonify({"status": "error", "error": "缺少 id"}), 400
     mgr.delete_simulation(sim_id)
     return flask.jsonify({"status": "success"})
-
-
-@web_app.route("/simulation", methods=["GET"])
-def simulation_page():
-    """模拟页：已模拟标的全量点位 + 建仓/重新分析/删除"""
-    from StockInvestmentTool.core.registry import SchemeRegistry
-    from StockInvestmentTool.portfolio.dashboard import DashboardService
-    try:
-        svc = DashboardService(_get_manager())
-        items = [s.to_dict() for s in svc.manager.get_simulations()]
-        schemes = [s.name for s in SchemeRegistry().list()]
-        return flask.render_template("simulation.html", items=items,
-                                     schemes=schemes, error=None)
-    except Exception as e:
-        logger.exception("模拟页加载失败")
-        return flask.render_template("simulation.html", items=[], schemes=[],
-                                     error=str(e))
 
 
 @web_app.route("/strategy", methods=["GET"])

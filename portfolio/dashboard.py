@@ -156,6 +156,7 @@ class DashboardService:
             item = merged.setdefault(normalized, {
                 "code": normalized, "name": name or normalized, "sources": [],
                 "watch": None, "simulation": None, "holding": None,
+                "stock_type": "B",
                 "observation": None, "next_action": "none",
             })
             if name:
@@ -175,9 +176,11 @@ class DashboardService:
         for simulation in simulations:
             item = entry(simulation.stock_code, simulation.stock_name)
             item["simulation"] = simulation.to_dict()
+            item["stock_type"] = simulation.stock_type or item["stock_type"]
         for holding in holdings:
             item = entry(holding.stock_code, holding.stock_name)
             item["holding"] = holding.to_dict()
+            item["stock_type"] = holding.stock_type or item["stock_type"]
             if "holding" not in item["sources"]:
                 item["sources"].append("holding")
         for item in merged.values():

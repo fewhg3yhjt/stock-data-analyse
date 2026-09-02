@@ -10,7 +10,7 @@
 {% block body %}
 <main class="app"><header class="header"><div><h1><i class="fas fa-layer-group"></i> 观察池</h1><div class="sub">候选 → 观察 → 选择策略模拟 → 查看结果 → 建仓</div></div>{% set active='watchpool' %}{% include '_nav.html' %}</header>
 <section class="ui-card"><div class="ui-card-header"><span>观察流程</span><button class="ui-button ui-button-secondary ui-button-sm" data-action="refresh">刷新观察数据</button></div><div class="flow"><span>1. 候选</span>→<span>2. 加入观察</span>→<span>3. 策略模拟</span>→<span>4. 确认建仓</span>→<span>5. 持仓</span></div><div id="health-note" class="notice health-note">正在检查日线数据...</div></section>
-<section class="notice"><strong>观察池摘要</strong> 这里保存的是候选和观察关系，不等同于真实持仓；每个对象的来源、数据日期和下一步动作以表格为准。</section>
+<section class="notice"><strong>观察池摘要</strong> 这里保存的是候选和观察关系，不等同于真实持仓；每个对象的来源、数据日期和下一步动作以表格为准。点击“展开K线”查看走势，点击“策略模拟”进入模拟工作区。</section>
 <section class="ui-card"><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>股票</th><th>当前阶段</th><th>来源/原因</th><th>策略与模拟</th><th>持仓</th><th>下一步操作</th></tr></thead><tbody id="pool-rows"><tr><td colspan="6" class="empty">加载中...</td></tr></tbody></table></div></section></main>
 <div class="modal-bg" id="simulation-modal"><div class="modal"><div class="ui-card-header"><span id="sim-title">策略模拟</span><button class="ui-button ui-button-secondary ui-button-sm" data-action="close-modal">关闭</button></div><div id="sim-form"><div class="ui-field"><label>选择已启用策略方案</label><select id="sim-scheme"></select></div><div class="note" id="sim-health"></div><button class="ui-button ui-button-primary" id="sim-run" data-action="run-simulation">运行策略模拟</button></div><div id="sim-result"></div></div></div>
 {% endblock %}

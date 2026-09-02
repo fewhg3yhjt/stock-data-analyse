@@ -184,8 +184,9 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
                 <div class="scheme-switch">
                   <select class="scheme-select"><option value="">当前方案：{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}</option>
                     {% for s in schemes %}<option value="{{ s.name }}">{{ s.name }} — {{ s.description }}</option>{% endfor %}
-                  </select>
-                  <button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="switchScheme(this)">保存切换</button>
+                   </select>
+                   <button type="button" class="ui-button ui-button-secondary ui-button-sm" data-simulation-code="{{ p.stock_code }}" data-simulation-name="{{ p.stock_name }}" data-simulation-type="{{ p.stock_type }}" data-simulation-scheme="{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}" onclick="openPositionSimulation(this)">策略模拟</button>
+                   <button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="switchScheme(this)">保存切换</button>
                 </div>
                 <div class="strategy-spec">
                  {% if p.strategy and p.strategy.strategy_spec %}
@@ -432,7 +433,7 @@ async function loadReturnsTab(box){
   }catch(e){ chartEl.innerHTML = '<span style="color:#c62828;font-size:13px;">收益加载失败：' + e.message + '</span>'; }
 }
   // ── 删除持仓（危险，需弹窗确认）────────────────────
- async function switchScheme(btn){
+  async function switchScheme(btn){
    const panel = btn.closest('.detail-panel-strategy');
    const select = panel.querySelector('.scheme-select');
    const positionId = panel.dataset.position;
@@ -462,6 +463,14 @@ document.addEventListener('click', function(e){
     const a = el.dataset.action;
     if (a === 'deletePos') deletePos(Number(el.dataset.id), el.dataset.name);
     return;
+  }
+  function openPositionSimulation(btn){
+    const panel = btn.closest('.detail-panel-strategy');
+    const code = encodeURIComponent(btn.dataset.simulationCode);
+    const name = encodeURIComponent(btn.dataset.simulationName);
+    const stockType = encodeURIComponent(btn.dataset.simulationType || 'B');
+    const scheme = encodeURIComponent(panel.querySelector('.scheme-select').value || btn.dataset.simulationScheme);
+    window.location.href = `/strategy-simulation?code=${code}&name=${name}&stock_type=${stockType}&scheme=${scheme}`;
   }
   const card = e.target.closest('[data-position-card]');
   if (!card || e.target.closest('a,button,input,select,textarea,.detail-box,.advice')) return;
