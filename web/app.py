@@ -1480,6 +1480,8 @@ def api_schemes_list():
     from StockInvestmentTool.core import scheme_store
     from StockInvestmentTool.core.registry import SchemeRegistry
     try:
+        registry = SchemeRegistry()
+        builtin_names = set(scheme_store.BUILTIN_SCHEMES)
         builtin = [
             {
                 "name": s.name, "version": s.version,
@@ -1491,9 +1493,14 @@ def api_schemes_list():
                 "enabled": True, "default": False, "is_builtin": True,
                 "source": s.source,
             }
-            for s in SchemeRegistry().list()
+            for s in registry.list()
+            if s.name in builtin_names
         ]
-        user = scheme_store.list_scheme_stores()
+        # SchemeRegistry 可能同时扫描 schemes/ 和 schemes/custom/；
+        # 自定义方案不要再被作为内置方案重复返回，指标 YAML 也不是策略方案。
+        user = [item for item in scheme_store.list_scheme_stores()
+                if item.get("name") not in builtin_names
+                and item.get("name") != "indicators"]
         for item in user:
             item["default"] = scheme_store.is_default(item["name"])
         return flask.jsonify({"status": "success", "schemes": builtin + user})
