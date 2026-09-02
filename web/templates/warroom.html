@@ -129,7 +129,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
               <td>{{ t.date }}</td>
               <td>{{ t.stock_name }} <span style="color:var(--color-text-subtle);font-size:11px;">{{ t.stock_code }}</span></td>
               <td><span class="tag {{ 'green' if t.trans_type=='buy' else ('red' if t.trans_type in ('sell','sell_all') else 'orange') }}">{{ {'buy':'加仓','sell':'减仓','sell_all':'清仓','dividend':'分红'}.get(t.trans_type, t.trans_type) }}</span></td>
-              <td>{{ "%.2f"|format(t.price) }}</td>
+              <td>{{ "%.3f"|format(t.price) }}</td>
               <td>{{ "{:,.0f}".format(t.shares) }}</td>
               <td>{{ "{:,.0f}".format(t.amount) }}</td>
               <td>{{ "%.2f"|format(t.fee or 0) }}</td>
@@ -214,7 +214,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
              <div class="weights note">买入费用计入持仓成本；卖出费用计入已实现盈亏。加仓/减仓/清仓/分红/纠错均可在此录入。</div>
              <table class="kv records-table"><thead><tr><th>日期</th><th>类型</th><th>成交价</th><th>数量</th><th>金额</th><th>费用</th><th>盈亏</th><th>备注</th></tr></thead><tbody class="records-rows">
                {% for t in p.transactions %}
-               <tr><td>{{ t.date }}</td><td>{{ {'buy':'加仓','sell':'减仓','sell_all':'清仓','dividend':'分红','correction':'纠错'}.get(t.trans_type, t.trans_type) }}</td><td>{{ "%.2f"|format(t.price) }}</td><td>{{ t.shares }}</td><td>{{ "%.2f"|format(t.amount) }}</td><td>{{ "%.2f"|format(t.fee or 0) }}</td><td>{{ "%+.2f"|format(t.pnl) if t.pnl else '—' }}</td><td class="note">{{ t.reason }}</td></tr>
+                <tr><td>{{ t.date }}</td><td>{{ {'buy':'加仓','sell':'减仓','sell_all':'清仓','dividend':'分红','correction':'纠错'}.get(t.trans_type, t.trans_type) }}</td><td>{{ "%.3f"|format(t.price) }}</td><td>{{ t.shares }}</td><td>{{ "%.2f"|format(t.amount) }}</td><td>{{ "%.2f"|format(t.fee or 0) }}</td><td>{{ "%+.2f"|format(t.pnl) if t.pnl else '—' }}</td><td class="note">{{ t.reason }}</td></tr>
                {% endfor %}
              </tbody></table>
            </div>
