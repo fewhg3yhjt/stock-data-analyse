@@ -133,20 +133,30 @@ def _execute_hard_stop(ctx: RuleContext, params: dict) -> RuleResult:
 
 
 def _execute_technical_stop(ctx: RuleContext, params: dict) -> RuleResult:
-    """technical_stop：技术止损（放量跌破强支撑）。"""
+    """technical_stop：当天最低价跌破支撑线且成交量放大。"""
+    if params.get("technical_stop_enabled", True) is False:
+        return RuleResult(triggered=False, action="hold", reason="技术止损已停用",
+                          detail={"enabled": False, "triggered": False, "rule": "technical_stop"})
     surge_th = float(params.get("volume_surge_ratio", 1.8))
-    vol_ma = ctx.row.get("vol_ma5", 0) if ctx.row is not None else 0
+    vol_ma = ctx.previous_vol_ma5 or (ctx.row.get("vol_ma5", 0) if ctx.row is not None else 0)
     vol = ctx.row.get("volume", 0) if ctx.row is not None else 0
     vol_surge = (vol_ma > 0 and vol > vol_ma * surge_th)
-    strong = ctx.extra.get("strong_support", 0) or 0
+    source = str(params.get("support_source", "strong"))
+    support = {"strong": ctx.extra.get("strong_support", 0),
+               "weak": ctx.extra.get("weak_support", 0),
+               "ma60": ctx.extra.get("ma60", 0)}.get(source, 0) or 0
     low = float(ctx.row.get("low", ctx.current_price)) if ctx.row is not None else ctx.current_price
-    triggered = strong > 0 and low < strong and vol_surge
+    triggered = support > 0 and low < support and vol_surge
     return RuleResult(
         triggered=triggered,
         action="clear" if triggered else "hold",
-        reason=f"最低价{low:.2f}放量跌破强支撑{strong:.2f}" if triggered else "技术止损未触发",
-        detail={"strong_support": round(strong, 2), "low": round(low, 2),
-                "volume_surge": vol_surge, "rule": "technical_stop"},
+        reason=f"最低价{low:.2f}放量跌破{source}支撑线{support:.2f}" if triggered else "技术止损未触发",
+        detail={"support_source": source, "support_price": round(support, 2),
+                "strong_support": round(ctx.extra.get("strong_support", 0) or 0, 2),
+                "low": round(low, 2), "volume": round(vol, 2),
+                "reference_volume": round(vol_ma, 2),
+                "volume_ratio": round(vol / vol_ma, 3) if vol_ma else None,
+                "volume_surge": vol_surge, "enabled": True, "rule": "technical_stop"},
     )
 
 
@@ -271,14 +281,14 @@ def _build_schemas() -> dict[str, list[ParamField]]:
     s["support_level"] = [
         ParamField("support_sources", "支撑源", "list",
                    default=["MA60", "MIN(MA20,MA240)"], required=True,
-                   help="候选支撑位来源，可引用指标名/表达式，多个取次低=弱支撑、最低=强支撑"),
+                   help="候选价格指标；按价格从低到高排序，最低为综合防守位，第二低为综合支撑位。默认：MA60、MIN(MA20,MA240)"),
         ParamField("buy_stages", "买入批次", "map_list",
                    default=[
                        {"label": "综合弱支撑", "position_index": 1, "ratio": 0.3},
                        {"label": "综合强支撑", "position_index": 0, "ratio": 0.4},
                        {"label": "极端低估锚", "use_special": "dividend_anchor_4pct", "ratio": 0.3},
                    ], required=True,
-                   help="每一批的阈值归属与仓位比例（比例合计应为 1.0）"),
+                    help="价格触及对应支撑位时买入该比例；所有批次合计必须为100%"),
         ParamField("offset", "买入偏移", "number", default=0.0, min=-0.2, max=0.2,
                    help="阈值整体偏移比例，正数放宽（更容易触发）"),
     ]
@@ -287,17 +297,19 @@ def _build_schemas() -> dict[str, list[ParamField]]:
         ParamField("conditions", "前置条件", "list", default=[
             "trend_bullish", "market_bull_early", "rebound_lt_10pct", "not_cyclical"
         ], help="趋势跟随必须同时满足的指标/决策输入"),
-        ParamField("rebound_limit_pct", "反弹幅度上限%", "number", default=10, max=100),
-        ParamField("require_market", "市场状态要求", "select",
-                   default="牛市初期",
-                   options=["牛市初期", "牛市中期", "牛市初期/中期"]),
+         ParamField("rebound_limit_pct", "反弹幅度上限", "number", default=10, max=100,
+                    help="当前价相对近1个月最低价的涨幅必须低于该值；默认：10%"),
+         ParamField("require_market", "市场状态要求", "select",
+                    default="牛市初期",
+                    options=["牛市初期", "牛市中期", "牛市初期/中期"],
+                    help="必须同时满足趋势、市场状态和反弹幅度条件"),
     ]
 
     s["market_state_arbiter"] = [
-        ParamField("screener_pass", "六步法通过", "select", default=True,
-                   options=[True, False]),
-        ParamField("circuit_breaker_ok", "年线熔断放行", "select", default=True,
-                   options=[True, False]),
+         ParamField("screener_pass", "六步法通过", "select", default=True,
+                    options=[True, False], help="是否要求股票先通过六步法筛选；默认：是"),
+         ParamField("circuit_breaker_ok", "年线熔断放行", "select", default=True,
+                    options=[True, False], help="是否允许通过年线熔断条件；默认：是"),
     ]
 
     s["hard_stop"] = [
@@ -306,18 +318,21 @@ def _build_schemas() -> dict[str, list[ParamField]]:
                     help="fixed=固定比例止损；breakeven=按成本价÷(1+阈值)计算保本止损价"),
          ParamField("stop_loss_by_type", "按类型扣减率", "map",
                     default={"A": 0.15, "B": 0.15, "C": 0.15, "D": 0.10},
-                    help="止损价 = 均价 × (1 - 扣减率)"),
+                    help="固定比例模式：止损价 = 持仓均价 × (1 - 扣减率)；默认 A/B/C=15%，D=10%"),
          ParamField("breakeven_activation_by_type", "保本激活盈利阈值", "map",
                     default={"A": 0.08, "B": 0.08, "C": 0.08, "D": 0.08},
                     help="保本止损价 = 成本价 ÷ (1 + 激活阈值比例)"),
     ]
 
     s["technical_stop"] = [
-        ParamField("volume_surge_ratio", "放量倍数", "number", default=1.8, min=1.0),
-        ParamField("support_source", "跌破指标", "select", default="strong",
-                   options=["strong", "weak", "ma60"]),
-        ParamField("technical_stop_enabled", "启停", "select", default=True,
-                   options=[True, False]),
+        ParamField("volume_surge_ratio", "成交量放大倍数", "number", default=1.8, min=1.0,
+                   help="当天成交量 ÷ 前5个交易日平均成交量；默认达到1.8倍才算放量"),
+        ParamField("support_source", "跌破支撑线", "select", default="strong",
+                   options=["strong", "weak", "ma60"],
+                   help="strong=综合防守位（候选支撑中的最低值）；weak=综合支撑位（第二低）；ma60=MA60。默认：strong"),
+        ParamField("technical_stop_enabled", "规则状态", "select", default=True,
+                   options=[True, False],
+                   help="启动时参与判断；停用时完全跳过技术止损。默认：启动"),
     ]
 
     s["left_side_fixed"] = [

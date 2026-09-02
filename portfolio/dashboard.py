@@ -1430,9 +1430,12 @@ class DashboardService:
                 triggered = bool(hard_stop.get("triggered")); status = "已触发" if triggered else "未触发"
                 detail = f"当前价 {current}，止损线 {threshold}"
             elif signal == "stop-technical":
-                current, threshold = technical.get("recent_low"), technical.get("strong_support")
+                current, threshold = technical.get("recent_low"), technical.get("support_price") or technical.get("strong_support")
                 triggered = bool(technical.get("triggered")); status = "已触发" if triggered else "未触发"
-                detail = f"最近低点 {current}，强支撑 {threshold}，放量：{'是' if technical.get('volume_surge') else '否'}"
+                detail = (f"最近低点 {current}，跌破支撑线 {threshold}；成交量 {technical.get('last_volume', '—')} ÷ "
+                          f"前5日均量 {technical.get('reference_volume', '—')} = {technical.get('volume_ratio', '—')}倍，"
+                          f"放量：{'是' if technical.get('volume_surge') else '否'}；"
+                          f"规则：{'启动' if technical.get('enabled', True) else '停用'}")
             elif signal == "take-left":
                 current = context.get("current_price")
                 threshold = f"{left.get('zone_price_lo', '—')} ~ {left.get('zone_price_hi', '—')}"

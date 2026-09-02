@@ -150,16 +150,16 @@ let TYPES = [];
 let SCHEMES = [];
 let CURRENT_STRATEGY_SPEC = {};
 const RULE_GUIDE = {
-  support_level:['支撑位分批买入','触发：当日最低价触及支撑源计算出的弱支撑/强支撑/极端低估锚。动作：按批次比例分批买入。'],
-  trend_following:['趋势跟随加仓','触发：趋势、市场状态和反弹幅度等前置条件同时满足。动作：按当前价、MA20、支撑位等分批加仓。'],
-  market_state_arbiter:['市场状态仲裁买入','触发：根据强多头、超买、弱多头/震荡、弱空头、强空头选择分支。动作：跟随、回调挂单、小仓位或禁止操作。'],
-  hard_stop:['硬止损','触发：当前价/最低价跌破成本按股票类型计算的止损线。动作：建议全仓止损。'],
-  technical_stop:['技术止损','触发：放量跌破综合强支撑。动作：建议全仓止损。'],
-  left_side_fixed:['左侧固定止盈','触发：价格进入前高 90%-95%、95%-100% 等配置区间。动作：按区间比例分批减仓。'],
-  right_side_trailing:['右侧移动止盈','触发：突破前高进入右侧跟踪后，从持仓峰值回撤达到按类型配置的阈值。动作：建议清仓。'],
-  logic_stop:['逻辑止损','触发：建仓时记录的核心逻辑/假设被证伪。动作：建议退出。'],
-  price_stop:['价格止损与贝塔保护','触发：价格跌幅、沪深300跌幅及股债收益差满足配置条件。动作：硬止损或转入逻辑审视。'],
-  time_stop:['时间止损','触发：持仓超过限制天数且没有符合条件的进展。动作：按配置减仓或退出。']
+  support_level:['支撑位分批买入','用途：在估值或技术支撑附近分批建仓。触发：当日最低价触及对应支撑价；支撑源按价格排序，最低是综合防守位，第二低是综合支撑位。动作：按批次比例买入。'],
+  trend_following:['趋势跟随加仓','用途：只在趋势向上且市场环境允许时追加仓位。触发：配置的趋势、市场状态、反弹幅度等条件必须同时满足。动作：按当前价、均线或支撑位分批加仓。'],
+  market_state_arbiter:['市场状态仲裁买入','用途：根据市场环境决定是否允许买入。触发：读取市场状态、筛选结果和风控放行条件。动作：跟随、回调买入、小仓位或禁止操作。'],
+  hard_stop:['固定比例止损 / 保本止损','用途：价格触及预设风险线时保护本金。触发：当日最低价或当前价 <= 计算出的止损价。动作：建议清仓；固定模式使用“均价×(1-扣减率)”，保本模式使用“均价÷(1+阈值)”。'],
+  technical_stop:['技术止损','用途：识别“放量跌破关键支撑”的风险。触发：当日最低价 < 所选支撑线，且当天成交量 ÷ 前5个交易日平均成交量 >= 放量倍数，两个条件必须同时满足。动作：建议清仓；默认启动。'],
+  left_side_fixed:['左侧固定止盈','用途：价格接近历史前高但尚未突破时分批落袋。触发：当前价 ÷ 滚动前高落入配置区间。动作：按区间比例减仓。默认前高窗口252个交易日，取日最高价。'],
+  right_side_trailing:['右侧移动止盈','用途：突破前高后保护已经获得的利润。触发：当前价从持仓峰值回撤达到对应类型阈值。动作：建议清仓。'],
+  logic_stop:['逻辑止损','用途：投资逻辑被证伪时退出。触发：逻辑状态被标记为不成立。动作：建议退出。'],
+  price_stop:['价格止损与贝塔保护','用途：结合个股跌幅、市场跌幅和股债收益差判断是否执行价格止损。触发：配置的宏观与价格条件组合满足。动作：止损或转入逻辑审视。'],
+  time_stop:['时间止损','用途：持仓长期没有进展时释放资金。触发：持有天数超过上限且未出现豁免条件。动作：按配置减仓或退出。']
 };
 
 function openModal(title){document.getElementById('modal-title').textContent=title;document.getElementById('modal-bg').style.display='flex';}
@@ -330,7 +330,7 @@ function renderField(f, rule){
     const value=Number(def||0)*100;
     return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label><div class="unit-input"><input data-f="${key}" type="number" min="${key==='offset'?-20:0}" max="${key==='offset'?20:100}" step="0.1" value="${escapeAttr(value)}"><span>%</span></div></div>`;
   }
-  return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
+  return `<div class="ui-field"><label>${label} <span class="help">${f.help||('默认：'+(f.default??'未设置'))}</span></label>
     <input data-f="${key}" type="${type==='number'?'number':'text'}" value="${def!=null?def:''}"></div>`;
 }
 

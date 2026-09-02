@@ -313,6 +313,7 @@ class TakeProfitOptimizer:
         self.drawdown_stop = drawdown_stop
         self.min_profit_for_dd = min_profit_for_dd
         self.technical_stop_enabled = True
+        self.technical_support_source = "strong"
         self.dividend_anchor = dividend_anchor
         self.scheme = scheme
 
@@ -409,6 +410,7 @@ class TakeProfitOptimizer:
             self.technical_stop_enabled = bool(
                 params.get("technical_stop_enabled", scheme.risk.technical_stop_enabled)
             )
+            self.technical_support_source = str(params.get("support_source", "strong"))
 
         # 风控
         if scheme.risk.drawdown_stop:
@@ -635,11 +637,16 @@ class TakeProfitOptimizer:
 
         # ── ① 技术止损：最低价跌破强支撑 + 放量 ──
         weak, strong, extreme = self._get_support_levels(row)
-        vol_surge = (
-            row.get("volume", 0) > row.get("vol_ma5", 0) * self._volume_surge
-            if not pd.isna(row.get("vol_ma5")) else False
-        )
-        if self.technical_stop_enabled and strong > 0 and low < strong and vol_surge:
+        volume = row.get("volume", 0)
+        row_index = self.df.index.get_loc(row.name) if row.name in self.df.index else -1
+        previous_vol_ma5 = 0.0
+        if row_index >= 5:
+            previous_vol_ma5 = float(self.df["volume"].iloc[row_index - 5:row_index].mean())
+        vol_surge = previous_vol_ma5 > 0 and volume > previous_vol_ma5 * self._volume_surge
+        support = {"strong": strong, "weak": weak, "ma60": row.get("ma60", 0)}.get(
+            self.technical_support_source, strong
+        ) or 0
+        if self.technical_stop_enabled and support > 0 and low < support and vol_surge:
             fill = close
             cash += shares * fill
             trades.append({
@@ -647,7 +654,7 @@ class TakeProfitOptimizer:
                 "price": round(fill, 2), "shares": round(shares, 2),
                 "amount": round(shares * fill, 2),
                 "pnl": round(shares * (fill - avg_cost), 2),
-                "reason": f"最低价{low:.2f}放量跌破综合强支撑({strong:.2f})，触发技术止损",
+                "reason": f"最低价{low:.2f}放量跌破{self.technical_support_source}支撑线({support:.2f})，触发技术止损（成交量/前5日均量={volume / previous_vol_ma5:.2f}倍）",
             })
             return cash, 0.0, 0.0, 0, 0.0, "closed", 0, True
 

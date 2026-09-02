@@ -66,6 +66,7 @@ class AdvisorContext:
         self.ma60 = 0.0
         self.vol_ma5 = 0.0
         self.last_volume = 0.0
+        self.previous_vol_ma5 = 0.0
         self.trend = ""
         self.market_state = ""
         self.rebound_from_month_low = 0.0
@@ -87,6 +88,7 @@ class AdvisorContext:
             "ma60": self.ma60,
             "vol_ma5": self.vol_ma5,
             "last_volume": self.last_volume,
+            "previous_vol_ma5": self.previous_vol_ma5,
             "trend": self.trend,
             "market_state": self.market_state,
             "rebound_from_month_low": self.rebound_from_month_low,
@@ -131,6 +133,11 @@ class PostPurchaseAdvisor:
         ctx.recent_low = float(last.get("low", 0))
         ctx.last_volume = float(last.get("volume", 0))
         ctx.vol_ma5 = float(last.get("vol_ma5", 0)) if "vol_ma5" in kline.columns else 0
+        # 技术止损的基准必须排除当天，避免当天成交量参与自己的放量比较。
+        try:
+            ctx.previous_vol_ma5 = float(kline["volume"].iloc[-6:-1].mean()) if len(kline) >= 6 else 0
+        except Exception:
+            ctx.previous_vol_ma5 = 0
         from StockInvestmentTool.portfolio.position_levels import calculate_year_high
         ctx.year_high = calculate_year_high(
             kline, window=year_high_window, price_field=year_high_price_field
@@ -203,7 +210,11 @@ class PostPurchaseAdvisor:
             avg_cost=position.avg_cost,
             current_price=ctx.current_price,
             peak_price=position.peak_price,
-            extra={"stock_type": position.stock_type},
+            previous_vol_ma5=ctx.previous_vol_ma5,
+            extra={"stock_type": position.stock_type,
+                   "strong_support": ctx.strong_support,
+                   "weak_support": ctx.weak_support,
+                   "ma60": ctx.ma60},
         ), params)
         detail = result.detail or {}
         stop = float(detail.get("stop_price", position.avg_cost * 0.85))
@@ -236,13 +247,29 @@ class PostPurchaseAdvisor:
     def _check_technical_stop(self, position: Position, ctx: AdvisorContext,
                               scheme, check_results: dict) -> Optional[ActionAdvice]:
         """② 技术止损: 最近最低价 < 强支撑 且 放量"""
-        surge_th = getattr(scheme.risk, "volume_surge_threshold", 1.8)
-        vol_surge = ctx.vol_ma5 > 0 and ctx.last_volume > ctx.vol_ma5 * surge_th
-        triggered = ctx.strong_support > 0 and ctx.recent_low < ctx.strong_support and vol_surge
+        rule = scheme.rule("sell", "technical_stop")
+        params = (scheme.rule("sell", "technical_stop").params
+                  if scheme.rule("sell", "technical_stop") is not None else {})
+        if params.get("technical_stop_enabled", True) is False:
+            check_results["technical_stop"] = {"enabled": False, "triggered": False}
+            return None
+        surge_th = float(params.get("volume_surge_ratio", getattr(scheme.risk, "volume_surge_threshold", 1.8)))
+        source = str(params.get("support_source", "strong"))
+        support = {"strong": ctx.strong_support, "weak": ctx.weak_support,
+                   "ma60": ctx.ma60}.get(source, ctx.strong_support)
+        reference_volume = ctx.previous_vol_ma5 or ctx.vol_ma5
+        vol_surge = reference_volume > 0 and ctx.last_volume > reference_volume * surge_th
+        triggered = support > 0 and ctx.recent_low < support and vol_surge
         check_results["technical_stop"] = {
+            "support_source": source,
+            "support_price": round(support, 2),
             "strong_support": round(ctx.strong_support, 2),
             "recent_low": round(ctx.recent_low, 2),
+            "last_volume": round(ctx.last_volume, 2),
+            "reference_volume": round(reference_volume, 2),
+            "volume_ratio": round(ctx.last_volume / reference_volume, 3) if reference_volume else None,
             "volume_surge": vol_surge,
+            "enabled": True,
             "triggered": triggered,
         }
         if triggered:
@@ -250,7 +277,7 @@ class PostPurchaseAdvisor:
                 position_id=position.id, stock_code=position.stock_code,
                 stock_name=position.stock_name,
                 advice_type=ADVICE_SELL_ALL, urgency="urgent",
-                reason=f"⚠️ 技术止损触发：最低价{ctx.recent_low:.2f} 放量跌破强支撑{ctx.strong_support:.2f}",
+                reason=f"⚠️ 技术止损触发：最低价{ctx.recent_low:.2f} 放量跌破{source}支撑线{support:.2f}",
                 suggested_price=ctx.current_price,
                 suggested_shares=position.total_shares,
                 suggested_amount=position.market_value,

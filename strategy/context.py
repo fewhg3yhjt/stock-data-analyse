@@ -47,6 +47,7 @@ class RuleContext:
     stop_loss_rate: float = 0.15
     drawdown_stop: float = 0.08
     min_profit_for_dd: float = 0.06
+    previous_vol_ma5: float = 0.0
 
     # 富扩展：供 executor 按需放置任意派生输入
     extra: dict = field(default_factory=dict)
