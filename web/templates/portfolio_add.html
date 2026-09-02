@@ -134,14 +134,27 @@ document.getElementById('add-form').addEventListener('submit', async e => {
     btn.innerHTML = originalText;
   }
 });
+async function classifySelectedStock(){
+  const code=document.getElementById('add-code').value.trim();
+  const hint=document.getElementById('classify-hint');
+  if(!code) return;
+  try{
+    const response=await fetch('/api/classify?code='+encodeURIComponent(code));
+    const data=await response.json();
+    if(data.status==='success'){
+      document.getElementById('add-stock-type').value=data.stock_type;
+      const labels={A:'高成长',B:'价值白马',C:'强周期',D:'深度价值',E:'场内 ETF/基金'};
+      hint.textContent='自动分类：'+data.stock_type+' '+(labels[data.stock_type]||'')+' · 行业：'+(data.industry||'未知')+' · ROE：'+(data.roe??'—')+'% · 营收增速：'+(data.rev_growth??'—')+'%（可手动覆盖）';
+    }else hint.textContent='分类失败：'+(data.error||'请手动选择类型');
+  }catch(error){ hint.textContent='分类失败，请手动选择类型'; }
+}
 function applyStockItem(item){
   document.getElementById('add-code').value=item.code || '';
   document.getElementById('add-name').value=item.name || item.code || '';
-  const typeMap={stock:'B',etf:'E'};
-  if(typeMap[item.asset_type]) document.getElementById('add-stock-type').value=typeMap[item.asset_type];
   document.getElementById('classify-hint').textContent='已绑定: '+item.code+'（'+(item.asset_type==='etf'?'场内 ETF':'股票')+'）';
   document.getElementById('name-hint').textContent='已选择 '+(item.name || item.code);
   document.querySelectorAll('.autocomplete-menu').forEach(menu=>{menu.style.display='none';});
+  classifySelectedStock();
   fillPriceByDate();
 }
 function bindStockAutocomplete(inputId, menuId){
@@ -184,6 +197,7 @@ function bindStockAutocomplete(inputId, menuId){
 }
 bindStockAutocomplete('add-name','name-suggestions');
 bindStockAutocomplete('add-code','code-suggestions');
+document.getElementById('add-code').addEventListener('blur', classifySelectedStock);
 document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('add-code').value) classifyStock();
 });
