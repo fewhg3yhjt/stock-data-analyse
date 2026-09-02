@@ -934,17 +934,27 @@ class DashboardService:
             key = StockDataFetcher.normalize_code(p.stock_code)
             groups.setdefault(key, []).append(p)
 
+        # 持仓页的现价/浮盈不能直接使用 portfolio.db 的旧缓存；
+        # 页面打开时复用已有批量实时行情，按实时价重算展示值。
+        live_quotes = self._realtime_enhance(list(groups))
+        live_total_market_value = 0.0
+        live_total_pnl = 0.0
         positions = []
         for key, ps in groups.items():
             base = ps[0]
             latest = ps[-1]  # 最后一条的建议/点位作代表
+            live_price = live_quotes.get(key.replace(".", ""), {}).get("price")
             if len(ps) > 1:
                 # 合并口径: 股数/成本/市值/盈亏汇总，均价加权
                 row = base.to_dict()
                 row["total_shares"] = round(sum(p.total_shares for p in ps), 2)
                 row["total_cost"] = round(sum(p.total_cost for p in ps), 2)
-                row["market_value"] = round(sum(p.market_value for p in ps), 2)
-                row["unrealized_pnl"] = round(sum(p.unrealized_pnl for p in ps), 2)
+                if live_price not in (None, 0):
+                    row["market_value"] = round(row["total_shares"] * float(live_price), 2)
+                    row["unrealized_pnl"] = round(row["market_value"] - row["total_cost"], 2)
+                else:
+                    row["market_value"] = round(sum(p.market_value for p in ps), 2)
+                    row["unrealized_pnl"] = round(sum(p.unrealized_pnl for p in ps), 2)
                 row["unrealized_pnl_pct"] = (
                     round(row["unrealized_pnl"] / row["total_cost"] * 100, 2)
                     if row["total_cost"] else 0.0
@@ -957,6 +967,18 @@ class DashboardService:
                 row = base.to_dict()
                 row["batch_count"] = 1
                 p = base
+                if live_price not in (None, 0):
+                    row["current_price"] = round(float(live_price), 4)
+                    row["market_value"] = round(float(p.total_shares) * float(live_price), 2)
+                    row["unrealized_pnl"] = round(row["market_value"] - float(p.total_cost), 2)
+                    row["unrealized_pnl_pct"] = (
+                        round(row["unrealized_pnl"] / float(p.total_cost) * 100, 2)
+                        if p.total_cost else 0.0
+                    )
+            if live_price not in (None, 0):
+                row["current_price"] = round(float(live_price), 4)
+            live_total_market_value += float(row.get("market_value") or 0)
+            live_total_pnl += float(row.get("unrealized_pnl") or 0)
             advice = self.manager.storage.get_latest_advice(p.id)
             row["left_side"] = row["right_side"] = row["buy_more"] = None
             row["hard_cap"] = None
@@ -975,6 +997,12 @@ class DashboardService:
                 row["advice"] = None
             row["fundamental"] = self._fundamental_snapshot(p.stock_code)
             positions.append(row)
+        # 顶部账户汇总也采用同一批实时价格，避免明细和总览口径不一致。
+        if positions:
+            summary["total_market_value"] = round(live_total_market_value, 2)
+            summary["total_unrealized_pnl"] = round(live_total_pnl, 2)
+            total_cost = float(summary.get("total_cost") or 0)
+            summary["total_pnl_pct"] = round(live_total_pnl / total_cost * 100, 2) if total_cost else 0.0
         pnl_pct = summary.get("total_pnl_pct")
         return {
             "summary": summary,
