@@ -21,6 +21,7 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
 .mode-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:1500;}
 .modal{background:var(--color-surface);border-radius:10px;padding:20px;max-width:520px;width:90%;}
+.scheme-overview{margin-bottom:18px;}.scheme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;}.scheme-card{border:1px solid var(--color-border);border-radius:8px;padding:14px;background:var(--color-surface-subtle);}.scheme-card h3{font-size:15px;margin-bottom:5px;}.scheme-card p{font-size:13px;color:var(--color-text-subtle);min-height:42px;margin-bottom:8px;}.scheme-card .scheme-actions{display:flex;gap:7px;flex-wrap:wrap;}.scheme-guide{border-left:3px solid var(--color-info);padding:8px 12px;margin:8px 0 12px;background:var(--color-surface-subtle);font-size:13px;line-height:1.7;}.rule-guide{margin:-5px 0 10px;padding:8px 10px;border-radius:5px;background:var(--color-surface);border:1px dashed var(--color-border);font-size:12px;color:var(--color-text-subtle);line-height:1.65;}.rule-guide b{color:var(--color-text);}
 </style>
 {% endblock %}
 {% block body %}
@@ -33,7 +34,13 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
     {% set active = 'composer' %}{% include '_nav.html' %}
   </div>
 
-  <div class="notice"><strong>策略编排</strong> 当前页面负责方案编辑和校验，保存草稿不会自动发布；正式发布前请查看版本和影响范围。</div>
+  <div class="notice"><strong>策略编排</strong> 当前页面负责方案编辑和校验，保存草稿不会自动发布；正式发布前请查看版本和影响范围。规则按顺序评估，先命中的高优先级操作生效。</div>
+
+  <div class="ui-card scheme-overview">
+    <h2><i class="fas fa-books"></i> 已有方案与运行逻辑</h2>
+    <div class="scheme-guide"><b>怎么运行：</b>持仓刷新时读取方案快照，先按卖出规则判断风险和止盈，再按买入规则判断是否补仓；规则只生成操作建议，不会自动下单。回测则按每根日 K 的最低价/最高价/收盘价模拟触发。</div>
+    <div id="scheme-overview-list" class="scheme-grid"><div class="help">方案加载中...</div></div>
+  </div>
 
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
@@ -131,8 +138,22 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
 
 <script>
 let RULES = {buy:[], sell:[]};   // [{type,label,kind,description,schema,params}]
-let INDICATORS = {base:[],composite:[],code:[]};
+let INDICATORS = {base:[],composite:[],code:[],business:[],decision:[]};
 let TYPES = [];
+let SCHEMES = [];
+let CURRENT_STRATEGY_SPEC = {};
+const RULE_GUIDE = {
+  support_level:['支撑位分批买入','触发：当日最低价触及支撑源计算出的弱支撑/强支撑/极端低估锚。动作：按批次比例分批买入。'],
+  trend_following:['趋势跟随加仓','触发：趋势、市场状态和反弹幅度等前置条件同时满足。动作：按当前价、MA20、支撑位等分批加仓。'],
+  market_state_arbiter:['市场状态仲裁买入','触发：根据强多头、超买、弱多头/震荡、弱空头、强空头选择分支。动作：跟随、回调挂单、小仓位或禁止操作。'],
+  hard_stop:['硬止损','触发：当前价/最低价跌破成本按股票类型计算的止损线。动作：建议全仓止损。'],
+  technical_stop:['技术止损','触发：放量跌破综合强支撑。动作：建议全仓止损。'],
+  left_side_fixed:['左侧固定止盈','触发：价格进入前高 90%-95%、95%-100% 等配置区间。动作：按区间比例分批减仓。'],
+  right_side_trailing:['右侧移动止盈','触发：突破前高进入右侧跟踪后，从持仓峰值回撤达到按类型配置的阈值。动作：建议清仓。'],
+  logic_stop:['逻辑止损','触发：建仓时记录的核心逻辑/假设被证伪。动作：建议退出。'],
+  price_stop:['价格止损与贝塔保护','触发：价格跌幅、沪深300跌幅及股债收益差满足配置条件。动作：硬止损或转入逻辑审视。'],
+  time_stop:['时间止损','触发：持仓超过限制天数且没有符合条件的进展。动作：按配置减仓或退出。']
+};
 
 function openModal(title){document.getElementById('modal-title').textContent=title;document.getElementById('modal-bg').style.display='flex';}
 function closeModal(){document.getElementById('modal-bg').style.display='none';}
@@ -140,12 +161,39 @@ function closeModal(){document.getElementById('modal-bg').style.display='none';}
 async function init(){
   await loadIndicators();
   await loadRuleSchemas();
+  await loadSchemeOverview();
   document.addEventListener('input', schedulePreview);
   document.addEventListener('change', schedulePreview);
   document.querySelectorAll('#f-types .tag').forEach(t=>t.addEventListener('click',()=>{
     t.classList.toggle('active');
     schedulePreview();
   }));
+}
+
+function escText(value){const div=document.createElement('div');div.textContent=value==null?'':String(value);return div.innerHTML;}
+function schemeSpecHtml(spec){
+  if(!spec || typeof spec!=='object') return '<div class="help">暂无详细运行说明</div>';
+  return Object.entries(spec).map(([key,value])=>`<div><b>${escText(key)}：</b>${escText(Array.isArray(value)?value.join('；'):value)}</div>`).join('');
+}
+function ruleSummaryHtml(rules, kind){
+  return (rules||[]).map(rule=>{const guide=RULE_GUIDE[rule.type]||[rule.type,'运行时按该规则配置判断。']; return `<div class="rule-guide"><b>${kind==='buy'?'买点':'卖点'}：${escText(guide[0])}</b><br>${escText(guide[1])}</div>`;}).join('');
+}
+async function loadSchemeOverview(){
+  try{
+    const response=await fetch('/api/schemes/list'); const data=await response.json();
+    if(data.status!=='success') throw new Error(data.error||'方案加载失败');
+    SCHEMES=data.schemes||[];
+    const el=document.getElementById('scheme-overview-list');
+    el.innerHTML=SCHEMES.map(s=>`<article class="scheme-card"><h3>${escText(s.name)} <span class="tag ${s.is_builtin?'tag-buy':'tag-sell'}">${s.is_builtin?'内置':'自定义'}</span></h3><p>${escText(s.description||'暂无描述')}</p><div class="help">版本 ${escText(s.version)} · 适用：${escText((s.applicable_types||[]).join('、')||'未限定')}</div><div class="scheme-actions"><button class="ui-button ui-button-primary ui-button-sm" onclick="showSchemeGuide('${escText(s.name)}')">查看运行逻辑</button><button class="ui-button ui-button-ghost ui-button-sm" onclick="editScheme('${escText(s.name)}')">编辑配置</button></div></article>`).join('')||'<div class="help">暂无可用方案</div>';
+  }catch(error){document.getElementById('scheme-overview-list').innerHTML=`<div class="error">${escText(error.message)}</div>`;}
+}
+function showSchemeGuide(name){
+  const scheme=SCHEMES.find(s=>s.name===name); if(!scheme)return;
+  let html=`<div class="scheme-guide"><b>方案：</b>${escText(scheme.name)}<br><b>描述：</b>${escText(scheme.description||'暂无')}<br><b>适用类型：</b>${escText((scheme.applicable_types||[]).join('、')||'未限定')}</div>`;
+  html+='<h4>运行逻辑</h4>'+schemeSpecHtml(scheme.strategy_spec);
+  html+='<h4 style="margin-top:12px">买点规则</h4>'+ruleSummaryHtml(scheme.buy_rules,'buy');
+  html+='<h4>卖点规则</h4>'+ruleSummaryHtml(scheme.sell_rules,'sell');
+  document.getElementById('modal-body').innerHTML=html; openModal(name+' · 运行逻辑');
 }
 
 async function loadIndicators(){
@@ -157,7 +205,7 @@ async function loadIndicators(){
 function renderIndicators(){
   const q=(document.getElementById('ind-search').value||'').toLowerCase();
   const el=document.getElementById('ind-list');el.innerHTML='';
-  const groups=[['基础','base','#e8f5e9'],['组合','composite','#fff8e1'],['代码','code','#e3f2fd']];
+    const groups=[['基础','base','#e8f5e9'],['组合','composite','#fff8e1'],['代码','code','#e3f2fd'],['业务','business','#f3f4f6'],['决策规则','decision','#fbe9e7']];
   for(const [label,key,bg] of groups){
     const items=(INDICATORS[key]||[]).filter(i=>i.name.toLowerCase().includes(q));
     if(!items.length)continue;
@@ -166,7 +214,7 @@ function renderIndicators(){
       html+=`<div style="padding:6px 8px;border:1px solid var(--color-border);border-radius:4px;margin-bottom:5px;background:${bg};">
         <span style="font-weight:600">${i.name}</span>
         <span class="help" style="margin-left:6px">${i.expr||'代码指标'}</span>
-        <div class="help">${i.description||''}</div>
+        <div class="help">${i.meaning||i.description||''}</div>
       </div>`;
     }
     el.insertAdjacentHTML('beforeend',html);
@@ -199,6 +247,7 @@ function newScheme(){
   document.getElementById('buy-rules').innerHTML='';
   document.getElementById('sell-rules').innerHTML='';
   document.getElementById('yaml-preview').value='';
+  CURRENT_STRATEGY_SPEC={};
 }
 
 function addRule(kind){
@@ -219,10 +268,12 @@ function renderRule(kind, rule){
   let fields=rule.schema.map(f=>renderField(f, rule)).join('');
   const box=document.createElement('div');
   box.className='rule-box';box.id=id;
-  box.innerHTML=`<div class="rule-head">
-      <h4><span class="tag ${kindColor}">${kind==='buy'?'买点':'卖点'}</span> ${rule.label} <span class="help">${rule.description||''}</span></h4>
-      <button class="ui-button ui-button-danger ui-button-sm" onclick="this.parentElement.parentElement.remove()"><i class="fas fa-trash"></i></button>
-    </div>
+   const guide=RULE_GUIDE[rule.type]||[rule.description||rule.type,'运行时按该规则配置判断。'];
+   box.innerHTML=`<div class="rule-head">
+       <h4><span class="tag ${kindColor}">${kind==='buy'?'买点':'卖点'}</span> ${guide[0]}</h4>
+       <button class="ui-button ui-button-danger ui-button-sm" onclick="this.parentElement.parentElement.remove()"><i class="fas fa-trash"></i></button>
+     </div>
+     <div class="rule-guide"><b>触发与动作：</b>${guide[1]}</div>
     <input type="hidden" data-kind="${kind}" data-type="${rule.type}" data-rule='${JSON.stringify(rule)}'>
     <div class="rule-fields">${fields}</div>`;
   wrap.appendChild(box);
@@ -313,6 +364,7 @@ function collectModel(){
     version:document.getElementById('f-version').value||'1.0',
     description:document.getElementById('f-desc').value||'',
     applicable_types:types.length?types:['A','B','C','D','E'],
+    strategy_spec:CURRENT_STRATEGY_SPEC,
     buy_rules:collectAllRules('buy'),
     sell_rules:collectAllRules('sell'),
     risk:{
@@ -417,6 +469,7 @@ async function loadFromYaml(content){
   const d=await r.json();
   if(d.status!=='success'){showUiMessage('解析失败: '+d.error, 'error');return;}
   const m=d.model;
+  CURRENT_STRATEGY_SPEC=m.strategy_spec || {};
   document.getElementById('f-name').value=m.name;
   document.getElementById('f-version').value=m.version;
   document.getElementById('f-desc').value=m.description;

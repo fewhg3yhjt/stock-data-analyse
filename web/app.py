@@ -1425,6 +1425,9 @@ def api_schemes_list():
                 "name": s.name, "version": s.version,
                 "description": s.description,
                 "applicable_types": list(s.applicable_types),
+                "strategy_spec": SchemeRegistry().get(s.name).strategy_spec,
+                "buy_rules": [{"type": r.type, "params": r.params} for r in SchemeRegistry().get(s.name).buy_rules],
+                "sell_rules": [{"type": r.type, "params": r.params} for r in SchemeRegistry().get(s.name).sell_rules],
                 "enabled": True, "default": False, "is_builtin": True,
                 "source": s.source,
             }
