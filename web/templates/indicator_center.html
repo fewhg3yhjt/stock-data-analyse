@@ -51,7 +51,7 @@
 <script src="{{ static_asset('echarts.min.js') }}"></script>
 <script>
 let indicators = {base:[], composite:[], code:[]};
-const groupMeta = {base:['基础指标','green'], composite:['组合指标','orange'], code:['代码指标','blue']};
+const groupMeta = {base:['基础指标','green'], composite:['组合指标','orange'], code:['代码指标','blue'], business:['业务指标','gray'], decision:['持仓决策规则','red']};
 function escapeHtml(value){const div=document.createElement('div');div.textContent=value || '';return div.innerHTML;}
 async function loadIndicators(){
   const response=await fetch('/api/indicators'); const data=await response.json();
@@ -68,7 +68,7 @@ function renderIndicators(){
       const row=document.createElement('button'); row.className='indicator-row'; row.type='button';
        row.innerHTML=`<strong>${escapeHtml(item.name)} <span class="indicator-info" title="查看指标说明">!</span> ${item.source==='custom' ? '<span class="tag gray">自定义</span>' : '<span class="tag gray">内置</span>'} ${item.enabled===false ? '<span class="tag off">已停用</span>' : ''}</strong><code>${escapeHtml(item.expr || 'Python 代码指标')}</code><span>${escapeHtml(item.description || item.meaning || '暂无说明')}</span>`;
        row.querySelector('.indicator-info').onclick=(event)=>{event.stopPropagation();showIndicatorHelp(event.currentTarget,item);};
-      row.onclick=()=>{document.getElementById('preview-expr').value=item.name; previewExpression();};
+       if(['base','composite','code'].includes(item.kind)) row.onclick=()=>{document.getElementById('preview-expr').value=item.name; previewExpression();};
       if(item.editable){
         const actions=document.createElement('div'); actions.className='indicator-actions';
         actions.innerHTML=`<button class="ui-button ui-button-ghost ui-button-sm" type="button">编辑</button><button class="ui-button ui-button-ghost ui-button-sm" type="button">${item.enabled===false?'启用':'停用'}</button><button class="ui-button ui-button-danger ui-button-sm" type="button">删除</button>`;

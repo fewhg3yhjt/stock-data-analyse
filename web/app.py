@@ -289,7 +289,7 @@ def api_indicators():
         custom = {x["name"]: x for x in __import__(
             "StockInvestmentTool.indicators.store", fromlist=["list_indicators"]
         ).list_indicators()}
-        groups = {"base": [], "composite": [], "code": []}
+        groups = {"base": [], "composite": [], "code": [], "business": [], "decision": []}
         for name in reg.all_names():
             d = reg.get(name)
             if d is None:
@@ -313,6 +313,71 @@ def api_indicators():
                 continue
             item = {**item, **__import__("StockInvestmentTool.indicators.documentation", fromlist=["documentation_for"]).documentation_for(item["name"], fallback=item.get("description", ""))}
             groups.setdefault(item.get("kind", "composite"), []).append(item)
+
+        # 业务指标和持仓决策规则不属于 IndicatorRegistry 的日线数值计算，
+        # 但需要在同一目录中可查询、可解释，避免规则只藏在策略代码里。
+        import yaml
+        from StockInvestmentTool.config import Config
+        catalog_path = Config.BASE_DIR / "config" / "metrics" / "catalog.yaml"
+        catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8")) or {}
+        for metric in catalog.get("metrics", []):
+            if metric.get("category") != "业务指标":
+                continue
+            key = str(metric.get("key") or "")
+            if not key or key in {item["name"] for item in groups["business"]}:
+                continue
+            groups["business"].append({
+                "name": key,
+                "kind": "business",
+                "expr": metric.get("name", key),
+                "description": metric.get("definition", ""),
+                "meaning": metric.get("definition", ""),
+                "calculation": metric.get("definition", "") or "由持仓运行状态维护",
+                "data_requirements": "持仓记录、持仓运行状态与最新行情",
+                "notes": "业务指标，不参与普通日线指标表达式计算。",
+                "applies_to": metric.get("applies_to", ["stock", "etf"]),
+                "source": "builtin",
+                "editable": False,
+                "enabled": True,
+            })
+
+        from StockInvestmentTool.strategy.rule_registry import get_rule_registry
+        rule_docs = {
+            "right_side_trailing": {
+                "name": "右侧移动止盈",
+                "meaning": "进入右侧跟踪阶段后，当前价从持仓峰值回撤达到阈值时建议清仓。",
+                "calculation": "触发条件：current_price <= peak_price × (1 - drawdown_threshold)，阈值按股票类型和策略配置。",
+                "data_requirements": "持仓阶段、持仓峰值、当前实时价格、股票类型、策略快照",
+                "notes": "这是持仓卖出决策规则，不是普通技术指标；只生成建议，不自动下单。",
+            },
+            "left_side_fixed": {
+                "name": "左侧固定止盈",
+                "meaning": "价格进入前高对应的止盈区间后，按策略建议分批减仓。",
+                "calculation": "将当前价与前高比例区间比较，并按区间配置的减持比例生成建议。",
+                "data_requirements": "持仓阶段、前高、当前价格、策略止盈区间",
+                "notes": "这是持仓卖出决策规则，不是普通技术指标。",
+            },
+            "hard_stop": {
+                "name": "硬止损",
+                "meaning": "当前价格跌破持仓硬止损线时建议止损。",
+                "calculation": "current_price <= average_cost × (1 - stop_loss_rate)。",
+                "data_requirements": "持仓成本、当前价格、股票类型、策略风险配置",
+                "notes": "这是风险控制规则，不自动下单。",
+            },
+        }
+        for rule in get_rule_registry().describe():
+            if rule.get("kind") != "sell" or rule.get("type") not in rule_docs:
+                continue
+            doc = rule_docs[rule["type"]]
+            groups["decision"].append({
+                "name": doc["name"], "kind": "decision",
+                "expr": f"sell/{rule['type']}",
+                "description": rule.get("description", ""),
+                "meaning": doc["meaning"], "calculation": doc["calculation"],
+                "data_requirements": doc["data_requirements"], "notes": doc["notes"],
+                "applies_to": ["stock", "etf"], "source": "builtin",
+                "editable": False, "enabled": True,
+            })
         count = sum(len(items) for items in groups.values())
         return flask.jsonify({"status": "success", "groups": groups,
                               "count": count})
