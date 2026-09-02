@@ -26,6 +26,25 @@
   </div>
 
   <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-chart-column"></i> 板块行情概览</span><span class="note">同花顺行业指数 · 按最近 5 个交易日表现排序</span></div>
+    <div class="note market-data-note">当前行情来自已发布的行业日线数据。股票归属统计使用证监会行业分类，两套分类不强行合并。</div>
+    <div class="table-wrap"><table class="ui-table market-table"><thead><tr><th>板块</th><th>最新日期</th><th>收盘</th><th>今日涨跌</th><th>近5日</th><th>判断</th></tr></thead><tbody>
+      {% for board in board_overview %}
+      <tr><td><b>{{ board.name }}</b><br><span class="note">{{ board.industry_id }}</span></td><td>{{ board.latest_date }}</td><td>{{ board.close }}</td><td class="{{ 'positive' if (board.change_pct or 0) >= 0 else 'negative' }}">{{ '%+.2f'|format(board.change_pct or 0) }}%</td><td class="{{ 'positive' if (board.change_5d_pct or 0) >= 0 else 'negative' }}">{{ '%+.2f'|format(board.change_5d_pct or 0) }}%</td><td><span class="tag {{ 'green' if board.trend == '上涨' else ('red' if board.trend == '下跌' else 'gray') }}">{{ board.trend }}</span></td></tr>
+      {% endfor %}
+    </tbody></table></div>
+  </div>
+
+  <div class="ui-card">
+    <div class="ui-card-header"><span><i class="fas fa-sitemap"></i> 股票行业归属覆盖</span><span class="note">证监会行业分类 · 快照 {{ industry_membership.snapshot_date or '暂无' }}</span></div>
+    <div class="stat-grid compact-stats"><div class="stat-card"><div class="value">{{ industry_membership.total_stocks or 0 }}</div><div class="label">有效股票总数</div></div><div class="stat-card"><div class="value">{{ industry_membership.covered_stocks or 0 }}</div><div class="label">已有行业归属</div></div><div class="stat-card"><div class="value">{{ industry_membership.uncovered_stocks or 0 }}</div><div class="label">未归属/历史标的</div></div><div class="stat-card"><div class="value">{{ industry_membership.coverage_pct or 0 }}%</div><div class="label">行业归属覆盖率</div></div></div>
+    <div class="note market-data-note">未归属标的不会被硬塞进某个板块；主要是退市、暂停上市或行业源未返回的历史代码。</div>
+    <div class="table-wrap"><table class="ui-table market-table"><thead><tr><th>证监会行业</th><th>股票数量</th><th>占有效股票</th></tr></thead><tbody>
+      {% for industry in industry_membership.industries or [] %}<tr><td>{{ industry.name }}</td><td>{{ industry.count }}</td><td>{{ '%.2f'|format(industry.count / industry_membership.total_stocks * 100) if industry_membership.total_stocks else '0.00' }}%</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
+
+  <div class="ui-card">
     <div class="ui-card-header"><span><i class="fas fa-landmark"></i> 指数走势</span><a class="ui-button" href="/market-discovery">进入个股发现</a></div>
     <div class="chart" id="chart-index"></div>
   </div>

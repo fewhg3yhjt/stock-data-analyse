@@ -3067,14 +3067,20 @@ def market_page():
         indices = {"沪深300": "sh.000300", "上证指数": "sh.000001",
                    "深证成指": "sz.399001", "创业板指": "sz.399006"}
         board_names = svc.board_names()
+        board_overview = svc.board_overview()
+        industry_membership = svc.industry_membership_overview()
         positions_codes = [{"code": p["stock_code"], "name": p["stock_name"]}
                            for p in svc.war_room()["positions"]]
         return flask.render_template("market.html", indices=indices,
                                      board_names=board_names,
+                                     board_overview=board_overview,
+                                     industry_membership=industry_membership,
                                      positions_codes=positions_codes, error=None)
     except Exception as e:
         logger.exception("大盘页加载失败")
         return flask.render_template("market.html", indices={}, board_names=[],
+                                     board_overview=[],
+                                     industry_membership={},
                                      positions_codes=[], error=str(e))
 
 

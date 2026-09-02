@@ -1210,6 +1210,87 @@ class DashboardService:
             logger.warning("行业板块列表获取失败: %s", e)
             return []
 
+    def board_overview(self, days: int = 120) -> list[dict]:
+        """返回全部同花顺板块行情概览（最新价、涨跌、趋势）。"""
+        import pandas as pd
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        warehouse = Warehouse()
+        frames = []
+        for month in warehouse.available_months("industry_daily"):
+            frame = warehouse._read_partition(warehouse.base_dir / "industry_daily", month)
+            if frame is not None and not frame.empty:
+                frames.append(frame)
+        if not frames:
+            return []
+        data = pd.concat(frames, ignore_index=True)
+        data["trading_date"] = pd.to_datetime(data["trading_date"], errors="coerce")
+        data["close"] = pd.to_numeric(data["close"], errors="coerce")
+        data = data.dropna(subset=["trading_date", "close"])
+        data = data.sort_values(["industry_name", "trading_date"]).drop_duplicates(
+            ["industry_name", "trading_date"], keep="last"
+        )
+        result = []
+        for name, group in data.groupby("industry_name", sort=False):
+            group = group.tail(max(2, int(days)))
+            latest = group.iloc[-1]
+            previous = group.iloc[-2] if len(group) > 1 else None
+            close = float(latest["close"])
+            prev_close = float(previous["close"]) if previous is not None else None
+            change_pct = ((close / prev_close - 1) * 100) if prev_close else None
+            base = float(group.iloc[-6]["close"]) if len(group) >= 6 else float(group.iloc[0]["close"])
+            change_5d = ((close / base - 1) * 100) if base else None
+            trend = "上涨" if change_5d is not None and change_5d > 1 else (
+                "下跌" if change_5d is not None and change_5d < -1 else "震荡"
+            )
+            result.append({
+                "name": str(name),
+                "industry_id": str(latest.get("industry_id") or ""),
+                "latest_date": latest["trading_date"].strftime("%Y-%m-%d"),
+                "close": round(close, 2),
+                "change_pct": round(change_pct, 2) if change_pct is not None else None,
+                "change_5d_pct": round(change_5d, 2) if change_5d is not None else None,
+                "trend": trend,
+            })
+        return sorted(result, key=lambda item: (item["change_5d_pct"] is None,
+                                                  -(item["change_5d_pct"] or 0)))
+
+    def industry_membership_overview(self) -> dict:
+        """返回最新证监会行业归属覆盖统计及各行业股票数量。"""
+        import pandas as pd
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        warehouse = Warehouse()
+        files = [
+            warehouse.base_dir / "industry_membership" / f"{day}.parquet"
+            for day in sorted(
+                path.stem for path in (warehouse.base_dir / "industry_membership").glob("*.parquet")
+            )
+        ]
+        files = [path for path in files if path.exists()]
+        if not files:
+            return {"snapshot_date": None, "total_stocks": 0, "covered_stocks": 0,
+                    "uncovered_stocks": 0, "coverage_pct": 0, "industries": []}
+        frame = pd.read_parquet(files[-1])
+        frame["code"] = frame["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+        frame = frame.drop_duplicates(["code", "industry_classification"])
+        stock_codes = set(warehouse.all_codes())
+        stock_types = warehouse.instrument_types()
+        stock_codes = {code for code in stock_codes if stock_types.get(code, "stock") == "stock"}
+        covered = set(frame["code"])
+        covered &= stock_codes
+        counts = (frame[frame["code"].isin(stock_codes)]
+                  .groupby("industry_name")["code"].nunique()
+                  .sort_values(ascending=False))
+        return {
+            "snapshot_date": str(frame["snapshot_date"].iloc[0])[:10] if len(frame) else None,
+            "total_stocks": len(stock_codes),
+            "covered_stocks": len(covered),
+            "uncovered_stocks": len(stock_codes - covered),
+            "coverage_pct": round(len(covered) / len(stock_codes) * 100, 2) if stock_codes else 0,
+            "industries": [{"name": str(name), "count": int(count)} for name, count in counts.items()],
+        }
+
     def stock_chart(self, code: str) -> dict:
         """单只股票 K 线 + advisor 点位（止损/止盈/补仓线，供持仓图叠加）。"""
         from StockInvestmentTool.portfolio.monitor import PriceMonitor
