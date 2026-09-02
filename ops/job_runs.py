@@ -26,7 +26,7 @@ class JobRunStore:
         """
         result = result or {}
         status = result.get("status")
-        if status in {"success", "failed", "partial_success", "skipped", "cancelled"}:
+        if status in {"success", "failed", "partial_success", "skipped", "cancelled", "timeout"}:
             return status
         if result.get("ok") is False:
             return "failed"
@@ -138,16 +138,19 @@ class JobRunStore:
 
     def finish(self, run_id: int, status: str = "success", result: Optional[dict] = None,
                error: str = "") -> None:
+        now = datetime.now().isoformat(timespec="seconds")
         with self._connect() as conn:
-            conn.execute(
+            updated = conn.execute(
                 """UPDATE job_runs SET finished_at=?,status=?,result=?,error=?,
                    progress=CASE WHEN ? IN ('success','skipped') THEN 100 ELSE progress END,
                    updated_at=? WHERE id=?""",
-                (datetime.now().isoformat(timespec="seconds"), status,
+                (now, status,
                   json.dumps(result or {}, ensure_ascii=False, default=str), str(error)[:2000],
                    status,
-                   datetime.now().isoformat(timespec="seconds"), run_id),
+                   now, run_id),
             )
+            if updated.rowcount != 1:
+                return
         try:
             from StockInvestmentTool.ops.task_center import TaskCenter
             TaskCenter(self.db_path).event(
@@ -156,6 +159,43 @@ class JobRunStore:
             )
         except Exception:
             pass
+        if status in {"failed", "timeout"}:
+            self._enqueue_failure_notification(run_id, status, result or {}, error)
+
+    def _enqueue_failure_notification(self, run_id: int, status: str,
+                                      result: dict, error: str) -> None:
+        """Create a durable TASK_FAILED outbox event; never send SMTP here."""
+        try:
+            from StockInvestmentTool.biz.notification import NT_TASK_FAILED, NotificationService
+
+            job = self.get(run_id) or {}
+            task_name = job.get("display_name") or job.get("job_name") or "任务"
+            message = error or result.get("error") or (
+                "任务达到 deadline" if status == "timeout" else "任务执行失败")
+            subject = f"任务失败通知：{task_name}"
+            service = NotificationService()
+            event = service.create_event(
+                event_type=NT_TASK_FAILED,
+                subject_type="task_run", subject_id=str(run_id), priority=3,
+                payload={"subject": subject, "text": f"{task_name}（运行 #{run_id}）\n状态：{status}\n原因：{message}",
+                         "run_id": run_id, "job_name": job.get("job_name", ""),
+                         "status": status, "error": message, "result": result},
+                data_as_of=job.get("run_date") or job.get("started_at", "")[:10],
+                action="failure", trigger_fingerprint=f"job-run|{run_id}",
+            )
+            recipient = __import__("os").getenv("EMAIL_TO", "")
+            if recipient:
+                existing = service.repo.db.fetchone(
+                    "SELECT delivery_id FROM notification_deliveries "
+                    "WHERE event_id=? AND channel=? AND recipient=?",
+                    (event.event_id, "email", recipient),
+                )
+                if existing is None:
+                    service.create_delivery(event, "email", recipient,
+                                            template="task_failed")
+        except Exception as exc:  # notification failure must not alter task result
+            import logging
+            logging.getLogger(__name__).warning("创建任务失败通知事件失败: %s", exc)
 
     def update_progress(self, run_id: int, *, phase: str = "", progress: int = 0,
                         processed: int | None = None, total: int | None = None,

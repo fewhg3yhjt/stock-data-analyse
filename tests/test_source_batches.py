@@ -92,3 +92,29 @@ def test_daily_capture_requires_explicit_date_range(tmp_path):
     collector = MarketCollector(warehouse=Warehouse(tmp_path / "warehouse"), query_interval=0)
     with pytest.raises(ValueError, match="必须显式传入"):
         collector.sync_daily(symbols=["sh600000"], source="tencent", target="raw:tencent")
+
+
+def test_daily_capture_timeout_marks_unprocessed_symbols_failed(tmp_path, monkeypatch):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    collector = MarketCollector(warehouse=warehouse, query_interval=0)
+    calls = []
+
+    def fake_fetch(code, start, end, request_timeout=None):
+        calls.append(code)
+        return pd.DataFrame({
+            "date": pd.to_datetime(["2026-08-28"]), "code": [code],
+            "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+            "volume": [100], "amount": [1000], "turn": [1.0],
+        })
+
+    monkeypatch.setattr(collector, "_fetch_symbol_tencent", fake_fetch)
+    result = collector.sync_daily(
+        start_date="2026-08-28", end_date="2026-08-28",
+        symbols=["sh600000", "sh600001", "sh600002"], source="tencent",
+        timeout=0,
+    )
+
+    assert result["timed_out"] is True
+    assert result["status"] == "timeout"
+    assert result["failed"] == ["sh600000", "sh600001", "sh600002"]
+    assert calls == []

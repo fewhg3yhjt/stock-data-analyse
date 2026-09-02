@@ -38,6 +38,11 @@ _KEEP_COLS = [
 
 # baostock 请求限速：每次查询间最小间隔，避免触发黑名单
 _MIN_QUERY_INTERVAL = 0.3
+_DEFAULT_TENCENT_TIMEOUT = 15.0
+
+
+class CollectionTimeout(TimeoutError):
+    """单次采集任务达到 deadline。"""
 
 
 class MarketCollector:
@@ -45,13 +50,16 @@ class MarketCollector:
 
     def __init__(self, warehouse: Optional[Warehouse] = None,
                  fetcher: Optional[StockDataFetcher] = None,
-                 query_interval: Optional[float] = None):
+                 query_interval: Optional[float] = None,
+                 tencent_timeout: Optional[float] = None):
         self.warehouse = warehouse or Warehouse()
         self._fetcher = fetcher
         self._last_query = 0.0
         # 查询节流间隔（秒）：大流量采集时调大更安全，防 baostock 限流/封 IP
         self.query_interval = query_interval if query_interval is not None \
             else float(os.getenv("BAOSTOCK_QUERY_INTERVAL", str(_MIN_QUERY_INTERVAL)))
+        self.tencent_timeout = tencent_timeout if tencent_timeout is not None else float(
+            os.getenv("TENCENT_HTTP_TIMEOUT", str(_DEFAULT_TENCENT_TIMEOUT)))
 
     @property
     def fetcher(self) -> StockDataFetcher:
@@ -172,7 +180,8 @@ class MarketCollector:
 
     # ── 腾讯历史K线数据源（备胎/主源，不封IP）──────────────
 
-    def _fetch_symbol_tencent(self, code: str, start: str, end: str) -> pd.DataFrame:
+    def _fetch_symbol_tencent(self, code: str, start: str, end: str,
+                              request_timeout: Optional[float] = None) -> pd.DataFrame:
         """用腾讯 newfqkline 接口拉取单只标的日线（前复权，含成交额/换手率）。
 
         接口: proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get
@@ -192,7 +201,8 @@ class MarketCollector:
 
         param = f"{code_tencent},day,{start},{end},{count},qfq"
         try:
-            resp = requests.get(url, params={"param": param}, timeout=15)
+            resp = requests.get(url, params={"param": param},
+                                timeout=request_timeout if request_timeout is not None else self.tencent_timeout)
             resp.raise_for_status()
         except Exception as e:
             raise ConnectionError(f"腾讯K线拉取失败 {code}: {e}") from e
@@ -256,8 +266,10 @@ class MarketCollector:
                    target: str = "daily",
                    progress_callback=None, job_run_id: Optional[int] = None,
                    capture_raw: Optional[bool] = None,
-                   asset_types: Optional[list[str]] = None,
-                   force_refresh: bool = False) -> dict:
+                    asset_types: Optional[list[str]] = None,
+                    force_refresh: bool = False,
+                    timeout: Optional[float] = None,
+                    deadline: Optional[float | datetime] = None) -> dict:
         """全市场日线增量同步（核心）。
 
         Args:
@@ -281,6 +293,15 @@ class MarketCollector:
                 "sync_daily 必须显式传入 start_date 和 end_date；"
                 "禁止隐式拉取历史区间"
             )
+
+        started_monotonic = time.monotonic()
+        if timeout is not None:
+            deadline = started_monotonic + max(0.0, float(timeout))
+        elif isinstance(deadline, datetime):
+            deadline = started_monotonic + max(0.0, (deadline - datetime.now()).total_seconds())
+
+        def _deadline_reached() -> bool:
+            return deadline is not None and time.monotonic() >= float(deadline)
 
         if symbols is None:
             items = self.list_market(include_etf=include_etf,
@@ -326,6 +347,7 @@ class MarketCollector:
 
         added = 0
         failed: list[str] = []
+        timed_out = False
         skipped = 0
         t0 = time.time()
 
@@ -393,6 +415,10 @@ class MarketCollector:
 
         end_ts = pd.Timestamp(end_date)
         for i, code in enumerate(symbols, 1):
+            if _deadline_reached():
+                timed_out = True
+                failed.extend(symbols[i - 1:])
+                break
             if progress_callback:
                 progress_callback(i - 1, len(symbols), code, "读取日线")
             # 增量判断：该标的自有最后日期 >= end_date → 已覆盖，跳过
@@ -416,14 +442,34 @@ class MarketCollector:
 
             try:
                 if source == "tencent":
-                    df = self._fetch_symbol_tencent(code, fetch_start, end_date)
+                    remaining = (float(deadline) - time.monotonic()) if deadline is not None else None
+                    if remaining is not None and remaining <= 0:
+                        raise CollectionTimeout("采集任务已超时")
+                    if remaining is None:
+                        df = self._fetch_symbol_tencent(code, fetch_start, end_date)
+                    else:
+                        df = self._fetch_symbol_tencent(code, fetch_start, end_date,
+                                                        request_timeout=remaining)
                 else:
                     df = self._fetch_symbol(code, fetch_start, end_date)
+            except CollectionTimeout:
+                timed_out = True
+                failed.append(code)
+                failed.extend(symbols[i:])
+                logger.warning("采集任务超时，剩余 %d 个标的未处理", len(symbols) - i + 1)
+                if progress_callback:
+                    progress_callback(i, len(symbols), code, "任务超时")
+                break
             except Exception as e:
                 failed.append(code)
                 logger.warning("拉取 %s 失败: %s", code, e)
+                if _deadline_reached():
+                    timed_out = True
+                    failed.extend(symbols[i:])
                 if progress_callback:
-                    progress_callback(i, len(symbols), code, "拉取失败")
+                    progress_callback(i, len(symbols), code, "任务超时" if timed_out else "拉取失败")
+                if timed_out:
+                    break
                 continue
             if df.empty:
                 skipped += 1
@@ -473,12 +519,13 @@ class MarketCollector:
                 if raw_writer is None:
                     raise ValueError("Raw Batch 写入失败或没有可写数据")
                 raw_result = raw_writer.finish()
-                batch_status = "partial_success" if failed else "success"
+                batch_status = "failed" if timed_out and not added else ("partial_success" if failed else "success")
                 batch_store.finish(batch_id, success_symbols=len(symbols) - len(failed) - skipped,
                                    failed_symbols=len(failed), skipped_symbols=skipped,
                                    row_count=raw_result["row_count"], raw_path=str(raw_result["path"]),
                                    checksum=raw_result["checksum"], file_size=raw_result["file_size"],
-                                   status=batch_status, failure_details=failed)
+                                    status=batch_status, error_summary="采集任务超时" if timed_out else "",
+                                    failure_details=failed)
             except Exception as exc:
                 raw_capture_failed = True
                 logger.error("Raw Batch 写入失败，不阻断旧 daily: %s", exc)
@@ -490,8 +537,10 @@ class MarketCollector:
                     added, len(failed), elapsed)
         if raw_writer is not None:
             raw_writer.abort()
+        status = "timeout" if timed_out else ("partial_success" if failed and added else None)
         return {"added_rows": added, "symbols": len(symbols),
                 "failed": failed, "up_to_date": not failed and added == 0,
+                "status": status, "timed_out": timed_out,
                 "rows": added, "elapsed_sec": round(elapsed, 1),
                 "source_batch_id": batch_id, "source_batch_ids": [batch_id] if batch_id else [],
                 "raw_capture_failed": raw_capture_failed,

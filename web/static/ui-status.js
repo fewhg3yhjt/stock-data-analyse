@@ -7,6 +7,7 @@ window.UI_STATUS = {
   partial_success: {label: '部分可用', runLabel: '部分完成', cls: 'status-partial', tone: 'partial'},
   critical: {label: '异常', cls: 'status-critical', tone: 'critical'},
   failed: {label: '失败', runLabel: '执行失败', cls: 'status-failed', tone: 'critical'},
+  timeout: {label: '超时', runLabel: '执行超时', cls: 'status-failed', tone: 'critical'},
   running: {label: '运行中', cls: 'status-running', tone: 'running'},
   deferred: {label: '延期', cls: 'status-deferred', tone: 'unknown'},
   disabled: {label: '未启用', cls: 'status-disabled', tone: 'unknown'},

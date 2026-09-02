@@ -107,10 +107,11 @@ def _job_context(job_names: set[str], job_runs) -> tuple[Optional[dict], Optiona
 def _apply_job_state(item: DatasetStatus, latest_job: Optional[dict], success_job: Optional[dict]) -> None:
     if success_job:
         item.last_success_at = success_job.get("finished_at") or success_job.get("started_at")
-    if latest_job and latest_job.get("status") == "failed":
+    if latest_job and latest_job.get("status") in {"failed", "timeout"}:
         item.status = "failed"
         item.last_failure_at = latest_job.get("finished_at") or latest_job.get("started_at")
-        item.last_error = latest_job.get("error") or "最近一次任务失败"
+        item.last_error = latest_job.get("error") or (
+            "最近一次任务超时" if latest_job.get("status") == "timeout" else "最近一次任务失败")
 
 
 def _classify_daily_task(item: DatasetStatus, latest_job: Optional[dict], current: datetime) -> None:
@@ -120,15 +121,19 @@ def _classify_daily_task(item: DatasetStatus, latest_job: Optional[dict], curren
             item.last_error = latest_job.get("phase") or "日线任务执行中"
             return
         _apply_job_state(item, latest_job, latest_job if latest_job.get("status") == "success" else None)
+        if latest_job.get("status") == "timeout":
+            item.status = "failed"
+            item.last_failure_at = latest_job.get("finished_at") or latest_job.get("started_at")
+            item.last_error = latest_job.get("error") or "日线任务超时"
         return
     close = _daily_close_time()
     scheduled = current.replace(hour=close.hour, minute=close.minute, second=0, microsecond=0)
     if current < scheduled:
         item.status = "waiting_close"
-        item.last_error = f"等待今日收盘及 {spec} 日线任务计划时间"
+        item.last_error = f"等待今日收盘及 {close.strftime('%H:%M')} 日线任务计划时间"
     else:
         item.status = "failed"
-        item.last_error = f"今日日线任务未执行（计划时间 {spec}）"
+        item.last_error = f"今日日线任务未执行（计划时间 {close.strftime('%H:%M')}）"
 
 
 def classify_freshness(dataset_latest: Optional[str], expected_trade_day: date) -> str:

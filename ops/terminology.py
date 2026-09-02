@@ -25,7 +25,7 @@ STATUS_LABELS = {
     "requested": "已请求", "scheduled": "已排期", "waiting": "等待执行",
     "running": "执行中", "success": "已完成", "partial_success": "部分完成",
     "skipped": "已跳过", "failed": "执行失败", "cancelled": "已取消",
-    "blocked": "已阻断", "healthy": "正常", "partial": "部分可用",
+    "blocked": "已阻断", "timeout": "超时", "healthy": "正常", "partial": "部分可用",
     "stale": "待更新", "critical": "异常", "empty": "暂无数据",
 }
 

@@ -73,7 +73,7 @@ class TaskCenterService:
                 "running": bool(running),
                 "has_history": bool(latest),
                 "latest_success": latest if latest and latest.get("status") in ("success", "partial_success") else None,
-                "latest_failure": latest if latest and latest.get("status") == "failed" else None,
+                 "latest_failure": latest if latest and latest.get("status") in ("failed", "timeout") else None,
             }
             if stage and dto["stage"] != stage:
                 continue

@@ -104,7 +104,7 @@ class TaskRunner:
                                 output_dataset=task_key)
             runs.append(item)
             parent_run_id = item["run_id"]
-            if item["status"] == "failed":
+            if item["status"] in {"failed", "timeout"}:
                 break
         return {"request_ids": [item["request_id"] for item in runs], "runs": runs,
                 "status": runs[-1]["status"] if runs else "failed"}

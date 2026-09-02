@@ -68,6 +68,18 @@ def _parse_time(spec: str) -> tuple[int, int]:
         return 15, 35
 
 
+def _daily_timeout() -> float:
+    raw = os.getenv("WAREHOUSE_DAILY_TIMEOUT", "1800")
+    try:
+        value = float(raw)
+        if value <= 0:
+            raise ValueError
+        return value
+    except (TypeError, ValueError):
+        logger.warning("WAREHOUSE_DAILY_TIMEOUT 格式错误(%s)，使用默认 1800 秒", raw)
+        return 1800.0
+
+
 def run_daily_tasks(run_id: int | None = None) -> dict:
     """每日自动任务主体。"""
     logger.info("=== 每日自动任务开始 ===")
@@ -222,6 +234,7 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
             start_date=start_date, end_date=end_date, include_etf=True,
             include_index=False, source="tencent", progress_callback=progress,
             job_run_id=run_id,
+            timeout=_daily_timeout(),
         )
         if os.getenv("WAREHOUSE_PIPELINE_BUILD") == "1" and result["daily"].get("source_batch_id"):
             result["published_daily"] = publish_daily_batch(result["daily"]["source_batch_id"], run_id)
@@ -229,7 +242,7 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
             result["auxiliary"] = run_auxiliary_data_pipeline(parent_run_id=run_id)
         daily_status = store.result_status(result["daily"])
         child_statuses.append(daily_status)
-        if daily_status == "failed":
+        if daily_status in {"failed", "timeout"}:
             raise RuntimeError("日线同步未产生有效产出")
         store.update_progress(run_id, phase="日线完成，开始重建指标", progress=33,
                               processed=1, total=2)
@@ -508,6 +521,7 @@ def _schedule_configured_data_tasks(scheduler) -> None:
             "period_start": trading_date, "period_end": trading_date,
         }
         if task_key == "stock_daily_capture":
+            payload["task_timeout"] = _daily_timeout()
             configured_keys = TaskCenter(management_db_path()).active_configs()
             chain = [key for key in ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
                                      "stock_daily_publish", "indicators_build")

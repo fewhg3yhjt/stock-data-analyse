@@ -44,10 +44,12 @@ def _batch(warehouse: Warehouse, batch_id: str) -> Path:
 
 def _capture(warehouse: Warehouse, request: dict, run_id: int) -> dict:
     symbols = _symbols(request)
+    task_timeout = request.get("task_timeout")
     result = MarketCollector(warehouse=warehouse, query_interval=0.3).sync_daily(
         start_date=request.get("period_start"), end_date=request.get("period_end"), symbols=symbols,
         include_etf=True, source="tencent", target="raw:tencent", capture_raw=True,
-        flush_every=10, job_run_id=run_id, asset_types=["stock", "etf"])
+         flush_every=10, job_run_id=run_id, asset_types=["stock", "etf"],
+         timeout=float(task_timeout) if task_timeout is not None else None)
     if not result.get("source_batch_id") or result.get("raw_capture_failed"):
         raise RuntimeError("Raw Batch 未成功落盘")
     return result
@@ -198,6 +200,15 @@ def worker(task_key: str, warehouse: Warehouse, request: dict, run_id: int) -> d
     if task_key == "indicators_build":
         return IndicatorsBuilder(warehouse, allow_legacy=False).build_all(
             symbols=_symbols(request), asset_types=["stock", "etf"], months=_months(request.get("period_start"), request.get("period_end")),
+            partition_versions=request.get("input_versions") or None)
+    if task_key == "industry_features_build":
+        from StockInvestmentTool.warehouse.industry_features import IndustryFeaturesBuilder
+        end = request.get("period_end") or request.get("as_of")
+        start = request.get("period_start") or end
+        if not end:
+            raise ValueError("industry_features_build requires period_end/as_of")
+        return IndustryFeaturesBuilder(warehouse, allow_legacy=False).build(
+            start_date=start, end_date=end, as_of=request.get("as_of") or end,
             partition_versions=request.get("input_versions") or None)
     if task_key in {"industry_capture", "industry_membership_capture", "industry_daily_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture"}:
         return _auxiliary(warehouse, request, task_key)
