@@ -106,7 +106,7 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
 
       <div style="display:flex;gap:10px;margin-top:6px;">
          <button class="ui-button ui-button-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
-         <button class="ui-button ui-button-secondary" onclick="validateRun()"><i class="fas fa-flask"></i> 样本验证</button>
+         <button id="validate-button" class="ui-button ui-button-secondary" onclick="validateRun()"><i class="fas fa-flask"></i> 样本验证</button>
          <input id="validate-code" value="sh.600900" placeholder="样本股票代码" style="width:130px;">
         <button class="ui-button ui-button-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
         <span class="help" id="save-hint"></span>
@@ -495,16 +495,25 @@ async function validateYaml(content){
 
 async function validateRun(){
   const hint=document.getElementById('validate-hint');
+  const button=document.getElementById('validate-button');
   const preview=document.getElementById('yaml-preview');
   if(!preview.value.trim()){await renderPreview();}
   if(!preview.value.trim() || preview.value.startsWith('# 生成失败')){hint.textContent='请先生成有效 YAML';return;}
-  hint.textContent='样本回测中…';
-  const r=await fetch('/api/schemes/validate-run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:preview.value,code:document.getElementById('validate-code').value.trim()})});
-  const d=await r.json();
-  if(d.status==='success'){
-    hint.textContent=`✓ 可执行：${d.trades} 笔交易，收益 ${d.total_return}%，最大回撤 ${d.max_drawdown}%`;
-    hint.style.color='var(--color-success)';
-  }else{hint.textContent='样本验证失败：'+d.error;hint.style.color='var(--color-danger)';}
+  hint.textContent='样本回测中，请稍候…'; hint.style.color='var(--color-text-subtle)';
+  button.disabled=true;
+  try{
+    const r=await fetch('/api/schemes/validate-run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:preview.value,code:document.getElementById('validate-code').value.trim()})});
+    const d=await r.json();
+    if(d.status==='success'){
+      hint.textContent=`✓ 回测完成：${d.trades} 笔交易 · 策略收益 ${d.total_return}% · 最大回撤 ${d.max_drawdown}% · 权益点 ${d.equity_points}`;
+      hint.style.color='var(--color-success)';
+      const detail=document.getElementById('validate-detail') || document.createElement('div');
+      detail.id='validate-detail'; detail.className='scheme-guide';
+      detail.innerHTML='<b>样本结果：</b>'+ (d.trades_detail||[]).slice(-8).map(t=>`${t.date||'—'} · ${t.type||'交易'} · 价格 ${t.price??'—'} · 数量 ${t.shares??'—'} · ${t.reason||''}`).join('<br>') || '<b>样本结果：</b>回测期间没有触发交易。';
+      hint.parentElement.appendChild(detail);
+    }else{hint.textContent='样本验证失败：'+(d.error||'未知错误');hint.style.color='var(--color-danger)';}
+  }catch(error){hint.textContent='样本验证失败：'+(error.message||'网络异常');hint.style.color='var(--color-danger)';}
+  finally{button.disabled=false;}
 }
 
 async function saveScheme(){

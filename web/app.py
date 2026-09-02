@@ -1311,10 +1311,14 @@ def api_schemes_validate_run():
         )
         detail = result.get("backtest", {})
         equity = detail.get("equity_curve") or []
-        peak = float(equity[0]) if equity else 0.0
+        equity_values = [
+            item.get("total_asset") if isinstance(item, dict) else item
+            for item in equity
+        ]
+        equity_values = [float(value) for value in equity_values if value is not None]
+        peak = equity_values[0] if equity_values else 0.0
         max_drawdown = 0.0
-        for value in equity:
-            value = float(value)
+        for value in equity_values:
             peak = max(peak, value)
             if peak > 0:
                 max_drawdown = min(max_drawdown, value / peak - 1)
@@ -1324,7 +1328,8 @@ def api_schemes_validate_run():
             "total_return": detail.get("total_return"),
             "max_drawdown": round(max_drawdown * 100, 2),
             "final_cash": detail.get("final_cash"),
-            "equity_points": len(equity),
+            "equity_points": len(equity_values),
+            "trades_detail": detail.get("trades", []),
         })
     except (ValueError, KeyError, TypeError) as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400

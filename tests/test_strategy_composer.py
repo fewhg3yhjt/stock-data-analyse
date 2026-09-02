@@ -119,11 +119,14 @@ def test_builtin_scheme_toggle_and_default_protected(client):
     assert client.post("/api/schemes/default", json={"name": "default_value"}).status_code == 400
 
 
-def test_validate_run_rejects_short_sample(client):
+def test_validate_run_returns_backtest_result(client):
     model = _sample_model()
     yaml_out = client.post("/api/schemes/compose", json=model).get_json()["yaml"]
     r = client.post("/api/schemes/validate-run", json={"content": yaml_out, "code": "sh.600900"})
-    # The endpoint may fail before data access in a test environment, but it
-    # must always return a structured client error rather than mutate schemes.
-    assert r.status_code in (400, 500)
-    assert r.get_json().get("status") == "error"
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["status"] == "success"
+    assert isinstance(data["trades"], int)
+    assert "total_return" in data
+    assert "max_drawdown" in data
+    assert data["equity_points"] > 0
