@@ -20,6 +20,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
 .btn-primary{background:var(--color-info);color:#fff;width:100%;justify-content:center;}
 .btn-primary:hover{background:var(--color-info);}
 .hint{font-size:12px;color:var(--color-text-subtle);}
+.autocomplete-field{position:relative;}.autocomplete-menu{position:absolute;left:0;right:0;top:100%;z-index:20;display:none;max-height:260px;overflow:auto;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;box-shadow:0 8px 20px rgba(0,0,0,.14);}.autocomplete-option{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:9px 11px;border:0;border-bottom:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);text-align:left;cursor:pointer;font-size:13px;}.autocomplete-option:last-child{border-bottom:0;}.autocomplete-option:hover,.autocomplete-option.active{background:var(--color-surface-subtle);}.autocomplete-option small{color:var(--color-text-subtle);white-space:nowrap;}
 .toast{position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;padding:12px 20px;border-radius:6px;font-size:14px;z-index:2000;display:none;}
 @media(max-width:600px){.form-row{grid-template-columns:1fr;}}
 </style>
@@ -34,9 +35,11 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;backgr
     <div class="ui-card-header">录入已买入的持仓</div>
     <form id="add-form" autocomplete="off">
       <div class="form-row">
-        <div class="ui-field"><label>股票代码 *</label><input name="code" id="add-code" value="{{ prefill.code }}" placeholder="sh.600900" required onblur="classifyStock();lookupName()">
+        <div class="ui-field autocomplete-field"><label>股票代码 *</label><input name="code" id="add-code" value="{{ prefill.code }}" placeholder="输入代码或名称关键词" required autocomplete="off">
+          <div id="code-suggestions" class="autocomplete-menu"></div>
           <span class="hint" id="classify-hint">6xx/9xx 沪市 · 0xx/2xx/3xx 深市 · 输入代码后自动识别类型</span></div>
-        <div class="ui-field"><label>股票名称 *</label><input name="name" id="add-name" value="{{ prefill.name }}" placeholder="输入名称搜索，如许继电气" list="stock-name-options" autocomplete="off" required><datalist id="stock-name-options"></datalist><span class="hint" id="name-hint">输入名称后选择对应标的，系统会自动回填股票代码</span></div>
+        <div class="ui-field autocomplete-field"><label>股票名称 *</label><input name="name" id="add-name" value="{{ prefill.name }}" placeholder="输入名称或代码关键词" autocomplete="off" required>
+          <div id="name-suggestions" class="autocomplete-menu"></div><span class="hint" id="name-hint">输入名称或代码后，从下方候选中选择，系统会自动绑定股票代码</span></div>
       </div>
       <div class="form-row">
         <div class="ui-field"><label>持有份额 *</label><input name="shares" type="number" min="0" step="100" required></div>
@@ -131,33 +134,56 @@ document.getElementById('add-form').addEventListener('submit', async e => {
     btn.innerHTML = originalText;
   }
 });
-let nameSearchTimer;
-document.getElementById('add-name').addEventListener('input', function(){
-  const query=this.value.trim(); clearTimeout(nameSearchTimer);
-  if(!query){ return; }
-  nameSearchTimer=setTimeout(async ()=>{
-    try{
-      const response=await fetch('/api/stock/search?q='+encodeURIComponent(query));
-      const data=await response.json();
-      const list=document.getElementById('stock-name-options');
-      list.replaceChildren(...(data.items||[]).map(item=>{
-        const option=document.createElement('option');
-        option.value=item.name; option.label=item.code+(item.asset_type==='etf'?' · ETF':'');
-        option.dataset.code=item.code; option.dataset.assetType=item.asset_type; return option;
-      }));
-      document.getElementById('name-hint').textContent=(data.items||[]).length ? '下拉选择匹配标的，代码会自动回填' : '未找到匹配标的，请检查名称';
-    }catch(e){ document.getElementById('name-hint').textContent='名称搜索失败'; }
-  },250);
-});
-document.getElementById('add-name').addEventListener('change', function(){
-  const option=Array.from(document.getElementById('stock-name-options').options).find(o=>o.value===this.value);
-  if(!option) return;
-  document.getElementById('add-code').value=option.dataset.code || '';
+function applyStockItem(item){
+  document.getElementById('add-code').value=item.code || '';
+  document.getElementById('add-name').value=item.name || item.code || '';
   const typeMap={stock:'B',etf:'E'};
-  if(typeMap[option.dataset.assetType]) document.getElementById('add-stock-type').value=typeMap[option.dataset.assetType];
-  document.getElementById('classify-hint').textContent='已绑定: '+option.dataset.code+'（'+(option.dataset.assetType==='etf'?'场内 ETF':'股票')+'）';
+  if(typeMap[item.asset_type]) document.getElementById('add-stock-type').value=typeMap[item.asset_type];
+  document.getElementById('classify-hint').textContent='已绑定: '+item.code+'（'+(item.asset_type==='etf'?'场内 ETF':'股票')+'）';
+  document.getElementById('name-hint').textContent='已选择 '+(item.name || item.code);
+  document.querySelectorAll('.autocomplete-menu').forEach(menu=>{menu.style.display='none';});
   fillPriceByDate();
-});
+}
+function bindStockAutocomplete(inputId, menuId){
+  const input=document.getElementById(inputId), menu=document.getElementById(menuId); let timer, controller;
+  function close(){menu.style.display='none';menu.replaceChildren();}
+  input.addEventListener('input', function(){
+    const query=this.value.trim(); clearTimeout(timer); if(controller) controller.abort();
+    if(query.length<1){close();return;}
+    timer=setTimeout(async ()=>{
+      try{
+        controller=new AbortController();
+        const response=await fetch('/api/stock/search?q='+encodeURIComponent(query),{signal:controller.signal});
+        const data=await response.json(); const items=data.items||[];
+        menu.replaceChildren();
+        if(!items.length){close();return;}
+        items.forEach(item=>{
+          const button=document.createElement('button'); button.type='button'; button.className='autocomplete-option';
+          button.innerHTML='<span><b></b><br><small></small></span><small></small>';
+          button.querySelector('b').textContent=item.name || item.code;
+          button.querySelector('span small').textContent=item.code;
+          button.querySelector(':scope > small').textContent=item.asset_type==='etf'?'ETF':'股票';
+          button.addEventListener('mousedown',event=>{event.preventDefault();applyStockItem(item);});
+          menu.appendChild(button);
+        });
+        menu.style.display='block';
+      }catch(error){if(error.name!=='AbortError') close();}
+    },180);
+  });
+  input.addEventListener('blur',()=>setTimeout(close,180));
+  input.addEventListener('keydown',event=>{
+    const options=[...menu.querySelectorAll('.autocomplete-option')]; if(!options.length)return;
+    let index=options.findIndex(o=>o.classList.contains('active'));
+    if(event.key==='ArrowDown'){event.preventDefault();index=(index+1)%options.length;}
+    else if(event.key==='ArrowUp'){event.preventDefault();index=(index-1+options.length)%options.length;}
+    else if(event.key==='Enter' && index>=0){event.preventDefault();options[index].dispatchEvent(new MouseEvent('mousedown'));return;}
+    else if(event.key==='Escape'){close();return;}
+    else return;
+    options.forEach((option,i)=>option.classList.toggle('active',i===index));
+  });
+}
+bindStockAutocomplete('add-name','name-suggestions');
+bindStockAutocomplete('add-code','code-suggestions');
 document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('add-code').value) classifyStock();
 });

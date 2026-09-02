@@ -1869,6 +1869,8 @@ def api_stock_search():
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
         pattern = f"%{query}%"
+        code_query = query.lower().replace(".", "")
+        code_pattern = f"%{code_query}%"
         warehouse = Warehouse()
         conn = warehouse._conn()
         try:
@@ -1877,7 +1879,7 @@ def api_stock_search():
                    WHERE code LIKE ? OR name LIKE ?
                    ORDER BY CASE WHEN name=? THEN 0 WHEN code=? THEN 1 ELSE 2 END, code
                    LIMIT 20""",
-                (pattern, pattern, query, query),
+                (code_pattern, pattern, query, code_query),
             ).fetchall()
         finally:
             conn.close()
