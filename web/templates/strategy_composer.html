@@ -92,8 +92,9 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
       <div style="font-weight:600;font-size:14px;margin-bottom:8px;"><i class="fas fa-flask"></i> 回测</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="ui-field"><label>初始资金</label><input id="b-cash" type="number" value="100000"></div>
-        <div class="ui-field"><label>网格优化</label><select id="b-opt"><option value="true">启用</option><option value="false">停用(固定参数)</option></select></div>
+        <div class="ui-field"><label>自动验证参数</label><select id="b-opt"><option value="false">关闭（按当前参数）</option><option value="true">开启（仅验证当前已接入参数）</option></select></div>
       </div>
+      <div class="scheme-guide"><b>自动验证说明：</b>当前第一版只验证“回撤止盈阈值”和“买入偏移”两项。训练区间用于寻找候选，验证区间用于检查稳定性；结果只生成推荐，不会修改正式方案。其他配置暂未接入自动验证，避免出现页面可选但回测不生效的情况。<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;"><input id="opt-train-start" type="date" value="2019-01-01"><input id="opt-train-end" type="date" value="2023-12-31"><input id="opt-valid-start" type="date" value="2024-01-01"><input id="opt-valid-end" type="date"></div><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="previewOptimizationPlan()">查看验证范围</button><span class="help" id="optimization-hint"></span></div>
 
       <div style="display:flex;gap:10px;margin-top:6px;">
          <button class="ui-button ui-button-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
@@ -510,6 +511,11 @@ async function renderPreview(){
 
 function schedulePreview(){
   clearTimeout(window.previewTimer); window.previewTimer=setTimeout(renderPreview,350);
+}
+async function previewOptimizationPlan(){
+  const payload={train_start:document.getElementById('opt-train-start').value,train_end:document.getElementById('opt-train-end').value,validation_start:document.getElementById('opt-valid-start').value,validation_end:document.getElementById('opt-valid-end').value,trail_thresholds:[0.04,0.06,0.08],buy_offsets:[-0.02,0,0.02]};
+  const d=await (await fetch('/api/schemes/optimization-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
+  document.getElementById('optimization-hint').textContent=d.status==='success'?`当前将验证 ${d.combinations} 组参数（回撤阈值 × 买入偏移）。`:d.error;
 }
 
 async function validateYaml(content){

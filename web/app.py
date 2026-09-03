@@ -1390,6 +1390,31 @@ def api_schemes_validate_run():
         })
     except (ValueError, KeyError, TypeError) as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/optimization-plan", methods=["POST"])
+def api_schemes_optimization_plan():
+    """Estimate a bounded, non-persistent parameter validation run."""
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    try:
+        start = (payload.get("train_start") or "").strip()
+        train_end = (payload.get("train_end") or "").strip()
+        valid_start = (payload.get("validation_start") or "").strip()
+        valid_end = (payload.get("validation_end") or "").strip()
+        trails = [float(x) for x in (payload.get("trail_thresholds") or [0.04, 0.06, 0.08])]
+        offsets = [float(x) for x in (payload.get("buy_offsets") or [-0.02, 0.0, 0.02])]
+        if not all((start, train_end, valid_start, valid_end)):
+            raise ValueError("训练区间和验证区间必须完整填写")
+        combinations = len(trails) * len(offsets)
+        if combinations > 100:
+            raise ValueError("参数组合不能超过100组，请缩小测试范围")
+        return flask.jsonify({"status": "success", "combinations": combinations,
+                              "estimated_scope": "仅验证回撤止盈阈值和买入偏移；不会修改正式方案",
+                              "train": {"start": start, "end": train_end},
+                              "validation": {"start": valid_start, "end": valid_end},
+                              "parameters": {"trail_thresholds": trails, "buy_offsets": offsets}})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
     except Exception as e:
         logger.exception("方案样本验证失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500

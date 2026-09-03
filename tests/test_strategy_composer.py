@@ -66,6 +66,19 @@ def test_api_rules_schema(client):
     assert any(field["key"] == "conditions" for field in trend["schema"])
 
 
+def test_optimization_plan_is_bounded_and_non_persistent(client):
+    response = client.post("/api/schemes/optimization-plan", json={
+        "train_start": "2019-01-01", "train_end": "2023-12-31",
+        "validation_start": "2024-01-01", "validation_end": "2025-12-31",
+        "trail_thresholds": [0.04, 0.06], "buy_offsets": [-0.02, 0.0, 0.02],
+    })
+    assert response.status_code == 200
+    assert response.get_json()["combinations"] == 6
+    assert client.post("/api/schemes/optimization-plan", json={
+        "train_start": "2019-01-01", "train_end": "2023-12-31",
+        "validation_start": "2024-01-01", "validation_end": "2025-12-31",
+        "trail_thresholds": list(range(11)), "buy_offsets": list(range(10)),
+    }).status_code == 400
 def test_compose_roundtrip(client):
     model = _sample_model()
     r = client.post("/api/schemes/compose", json=model)
