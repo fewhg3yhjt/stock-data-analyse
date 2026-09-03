@@ -44,6 +44,14 @@ class TestTriggers:
         enabled = enabled_triggers(p)
         assert [r["id"] for r in enabled] == ["a"]
 
+    def test_notification_subscriptions_are_visible_but_not_scheduled(self):
+        from StockInvestmentTool.biz.triggers import enabled_triggers, load_triggers
+
+        all_rules = load_triggers()
+        ids = {rule["id"] for rule in enabled_triggers()}
+        assert "notification_task_failed" in {rule["id"] for rule in all_rules}
+        assert "notification_task_failed" not in ids
+
 
 class TestApi:
     def test_get_rules(self, client, monkeypatch):

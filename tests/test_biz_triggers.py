@@ -24,9 +24,26 @@ def test_load_triggers_default_when_missing(tmp_path):
     from StockInvestmentTool.biz.triggers import load_triggers
 
     loaded = load_triggers(tmp_path / "missing.yaml")
-    assert len(loaded) == 3
+    assert len(loaded) == 10
     ids = {r["id"] for r in loaded}
     assert {"actionable_intraday", "post_close_summary", "price_threshold"} <= ids
+    assert {"notification_daily_report", "notification_task_failed",
+            "notification_system_alert", "notification_position_signal",
+            "notification_position_drawdown", "notification_position_price",
+            "notification_trade_signals"} <= ids
+
+
+def test_sync_notification_triggers_preserves_existing_rules(tmp_path):
+    from StockInvestmentTool.biz.triggers import load_triggers, save_triggers
+
+    path = tmp_path / "rules.yaml"
+    save_triggers([{"id": "notification_task_failed", "name": "自定义任务失败",
+                    "enabled": False}], path)
+    loaded = load_triggers(path)
+    custom = next(rule for rule in loaded if rule["id"] == "notification_task_failed")
+    assert custom["name"] == "自定义任务失败"
+    assert custom["enabled"] is False
+    assert len([rule for rule in loaded if rule["id"] == "notification_task_failed"]) == 1
 
 
 def test_enabled_triggers_filters_disabled(tmp_path):

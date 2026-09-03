@@ -1,0 +1,114 @@
+# 通知触发器与业务通知登记规则。
+# notification_subscription 规则由对应业务事件入口产生，不参与定时调度。
+rules:
+  - id: actionable_intraday
+    name: 盘中操作建议（即时）
+    enabled: true
+    conditions:
+      - type: action
+        params:
+          advice_types: [partial_sell, sell_all, buy_more, adjust_stop]
+    logic: AND
+    schedule:
+      mode: intraday
+      interval_minutes: 10
+    channel: email
+    priority: instant
+  - id: post_close_summary
+    name: 盘后持仓汇总（批次）
+    enabled: true
+    conditions:
+      - type: action
+        params:
+          advice_types: [hold, partial_sell, sell_all, buy_more]
+    logic: OR
+    schedule:
+      mode: post_close
+      time: '15:35'
+    channel: email
+    priority: batch
+  - id: price_threshold
+    name: 自选价格阈值（批次）
+    enabled: true
+    conditions:
+      - type: action
+        params:
+          advice_types: [hold]
+    logic: AND
+    schedule:
+      mode: post_close
+      time: '15:35'
+    channel: email
+    priority: batch
+  - id: notification_daily_report
+    name: 每日盘后汇总
+    enabled: true
+    kind: notification_subscription
+    event_type: DAILY_REPORT
+    conditions: []
+    logic: AND
+    schedule:
+      mode: daily
+      time: '15:35'
+    channel: email
+    priority: batch
+  - id: notification_task_failed
+    name: 任务失败/超时
+    enabled: true
+    kind: notification_subscription
+    event_type: TASK_FAILED
+    conditions: []
+    logic: AND
+    schedule: {}
+    channel: email
+    priority: instant
+  - id: notification_system_alert
+    name: 系统健康告警
+    enabled: true
+    kind: notification_subscription
+    event_type: SYSTEM_ALERT
+    conditions: []
+    logic: AND
+    schedule: {}
+    channel: email
+    priority: instant
+  - id: notification_position_signal
+    name: 持仓策略信号
+    enabled: true
+    kind: notification_subscription
+    event_type: POSITION_SIGNAL
+    conditions: []
+    logic: AND
+    schedule: {}
+    channel: email
+    priority: instant
+  - id: notification_position_drawdown
+    name: 持仓高点回撤
+    enabled: true
+    kind: notification_subscription
+    event_type: POSITION_DRAWDOWN
+    conditions: []
+    logic: AND
+    schedule: {}
+    channel: email
+    priority: instant
+  - id: notification_position_price
+    name: 持仓目标价提醒
+    enabled: true
+    kind: notification_subscription
+    event_types: [POSITION_PRICE_ABOVE, POSITION_PRICE_BELOW]
+    conditions: []
+    logic: AND
+    schedule: {}
+    channel: email
+    priority: instant
+  - id: notification_trade_signals
+    name: 买卖风险信号
+    enabled: true
+    kind: notification_subscription
+    event_types: [BUY_SIGNAL, SELL_SIGNAL, RISK_ALERT]
+    conditions: []
+    logic: AND
+    schedule: {}
+    channel: email
+    priority: instant

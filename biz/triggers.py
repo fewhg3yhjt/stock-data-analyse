@@ -33,6 +33,80 @@ TOPIC_ORDERS = "orders"
 # 事件类型
 TRIGGER_EVENT_TYPE = "TRIGGER"
 
+# 由业务模块直接产生的通知事件也登记在触发器中心。它们不是轮询型
+# 触发器，规则中心只负责统一展示和管理，实际事件仍由对应业务入口产生。
+NOTIFICATION_SUBSCRIPTION_KIND = "notification_subscription"
+
+
+def _notification_trigger_defaults() -> list[dict]:
+    """返回所有通知事件的内置登记规则。"""
+    return [
+        {
+            "id": "notification_daily_report",
+            "name": "每日盘后汇总",
+            "enabled": True,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_type": "DAILY_REPORT",
+            "conditions": [], "logic": "AND",
+            "schedule": {"mode": "daily", "time": "15:35"},
+            "channel": "email", "priority": "batch",
+        },
+        {
+            "id": "notification_task_failed",
+            "name": "任务失败/超时",
+            "enabled": True,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_type": "TASK_FAILED",
+            "conditions": [], "logic": "AND",
+            "schedule": {}, "channel": "email", "priority": "instant",
+        },
+        {
+            "id": "notification_system_alert",
+            "name": "系统健康告警",
+            "enabled": True,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_type": "SYSTEM_ALERT",
+            "conditions": [], "logic": "AND",
+            "schedule": {}, "channel": "email", "priority": "instant",
+        },
+        {
+            "id": "notification_position_signal",
+            "name": "持仓策略信号",
+            "enabled": True,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_type": "POSITION_SIGNAL",
+            "conditions": [], "logic": "AND",
+            "schedule": {}, "channel": "email", "priority": "instant",
+        },
+        {
+            "id": "notification_position_drawdown",
+            "name": "持仓高点回撤",
+            "enabled": True,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_type": "POSITION_DRAWDOWN",
+            "conditions": [], "logic": "AND",
+            "schedule": {}, "channel": "email", "priority": "instant",
+        },
+        {
+            "id": "notification_position_price",
+            "name": "持仓目标价提醒",
+            "enabled": True,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_types": ["POSITION_PRICE_ABOVE", "POSITION_PRICE_BELOW"],
+            "conditions": [], "logic": "AND",
+            "schedule": {}, "channel": "email", "priority": "instant",
+        },
+        {
+            "id": "notification_trade_signals",
+            "name": "买卖风险信号",
+            "enabled": True,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_types": ["BUY_SIGNAL", "SELL_SIGNAL", "RISK_ALERT"],
+            "conditions": [], "logic": "AND",
+            "schedule": {}, "channel": "email", "priority": "instant",
+        },
+    ]
+
 # 盘中每日通知上限
 INTRADAY_DAILY_LIMIT = 3
 
@@ -105,6 +179,7 @@ def _default_config() -> dict:
                 "channel": "email",
                 "priority": "batch",
             },
+            *_notification_trigger_defaults(),
         ]
     }
 
@@ -112,17 +187,49 @@ def _default_config() -> dict:
 # ── 存储 / 读取 ─────────────────────────────────────────────
 
 def load_triggers(path: Optional[Path | str] = None) -> list[dict]:
-    """读取触发器规则列表（不存在则返回默认）。"""
+    """读取触发器规则列表，并补齐缺失的通知登记规则。"""
     path = Path(path) if path else RULES_PATH
     if not path.exists():
-        return _default_config()["rules"]
+        rules = _default_config()["rules"]
+        save_triggers(rules, path)
+        return rules
     try:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-        return data.get("rules") or []
+        rules = data.get("rules") or []
+        return sync_notification_triggers(path, rules=rules)
     except Exception as e:  # noqa: BLE001
         logger.warning("触发器配置读取失败(%s)，退回默认: %s", path, e)
         return _default_config()["rules"]
+
+
+def sync_notification_triggers(path: Optional[Path | str] = None,
+                                *, rules: Optional[list[dict]] = None) -> list[dict]:
+    """将缺失的业务通知登记规则幂等同步到触发器配置。
+
+    仅按稳定 id 判断是否已存在，不覆盖用户对已有规则的修改。
+    """
+    target = Path(path) if path else RULES_PATH
+    if rules is None:
+        if not target.exists():
+            current = list(_default_config()["rules"])
+        else:
+            try:
+                with open(target, encoding="utf-8") as f:
+                    current = list((yaml.safe_load(f) or {}).get("rules") or [])
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("触发器配置读取失败(%s)，无法同步通知登记规则: %s", target, exc)
+                current = []
+    else:
+        current = list(rules)
+    existing = {str(rule.get("id")) for rule in current if isinstance(rule, dict)}
+    missing = [rule for rule in _notification_trigger_defaults()
+               if rule["id"] not in existing]
+    if missing:
+        current.extend(missing)
+        save_triggers(current, target)
+        logger.info("通知登记规则已同步: 新增 %d 条", len(missing))
+    return current
 
 
 def save_triggers(rules: list[dict], path: Optional[Path | str] = None) -> Path:
@@ -136,7 +243,8 @@ def save_triggers(rules: list[dict], path: Optional[Path | str] = None) -> Path:
 
 def enabled_triggers(path: Optional[Path | str] = None) -> list[dict]:
     """返回启用的触发器。"""
-    return [r for r in load_triggers(path) if r.get("enabled", True)]
+    return [r for r in load_triggers(path) if r.get("enabled", True)
+            and r.get("kind") != NOTIFICATION_SUBSCRIPTION_KIND]
 
 
 def _atomic_write(path: Path, content: str) -> None:
