@@ -378,8 +378,14 @@ def _build_schemas() -> dict[str, list[ParamField]]:
                    ],
                    help="区间为「前高的比例」"),
         ParamField("half_profit_threshold", "浮盈减半阈值", "number", default=0.10),
-        ParamField("ratio_by_type", "按类型总减持比例", "map",
-                   default={"A": 0.20, "B": 0.40, "C": 0.60, "D": 0.40}),
+         ParamField("ratio_by_type", "按类型总减持比例", "map",
+                    default={"A": 0.20, "B": 0.40, "C": 0.60, "D": 0.40}),
+         ParamField("drawdown_protection_enabled", "左侧止盈后回撤保护", "select", default=True,
+                    options=[True, False], help="左侧已经分批止盈、但尚未进入右侧跟踪时，是否保护剩余仓位；默认启动"),
+         ParamField("drawdown_protection_min_profit", "回撤保护最低盈利", "number", default=0.08, min=0, max=1,
+                    help="持仓峰值相对成本价达到该比例后才启用左侧回撤保护；默认8%"),
+         ParamField("drawdown_protection_threshold", "回撤保护回撤比例", "number", default=0.10, min=0, max=1,
+                    help="左侧止盈后，价格从持仓峰值回撤达到该比例时清仓；默认10%"),
     ]
 
     s["right_side_trailing"] = [
@@ -399,10 +405,6 @@ def _build_schemas() -> dict[str, list[ParamField]]:
                    help="成本价上浮比例，例如8%表示成本100元时盈利门槛为108元。默认8%"),
         ParamField("drawdown_by_type", "按类型回撤阈值", "map",
                    default={"A": 0.05, "B": 0.03, "C": 0.05, "D": 0.03}),
-        ParamField("drawdown_stop", "回撤保护阈值", "number", default=0.10, min=0, max=1,
-                   help="左侧止盈后，价格从持仓峰值回撤达到该比例时清仓；默认10%"),
-        ParamField("min_profit_for_dd", "启用回撤保护的最低盈利", "number", default=0.08, min=0, max=10,
-                   help="持仓峰值相对成本价曾达到该盈利比例后，才启用回撤保护；默认8%"),
     ]
 
     s["logic_stop"] = [

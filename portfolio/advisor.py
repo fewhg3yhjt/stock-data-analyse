@@ -379,7 +379,26 @@ class PostPurchaseAdvisor:
                 if self.state_machine.can(position.position_phase, EVENT_BREAKOUT):
                     position.position_phase = self.state_machine.transition(
                         position.position_phase, EVENT_BREAKOUT
-                    )
+                     )
+        # 左侧已止盈但尚未突破前高时，按左侧规则自己的回撤保护配置处理剩余仓位。
+        if (position.position_phase == PHASE_LEFT_SIDE and position.peak_price > 0 and
+                params.get("drawdown_protection_enabled", True) is not False):
+            peak_profit = (position.peak_price - position.avg_cost) / position.avg_cost
+            min_profit = float(params.get("drawdown_protection_min_profit", params.get("min_profit_for_dd", 0.08)))
+            threshold = float(params.get("drawdown_protection_threshold", params.get("drawdown_stop", 0.10)))
+            drawdown = (position.peak_price - ctx.current_price) / position.peak_price
+            if peak_profit >= min_profit and drawdown >= threshold:
+                check_results["left_side"].update({"drawdown_protection_enabled": True,
+                    "drawdown_protection_min_profit": min_profit,
+                    "drawdown_protection_threshold": threshold,
+                    "drawdown_pct": drawdown, "drawdown_protection_triggered": True})
+                return ActionAdvice(
+                    position_id=position.id, stock_code=position.stock_code,
+                    stock_name=position.stock_name, advice_type=ADVICE_SELL_ALL,
+                    urgency="attention", reason=f"左侧止盈后从峰值{position.peak_price:.2f}回撤{drawdown:.1%}，触发回撤保护",
+                    suggested_price=ctx.current_price, suggested_shares=position.total_shares,
+                    suggested_amount=position.market_value, check_results=dict(check_results),
+                )
         return None
 
     def _check_right_side(self, position: Position, ctx: AdvisorContext,

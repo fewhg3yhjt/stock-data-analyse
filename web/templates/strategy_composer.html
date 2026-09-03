@@ -349,7 +349,7 @@ function renderField(f, rule){
     return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
       <textarea data-f="${key}" placeholder='JSON 键值，如 {"A":0.15,"B":0.15}'>${JSON.stringify(def||{})}</textarea></div>`;
   }
-  if(type==='number' && ['half_profit_threshold','base_discount','offset','drawdown_stop','min_profit_for_activation'].includes(key)){
+  if(type==='number' && ['half_profit_threshold','base_discount','offset','drawdown_stop','min_profit_for_activation','drawdown_protection_min_profit','drawdown_protection_threshold'].includes(key)){
      const value=Number(def||0)*100;
     return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label><div class="unit-input"><input data-f="${key}" data-percent-input="1" type="number" min="${key==='offset'?-20:0}" max="${key==='offset'?20:100}" step="0.1" value="${escapeAttr(value)}"><span>%</span></div><span class="field-status" data-field-status="${key}"></span></div>`;
   }
@@ -467,7 +467,7 @@ function collectRuleParams(ruleBox){
     params[key]=params[key]||{};
     if(input.value!=='') params[key][input.dataset.mapKey]=parseFloat(input.value)/(key==='stop_loss_by_type'||key==='breakeven_activation_by_type'||key==='drawdown_by_type'||key==='ratio_by_type'?100:1);
   });
-  ruleBox.querySelectorAll('[data-f="half_profit_threshold"],[data-f="base_discount"],[data-f="offset"]').forEach(inp=>{
+  ruleBox.querySelectorAll('[data-f="half_profit_threshold"],[data-f="base_discount"],[data-f="offset"],[data-f="drawdown_protection_min_profit"],[data-f="drawdown_protection_threshold"]').forEach(inp=>{
     if(inp.value!=='') params[inp.dataset.f]=parseFloat(inp.value)/100;
   });
   // 处理结构化 list/map_list

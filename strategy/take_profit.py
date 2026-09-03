@@ -319,6 +319,9 @@ class TakeProfitOptimizer:
         self.left_profit_activation_enabled = False
         self.left_profit_activation_basis = "current_price"
         self.left_min_profit_for_activation = 0.0
+        self.drawdown_protection_enabled = True
+        self.drawdown_protection_min_profit = 0.08
+        self.drawdown_protection_threshold = 0.10
         self.technical_support_source = "strong"
         self.dividend_anchor = dividend_anchor
         self.scheme = scheme
@@ -412,6 +415,9 @@ class TakeProfitOptimizer:
                 self.drawdown_stop = float(params["drawdown_stop"])
             if "min_profit_for_dd" in params:
                 self.min_profit_for_dd = float(params["min_profit_for_dd"])
+            self.drawdown_protection_enabled = params.get("drawdown_protection_enabled", True) is not False
+            self.drawdown_protection_min_profit = float(params.get("drawdown_protection_min_profit", params.get("min_profit_for_dd", 0.08)))
+            self.drawdown_protection_threshold = float(params.get("drawdown_protection_threshold", params.get("drawdown_stop", 0.10)))
             self.profit_activation_enabled = params.get("profit_activation_enabled", False) is not False
             self.profit_activation_basis = str(params.get("profit_activation_basis", "peak_price"))
             self.min_profit_for_activation = float(params.get("min_profit_for_activation", 0.08))
@@ -771,7 +777,9 @@ class TakeProfitOptimizer:
         if not bought_this_bar and position_phase == "left_side" and peak_price > 0:
             peak_profit = (peak_price - avg_cost) / avg_cost if avg_cost > 0 else 0.0
             dd_pct = (peak_price - close) / peak_price
-            if peak_profit >= self.min_profit_for_dd and dd_pct >= self.drawdown_stop:
+            if (self.drawdown_protection_enabled and
+                    peak_profit >= self.drawdown_protection_min_profit and
+                    dd_pct >= self.drawdown_protection_threshold):
                 fill = close
                 cash += shares * fill
                 trades.append({
@@ -780,7 +788,7 @@ class TakeProfitOptimizer:
                     "amount": round(shares * fill, 2),
                     "pnl": round(shares * (fill - avg_cost), 2),
                     "reason": f"左侧止盈后从峰值{peak_price:.2f}回撤{dd_pct:.1%}"
-                               f"（阈值{self.drawdown_stop:.0%}），触发左侧回撤保护清仓",
+                               f"（阈值{self.drawdown_protection_threshold:.0%}），触发左侧回撤保护清仓",
                 })
                 return cash, 0.0, 0.0, 0, 0.0, "closed", left_tier_sold, True
 
