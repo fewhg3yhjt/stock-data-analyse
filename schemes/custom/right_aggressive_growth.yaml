@@ -1,11 +1,12 @@
 name: right_aggressive_growth
 version: '1.0'
-description: (克隆自 aggressive_growth) 激进成长方案：弱支撑即重仓 + 规则C趋势跟随 + 宽右侧止盈
+description: 激进成长方案：弱支撑即重仓 + 规则C趋势跟随 + 宽右侧止盈
 applicable_types:
 - A
 - B
 - C
 - D
+- E
 strategy_spec:
   买入逻辑: 弱支撑先买 50%，强支撑再买 30%，极端低估锚买 20%；牛市早期且未超买时，趋势跟随规则可追加仓位
   卖出优先级: 技术止损 > 硬止损 > 左侧固定止盈 > 右侧移动止盈
@@ -43,12 +44,11 @@ buy_rules:
 sell_rules:
 - type: hard_stop
   params:
-    mode: fixed
     stop_loss_by_type:
-      A: 0.1
-      B: 0.08
+      A: 0.05
+      B: 0.05
       C: 0.05
-      D: 0.08
+      D: 0.05
       E: 0.05
     breakeven_activation_by_type:
       A: 0.08
@@ -59,14 +59,13 @@ sell_rules:
 - type: technical_stop
   params:
     volume_surge_ratio: 1.5
-    support_source: strong
+    support_source: weak
     technical_stop_enabled: true
 - type: left_side_fixed
   params:
     reference_price: year_high
     profit_activation_enabled: false
-    profit_activation_basis: current_price
-    min_profit_for_activation: 0.0
+    min_profit_for_activation: 0
     year_high_window: 252
     zones:
     - name: 预警区
@@ -80,26 +79,31 @@ sell_rules:
       - 1
       sell_ratio: 0.2
     half_profit_threshold: 0.12
+    drawdown_protection_enabled: true
+    drawdown_protection_min_profit: 0.08
+    drawdown_protection_threshold: 0.1
     ratio_by_type:
       A: 0.2
       B: 0.4
       C: 0.6
       D: 0.4
-    drawdown_protection_enabled: true
-    drawdown_protection_min_profit: 0.08
-    drawdown_protection_threshold: 0.1
+      E: 0.04
 - type: right_side_trailing
   params:
-    peak_price_source: position_peak_price
-    peak_data_source: daily_plus_minute
     profit_activation_enabled: true
-    profit_activation_basis: peak_price
-    min_profit_for_activation: 0.08
+    min_profit_for_activation: 0.0
     drawdown_by_type:
-      A: 0.08
-      B: 0.05
-      C: 0.08
-      D: 0.08
+      A: 0.01
+      B: 0.01
+      C: 0.01
+      D: 0.01
+      E: 0.01
+risk:
+  stop_loss_by_type: {}
+  volume_surge_threshold: 1.8
+  technical_stop_enabled: true
+  drawdown_stop: 0.08
+  min_profit_for_dd: 0.06
 backtest:
   initial_cash: 100000.0
   optimize: true
