@@ -713,20 +713,25 @@ class TakeProfitOptimizer:
             drawdown_by_type = dict(self._right_drawdown or {})
             resolved_trail = float(trail_threshold if trail_threshold is not None else self._right_drawdown.get(self.stock_type, 0.05))
             drawdown_by_type[self.stock_type] = resolved_trail
-            # 用当日最低价判断是否回撤到触发线，盘中一旦达到即触发；
-            # 成交价取触发线（能用点位成交），而不是被动等到收盘。
+            # 右侧止盈是趋势跟踪保护：用收盘价确认回撤到触发线，
+            # 避免盘中瞬时回撤造成过度频繁清仓（trend 类用 close 更稳）。
             trigger_price = peak_price * (1 - resolved_trail) if peak_price > 0 else 0
-            should_sell = profit_ready and low <= trigger_price
+            should_sell = profit_ready and right_side_sell_action(
+                peak_price=peak_price,
+                current_price=close,
+                stock_type=self.stock_type,
+                drawdown_by_type=drawdown_by_type,
+            )
             if should_sell:
-                dd_pct = (peak_price - trigger_price) / peak_price * 100 if peak_price > 0 else 0
-                fill = trigger_price if trigger_price > 0 else close
+                dd_pct = (peak_price - close) / peak_price * 100 if peak_price > 0 else 0
+                fill = close
                 cash += shares * fill
                 trades.append({
                     "date": row["date"], "type": "右侧止盈(移动清仓)",
                     "price": round(fill, 2), "shares": round(shares, 2),
                     "amount": round(shares * fill, 2),
                     "pnl": round(shares * (fill - avg_cost), 2),
-                    "reason": f"达到盈利启动条件后盘中最低价{low:.2f}触及触发线{fill:.2f}"
+                    "reason": f"达到盈利启动条件后收盘价{fill:.2f}回撤到触发线"
                                f"（峰值{peak_price:.2f}回撤{dd_pct:.1f}%，阈值{self.stock_type}类{resolved_trail*100:.0f}%），触发右侧清仓",
                 })
                 return cash, 0.0, 0.0, 0, 0.0, "closed", left_tier_sold, True
