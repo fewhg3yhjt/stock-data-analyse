@@ -2,6 +2,7 @@
 {% block title %}StockInvestmentTool - 策略编排器{% endblock %}
 {% block head %}
 <style>
+.input-invalid{border-color:var(--color-danger)!important;box-shadow:0 0 0 2px rgba(198,40,40,.12)!important}.field-status{display:block;min-height:16px;color:var(--color-danger);font-size:12px}
 .app{max-width:1280px;margin:0 auto;padding:28px 22px 60px;}
 .card h2{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .card h2 i{color:var(--color-info);}
@@ -350,7 +351,7 @@ function renderField(f, rule){
   }
   if(type==='number' && ['half_profit_threshold','base_discount','offset','drawdown_stop','min_profit_for_activation'].includes(key)){
      const value=Number(def||0)*100;
-    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label><div class="unit-input"><input data-f="${key}" type="number" min="${key==='offset'?-20:0}" max="${key==='offset'?20:100}" step="0.1" value="${escapeAttr(value)}"><span>%</span></div></div>`;
+    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label><div class="unit-input"><input data-f="${key}" data-percent-input="1" type="number" min="${key==='offset'?-20:0}" max="${key==='offset'?20:100}" step="0.1" value="${escapeAttr(value)}"><span>%</span></div><span class="field-status" data-field-status="${key}"></span></div>`;
   }
   if(type==='number'){
     const minAttr=f.min!=null?` min="${escapeAttr(f.min)}"`:'';
@@ -476,6 +477,29 @@ function collectRuleParams(ruleBox){
   return params;
 }
 
+function validateStrategyInputs(){
+  let firstInvalid=null;
+  document.querySelectorAll('#buy-rules .rule-box, #sell-rules .rule-box').forEach(box=>{
+    box.querySelectorAll('input[type="number"]').forEach(input=>{
+      const status=box.querySelector(`[data-field-status="${input.dataset.f || ''}"]`);
+      const value=input.value.trim();
+      let message='';
+      if(value==='') message='请填写数值';
+      else if(!Number.isFinite(Number(value))) message='请输入有效数字';
+      else if(input.min!=='' && Number(value)<Number(input.min)) message=`不能小于 ${input.min}${input.dataset.percentInput?'%':''}`;
+      else if(input.max!=='' && Number(value)>Number(input.max)) message=`不能大于 ${input.max}${input.dataset.percentInput?'%':''}`;
+      input.classList.toggle('input-invalid', Boolean(message));
+      if(status) status.textContent=message;
+      if(message && !firstInvalid) firstInvalid=input;
+    });
+  });
+  if(firstInvalid){
+    firstInvalid.focus();
+    throw new Error(`参数“${firstInvalid.dataset.f || '未命名'}”填写无效，请按输入框提示修改`);
+  }
+  return true;
+}
+
 function collectAllRules(kind){
   return Array.from(document.querySelectorAll(`#${kind}-rules .rule-box`)).map(box=>{
     const type=box.querySelector('input[data-type]').dataset.type;
@@ -504,6 +528,7 @@ function collectModel(){
 
 async function renderPreview(){
   try{
+    validateStrategyInputs();
     const model=collectModel();
     const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
     const body=await r.text();
@@ -582,6 +607,7 @@ async function saveScheme(){
   const status=document.getElementById('save-hint');
   status.textContent='正在校验并保存…'; status.style.color='var(--color-text-subtle)';
   try{
+    validateStrategyInputs();
     const model=collectModel();
     const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
     const body=await r.text(); let d; try{d=body?JSON.parse(body):null;}catch(e){throw new Error(`生成方案失败（HTTP ${r.status}）`);}
