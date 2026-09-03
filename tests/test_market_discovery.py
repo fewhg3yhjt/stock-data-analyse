@@ -58,3 +58,36 @@ def test_discovery_run_store_records_conditions(tmp_path):
     run_id = store.save(as_of="2026-05-06", conditions={"signal": "volume_spike"}, result_count=2)
     assert store.recent(1)[0]["id"] == run_id
     assert store.recent(1)[0]["conditions"]["signal"] == "volume_spike"
+
+
+def test_discover_stocks_uses_published_industry_membership(tmp_path, monkeypatch):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    frame = _daily_frame()
+    warehouse.write_daily_partition("2026-04", frame)
+    warehouse.metadata.register_dataset("industry_membership")
+    membership = pd.DataFrame({
+        "snapshot_date": ["2026-04-30", "2026-04-30"],
+        "code": ["sh600900", "sz000001"],
+        "industry_code": ["E47", "E47"],
+        "industry_name": ["房屋建筑业", "房屋建筑业"],
+        "raw_industry": ["E47房屋建筑业", "E47房屋建筑业"],
+        "industry_classification": ["csrc", "csrc"],
+        "source_update_date": [None, None], "source": ["test", "test"],
+        "captured_at": ["2026-04-30T00:00:00"] * 2,
+    })
+    raw = tmp_path / "membership.parquet"
+    membership.to_parquet(raw, index=False)
+    from StockInvestmentTool.warehouse.pipeline_state import PipelineState
+    from StockInvestmentTool.warehouse.quality import check_industry_membership
+    from StockInvestmentTool.warehouse.source_capture import capture_frames
+    from StockInvestmentTool.warehouse.publish import Publisher
+    captured = capture_frames(warehouse, dataset_name="industry_membership", source_name="test", frames=[membership], run_date="2026-04-30", expected_symbols=2, success_symbols=2, universe_id="test", request_context={})
+    from StockInvestmentTool.warehouse.industry import build_industry_candidate
+    build = build_industry_candidate(warehouse, "industry_membership", "2026-04-30", captured["raw"]["path"])
+    state = PipelineState(warehouse.meta_db_path)
+    version = state.create_version(build, source_batches=[captured["batch_id"]], dataset_name="industry_membership", schema_version="industry_membership.v1")
+    quality = check_industry_membership(build["path"], expected_symbols=2)
+    state.quality(version, status=quality["status"], checks=quality["checks"], publish_allowed=True)
+    Publisher(warehouse).publish(version)
+    result = discover_stocks({"industry": "E47房屋建筑业", "lookback_days": 3, "min_history": 20}, warehouse=warehouse, top_n=10)
+    assert result["total_count"] == 2

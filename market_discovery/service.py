@@ -261,7 +261,10 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                         "pe_ttm": _round(row.get("pe_ttm")), "pb": _round(row.get("pb_mrq")),
                         "signal_tags": tags,
                         "explanations": explanations})
-    _attach_names(results, warehouse)
+    industry_lookup = _industry_lookup(warehouse, as_of) if c["industry"] != "ALL" else None
+    if industry_lookup is not None:
+        results = [item for item in results if item["code"] in industry_lookup]
+    _attach_names(results, warehouse, industry_lookup=industry_lookup)
     results = [item for item in results if _matches_identity(item, c)]
     sort_key = sort if sort in {"price", "return_pct", "up_days", "down_days", "volume_ratio_5", "volume_5_20", "turnover", "pe_ttm", "pb", "amount_avg", "amplitude_pct"} else "return_pct"
     results.sort(key=lambda item: (item.get(sort_key) is None, item.get(sort_key) if item.get(sort_key) is not None else 0, item["code"]), reverse=descending)
@@ -372,7 +375,25 @@ def stock_frame_with_indicators(code: str, *, days: int = 750,
     return frame
 
 
-def _attach_names(items: list[dict], warehouse: Warehouse) -> None:
+def _industry_lookup(warehouse: Warehouse, as_of: str = "") -> dict[str, str]:
+    """Return published CSRC industry labels keyed by canonical symbol."""
+    from StockInvestmentTool.warehouse.datasets import DatasetAccess
+
+    result = DatasetAccess(warehouse).load_dataset(
+        "industry_membership", end_date=as_of or None, required_quality="PASS",
+    )
+    frame = result.data
+    if frame.empty:
+        return {}
+    frame = frame[frame["industry_classification"].astype(str) == "csrc"]
+    return {
+        str(row.code): f"{row.industry_code}{row.industry_name}"
+        for row in frame.itertuples()
+    }
+
+
+def _attach_names(items: list[dict], warehouse: Warehouse,
+                  *, industry_lookup: dict[str, str] | None = None) -> None:
     if not items:
         return
     codes = [item["code"] for item in items]
@@ -383,7 +404,7 @@ def _attach_names(items: list[dict], warehouse: Warehouse) -> None:
     for item in items:
         name, industry = lookup.get(item["code"], ("", ""))
         item["name"] = name or item["code"]
-        item["industry"] = industry or ""
+        item["industry"] = (industry_lookup or {}).get(item["code"], industry or "")
 
 
 def _float(value):
