@@ -90,6 +90,30 @@ def test_hard_stop_supports_fixed_and_breakeven_modes(reg):
     assert breakeven.detail["activated"] is True
 
 
+def test_right_side_trailing_requires_configured_profit_before_trigger(reg):
+    from StockInvestmentTool.strategy.context import RuleContext
+
+    result = reg.dispatch("sell", "right_side_trailing", RuleContext(
+        avg_cost=100, current_price=108, peak_price=120,
+        extra={"stock_type": "B"},
+    ), {"drawdown_by_type": {"B": 0.05},
+        "profit_activation_enabled": True,
+        "profit_activation_basis": "current_price",
+        "min_profit_for_activation": 0.10})
+    assert result.triggered is False
+    assert result.detail["profit_ready"] is False
+
+    result = reg.dispatch("sell", "right_side_trailing", RuleContext(
+        avg_cost=100, current_price=114, peak_price=120,
+        extra={"stock_type": "B"},
+    ), {"drawdown_by_type": {"B": 0.05},
+        "profit_activation_enabled": True,
+        "profit_activation_basis": "peak_price",
+        "min_profit_for_activation": 0.10})
+    assert result.triggered is True
+    assert result.detail["profit_ready"] is True
+
+
 def test_scheme_unified_rule_lookup():
     from StockInvestmentTool.core.scheme import load_scheme_from_dict
     scheme = load_scheme_from_dict({"name": "x", "buy_rules": [{"type": "support_level", "params": {}}]})

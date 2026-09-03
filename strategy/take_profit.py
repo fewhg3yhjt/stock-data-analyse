@@ -313,6 +313,9 @@ class TakeProfitOptimizer:
         self.drawdown_stop = drawdown_stop
         self.min_profit_for_dd = min_profit_for_dd
         self.technical_stop_enabled = True
+        self.profit_activation_enabled = False
+        self.profit_activation_basis = "peak_price"
+        self.min_profit_for_activation = 0.08
         self.technical_support_source = "strong"
         self.dividend_anchor = dividend_anchor
         self.scheme = scheme
@@ -403,6 +406,9 @@ class TakeProfitOptimizer:
                 self.drawdown_stop = float(params["drawdown_stop"])
             if "min_profit_for_dd" in params:
                 self.min_profit_for_dd = float(params["min_profit_for_dd"])
+            self.profit_activation_enabled = params.get("profit_activation_enabled", False) is not False
+            self.profit_activation_basis = str(params.get("profit_activation_basis", "peak_price"))
+            self.min_profit_for_activation = float(params.get("min_profit_for_activation", 0.08))
 
         # 技术止损
         rule = next((r for r in scheme.sell_rules if r.type == "technical_stop"), None)
@@ -772,12 +778,15 @@ class TakeProfitOptimizer:
                 position_phase = "right_side"
 
             if position_phase == "right_side":
+                activation_value = peak_price if self.profit_activation_basis == "peak_price" else close
+                profit_ready = (not self.profit_activation_enabled or
+                                activation_value >= avg_cost * (1 + self.min_profit_for_activation))
                 # ``trail_threshold`` is the optimizer's per-run parameter.
                 # Apply it to the current stock type instead of only printing
                 # it in the reason text; scheme defaults remain the fallback.
                 drawdown_by_type = dict(self._right_drawdown or {})
                 drawdown_by_type[self.stock_type] = float(trail_threshold)
-                should_sell = right_side_sell_action(
+                should_sell = profit_ready and right_side_sell_action(
                     peak_price=peak_price,
                     current_price=close,
                     stock_type=self.stock_type,

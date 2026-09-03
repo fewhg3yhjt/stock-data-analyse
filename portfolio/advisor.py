@@ -574,10 +574,18 @@ class PostPurchaseAdvisor:
             from StockInvestmentTool.portfolio.trade_metrics import calculate_post_metrics, load_local_minute
             from StockInvestmentTool.portfolio.position_levels import calculate_position_peak
             minute = load_local_minute(position.stock_code)
+            peak_source = str(((scheme.rule("sell", "right_side_trailing").params
+                                if scheme.rule("sell", "right_side_trailing") else {}).get(
+                                    "peak_data_source", "daily_plus_minute")))
             peak = calculate_position_peak(
                 daily=kline, minute=minute, buy_date=position.buy_date,
                 buy_price=position.avg_cost, current_price=ctx.current_price,
             )
+            if peak_source == "daily":
+                peak = calculate_position_peak(
+                    daily=kline, minute=None, buy_date=position.buy_date,
+                    buy_price=position.avg_cost, current_price=ctx.current_price,
+                )
             if peak.get("value") is not None:
                 position.peak_price = peak["value"]
             metrics = calculate_post_metrics(

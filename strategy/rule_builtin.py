@@ -205,6 +205,20 @@ def _execute_right_side_trailing(ctx: RuleContext, params: dict) -> RuleResult:
 
     dd = params.get("drawdown_by_type") or {}
     stock_type = ctx.extra.get("stock_type", "B")
+    activation_enabled = params.get("profit_activation_enabled", False) is not False
+    activation_basis = str(params.get("profit_activation_basis", "peak_price"))
+    min_profit = float(params.get("min_profit_for_activation", 0.08))
+    activation_value = ctx.peak_price if activation_basis == "peak_price" else ctx.current_price
+    profit_ready = not activation_enabled or (
+        ctx.avg_cost > 0 and activation_value >= ctx.avg_cost * (1 + min_profit)
+    )
+    if not profit_ready:
+        return RuleResult(triggered=False, action="hold", reason="尚未达到右侧止盈最低盈利条件",
+                          detail={"peak_price": ctx.peak_price, "current": ctx.current_price,
+                                  "profit_activation_enabled": activation_enabled,
+                                  "profit_activation_basis": activation_basis,
+                                  "min_profit_for_activation": min_profit,
+                                  "profit_ready": False, "rule": "right_side_trailing"})
     should_sell = right_side_sell_action(
         peak_price=ctx.peak_price, current_price=ctx.current_price,
         stock_type=stock_type, drawdown_by_type=dd or None,
@@ -214,6 +228,10 @@ def _execute_right_side_trailing(ctx: RuleContext, params: dict) -> RuleResult:
         action="clear" if should_sell else "hold",
         reason=f"从峰值{ctx.peak_price:.2f}回撤，触发右侧清仓" if should_sell else "右侧移动止盈未触发",
         detail={"peak_price": ctx.peak_price, "current": ctx.current_price,
+                "profit_activation_enabled": activation_enabled,
+                "profit_activation_basis": activation_basis,
+                "min_profit_for_activation": min_profit,
+                "profit_ready": True,
                 "rule": "right_side_trailing"},
     )
 
