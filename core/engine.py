@@ -115,7 +115,8 @@ class AnalysisResult:
             d["backtest_done"] = True
             best = self.backtest_result.get("best_params",
                                             self.backtest_result.get("custom_params", {}))
-            d["best_trail"] = f"{best.get('trail_threshold', 0.05) * 100:.0f}%"
+            _trail_val = best.get("trail_threshold")
+            d["best_trail"] = f"{float(_trail_val) * 100:.0f}%" if _trail_val is not None else "按方案配置"
             d["best_offset"] = f"{best.get('offset', 0) * 100:+.0f}%"
             for k in ["total_return", "buy_hold_return", "max_drawdown",
                       "sharpe_ratio", "win_rate", "trade_count", "final_asset"]:
