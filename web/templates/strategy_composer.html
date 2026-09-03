@@ -3,6 +3,7 @@
 {% block head %}
 <style>
 .input-invalid{border-color:var(--color-danger)!important;box-shadow:0 0 0 2px rgba(198,40,40,.12)!important}.field-status{display:block;min-height:16px;color:var(--color-danger);font-size:12px}
+.sample-security{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:start}.sample-security .autocomplete-field{position:relative}.sample-security .autocomplete-menu{position:absolute;left:0;right:0;top:100%;z-index:30;display:none;max-height:220px;overflow:auto;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;box-shadow:0 8px 20px rgba(0,0,0,.14)}.sample-security .autocomplete-option{display:block;width:100%;padding:8px 10px;border:0;border-bottom:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);text-align:left;cursor:pointer}.sample-security .autocomplete-option:hover{background:var(--color-surface-subtle)}
 .app{max-width:1280px;margin:0 auto;padding:28px 22px 60px;}
 .card h2{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .card h2 i{color:var(--color-info);}
@@ -100,8 +101,11 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
       <div style="display:flex;gap:10px;margin-top:6px;">
          <button type="button" class="ui-button ui-button-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
          <button type="button" id="validate-button" class="ui-button ui-button-secondary" onclick="validateRun(event)"><i class="fas fa-flask"></i> 样本验证</button>
-          <input id="validate-code" value="sh.600900" placeholder="样本股票代码" style="width:130px;">
-          <input id="validate-name" value="长江电力" placeholder="样本股票名称" style="width:130px;">
+           <div class="sample-security" style="width:100%;">
+             <div class="ui-field autocomplete-field"><label>样本股票/代码</label><input id="validate-code" value="sh.600900" placeholder="输入股票代码或名称"><div id="validate-code-suggestions" class="autocomplete-menu"></div></div>
+             <div class="ui-field autocomplete-field"><label>样本股票名称</label><input id="validate-name" value="长江电力" placeholder="选择候选自动回填"><div id="validate-name-suggestions" class="autocomplete-menu"></div></div>
+             <div class="ui-field"><label>样本证券类型</label><select id="validate-stock-type"><option value="B" selected>B 价值白马</option><option value="A">A 高成长</option><option value="C">C 强周期</option><option value="D">D 深度价值</option><option value="E">E 场内 ETF/基金</option></select><span id="validate-classify-hint" class="help">选择股票后自动识别，可手动调整</span></div>
+           </div>
          <button type="button" class="ui-button ui-button-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
         <span class="help" id="save-hint"></span>
       </div>
@@ -522,6 +526,45 @@ function validateStrategyInputs(){
   return true;
 }
 
+function bindSampleSecurityAutocomplete(inputId, menuId){
+  const input=document.getElementById(inputId), menu=document.getElementById(menuId);
+  let timer, controller;
+  function close(){menu.style.display='none';menu.replaceChildren();}
+  input.addEventListener('input',()=>{
+    const query=input.value.trim(); clearTimeout(timer); if(controller)controller.abort();
+    if(!query){close();return;}
+    timer=setTimeout(async()=>{
+      try{
+        controller=new AbortController();
+        const response=await fetch('/api/stock/search?q='+encodeURIComponent(query),{signal:controller.signal});
+        const data=await response.json(); menu.replaceChildren();
+        (data.items||[]).forEach(item=>{
+          const option=document.createElement('button'); option.type='button'; option.className='autocomplete-option';
+          option.textContent=`${item.name||item.code} · ${item.code} · ${item.asset_type==='etf'?'ETF':'股票'}`;
+          option.addEventListener('mousedown',event=>{event.preventDefault();applySampleSecurity(item);}); menu.appendChild(option);
+        });
+        menu.style.display=menu.children.length?'block':'none';
+      }catch(error){if(error.name!=='AbortError')close();}
+    },180);
+  });
+  input.addEventListener('blur',()=>setTimeout(close,180));
+}
+async function applySampleSecurity(item){
+  document.getElementById('validate-code').value=item.code||'';
+  document.getElementById('validate-name').value=item.name||item.code||'';
+  document.querySelectorAll('.sample-security .autocomplete-menu').forEach(menu=>{menu.style.display='none';menu.replaceChildren();});
+  try{
+    const response=await fetch('/api/classify?code='+encodeURIComponent(item.code));
+    const data=await response.json();
+    if(data.status==='success'){
+      document.getElementById('validate-stock-type').value=data.stock_type||'B';
+      document.getElementById('validate-classify-hint').textContent=`自动识别：${data.industry||'未知行业'} → 类型 ${data.stock_type}`;
+    }
+  }catch(error){document.getElementById('validate-classify-hint').textContent='自动分类失败，可手动选择';}
+}
+bindSampleSecurityAutocomplete('validate-code','validate-code-suggestions');
+bindSampleSecurityAutocomplete('validate-name','validate-name-suggestions');
+
 function collectAllRules(kind){
   return Array.from(document.querySelectorAll(`#${kind}-rules .rule-box`)).map(box=>{
     const type=box.querySelector('input[data-type]').dataset.type;
@@ -621,7 +664,8 @@ async function validateRun(event){
     const code=document.getElementById('validate-code').value.trim();
     const name=document.getElementById('validate-name').value.trim();
     if(!code || !name){throw new Error('请填写样本股票代码和名称');}
-    const params=new URLSearchParams({code,name,stock_type:'B',scheme:draft.scheme_name,draft_id:draft.draft_id,auto_run:'1'});
+    const stockType=document.getElementById('validate-stock-type').value;
+    const params=new URLSearchParams({code,name,stock_type:stockType,scheme:draft.scheme_name,draft_id:draft.draft_id,auto_run:'1'});
     window.location.href='/strategy-simulation?'+params.toString();
     return;
   }catch(error){hint.textContent='样本验证失败：'+(error.message||'网络异常');hint.style.color='var(--color-danger)';}

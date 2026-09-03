@@ -109,6 +109,13 @@ def test_simulation_draft_is_one_time_and_non_persistent(client):
     data = response.get_json()
     assert data["status"] == "success"
     assert data["scheme_name"] == "test_composer"
+
+
+def test_stock_search_and_classification_support_sample_security(client):
+    search = client.get("/api/stock/search?q=600900")
+    assert search.status_code == 200
+    assert search.get_json()["status"] == "success"
+    assert "validate-stock-type" in client.get("/strategy-composer").get_data(as_text=True)
 def test_compose_roundtrip(client):
     model = _sample_model()
     r = client.post("/api/schemes/compose", json=model)
