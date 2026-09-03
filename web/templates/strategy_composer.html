@@ -97,10 +97,10 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
       <div class="scheme-guide"><b>自动验证说明：</b>当前验证“回撤止盈阈值”和“买入偏移”两项。训练区间用于寻找候选，验证区间用于检查稳定性；结果只生成推荐，不会修改正式方案。其他配置暂未接入自动验证。<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;"><label class="help">训练开始<input id="opt-train-start" type="date" value="2019-01-01"></label><label class="help">训练结束<input id="opt-train-end" type="date" value="2023-12-31"></label><label class="help">验证开始<input id="opt-valid-start" type="date" value="2024-01-01"></label><label class="help">验证结束<input id="opt-valid-end" type="date" value="{{ yesterday }}"></label></div><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="previewOptimizationPlan()">查看验证范围</button><button type="button" class="ui-button ui-button-primary ui-button-sm" id="optimization-run-button" onclick="runOptimization()">运行自动验证</button><span class="help" id="optimization-hint"></span><div id="optimization-result"></div></div>
 
       <div style="display:flex;gap:10px;margin-top:6px;">
-         <button class="ui-button ui-button-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
+         <button type="button" class="ui-button ui-button-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
          <button type="button" id="validate-button" class="ui-button ui-button-secondary" onclick="validateRun(event)"><i class="fas fa-flask"></i> 样本验证</button>
          <input id="validate-code" value="sh.600900" placeholder="样本股票代码" style="width:130px;">
-        <button class="ui-button ui-button-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
+         <button type="button" class="ui-button ui-button-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
         <span class="help" id="save-hint"></span>
       </div>
     </div>
@@ -352,6 +352,12 @@ function renderField(f, rule){
     const value=Number(def||0)*100;
     return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label><div class="unit-input"><input data-f="${key}" type="number" min="${key==='offset'?-20:0}" max="${key==='offset'?20:100}" step="0.1" value="${escapeAttr(value)}"><span>%</span></div></div>`;
   }
+  if(type==='number'){
+    const minAttr=f.min!=null?` min="${escapeAttr(f.min)}"`:'';
+    const maxAttr=f.max!=null?` max="${escapeAttr(f.max)}"`:'';
+    const step=Number.isInteger(f.min)&&Number.isInteger(f.max)?'1':'0.1';
+    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label><input data-f="${key}" type="number"${minAttr}${maxAttr} step="${step}" value="${escapeAttr(def!=null?def:'')}" title="${escapeAttr(f.help||'请填写合法数值')}"><span class="field-status" data-field-status="${key}"></span></div>`;
+  }
   return `<div class="ui-field"><label>${label} <span class="help">${f.help||('默认：'+(f.default??'未设置'))}</span></label>
     <input data-f="${key}" type="${type==='number'?'number':'text'}" value="${def!=null?def:''}"></div>`;
 }
@@ -497,23 +503,27 @@ function collectModel(){
 }
 
 async function renderPreview(){
-  const model=collectModel();
-  const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
-  if(!r.ok) throw new Error(`生成预览失败（HTTP ${r.status}）`);
-  const d=await r.json();
-  if(d.status==='success'){
+  try{
+    const model=collectModel();
+    const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
+    const body=await r.text();
+    let d; try{d=body?JSON.parse(body):null;}catch(e){throw new Error(`生成预览失败（HTTP ${r.status}，响应不是有效 JSON）`);}
+    if(!r.ok || !d || d.status!=='success') throw new Error((d&&d.error)||`生成预览失败（HTTP ${r.status}）`);
     document.getElementById('yaml-preview').value=d.yaml;
-    const v=await validateYaml(d.yaml);
+    await validateYaml(d.yaml);
+    document.getElementById('validate-hint').textContent='✓ 当前配置有效，预览已生成';
+    document.getElementById('validate-hint').style.color='var(--color-success)';
     return d.yaml;
-  }else{
-    document.getElementById('yaml-preview').value='# 生成失败: '+d.error;
-    document.getElementById('validate-hint').textContent=d.error;
-    throw new Error(d.error||'生成预览失败');
+  }catch(error){
+    document.getElementById('yaml-preview').value='# 生成失败: '+error.message;
+    document.getElementById('validate-hint').textContent=error.message;
+    document.getElementById('validate-hint').style.color='var(--color-danger)';
+    throw error;
   }
 }
 
 function schedulePreview(){
-  clearTimeout(window.previewTimer); window.previewTimer=setTimeout(renderPreview,350);
+  clearTimeout(window.previewTimer); window.previewTimer=setTimeout(()=>renderPreview().catch(()=>{}),350);
 }
 async function previewOptimizationPlan(){
   const payload={train_start:document.getElementById('opt-train-start').value,train_end:document.getElementById('opt-train-end').value,validation_start:document.getElementById('opt-valid-start').value,validation_end:document.getElementById('opt-valid-end').value,trail_thresholds:[0.04,0.06,0.08],buy_offsets:[-0.02,0,0.02]};
@@ -569,14 +579,19 @@ async function validateRun(event){
 }
 
 async function saveScheme(){
-  const model=collectModel();
-  const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
-  const d=await r.json();
-  if(d.status!=='success'){showUiMessage('生成失败: '+d.error, 'error');return;}
-  const s=await fetch('/api/schemes/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:model.name,content:d.yaml})});
-  const sd=await s.json();
-  if(sd.status==='success'){showUiMessage('方案已保存: '+sd.name, 'success');document.getElementById('save-hint').textContent='最新版本 '+sd.version;}
-  else showUiMessage('保存失败: '+sd.error, 'error');
+  const status=document.getElementById('save-hint');
+  status.textContent='正在校验并保存…'; status.style.color='var(--color-text-subtle)';
+  try{
+    const model=collectModel();
+    const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
+    const body=await r.text(); let d; try{d=body?JSON.parse(body):null;}catch(e){throw new Error(`生成方案失败（HTTP ${r.status}）`);}
+    if(!r.ok || !d || d.status!=='success') throw new Error((d&&d.error)||`生成方案失败（HTTP ${r.status}）`);
+    const s=await fetch('/api/schemes/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:model.name,content:d.yaml})});
+    const saveBody=await s.text(); let sd; try{sd=saveBody?JSON.parse(saveBody):null;}catch(e){throw new Error(`保存失败（HTTP ${s.status}）`);}
+    if(!s.ok || !sd || sd.status!=='success') throw new Error((sd&&sd.error)||`保存失败（HTTP ${s.status}）`);
+    status.textContent=`✓ 方案已保存：${sd.name} · 版本 ${sd.version} · 状态 ${sd.state||'draft'}`; status.style.color='var(--color-success)';
+    showUiMessage('方案已保存', 'success');
+  }catch(error){status.textContent='保存失败：'+error.message; status.style.color='var(--color-danger)'; showUiMessage('方案保存失败：'+error.message,'error');}
 }
 
 function copyYaml(){
