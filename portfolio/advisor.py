@@ -385,24 +385,27 @@ class PostPurchaseAdvisor:
         from StockInvestmentTool.strategy.rule_registry import dispatch_rule
 
         params = rule.params if rule is not None else {}
+        peak_source = str(params.get("peak_price_source", "position_peak_price"))
+        peak_price = ctx.year_high if peak_source == "year_high" else position.peak_price
         result = dispatch_rule("sell", "right_side_trailing", RuleContext(
             row=ctx.row, current_price=ctx.current_price,
-            peak_price=position.peak_price,
+            avg_cost=position.avg_cost, peak_price=peak_price,
             extra={"stock_type": position.stock_type},
         ), params)
         should_sell = bool(result.triggered)
-        dd_pct = (position.peak_price - ctx.current_price) / position.peak_price * 100 \
-            if position.peak_price > 0 else 0
+        dd_pct = (peak_price - ctx.current_price) / peak_price * 100 \
+            if peak_price > 0 else 0
 
         # 右侧止盈触发线 = 峰值 × (1 - 回撤阈值)；跌破即触发清仓
         dd_threshold = None
         if drawdown_by_type:
             dd_threshold = drawdown_by_type.get(position.stock_type)
         from StockInvestmentTool.portfolio.position_levels import calculate_right_side_trigger_price
-        trigger_price = calculate_right_side_trigger_price(position.peak_price, dd_threshold)
+        trigger_price = calculate_right_side_trigger_price(peak_price, dd_threshold)
 
         check_results["right_side"] = {
-            "peak_price": round(position.peak_price, 2),
+            "peak_price": round(peak_price, 2),
+            "peak_price_source": peak_source,
             "drawdown_pct": round(dd_pct, 2),
             "trigger_price": trigger_price,          # 右侧止盈触发线（跌破即清仓）
             "triggered": should_sell,
@@ -412,7 +415,7 @@ class PostPurchaseAdvisor:
                 position_id=position.id, stock_code=position.stock_code,
                 stock_name=position.stock_name,
                 advice_type=ADVICE_SELL_ALL, urgency="attention",
-                reason=f"📉 右侧移动止盈触发：从峰值{position.peak_price:.2f}回撤{dd_pct:.1f}%，建议清仓",
+                reason=f"📉 右侧移动止盈触发：从峰值{peak_price:.2f}回撤{dd_pct:.1f}%，建议清仓",
                 suggested_price=ctx.current_price,
                 suggested_shares=position.total_shares,
                 suggested_amount=position.market_value,
