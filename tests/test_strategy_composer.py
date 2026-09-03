@@ -84,6 +84,15 @@ def test_optimization_plan_is_bounded_and_non_persistent(client):
 def test_optimization_run_requires_explicit_ranges(client):
     response = client.post("/api/schemes/optimization-run", json={"content": "name: x", "code": "sh.600900"})
     assert response.status_code == 400
+
+
+def test_simulation_draft_is_one_time_and_non_persistent(client):
+    model = _sample_model()
+    response = client.post("/api/schemes/simulation-draft", json={"model": model})
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+    assert data["scheme_name"] == "test_composer"
 def test_compose_roundtrip(client):
     model = _sample_model()
     r = client.post("/api/schemes/compose", json=model)

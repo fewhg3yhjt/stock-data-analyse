@@ -279,8 +279,13 @@ const loadingPct = document.getElementById('loading-pct');
 const loadingFill = document.getElementById('loading-fill');
 const errorArea = document.getElementById('error-area');
 const resultSection = document.getElementById('result-section');
+const autoRun = new URLSearchParams(location.search).get('auto_run') === '1';
 let analysisPollTimer = null;
 let analysisPollStartedAt = 0;
+
+if (autoRun && form.querySelector('[name="code"]').value) {
+  setTimeout(() => form.requestSubmit(), 200);
+}
 
 // Tab 切换
 document.querySelectorAll('.tab').forEach(tab => {

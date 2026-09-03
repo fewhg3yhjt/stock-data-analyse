@@ -64,6 +64,7 @@ def static_asset(path: str) -> str:
 
 # 在线程中存储分析进度
 _analysis_status: dict[str, dict] = {}
+_simulation_drafts: dict[str, dict] = {}
 _heavy_task_lock = threading.BoundedSemaphore(1)
 
 
@@ -144,7 +145,8 @@ def _run_analysis(task_id: str, code: str, name: str,
                   do_backtest: bool, do_prompt: bool, do_api: bool,
                   initial_cash: float = 100000,
                   scheme_name: str = "default_value",
-                  stock_type: str = "B"):
+                   stock_type: str = "B",
+                   scheme_content: str = ""):
     """后台执行分析流程（通过统一 AnalysisEngine）"""
     status = _analysis_status[task_id]
     with _heavy_task_lock:
@@ -152,7 +154,11 @@ def _run_analysis(task_id: str, code: str, name: str,
             try:
                 status["stage"] = "初始化引擎"
                 status["progress"] = 5
-                engine = AnalysisEngine(scheme_name)
+                scheme = None
+                if scheme_content:
+                    from StockInvestmentTool.core.composer import model_to_config, yaml_to_model
+                    scheme = model_to_config(yaml_to_model(scheme_content))
+                engine = AnalysisEngine(scheme_name, scheme=scheme)
 
                 status["stage"] = "获取数据"
                 status["progress"] = 10
@@ -1784,6 +1790,8 @@ def analyze():
     do_api = flask.request.form.get("api") == "on"
     scheme_name = flask.request.form.get("scheme", "default_value").strip() or "default_value"
     stock_type = flask.request.form.get("stock_type", "B").strip().upper() or "B"
+    draft_id = flask.request.form.get("draft_id", "").strip()
+    scheme_content = (_simulation_drafts.pop(draft_id, {}) or {}).get("content", "") if draft_id else ""
     if stock_type not in ("A", "B", "C", "D", "E"):
         stock_type = "B"
     try:
@@ -1803,7 +1811,7 @@ def analyze():
     # 校验方案存在
     try:
         registry = SchemeRegistry()
-        if not registry.has(scheme_name):
+        if not registry.has(scheme_name) and not scheme_content:
             available = ", ".join(s.name for s in registry.list()) or "(无)"
             return flask.jsonify({"status": "error", "error": f"方案 '{scheme_name}' 不存在。可用: {available}"}), 400
     except Exception as e:
@@ -1826,7 +1834,7 @@ def analyze():
     thread = threading.Thread(
         target=_run_analysis,
         args=(task_id, code, name, start_date, end_date,
-              do_backtest, do_prompt, do_api, initial_cash, scheme_name, stock_type),
+              do_backtest, do_prompt, do_api, initial_cash, scheme_name, stock_type, scheme_content),
         daemon=True,
     )
     thread.start()
@@ -1837,6 +1845,26 @@ def analyze():
         "progress": 0,
         "_query_url": f"/api/analysis/tasks/{task_id}",
     }), 202
+
+
+@web_app.route("/api/schemes/simulation-draft", methods=["POST"])
+def api_schemes_simulation_draft():
+    """Create a one-time in-memory draft for strategy simulation."""
+    from uuid import uuid4
+    from StockInvestmentTool.core.composer import model_to_config, model_to_yaml
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    try:
+        model = payload.get("model") or {}
+        content = model_to_yaml(model)
+        scheme = model_to_config(model)
+        draft_id = uuid4().hex
+        _simulation_drafts[draft_id] = {"content": content, "scheme_name": scheme.name,
+                                        "created_at": datetime.now().isoformat(timespec="seconds")}
+        return flask.jsonify({"status": "success", "draft_id": draft_id,
+                              "scheme_name": scheme.name,
+                              "note": "仅本次策略模拟使用，不会保存正式方案"})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
 
 
 def _run_comparison(task_id: str, code: str, name: str,

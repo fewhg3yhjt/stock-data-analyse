@@ -556,19 +556,14 @@ async function validateRun(event){
   hint.textContent='正在准备样本验证…'; hint.style.color='var(--color-text-subtle)';
   try{await renderPreview();}catch(error){hint.textContent='样本验证准备失败：'+(error.message||'无法生成方案');hint.style.color='var(--color-danger)';return;}
   if(!preview.value.trim() || preview.value.startsWith('# 生成失败')){hint.textContent='请先生成有效 YAML';return;}
-  hint.textContent='样本回测中，请稍候…'; hint.style.color='var(--color-text-subtle)';
+  hint.textContent='正在进入策略模拟…'; hint.style.color='var(--color-text-subtle)';
   button.disabled=true;
   try{
-    const r=await fetch('/api/schemes/validate-run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:preview.value,code:document.getElementById('validate-code').value.trim()})});
-    const d=await r.json();
-    if(d.status==='success'){
-      hint.textContent=`✓ 回测完成：${d.trades} 笔交易 · 策略收益 ${d.total_return}% · 最大回撤 ${d.max_drawdown}% · 权益点 ${d.equity_points}`;
-      hint.style.color='var(--color-success)';
-      const detail=document.getElementById('validate-detail') || document.createElement('div');
-      detail.id='validate-detail'; detail.className='scheme-guide';
-      detail.innerHTML='<b>样本结果：</b>'+ (d.trades_detail||[]).slice(-8).map(t=>`${t.date||'—'} · ${t.type||'交易'} · 价格 ${t.price??'—'} · 数量 ${t.shares??'—'} · ${t.reason||''}`).join('<br>') || '<b>样本结果：</b>回测期间没有触发交易。';
-      hint.parentElement.appendChild(detail);
-    }else{hint.textContent='样本验证失败：'+(d.error||'未知错误');hint.style.color='var(--color-danger)';}
+    const draft=await (await fetch('/api/schemes/simulation-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:collectModel()})})).json();
+    if(draft.status!=='success') throw new Error(draft.error||'无法创建模拟草稿');
+    const params=new URLSearchParams({code:document.getElementById('validate-code').value.trim(),name:document.getElementById('f-name').value||'样本股票',stock_type:'B',scheme:draft.scheme_name,draft_id:draft.draft_id,auto_run:'1'});
+    window.location.href='/strategy-simulation?'+params.toString();
+    return;
   }catch(error){hint.textContent='样本验证失败：'+(error.message||'网络异常');hint.style.color='var(--color-danger)';}
   finally{button.disabled=false;}
 }

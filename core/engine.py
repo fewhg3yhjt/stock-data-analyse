@@ -146,9 +146,10 @@ class AnalysisEngine:
 
     def __init__(self, scheme_name: str = "default_value",
                  registry: Optional[SchemeRegistry] = None,
-                 data_source: Optional[DataSource] = None):
+                 data_source: Optional[DataSource] = None,
+                 scheme: Optional[SchemeConfig] = None):
         self.registry = registry or SchemeRegistry()
-        self.scheme: SchemeConfig = self.registry.get(scheme_name)
+        self.scheme: SchemeConfig = scheme or self.registry.get(scheme_name)
         self.data_source = data_source or FallbackDataSource()
 
     # ── 数据获取 ─────────────────────────────────────────
