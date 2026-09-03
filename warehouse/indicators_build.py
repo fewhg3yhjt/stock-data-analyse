@@ -28,6 +28,36 @@ from StockInvestmentTool.warehouse.storage import Warehouse
 
 logger = logging.getLogger(__name__)
 
+# 最长滚动指标窗口（ma240 ≈ 240 交易日）。为保证窄窗口构建（如仅当月增量）
+# 也能算出真实 ma5/ma20/ma60/ma240，加载历史需向前扩展的月份数。
+# 240 交易日 ≈ 12 个月自然月，多留 2 个月缓冲覆盖节假日/停牌导致的交易日稀疏。
+LOOKBACK_MONTHS = 14
+
+
+def _extend_load_months(months: list[str], *, lookback: int = LOOKBACK_MONTHS) -> list[str]:
+    """Expand a (possibly single-month) output window into a load window that
+    goes back far enough for the longest rolling indicator.
+
+    The output month(s) are unchanged; this only enlarges the read history so
+    rolling means are not NaN just because an incremental build only requested
+    the current month.
+    """
+    if not months:
+        return months
+    try:
+        first = pd.Timestamp(months[0]).replace(day=1)
+    except (TypeError, ValueError):
+        return months
+    start = (first - pd.offsets.MonthBegin(lookback)).strftime("%Y-%m")
+    # union all months from start..latest requested month
+    result = []
+    cursor = pd.Timestamp(start)
+    end = pd.Timestamp(months[-1]).replace(day=1)
+    while cursor <= end:
+        result.append(cursor.strftime("%Y-%m"))
+        cursor = cursor + pd.offsets.MonthBegin(1)
+    return result
+
 
 def _indicator_schema_columns() -> set[str]:
     """Standard indicator dataset columns that must always be present.
@@ -63,8 +93,13 @@ class IndicatorsBuilder:
     # ── 分区解析（一次校验，流式复用）──────────────────
 
     def _resolve_partitions(self, months: list[str],
-                            partition_versions: Optional[dict[str, str]] = None) -> dict[str, dict]:
+                            partition_versions: Optional[dict[str, str]] = None,
+                            *, lenient: bool = False) -> dict[str, dict]:
         """解析 daily 各月份分区的发布信息（路径/版本），并做一次质量+checksum 校验。
+
+        Args:
+            lenient: 为 True 时，缺失或未发布的月份只跳过（用于扩展的载入窗口），
+                不抛错；为 False 时（默认，用于调用方请求的输出窗口）缺失即失败。
 
         Returns:
             {ym: {"path": Path | None, "version_id": str | None}}
@@ -83,14 +118,23 @@ class IndicatorsBuilder:
             current = versions.get(ym)
             if not current:
                 if not self.allow_legacy:
+                    if lenient:
+                        logger.warning("载入窗口分区未发布，跳过（历史回看不足该月）: %s", ym)
+                        continue
                     raise DatasetAccessError(f"分区没有正式版本: stock_daily/{ym}")
                 resolved[ym] = {"path": None, "version_id": None}
                 continue
             version, quality = access._version_context(current["version_id"])
             if not access._quality_allowed(quality, "WARNING"):
+                if lenient:
+                    logger.warning("载入窗口分区质量不满足，跳过: %s", ym)
+                    continue
                 raise DatasetAccessError(f"正式版本质量不满足要求: stock_daily/{ym}")
             path = Path(version["published_path"] or "")
             if not path.exists():
+                if lenient:
+                    logger.warning("载入窗口正式文件不存在，跳过: %s", ym)
+                    continue
                 raise DatasetAccessError(f"正式文件不存在: {path}")
             import hashlib
             if hashlib.sha256(path.read_bytes()).hexdigest() != version["checksum"]:
@@ -162,12 +206,23 @@ class IndicatorsBuilder:
                     "elapsed_sec": 0, "input_dataset": "stock_daily", "input_versions": {},
                     "input_fallback_used": False, "output_versions": {}}
 
-        # ① 解析分区（一次质量/checksum 校验），并确定标的全集
-        logger.info("指标计算: 解析 %d 个月分区版本...", len(months))
-        partitions = self._resolve_partitions(months, partition_versions)
+        # 输出窗口限定为调用方请求的 months；加载窗口需向前扩展足够历史，
+        # 否则增量（仅当月）构建时 ma5/ma20/ma60/ma240 因无历史而算出 NaN。
+        output_months = set(months)
+        load_months = _extend_load_months(months)
+
+        # ① 解析分区（一次质量/checksum 校验），并确定标的全集。
+        # 扩展的载入窗口用 lenient，缺失历史月份只跳过；调用方请求的输出月份
+        # 必须可用，否则无意义地产出空分区。
+        logger.info("指标计算: 解析 %d 个月分区版本（加载窗口 %d 个月）...",
+                    len(months), len(load_months))
+        partitions = self._resolve_partitions(load_months, partition_versions, lenient=True)
         input_versions = {ym: info["version_id"] for ym, info in partitions.items() if info["version_id"]}
+        missing_output = [ym for ym in months if ym not in partitions]
+        if missing_output and not self.allow_legacy:
+            raise DatasetAccessError(f"输出月份没有正式版本: {missing_output}")
         if symbols is None:
-            symbols = self._all_symbols(months)
+            symbols = self._all_symbols(load_months)
         from StockInvestmentTool.warehouse.asset_profiles import select_symbols
         symbols, asset_type_counts = select_symbols(
             symbols, asset_types=asset_types, known_types=self.warehouse.instrument_types()
@@ -192,10 +247,11 @@ class IndicatorsBuilder:
         t0 = time.time()
         written_months: set[str] = set()
         processed = 0
-        output_months = None
+        # 输出月份默认限定为调用方请求的 months；若提供增量区间，再做一次交集。
+        output_months = set(months)
         if changed_start and changed_end:
             from StockInvestmentTool.warehouse.incremental import affected_partitions
-            output_months = set(affected_partitions(changed_start, changed_end))
+            output_months = output_months & set(affected_partitions(changed_start, changed_end))
 
         def _flush():
             for ym, df in month_bufs.items():
@@ -223,7 +279,7 @@ class IndicatorsBuilder:
             month_bufs.clear()
 
         for batch in batches:
-            per_code = self._load_batch(months, batch, partitions)
+            per_code = self._load_batch(load_months, batch, partitions)
             for code in batch:
                 if progress_callback:
                     progress_callback(processed, total, code, "计算指标")
@@ -248,7 +304,9 @@ class IndicatorsBuilder:
                     if s is not None:
                         out[name.lower()] = s.values
                 for ym, grp in out.groupby(out["date"].dt.strftime("%Y-%m")):
-                    if output_months is not None and ym not in output_months:
+                    # 只落调用方请求的输出月份；扩展载入的历史月份仅用于计算，
+                    # 不作为本轮输出。
+                    if ym not in output_months:
                         continue
                     cur = month_bufs.get(ym)
                     if cur is not None and len(cur):

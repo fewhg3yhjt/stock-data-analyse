@@ -266,3 +266,57 @@ def test_record_output_versions_leaves_candidate_not_published(tmp_path):
     assert row[1] == "candidate"   # 不自动发布
     assert row[2] is None          # 无正式路径
     assert state.current("indicators", "2026-08") is None
+
+
+def test_extend_load_months_expands_narrow_window():
+    from StockInvestmentTool.warehouse.indicators_build import _extend_load_months
+    extended = _extend_load_months(["2026-09"])
+    assert "2026-09" in extended
+    # 至少向前扩展覆盖 ma240 需要的 ~12 个月历史。
+    assert len(extended) >= 13
+    assert extended[0] == "2025-07"
+
+
+def test_indicators_build_narrow_window_keeps_ma_columns(tmp_path):
+    """Incremental (single-month) build must still produce real MA history.
+
+    Loads stock_daily from a multi-month history so rolling indicators are
+    computable, and keeps the standard columns even if some rows are NaN.
+    """
+    from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
+    warehouse = Warehouse(tmp_path / "warehouse", meta_db_path=tmp_path / "management.db")
+    dates = pd.bdate_range("2026-05-01", periods=120)
+    frame = pd.DataFrame({
+        "date": dates, "code": ["sh600000"] * len(dates),
+        "open": [10.0] * len(dates), "high": [10.5] * len(dates),
+        "low": [9.8] * len(dates), "close": [10.0] * len(dates),
+        "volume": [1.0] * len(dates), "amount": [0.1] * len(dates),
+        "turn": [1.0] * len(dates),
+    })
+    # 按月份写分区
+    for month, grp in frame.groupby(frame["date"].dt.strftime("%Y-%m")):
+        warehouse.write_daily_partition(month, grp)
+    warehouse.metadata.register_dataset("stock_daily")
+    from StockInvestmentTool.warehouse.pipeline_state import PipelineState
+    from StockInvestmentTool.warehouse.publish import Publisher
+    from StockInvestmentTool.warehouse.quality import check_stock_daily
+    from StockInvestmentTool.warehouse.daily_build import DailyBuilder
+    state = PipelineState(warehouse.meta_db_path)
+    # 逐月发布
+    for month in sorted(frame["date"].dt.strftime("%Y-%m").unique()):
+        path = warehouse.daily_partition(month)
+        build = DailyBuilder(warehouse).build_partition(month, [("tencent", path)], include_current=False)
+        version = state.create_version(build, source_batches=[], dataset_name="stock_daily", schema_version="stock_daily.v1")
+        report = check_stock_daily(build["path"], expected_symbols=1)
+        state.quality(version, status=report["status"], checks=report["checks"], publish_allowed=True)
+        if report["publish_allowed"]:
+            Publisher(warehouse).publish(version)
+    result = IndicatorsBuilder(warehouse, allow_legacy=False).build_all(
+        symbols=["sh600000"], months=["2026-09"], asset_types=["stock"])
+    # 输出只写 2026-09
+    assert "2026-09" in result.get("output_versions", {})
+    ind = warehouse.read_indicator("2026-09")
+    assert ind is not None and not ind.empty
+    # ma5 列必须保留，且存在非 NaN 的真实值（历史来自扩展载入窗口）
+    assert "ma5" in ind.columns
+    assert ind["ma5"].notna().any()
