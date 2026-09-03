@@ -28,7 +28,7 @@ ALL_STATES = (STATE_ACCUMULATING, STATE_HOLDING,
 # 事件常量
 EVENT_BOUGHT = "bought"        # 建仓/加仓至满仓
 EVENT_LEFT_TP = "left_tp"      # 触发左侧止盈（部分卖出）
-EVENT_BREAKOUT = "breakout"    # 突破前高 → 转右侧
+EVENT_BREAKOUT = "breakout"    # 突破前高事件（仅用于展示/状态兼容）
 EVENT_STOP = "stop"            # 止损清仓
 EVENT_CLOSED = "closed"        # 右侧/任意清仓
 EVENT_REOPEN = "reopen"        # 平仓后再建仓

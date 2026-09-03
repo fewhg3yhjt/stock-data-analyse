@@ -374,7 +374,7 @@ class PostPurchaseAdvisor:
             )
         if tier == 3:
             check_results["left_side"]["transition"] = True
-            # 突破前高 → 建议转右侧，记录状态但不强制操作
+            # 前高突破仍可推进展示阶段，但不作为右侧止盈的前置条件。
             if position.left_tier_sold >= 1:
                 if self.state_machine.can(position.position_phase, EVENT_BREAKOUT):
                     position.position_phase = self.state_machine.transition(
@@ -404,9 +404,6 @@ class PostPurchaseAdvisor:
     def _check_right_side(self, position: Position, ctx: AdvisorContext,
                           scheme, check_results: dict) -> Optional[ActionAdvice]:
         """④ 右侧移动止盈: 突破后从峰值回撤"""
-        if position.position_phase not in (PHASE_LEFT_SIDE, PHASE_RIGHT_SIDE):
-            return None
-
         rule = scheme.rule("sell", "right_side_trailing")
         drawdown_by_type = None
         if rule is not None:
@@ -656,9 +653,10 @@ class PostPurchaseAdvisor:
         # 保存"当时计算的指标"快照，供每日操作日志追溯（当前价/支撑位/均线/趋势等）
         check_results["context"] = ctx.to_dict()
 
-        # 优先级: 止损 > 止盈 > 加仓
+        # 优先级: 风险止损 > 保护性清仓 > 普通分批止盈 > 加仓。
+        # 各规则独立计算，右侧止盈不再依赖前高突破或持仓阶段。
         for check in (self._check_hard_stop, self._check_technical_stop,
-                      self._check_left_side, self._check_right_side,
+                      self._check_right_side, self._check_left_side,
                       self._check_buy_more, self._check_rule_c):
             advice = check(position, ctx, scheme, check_results)
             if advice is not None:

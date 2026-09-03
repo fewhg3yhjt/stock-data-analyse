@@ -200,7 +200,7 @@ def _execute_left_side_fixed(ctx: RuleContext, params: dict) -> RuleResult:
 
 
 def _execute_right_side_trailing(ctx: RuleContext, params: dict) -> RuleResult:
-    """right_side_trailing：右侧移动止盈（突破后回撤清仓）。"""
+    """right_side_trailing：达到盈利条件后按峰值回撤清仓。"""
     from StockInvestmentTool.strategy.take_profit import right_side_sell_action
 
     dd = params.get("drawdown_by_type") or {}

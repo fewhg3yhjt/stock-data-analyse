@@ -17,7 +17,7 @@
     第二止盈区(突破前高)     → 剩余60%仓位转模式二
     若浮盈不足10%，减持比例减半
 
-  模式二（右侧移动止盈）：突破前高后回撤跟踪
+  模式二（右侧移动止盈）：达到盈利条件后按峰值回撤跟踪
     A类(高成长)回撤≥5% → 清仓
     B类(价值白马)回撤≥3% → 清仓
     股价创新高 → 止盈线跟随上移
@@ -702,7 +702,37 @@ class TakeProfitOptimizer:
             })
             return cash, 0.0, 0.0, 0, 0.0, "closed", 0, True
 
-        # ── ④ 左侧固定止盈（前高90-100%区间） ──
+        # ── ④ 右侧移动止盈（独立于前高突破） ──
+        # 右侧是否激活只由自身盈利门槛决定，不依赖 position_phase/year_high。
+        if not bought_this_bar and shares > 1e-6:
+            activation_value = peak_price if self.profit_activation_basis == "peak_price" else close
+            profit_ready = (
+                not self.profit_activation_enabled
+                or activation_value >= avg_cost * (1 + self.min_profit_for_activation)
+            )
+            drawdown_by_type = dict(self._right_drawdown or {})
+            drawdown_by_type[self.stock_type] = float(trail_threshold)
+            should_sell = profit_ready and right_side_sell_action(
+                peak_price=peak_price,
+                current_price=close,
+                stock_type=self.stock_type,
+                drawdown_by_type=drawdown_by_type,
+            )
+            if should_sell:
+                dd_pct = (peak_price - close) / peak_price * 100 if peak_price > 0 else 0
+                fill = close
+                cash += shares * fill
+                trades.append({
+                    "date": row["date"], "type": "右侧止盈(移动清仓)",
+                    "price": round(fill, 2), "shares": round(shares, 2),
+                    "amount": round(shares * fill, 2),
+                    "pnl": round(shares * (fill - avg_cost), 2),
+                    "reason": f"达到盈利启动条件后从峰值{peak_price:.2f}回撤{dd_pct:.1f}%"
+                               f"（阈值{self.stock_type}类{trail_threshold*100:.0f}%），触发右侧清仓",
+                })
+                return cash, 0.0, 0.0, 0, 0.0, "closed", left_tier_sold, True
+
+        # ── ⑤ 左侧固定止盈（前高90-100%区间） ──
         # left_side 阶段也继续检查更高档位（95-100% 第一止盈区），
         # 否则第一档卖完后第二档会被漏判。
         # 当日刚买入(bought_this_bar)时不触发止盈，避免"刚在低点买、当天
@@ -763,8 +793,7 @@ class TakeProfitOptimizer:
                     position_phase = "left_side"
                     return cash, shares, total_cost, buy_stage, peak_price, position_phase, left_tier_sold, True
 
-            # 突破前高 → 转右侧移动止盈（不再要求左侧已卖出，
-            # 否则跳空/快速突破时永远不会进入右侧跟踪）
+            # 右侧移动止盈独立判断，不依赖前高突破或左侧止盈。
             if tier == 3:
                 position_phase = "right_side"
 
@@ -791,43 +820,6 @@ class TakeProfitOptimizer:
                                f"（阈值{self.drawdown_protection_threshold:.0%}），触发左侧回撤保护清仓",
                 })
                 return cash, 0.0, 0.0, 0, 0.0, "closed", left_tier_sold, True
-
-        # ── ⑤ 右侧移动止盈（突破后回撤跟踪） ──
-        if not bought_this_bar and position_phase in ("left_side", "right_side"):
-            # 已突破前高 → 检查回撤
-            if high >= year_high:
-                position_phase = "right_side"
-
-            if position_phase == "right_side":
-                activation_value = peak_price if self.profit_activation_basis == "peak_price" else close
-                profit_ready = (not self.profit_activation_enabled or
-                                activation_value >= avg_cost * (1 + self.min_profit_for_activation))
-                # ``trail_threshold`` is the optimizer's per-run parameter.
-                # Apply it to the current stock type instead of only printing
-                # it in the reason text; scheme defaults remain the fallback.
-                drawdown_by_type = dict(self._right_drawdown or {})
-                drawdown_by_type[self.stock_type] = float(trail_threshold)
-                should_sell = profit_ready and right_side_sell_action(
-                    peak_price=peak_price,
-                    current_price=close,
-                    stock_type=self.stock_type,
-                    drawdown_by_type=drawdown_by_type,
-                )
-                if should_sell:
-                    dd_pct = (peak_price - close) / peak_price * 100
-                    fill = close
-                    cash += shares * fill
-                    trades.append({
-                        "date": row["date"],
-                        "type": "右侧止盈(移动清仓)",
-                        "price": round(fill, 2),
-                        "shares": round(shares, 2),
-                        "amount": round(shares * fill, 2),
-                        "pnl": round(shares * (fill - avg_cost), 2),
-                        "reason": f"突破前高后从{peak_price:.2f}回撤{dd_pct:.1f}%"
-                                   f"（阈值{self.stock_type}类{trail_threshold*100:.0f}%），触发右侧清仓",
-                    })
-                    return cash, 0.0, 0.0, 0, 0.0, "closed", left_tier_sold, True
 
         return cash, shares, total_cost, buy_stage, peak_price, position_phase, left_tier_sold, False
 
