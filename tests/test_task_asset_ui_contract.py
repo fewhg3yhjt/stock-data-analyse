@@ -30,13 +30,15 @@ def test_market_page_rotation_contract():
     script = (ROOT / "web/static/market.js").read_text(encoding="utf-8")
 
     assert "window.MARKET_ROTATIONS" in template
-    assert 'data-filter="status"' in template
-    assert 'data-filter="sector"' in template
     rotation_markup = template.split('<div class="ui-card rotation-card">', 1)[1].split(
         '<div class="ui-card"><div class="ui-card-header"><span><i class="fas fa-sitemap"', 1
     )[0]
     assert '<tbody>{% for' not in rotation_markup
     assert "排名（按5日收益）" in script
+    assert "data-filter=\"${filterKey}\"" in script
+    assert "fa-arrow-down" in script
+    assert "fa-arrow-up" in script
+    assert "sortTable(defaultSort" not in script
     for field in (
         "rank_5d", "as_of", "industry_name", "status", "score", "return_1d",
         "return_5d", "return_20d", "up_ratio", "amount_ratio", "member_count",
@@ -47,3 +49,9 @@ def test_market_page_rotation_contract():
     assert "StockChart.drawLine" in script
     assert "tooltip:" not in script
     assert "dataZoom" not in script
+
+
+def test_market_discovery_conditions_does_not_read_removed_board_field():
+    source = (ROOT / "web/templates/market_discovery.html").read_text(encoding="utf-8")
+    assert "board:'ALL'" in source
+    assert "board:document.getElementById('board').value" not in source
