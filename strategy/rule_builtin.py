@@ -389,7 +389,7 @@ def build_builtin_executors() -> list[RuleExecutor]:
                      schemas["market_state_arbiter"], "V6.0市场状态仲裁买入"),
         # 卖出
         RuleExecutor(KIND_SELL, "hard_stop", _execute_hard_stop,
-                     schemas["hard_stop"], "硬止损"),
+                      schemas["hard_stop"], "硬止损"),
         RuleExecutor(KIND_SELL, "technical_stop", _execute_technical_stop,
                      schemas["technical_stop"], "技术止损（放量破强支撑）"),
         RuleExecutor(KIND_SELL, "left_side_fixed", _execute_left_side_fixed,

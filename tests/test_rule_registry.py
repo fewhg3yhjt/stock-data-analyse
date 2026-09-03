@@ -28,6 +28,14 @@ def test_types_enumerable(reg):
     assert "hard_stop" in reg.types("sell")
 
 
+def test_hard_stop_rule_keeps_name_and_exposes_two_modes(reg):
+    executor = reg.get("sell", "hard_stop")
+    assert executor.description == "硬止损"
+    schema = reg.schema("sell", "hard_stop")
+    mode = next(field for field in schema if field["key"] == "mode")
+    assert mode["options"] == ["fixed", "breakeven"]
+
+
 def test_schema_present_for_all(reg):
     for kind in ("buy", "sell"):
         for t in reg.types(kind):

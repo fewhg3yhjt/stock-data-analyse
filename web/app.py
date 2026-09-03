@@ -415,8 +415,8 @@ def api_indicators():
                 "notes": "这是持仓卖出决策规则，不是普通技术指标。",
             },
             "hard_stop": {
-                "name": "硬止损 / 保本止损",
-                "meaning": "可选择固定比例止损，或按成本价反推保本止损价。",
+                "name": "硬止损",
+                "meaning": "固定比例止损规则下，可选择固定比例止损或保本止损模式；当前只执行选中的模式。",
                 "calculation": "fixed：止损价 = average_cost × (1 - stop_loss_rate)；breakeven：止损价 = average_cost ÷ (1 + activation)。",
                 "data_requirements": "持仓成本、当前价格、股票类型、策略风险配置",
                 "notes": "这是风险控制规则，不自动下单。",

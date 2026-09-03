@@ -153,7 +153,7 @@ const RULE_GUIDE = {
   support_level:['支撑位分批买入','用途：在估值或技术支撑附近分批建仓。触发：当日最低价触及对应支撑价；支撑源按价格排序，最低是综合防守位，第二低是综合支撑位。动作：按批次比例买入。'],
   trend_following:['趋势跟随加仓','用途：只在趋势向上且市场环境允许时追加仓位。触发：配置的趋势、市场状态、反弹幅度等条件必须同时满足。动作：按当前价、均线或支撑位分批加仓。'],
   market_state_arbiter:['市场状态仲裁买入','用途：根据市场环境决定是否允许买入。触发：读取市场状态、筛选结果和风控放行条件。动作：跟随、回调买入、小仓位或禁止操作。'],
-  hard_stop:['固定比例止损 / 保本止损','用途：价格触及预设风险线时保护本金。触发：当日最低价或当前价 <= 计算出的止损价。动作：建议清仓；固定模式使用“均价×(1-扣减率)”，保本模式使用“均价÷(1+阈值)”。'],
+  hard_stop:['硬止损','用途：价格触及预设风险线时保护本金。先选择一种止损模式，再按股票类型设置该模式的比例；未选中的模式不参与计算。触发：当日最低价或当前价 <= 计算出的止损价。动作：建议清仓。'],
   technical_stop:['技术止损','用途：识别“放量跌破关键支撑”的风险。触发：当日最低价 < 所选支撑线，且当天成交量 ÷ 前5个交易日平均成交量 >= 放量倍数，两个条件必须同时满足。动作：建议清仓；默认启动。'],
   left_side_fixed:['左侧固定止盈','用途：价格接近历史前高但尚未突破时分批落袋。触发：当前价 ÷ 滚动前高落入配置区间。动作：按区间比例减仓。默认前高窗口252个交易日，取日最高价。'],
   right_side_trailing:['右侧移动止盈','用途：突破前高后保护已经获得的利润。触发：当前价从持仓峰值回撤达到对应类型阈值。动作：建议清仓。'],
@@ -287,7 +287,21 @@ function renderRule(kind, rule){
      <div class="rule-guide"><b>触发与动作：</b>${guide[1]}</div>
     <input type="hidden" data-kind="${kind}" data-type="${rule.type}" data-rule='${JSON.stringify(rule)}'>
     <div class="rule-fields">${fields}</div>`;
-  wrap.appendChild(box);
+   wrap.appendChild(box);
+   if(rule.type==='hard_stop'){
+     const mode=box.querySelector('[data-f="mode"]');
+     if(mode) mode.addEventListener('change',()=>syncHardStopFields(box));
+     syncHardStopFields(box);
+   }
+}
+
+function syncHardStopFields(ruleBox){
+  const mode=ruleBox.querySelector('[data-f="mode"]')?.value || 'fixed';
+  const fields={
+     fixed: ruleBox.querySelector('[data-param="stop_loss_by_type"]'),
+     breakeven: ruleBox.querySelector('[data-param="breakeven_activation_by_type"]'),
+  };
+  Object.entries(fields).forEach(([key,field])=>{if(field) field.style.display=key===mode?'':'none';});
 }
 
 function renderField(f, rule){
@@ -318,7 +332,7 @@ function renderField(f, rule){
       const labels={A:'A 高成长',B:'B 价值白马',C:'C 强周期',D:'D 深度价值',E:'E 场内 ETF/基金'};
       const values=def||{};
        const isPercent=['stop_loss_by_type','breakeven_activation_by_type','drawdown_by_type','ratio_by_type'].includes(key);
-      return `<div class="ui-field"><label>${label} <span class="help">${f.help||'按股票类型分别配置'}；不同类型不会互相覆盖。</span></label><div class="type-map">${Object.entries(labels).map(([t,text])=>{
+       return `<div class="ui-field" data-param="${key}"><label>${label} <span class="help">${f.help||'按股票类型分别配置'}；不同类型不会互相覆盖。</span></label><div class="type-map">${Object.entries(labels).map(([t,text])=>{
         const value=values[t]!=null ? (isPercent?Number(values[t])*100:values[t]) : '';
         return `<label>${text}<div class="unit-input"><input data-map="${key}" data-map-key="${t}" type="number" min="0" ${isPercent?'max="100" step="0.1"':'step="0.1"'} value="${escapeAttr(value)}"><span>${isPercent?'%':'倍'}</span></div></label>`;
       }).join('')}</div></div>`;
