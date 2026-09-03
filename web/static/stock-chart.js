@@ -93,8 +93,14 @@ window.StockChart = (function(){
       const closeIdx = (data.series||[]).findIndex(s=>s.key==='close');
       if(closeIdx>=0){
         const dateIdx={}; data.dates.forEach((dt,i)=>dateIdx[dt]=i);
-        const marks=data.signals.map(sg=>({name:'买', coord:[dateIdx[sg.date]!==undefined?dateIdx[sg.date]:sg.date, sg.value]})).filter(m=>m.coord[0]!==undefined);
-        if(marks.length) opt.series[closeIdx].markPoint={symbol:'pin',symbolSize:36,itemStyle:{color:'#e74c3c'},label:{color:'#fff',fontSize:9,formatter:'买'},data:marks};
+        const marks=data.signals.map(sg=>{
+          const x = dateIdx[sg.date]!==undefined?dateIdx[sg.date]:sg.date;
+          const isBuy = sg.type==='buy';
+          return {name:isBuy?'买':'卖', coord:[x, sg.value], value:sg.value,
+            symbol:isBuy?'triangle':'triangle', symbolRotate:isBuy?0:180,
+            itemStyle:{color:isBuy?'#28a745':'#dc3545'}, label:{color:'#fff',fontSize:9,formatter:isBuy?'买':'卖'}};
+        }).filter(m=>m.coord[0]!==undefined);
+        if(marks.length) opt.series[closeIdx].markPoint={symbol:'pin',symbolSize:40,data:marks};
       }
     }
     if(data.lines && data.lines.length){
@@ -106,7 +112,7 @@ window.StockChart = (function(){
     return chart;
   }
 
-  // K线（OHLC 蜡烛图 + 可选均线）
+  // K线（OHLC 蜡烛图 + 可选均线 + 买卖点标记）
   function drawKLine(el, data, opts={}){
     const chart = init(el);
     const opt = baseOption();
@@ -125,6 +131,21 @@ window.StockChart = (function(){
       opt.series.push({name:'点位',type:'line',data:[],silent:true,
         markLine:{symbol:'none',label:{formatter:p=>p.name,position:'insideEndTop',fontSize:10},
           data:data.lines.map(l=>({name:l.name,yAxis:l.value,lineStyle:{type:'dashed',color:l.color||'#999'}}))}});
+    }
+    // 买卖点标记（叠加在 K 线序列上）
+    if(data.signals && data.signals.length){
+      const kIdx = opt.series.findIndex(s=>s.type==='candlestick');
+      if(kIdx>=0){
+        const dateIdx={}; (data.dates||[]).forEach((dt,i)=>dateIdx[dt]=i);
+        const marks=data.signals.map(sg=>{
+          const x = dateIdx[sg.date]!==undefined?dateIdx[sg.date]:sg.date;
+          const isBuy = sg.type==='buy';
+          return {name:isBuy?'买':'卖', coord:[x, sg.value], value:sg.value,
+            symbol:'triangle', symbolRotate:isBuy?0:180,
+            itemStyle:{color:isBuy?'#28a745':'#dc3545'}, label:{color:'#fff',fontSize:9,formatter:isBuy?'买':'卖'}};
+        }).filter(m=>m.coord[0]!==undefined);
+        if(marks.length) opt.series[kIdx].markPoint={symbol:'pin',symbolSize:40,data:marks};
+      }
     }
     chart.setOption(opt, true);
     return chart;

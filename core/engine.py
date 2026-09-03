@@ -96,6 +96,18 @@ class AnalysisResult:
             if "high" in self.kline.columns:
                 d["year_high"] = float(self.kline["high"].tail(252).max())
                 d["year_high_as_of"] = d["data_end"]
+            # 提供可视化所需的 OHLC 序列（最多 750 根），供前端画蜡烛图
+            try:
+                import json as _json
+                kdf = self.kline.tail(750)
+                d["kline_dates"] = [str(x)[:10] for x in kdf["date"]]
+                d["kline_ohlc"] = [
+                    [float(o), float(c), float(l), float(h)]
+                    for o, c, l, h in zip(kdf["open"], kdf["close"], kdf["low"], kdf["high"])
+                ]
+                d["kline_vol"] = [float(v) for v in (kdf["volume"] if "volume" in kdf.columns else [0]*len(kdf))]
+            except Exception:
+                d["kline_dates"], d["kline_ohlc"], d["kline_vol"] = [], [], []
         pe_info = self.valuation.get("pe") or {}
         d["pe"] = pe_info.get("current_pe")
         d["pe_percentile"] = pe_info.get("pe_percentile")
@@ -122,6 +134,10 @@ class AnalysisResult:
                       "sharpe_ratio", "win_rate", "trade_count", "final_asset"]:
                 d[k] = self.backtest_metrics.get(k)
             d["trades"] = self.backtest_result.get("backtest", {}).get("trades", [])
+            # 权益曲线：回测每根 K 线的总资产，画出收益走势
+            eq = self.backtest_result.get("backtest", {}).get("equity_curve", []) or []
+            d["equity_dates"] = [str(x.get("date"))[:10] for x in eq if isinstance(x, dict)]
+            d["equity_values"] = [float(x.get("total_asset")) for x in eq if isinstance(x, dict) and x.get("total_asset") is not None]
             d["stop_loss_rate"] = Config.STOP_LOSS_RATE
             d["drawdown_stop"] = Config.DRAWDOWN_STOP
             d["min_profit_for_dd"] = Config.MIN_PROFIT_FOR_DD
