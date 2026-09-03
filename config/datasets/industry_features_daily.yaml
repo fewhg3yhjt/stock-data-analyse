@@ -38,7 +38,6 @@ fields:
 sources:
   - {name: industry_membership, role: input, priority: 1, field_mapping: {}, unit_conversions: {}}
   - {name: stock_daily, role: input, priority: 2, field_mapping: {}, unit_conversions: {}}
-  - {name: indicators, role: input, priority: 3, field_mapping: {}, unit_conversions: {}}
 consumers:
   - {name: industry_rotation, type: business, purpose: 行业轮动判断和行业内选股, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式决策}
 quality: {publish_warning: false, coverage: {pass_min: 0.98, warning_min: 0.90}}

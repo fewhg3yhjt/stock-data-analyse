@@ -14,6 +14,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 # 指令中文映射（页面二/三共用）
@@ -1631,6 +1633,66 @@ class DashboardService:
             })
         return sorted(result, key=lambda item: (item["change_5d_pct"] is None,
                                                   -(item["change_5d_pct"] or 0)))
+
+    def industry_rotation_overview(self, as_of: str | None = None) -> dict:
+        """读取已发布行业轮动特征，供市场页展示，不访问外部接口。"""
+        from datetime import date
+        from StockInvestmentTool.warehouse.industry_features import IndustryRotationService
+
+        requested_as_of = as_of or date.today().isoformat()
+        service = IndustryRotationService()
+        rows = service.decide(requested_as_of)
+        context = service.last_context
+        result = {
+            "status": context.get("status", "no_data"),
+            "requested_as_of": requested_as_of,
+            "actual_data_as_of": context.get("actual_data_as_of"),
+            "reason": context.get("reason"),
+            "items": [],
+        }
+        if not rows:
+            result["reason"] = result["reason"] or "暂无已发布行业轮动特征"
+            return result
+
+        state_labels = {"strong": "强势", "neutral": "中性", "weak": "弱势",
+                        "insufficient_data": "数据不足"}
+        leader_names = {}
+        try:
+            with service.warehouse._conn() as conn:
+                leader_names = {str(code): str(name) for code, name in conn.execute(
+                    "SELECT code, name FROM instruments WHERE name IS NOT NULL AND name != ''")}
+        except Exception as exc:
+            logger.debug("读取行业龙头名称失败: %s", exc)
+
+        def numeric(row, key, digits=4):
+            value = row.get(key)
+            if value is None or pd.isna(value):
+                return None
+            return round(float(value), digits)
+
+        for row in rows:
+            leader_code = str(row.get("leader_code") or "")
+            state = str(row.get("industry_state") or "")
+            result["items"].append({
+                "industry_code": str(row.get("industry_code") or ""),
+                "industry_name": str(row.get("industry_name") or ""),
+                "status": state,
+                "status_label": state_labels.get(state, "未知"),
+                "score": numeric(row, "industry_score"),
+                "return_1d": numeric(row, "return_1d"),
+                "return_5d": numeric(row, "return_5d"),
+                "return_20d": numeric(row, "return_20d"),
+                "up_ratio": numeric(row, "up_ratio"),
+                "amount_ratio": numeric(row, "amount_ratio"),
+                "rank_1d": numeric(row, "rank_1d", 0),
+                "rank_5d": numeric(row, "rank_5d", 0),
+                "rank_20d": numeric(row, "rank_20d", 0),
+                "leader": leader_code,
+                "leader_code": leader_code,
+                "leader_name": leader_names.get(leader_code, leader_code),
+                "reason": str(row.get("state_reason") or ""),
+            })
+        return result
 
     def industry_membership_overview(self) -> dict:
         """返回最新证监会行业归属覆盖统计及各行业股票数量。"""

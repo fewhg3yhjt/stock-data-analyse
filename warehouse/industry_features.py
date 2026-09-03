@@ -49,22 +49,18 @@ class IndustryFeaturesBuilder:
         # the existing daily-data policy; WARNING is consumable, FAIL is not.
         daily = access.load_dataset("stock_daily", history_start, as_of, required_quality="WARNING", allow_legacy=self.allow_legacy,
                                     partition_versions=input_versions.get("stock_daily"))
-        indicators = access.load_dataset("indicators", history_start, as_of, required_quality="WARNING", allow_legacy=False,
-                                     partition_versions=input_versions.get("indicators"))
         membership = access.load_dataset("industry_membership", end_date=as_of, required_quality="PASS", allow_legacy=False,
                                          partition_versions=input_versions.get("industry_membership"))
-        for name, result in (("stock_daily", daily), ("indicators", indicators), ("industry_membership", membership)):
+        for name, result in (("stock_daily", daily), ("industry_membership", membership)):
             if not self.allow_legacy and (result.context.get("fallback_used") or result.context.get("source") != "published_dataset"):
                 raise DatasetAccessError(f"{name} 不是 Published 数据，禁止生成行业轮动特征")
-        if daily.data.empty or indicators.data.empty or membership.data.empty:
-            raise DatasetAccessError("行业轮动要求 Published stock_daily、indicators、industry_membership 均有数据")
+        if daily.data.empty or membership.data.empty:
+            raise DatasetAccessError("行业轮动要求 Published stock_daily 和 industry_membership 均有数据")
         d = daily.data.copy()
-        i = indicators.data.copy()
         m = membership.data.copy()
-        for frame, col in ((d, "date"), (i, "date"), (m, "snapshot_date")):
+        for frame, col in ((d, "date"), (m, "snapshot_date")):
             frame[col] = pd.to_datetime(frame[col]).dt.normalize()
             frame["code"] = frame["code"].astype(str).str.lower().str.replace(".", "", regex=False) if "code" in frame else frame.get("code")
-        d = d.merge(i.drop(columns=[c for c in ("close",) if c in i.columns]), on=["date", "code"], how="left")
         d["close"] = pd.to_numeric(d["close"], errors="coerce")
         d["amount"] = pd.to_numeric(d.get("amount", 0), errors="coerce").fillna(0)
         pct = pd.to_numeric(d.get("pct_chg", pd.Series(index=d.index)), errors="coerce")
@@ -100,8 +96,13 @@ class IndustryFeaturesBuilder:
             day = d[d["date"] == date].merge(snap[["code", "industry_code", "industry_name", "industry_classification"]], on="code", how="inner")
             if day.empty:
                 continue
-            for keys, grp in day.groupby(["industry_code", "industry_name", "industry_classification"], sort=False):
-                code, name, classification = keys
+            for keys, grp in day.groupby(["industry_code", "industry_classification"], sort=False):
+                code, classification = keys
+                # BaoStock may return two display-name variants for one
+                # industry code across source updates. The source code is the
+                # identity; choose the most frequent source name for display
+                # while aggregating all members into one industry row.
+                name = grp["industry_name"].astype(str).value_counts().index[0]
                 valid = grp[grp["close"].gt(0)].copy()
                 returns = {n: float(valid[f"ret_{n}d"].mean()) if valid[f"ret_{n}d"].notna().any() else None for n in (1, 3, 5, 10, 20)}
                 amount = float(valid["amount"].sum())
@@ -153,7 +154,7 @@ class IndustryFeaturesBuilder:
         for month, frame in out[out["date"] <= pd.Timestamp(as_of)].groupby(out["date"].dt.strftime("%Y-%m")):
             path = output_dir / f"{month}.parquet"; _atomic_parquet_write(frame, path); paths[month] = path
         actual_input_versions = {}
-        for name, result in (("industry_membership", membership), ("stock_daily", daily), ("indicators", indicators)):
+        for name, result in (("industry_membership", membership), ("stock_daily", daily)):
             actual_input_versions[name] = result.context.get("partition_versions", {})
         state = PipelineState(self.warehouse.meta_db_path)
         versions = state.record_output_versions(dataset_name="industry_features_daily", paths=paths, input_dataset="stock_daily", input_versions=actual_input_versions, builder_version="industry_features_builder.v1", schema_version="industry_features_daily.v1")
