@@ -265,11 +265,19 @@ class Warehouse:
         """通过 DuckDB 只读取一个标的的指标分区数据。"""
         import duckdb
 
-        files = [str(self.indicator_dir / f"{m}.parquet")
-                 for m in self.available_months("indicator")]
+        # Read only the published indicator partitions needed for the requested
+        # lookback, newest-first. union_by_name tolerates a lingering schema
+        # mismatch between a short current month and older partitions instead of
+        # crashing the whole query.
+        months = sorted(self.available_months("indicator"))
+        files = [str(self.indicator_dir / f"{m}.parquet") for m in months]
         files = [p for p in files if Path(p).exists()]
         if not files:
             return None
+        # 480 trading days ≥ max requested lookback (750) in practice; keep a
+        # bounded window so a bad historical partition cannot poison reads.
+        max_months = max(6, min(60, max(6, int(days / 21) + 2)))
+        files = files[-max_months:]
         normalized = str(code).lower().replace(".", "")
         if not re.fullmatch(r"(?:sh|sz|bj)\d{6}", normalized):
             raise ValueError("股票代码格式无效")
@@ -278,7 +286,8 @@ class Warehouse:
         conn = duckdb.connect()
         try:
             frame = conn.execute(
-                f"SELECT * FROM read_parquet({escaped}) WHERE code=? ORDER BY date DESC LIMIT ?",
+                f"SELECT * FROM read_parquet({escaped}, union_by_name=true) "
+                "WHERE code=? ORDER BY date DESC LIMIT ?",
                 [normalized, days],
             ).df()
             return frame.sort_values("date").reset_index(drop=True)

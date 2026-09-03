@@ -458,6 +458,37 @@ class JobRunStore:
             rows = conn.execute("SELECT * FROM job_plan WHERE run_date=? ORDER BY id", (run_date,)).fetchall()
         return [dict(row) for row in rows]
 
+    def cancel_orphan_running(self, *, job_names: Optional[list[str]] = None,
+                              before: Optional[str] = None) -> dict:
+        """Mark abandoned running jobs/plans as failed (audit-preserving).
+
+        Intended for task-state recovery when a process/container died without a
+        timeout finishing the run. It never deletes rows or parquet files.
+        """
+        now = datetime.now().isoformat(timespec="seconds")
+        before = before or (datetime.now() - timedelta(minutes=30)).isoformat(timespec="seconds")
+        names = tuple(job_names or self.DATA_JOBS)
+        marks = ",".join("?" for _ in names) if names else ""
+        jobs = 0
+        plans = 0
+        with self._connect() as conn:
+            if names:
+                cur = conn.execute(
+                    f"""UPDATE job_runs SET status='failed', finished_at=?, updated_at=?,
+                        error='任务进程已结束，运行记录自动回收（取消孤儿任务）'
+                        WHERE status='running' AND started_at<? AND job_name IN ({marks})""",
+                    (now, now, before, *names),
+                )
+                jobs = cur.rowcount
+            # job_plan 长期 running 的孤儿计划一并收尾，保留审计记录。
+            cur = conn.execute(
+                """UPDATE job_plan SET status='failed', updated_at=?, error='孤儿计划已回收（无对应活动进程）'
+                   WHERE status='running' AND updated_at<?""",
+                (now, before),
+            )
+            plans = cur.rowcount
+        return {"jobs": jobs, "plans": plans}
+
     def link_plan_run(self, run_date: str, task_key: str, run_id: int) -> None:
         with self._connect() as conn:
             conn.execute("UPDATE job_plan SET run_id=?,status='running',updated_at=? WHERE run_date=? AND task_key=?",

@@ -421,6 +421,13 @@ def init_scheduler(app) -> None:
         id="recover_stale_state", misfire_grace_time=1800, coalesce=True,
         max_instances=1,
     )
+    # 封盘后按小时重试未完成的采集链，直到发布成功或当天下线。
+    scheduler.add_job(
+        _post_close_retry_safe, CronTrigger(hour="16-23", minute="0", timezone=TZ),
+        id="post_close_retry", misfire_grace_time=3600, coalesce=True,
+        max_instances=1,
+    )
+    logger.info("封盘后采集重试已注册: 每天 16:00 起每小时")
     # 分钟采集优先；只有分钟采集未启用时才启用低频在线快照兜底。
     minute_enabled = os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1"
     if os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1" and not minute_enabled:
@@ -574,6 +581,10 @@ def _recover_stale_task_state() -> int:
     store = JobRunStore()
     boundary = datetime.now() - timedelta(minutes=5)
     recovered += store.reclaim_data_running(before=boundary)
+    # 回收更宽时间窗内的孤儿运行记录，避免异常退出后任务永久 running。
+    orphan = store.cancel_orphan_running(
+        before=(datetime.now() - timedelta(minutes=60)).isoformat(timespec="seconds"))
+    recovered += orphan["jobs"] + orphan["plans"]
     recovered += store.recover_stale_locks()
     try:
         from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
@@ -594,6 +605,98 @@ def _recover_stale_task_state() -> int:
     if recovered:
         logger.info("启动回收遗留任务状态 %d 项", recovered)
     return recovered
+
+
+def _dataset_released(dataset_name: str, target_date: str) -> bool:
+    """Return whether the dataset already has a published row for target_date.
+
+    Only the current published version matters; candidate/failed versions are
+    ignored so a retry is idempotent.
+    """
+    from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    try:
+        access = DatasetAccess(Warehouse())
+        current = access.get_current_version(dataset_name)
+        if not current:
+            return False
+        frame = access.load_dataset(dataset_name, start_date=target_date,
+                                    end_date=target_date, required_quality="WARNING").data
+        if frame is None or frame.empty:
+            return False
+        date_col = "date" if "date" in frame.columns else ("trading_date" if "trading_date" in frame.columns else None)
+        if not date_col:
+            return True
+        import pandas as pd
+        return pd.to_datetime(frame[date_col], errors="coerce").max().strftime("%Y-%m-%d") >= target_date
+    except (DatasetAccessError, Exception):  # noqa: BLE001
+        return False
+
+
+def run_post_close_retry_job() -> dict:
+    """封盘后按小时重试未完成的采集链，直到发布成功或当天下线。
+
+    只重试当前交易日，幂等：某数据集当日已发布则跳过，不会重复覆盖历史分区。
+    一次失败不抛异常，保持调度器存活，交由下一轮小时触发再试。
+    """
+    from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
+    from StockInvestmentTool.ops.task_execution import execute_task, execute_pipeline
+    trading_date = _today_text()
+    configured = TaskCenter(management_db_path()).active_configs()
+    result = {"date": trading_date, "retried": []}
+
+    def enabled(key):
+        return bool((configured.get(key) or {}).get("enabled"))
+
+    # 日线采集链：st 日线未发布则重试整条链。
+    daily_chain = [k for k in ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
+                               "stock_daily_publish", "indicators_build") if enabled(k)]
+    if daily_chain and not _dataset_released("stock_daily", trading_date):
+        payload = {"trigger_type": "retry", "requested_by": "scheduler",
+                   "period_start": trading_date, "period_end": trading_date,
+                   "task_timeout": _daily_timeout()}
+        try:
+            result["daily"] = execute_pipeline(management_db_path(), daily_chain, payload)
+            result["retried"].append("stock_daily_chain")
+        except Exception as exc:  # noqa: BLE001
+            result["daily_error"] = str(exc)
+
+    # 同花顺行业指数：当日指数未发布则采集并发布，成功后触发行业特征重建。
+    if enabled("industry_daily_capture") and not _dataset_released("industry_daily", trading_date):
+        payload = {"trigger_type": "retry", "requested_by": "scheduler",
+                   "period_start": trading_date, "period_end": trading_date,
+                   "task_timeout": _daily_timeout()}
+        try:
+            captured = execute_task(management_db_path(), "industry_daily_capture", payload)
+            result["industry_daily"] = captured
+            result["retried"].append("industry_daily")
+            full_result = captured.get("result") or {}
+            # 采集只产出 Raw Batch；再走 Quality + Publish 后才可被下游读取。
+            if full_result.get("raw_batch_id"):
+                from StockInvestmentTool.warehouse.industry import stage_and_publish_industry_batch
+                from StockInvestmentTool.warehouse.storage import Warehouse
+                published = stage_and_publish_industry_batch(
+                    Warehouse(meta_db_path=management_db_path()),
+                    dataset_name="industry_daily", batch_id=full_result["raw_batch_id"],
+                    expected_symbols=full_result.get("expected_symbols"))
+                result["industry_daily_publish"] = published
+            if enabled("industry_features_build") and _dataset_released("industry_daily", trading_date):
+                result["industry_features"] = execute_task(
+                    management_db_path(), "industry_features_build",
+                    {"trigger_type": "retry", "requested_by": "scheduler",
+                     "period_start": trading_date, "period_end": trading_date, "as_of": trading_date})
+                result["retried"].append("industry_features_build")
+        except Exception as exc:  # noqa: BLE001
+            result["industry_daily_error"] = str(exc)
+    return result
+
+
+def _post_close_retry_safe() -> None:
+    """Scheduler job wrapper so a retry failure never crashes the scheduler."""
+    try:
+        run_post_close_retry_job()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("封盘后采集重试异常: %s", exc)
 
 
 def _reload_data_scheduler_jobs(app) -> None:

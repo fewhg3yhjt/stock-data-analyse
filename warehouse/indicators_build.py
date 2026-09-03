@@ -29,6 +29,28 @@ from StockInvestmentTool.warehouse.storage import Warehouse
 logger = logging.getLogger(__name__)
 
 
+def _indicator_schema_columns() -> set[str]:
+    """Standard indicator dataset columns that must always be present.
+
+    Derived from config/datasets/indicators.yaml fields. Keeping these columns
+    (as NaN when a short month has no history) prevents cross-partition schema
+    mismatch when readers glob across monthly parquet files.
+    """
+    from StockInvestmentTool.warehouse.dataset_config import load_dataset_config
+    try:
+        config = load_dataset_config("indicators")
+        return {item["name"] for item in config.get("fields", [])}
+    except Exception:
+        return {
+            "date", "code", "close", "ma5", "ma10", "ma20", "ma60", "ma120",
+            "ma240", "ma17", "ma63", "rsi14", "macd", "atr14", "change_amount",
+            "amplitude", "vol_ma5", "low_3m", "year_low", "volatility_20",
+            "pct_chg", "vol_ratio", "ret_5d", "ret_20d", "high_20d", "low_20d",
+            "bias_ratio", "take_profit_reference", "dual_ma_low", "amplitude_abs",
+            "custom_example",
+        }
+
+
 class IndicatorsBuilder:
     """全市场指标宽表批量生成器。"""
 
@@ -188,10 +210,14 @@ class IndicatorsBuilder:
                 # stale rows from an older schema cannot mask fresh values.
                 df = df.drop_duplicates(subset=["date", "code"], keep="last")
                 df = df.sort_values(["date", "code"])
-                # 丢弃全空列：重建产生的旧列空壳（concat existing 带入）不落盘，
-                # 保证指标分区只含本版实际有值的列。
+                # 指标分区必须保持统一 schema。对标准指标列（如 ma5/ma20/ma60）即使某月
+                # 只有少量交易日、滚动均线全为 NaN，也要保留该列，避免跨分区 schema 不一致
+                # （DuckDB glob 读取时报 schema mismatch）。只丢弃非标准列且全为空的列。
                 if "code" in df.columns and len(df):
-                    df = df.dropna(axis=1, how="all")
+                    standard = _indicator_schema_columns()
+                    extra = [c for c in df.columns if c not in standard and df[c].isna().all()]
+                    if extra:
+                        df = df.drop(columns=extra)
                 self.warehouse.write_indicator_partition(ym, df)
                 written_months.add(ym)
             month_bufs.clear()
