@@ -1,0 +1,105 @@
+name: right_aggressive_growth
+version: '1.0'
+description: (克隆自 aggressive_growth) 激进成长方案：弱支撑即重仓 + 规则C趋势跟随 + 宽右侧止盈
+applicable_types:
+- A
+- B
+- C
+- D
+strategy_spec:
+  买入逻辑: 弱支撑先买 50%，强支撑再买 30%，极端低估锚买 20%；牛市早期且未超买时，趋势跟随规则可追加仓位
+  卖出优先级: 技术止损 > 硬止损 > 左侧固定止盈 > 右侧移动止盈
+  右侧移动止盈: 突破前高后继续跟踪，让利润奔跑；从峰值回撤达到 A/C/D 8%、B 5% 时建议清仓
+  左侧止盈: 价格进入前高 90%-95% 预警区或 95%-100% 第一止盈区时分批减仓；浮盈不足 12% 时减半执行
+  状态机: accumulating → left_side → right_side → closed；持仓状态按买入、止盈和止损逐步推进
+  适用场景: 适合能承受较大波动、希望买点更积极并保留上涨空间的持仓
+buy_rules:
+- type: support_level
+  params:
+    support_sources:
+    - dividend_anchor
+    - ma60
+    - low_3m
+    - year_low
+    buy_stages:
+    - label: 综合弱支撑
+      position_index: 1
+      ratio: 0.5
+    - label: 综合强支撑
+      position_index: 0
+      ratio: 0.3
+    - label: 极端低估锚
+      use_special: dividend_anchor_4pct
+      ratio: 0.2
+    offset: 0
+- type: trend_following
+  params:
+    conditions:
+    - trend_bullish
+    - market_bull_early
+    - rebound_lt_10pct
+    - not_cyclical
+    rebound_limit_pct: 10
+sell_rules:
+- type: hard_stop
+  params:
+    mode: fixed
+    stop_loss_by_type:
+      A: 0.1
+      B: 0.08
+      C: 0.05
+      D: 0.08
+      E: 0.05
+    breakeven_activation_by_type:
+      A: 0.08
+      B: 0.08
+      C: 0.08
+      D: 0.08
+      E: 0.08
+- type: technical_stop
+  params:
+    volume_surge_ratio: 1.5
+    support_source: strong
+    technical_stop_enabled: true
+- type: left_side_fixed
+  params:
+    reference_price: year_high
+    profit_activation_enabled: false
+    profit_activation_basis: current_price
+    min_profit_for_activation: 0.0
+    year_high_window: 252
+    zones:
+    - name: 预警区
+      range:
+      - 0.9
+      - 0.95
+      sell_ratio: 0.2
+    - name: 第一止盈区
+      range:
+      - 0.95
+      - 1
+      sell_ratio: 0.2
+    half_profit_threshold: 0.12
+    ratio_by_type:
+      A: 0.2
+      B: 0.4
+      C: 0.6
+      D: 0.4
+    drawdown_protection_enabled: true
+    drawdown_protection_min_profit: 0.08
+    drawdown_protection_threshold: 0.1
+- type: right_side_trailing
+  params:
+    peak_price_source: position_peak_price
+    peak_data_source: daily_plus_minute
+    profit_activation_enabled: true
+    profit_activation_basis: peak_price
+    min_profit_for_activation: 0.08
+    drawdown_by_type:
+      A: 0.08
+      B: 0.05
+      C: 0.08
+      D: 0.08
+backtest:
+  initial_cash: 100000.0
+  optimize: true
