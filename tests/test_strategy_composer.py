@@ -62,6 +62,9 @@ def test_api_rules_schema(client):
     assert d["status"] == "success"
     assert any(x["kind"] == "buy" for x in d["rules"])
     assert any(x["kind"] == "sell" for x in d["rules"])
+    technical = next(x for x in d["rules"] if x["type"] == "technical_stop")
+    source = next(field for field in technical["schema"] if field["key"] == "support_source")
+    assert "最低值" in source["help"]
     trend = next(x for x in d["rules"] if x["type"] == "trend_following")
     assert any(field["key"] == "conditions" for field in trend["schema"])
 

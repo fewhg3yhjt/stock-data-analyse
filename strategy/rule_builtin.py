@@ -350,7 +350,7 @@ def _build_schemas() -> dict[str, list[ParamField]]:
         ParamField("volume_surge_ratio", "成交量放大倍数", "number", default=1.8, min=1.0,
                    help="当天成交量 ÷ 前5个交易日平均成交量；默认达到1.8倍才算放量"),
          ParamField("support_source", "跌破支撑线", "text", default="strong",
-                    help="可选择综合防守位、综合支撑位或指标库中的任一指标；默认：综合防守位（strong）"),
+                    help="可选择策略派生值或指标库指标。综合防守位=支撑源有效价格中的最低值；综合支撑位=第二低值。默认：综合防守位"),
         ParamField("technical_stop_enabled", "规则状态", "select", default=True,
                    options=[True, False],
                    help="启动时参与判断；停用时完全跳过技术止损。默认：启动"),

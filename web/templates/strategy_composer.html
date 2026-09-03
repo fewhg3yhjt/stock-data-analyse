@@ -274,7 +274,7 @@ function addRule(kind){
 }
 
 let ruleCount=0;
-function renderRule(kind, rule){
+ function renderRule(kind, rule){
   const wrap=document.getElementById(kind==='buy'?'buy-rules':'sell-rules');
   const id='rule-'+kind+'-'+(ruleCount++);
   const kindColor=kind==='buy'?'tag-buy':'tag-sell';
@@ -290,12 +290,33 @@ function renderRule(kind, rule){
     <input type="hidden" data-kind="${kind}" data-type="${rule.type}" data-rule='${JSON.stringify(rule)}'>
     <div class="rule-fields">${fields}</div>`;
    wrap.appendChild(box);
-   if(rule.type==='hard_stop'){
+    if(rule.type==='hard_stop'){
      const mode=box.querySelector('[data-f="mode"]');
      if(mode) mode.addEventListener('change',()=>syncHardStopFields(box));
-     syncHardStopFields(box);
+      syncHardStopFields(box);
+    }
+    if(rule.type==='technical_stop'){
+      const source=box.querySelector('[data-f="support_source"]');
+      if(source) source.addEventListener('change',()=>updateTechnicalStopExplanation(box));
+      updateTechnicalStopExplanation(box);
+    }
+ }
+
+ function updateTechnicalStopExplanation(ruleBox){
+   const source=ruleBox.querySelector('[data-f="support_source"]');
+   if(!source)return;
+   let note=ruleBox.querySelector('[data-technical-stop-explanation]');
+   if(!note){note=document.createElement('div');note.dataset.technicalStopExplanation='1';note.className='config-help';source.closest('.ui-field').appendChild(note);}
+   const buyBox=document.querySelector('#buy-rules .rule-box input[data-type="support_level"]')?.closest('.rule-box');
+   const sources=buyBox ? Array.from(buyBox.querySelectorAll('[data-f="support_sources"] [data-list-value]')).map(x=>x.value).filter(Boolean) : [];
+   const labels={strong:'综合防守位',weak:'综合支撑位'};
+   if(source.value==='strong' || source.value==='weak'){
+     const sourceText=sources.length?sources.map(x=>`<code>${escapeAttr(x)}</code>`).join('、'):'当前没有配置支撑源';
+     note.innerHTML=`<b>${labels[source.value]}的计算方式</b>：读取上方“支撑位分批买入”规则的支撑源（${sourceText}），只保留有有效价格的指标，按价格从低到高排序；综合防守位取最低值，综合支撑位取第二低值。<br><b>技术止损触发：</b>当日最低价跌破该支撑线，并且成交量达到放量倍数。没有有效支撑价格时，该规则不会触发。`;
+   }else{
+     note.innerHTML=`<b>当前跌破线</b>：直接读取指标库中的 <code>${escapeAttr(source.value||'未选择')}</code> 当前值，与当日最低价比较；它不是按成本价计算的止损线。`;
    }
-}
+ }
 
 function syncHardStopFields(ruleBox){
   const mode=ruleBox.querySelector('[data-f="mode"]')?.value || 'fixed';
