@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-# 状态常量（对齐 portfolio/models.py 的 PHASE_*）
+# 状态常量（对齐 portfolio/models.py 的 PHASE_*；旧状态保留用于历史记录读取）
 STATE_ACCUMULATING = "accumulating"
 STATE_HOLDING = "holding"
 STATE_LEFT_SIDE = "left_side"

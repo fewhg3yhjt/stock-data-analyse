@@ -374,19 +374,19 @@ class PostPurchaseAdvisor:
             )
         if tier == 3:
             check_results["left_side"]["transition"] = True
-            # 前高突破仍可推进展示阶段，但不作为右侧止盈的前置条件。
-            if position.left_tier_sold >= 1:
-                if self.state_machine.can(position.position_phase, EVENT_BREAKOUT):
-                    position.position_phase = self.state_machine.transition(
-                        position.position_phase, EVENT_BREAKOUT
-                     )
-        # 左侧已止盈但尚未突破前高时，按左侧规则自己的回撤保护配置处理剩余仓位。
-        if (position.position_phase == PHASE_LEFT_SIDE and position.peak_price > 0 and
+            # 前高突破只记录在检查结果中，不改变持仓生命周期状态。
+        # 左侧已止盈后，按左侧规则自己的回撤保护配置处理剩余仓位。
+        if (position.left_tier_sold > 0 and position.peak_price > 0 and
                 params.get("drawdown_protection_enabled", True) is not False):
             peak_profit = (position.peak_price - position.avg_cost) / position.avg_cost
             min_profit = float(params.get("drawdown_protection_min_profit", params.get("min_profit_for_dd", 0.08)))
             threshold = float(params.get("drawdown_protection_threshold", params.get("drawdown_stop", 0.10)))
             drawdown = (position.peak_price - ctx.current_price) / position.peak_price
+            check_results["left_side"].update({"drawdown_protection_enabled": True,
+                "drawdown_protection_min_profit": min_profit,
+                "drawdown_protection_threshold": threshold,
+                "drawdown_pct": drawdown,
+                "drawdown_protection_active": peak_profit >= min_profit})
             if peak_profit >= min_profit and drawdown >= threshold:
                 check_results["left_side"].update({"drawdown_protection_enabled": True,
                     "drawdown_protection_min_profit": min_profit,
@@ -403,7 +403,7 @@ class PostPurchaseAdvisor:
 
     def _check_right_side(self, position: Position, ctx: AdvisorContext,
                           scheme, check_results: dict) -> Optional[ActionAdvice]:
-        """④ 右侧移动止盈: 突破后从峰值回撤"""
+        """④ 右侧移动止盈: 达到盈利条件后从峰值回撤"""
         rule = scheme.rule("sell", "right_side_trailing")
         drawdown_by_type = None
         if rule is not None:
@@ -434,6 +434,8 @@ class PostPurchaseAdvisor:
         trigger_price = calculate_right_side_trigger_price(peak_price, dd_threshold)
 
         check_results["right_side"] = {
+            "enabled": rule is not None,
+            "active": bool(result.detail.get("profit_ready", False)),
             "peak_price": round(peak_price, 2),
             "peak_price_source": peak_source,
             "drawdown_pct": round(dd_pct, 2),
@@ -456,7 +458,7 @@ class PostPurchaseAdvisor:
     def _check_buy_more(self, position: Position, ctx: AdvisorContext,
                         scheme, check_results: dict) -> Optional[ActionAdvice]:
         """⑤ 后续批次买入: 当前价 ≤ 下一批次触发价"""
-        if position.buy_stage >= 3 or position.position_phase == PHASE_RIGHT_SIDE:
+        if position.buy_stage >= 3 or position.left_tier_sold > 0:
             return None
 
         rule = scheme.rule("buy", "support_level")

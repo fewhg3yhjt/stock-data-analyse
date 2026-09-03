@@ -300,10 +300,7 @@ class PortfolioManager:
         p.total_shares = new_total
         p.total_cost += buy_cost
         p.buy_stage = min(p.buy_stage + 1, 3)
-        if p.buy_stage >= 3:
-            p.position_phase = self._phase_after(p.position_phase, EVENT_BOUGHT)
-        else:
-            p.position_phase = PHASE_ACCUMULATING
+        p.position_phase = PHASE_HOLDING if p.buy_stage >= 3 else PHASE_ACCUMULATING
         # 重算止损线
         scheme = self._load_snapshot(p)
         p.stop_loss_price = self._compute_stop_loss(scheme, p.stock_type, p.avg_cost)
@@ -331,11 +328,9 @@ class PortfolioManager:
             p.status = STATUS_CLOSED
             p.position_phase = self._phase_after(p.position_phase, EVENT_STOP)
         else:
-            # 部分卖出 → 视作左侧止盈（进入 left_side 阶段）
-            if p.position_phase in (PHASE_ACCUMULATING, PHASE_HOLDING):
-                p.position_phase = self._phase_after(p.position_phase, EVENT_LEFT_TP)
-                p.left_tier_sold = min(p.left_tier_sold + 1, 2)
-            # 已处于 left_side/right_side 则保持
+            # 部分卖出只记录已完成的左侧止盈档位，不改变持仓生命周期状态。
+            p.position_phase = PHASE_HOLDING
+            p.left_tier_sold = min(p.left_tier_sold + 1, 2)
 
         return p, pnl
 

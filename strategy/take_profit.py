@@ -790,20 +790,15 @@ class TakeProfitOptimizer:
                     if shares <= 1e-6:
                         return cash, 0.0, 0.0, 0, 0.0, "closed", 2, True
 
-                    position_phase = "left_side"
+                    position_phase = "holding"
                     return cash, shares, total_cost, buy_stage, peak_price, position_phase, left_tier_sold, True
 
-            # 右侧移动止盈独立判断，不依赖前高突破或左侧止盈。
-            if tier == 3:
-                position_phase = "right_side"
-
-        # ── ④' 左侧回撤保护：未突破前高时，从峰值回撤过大则清仓 ──
-        # 仅 left_side 阶段（已卖过至少一档左侧止盈）生效，解决"左侧止盈后
-        # 剩余仓位在突破前无任何保护、一路阴跌坐过山车"的问题。
+        # ── ⑤ 左侧止盈后回撤保护：从峰值回撤过大则清仓 ──
+        # 通过 left_tier_sold 判断是否已经左侧卖出，不依赖持仓生命周期状态。
         # 触发条件: 本次持仓曾达到最小峰值利润 + 收盘从峰值回撤超过阈值。
         # 用峰值利润（而非当前利润）判定，保证"曾经赚过就锁住"，避免刚建仓
         # 没盈利的仓位被无谓地回撤止盈。
-        if not bought_this_bar and position_phase == "left_side" and peak_price > 0:
+        if not bought_this_bar and left_tier_sold > 0 and peak_price > 0:
             peak_profit = (peak_price - avg_cost) / avg_cost if avg_cost > 0 else 0.0
             dd_pct = (peak_price - close) / peak_price
             if (self.drawdown_protection_enabled and
@@ -821,7 +816,7 @@ class TakeProfitOptimizer:
                 })
                 return cash, 0.0, 0.0, 0, 0.0, "closed", left_tier_sold, True
 
-        return cash, shares, total_cost, buy_stage, peak_price, position_phase, left_tier_sold, False
+        return cash, shares, total_cost, buy_stage, peak_price, "holding" if buy_stage >= 3 else position_phase, left_tier_sold, False
 
     # ── 单次回测（快速）─────────────────────────────────
 
