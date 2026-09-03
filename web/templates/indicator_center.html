@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}StockInvestmentTool - 指标中心{% endblock %}
-{% block head %}<script src="{{ static_asset('echarts.min.js') }}"></script><script src="{{ static_asset('stock-chart.js') }}"></script><style>.indicator-info{display:inline-flex;width:17px;height:17px;align-items:center;justify-content:center;border:1px solid var(--color-info);border-radius:50%;color:var(--color-info);font-size:11px;font-weight:700;cursor:pointer}.indicator-help{position:fixed;z-index:2000;display:none;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.16);padding:14px 16px;width:min(420px,calc(100vw - 32px));font-size:13px;line-height:1.65}.indicator-help b{display:block;margin-bottom:5px}</style>{% endblock %}
+{% block head %}<script src="{{ static_asset('echarts.min.js') }}"></script><script src="{{ static_asset('stock-chart.js') }}"></script><style>.indicator-workspace{position:sticky;top:16px}.indicator-detail-copy{font-size:13px;line-height:1.7}.indicator-detail-copy p{margin:0 0 8px}.indicator-detail-copy code{word-break:break-word}.indicator-parameter-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:8px 0 10px}.indicator-parameter-form .ui-field{margin:0}.indicator-preview-bar{display:grid;grid-template-columns:minmax(150px,.6fr) minmax(260px,1.4fr);gap:10px;align-items:end}.indicator-preview-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}.indicator-workspace .preview-chart{height:340px}.indicator-workspace .ui-card-header{margin-bottom:10px}@media (max-width:700px){.indicator-workspace{position:static}.indicator-preview-bar{grid-template-columns:1fr}.indicator-workspace .preview-chart{height:260px}}</style>{% endblock %}
 {% block body %}
 <main class="app indicator-center">
   <header class="header">
@@ -20,20 +20,17 @@
       <div class="ui-field"><label for="indicator-search">搜索名称、表达式或说明</label><input id="indicator-search" placeholder="例如 MA20、双均线低点" oninput="renderIndicators()"></div>
       <div id="indicator-list" class="indicator-list"></div>
     </section>
-    <section>
-      <div class="ui-card" id="indicator-detail"><div class="ui-card-header"><span>指标详情</span></div><div class="empty">点击左侧指标卡片查看详情</div></div>
-      <div class="ui-card">
-        <div class="ui-card-header"><span><i class="fas fa-flask"></i> 表达式预览</span></div>
-        <div class="ui-field"><label for="preview-code">股票代码</label><input id="preview-code" value="sh.600900" placeholder="sh.600900 / 600900"></div>
-        <div class="ui-field"><label for="preview-expr">指标或表达式</label><input id="preview-expr" value="MA20" placeholder="例如 0.95*MIN(MA20,MA240)"></div>
-        <div class="formula-help">支持：<code>+ - * /</code>、<code>MA(close,20)</code>、<code>MIN</code>、<code>MAX</code>、<code>ABS</code> 和指标名称。</div>
-        <button class="ui-button ui-button-primary" onclick="previewExpression()"><i class="fas fa-play"></i> 验证并预览</button>
-        <span class="preview-result" id="preview-status"></span>
+    <section class="ui-card indicator-workspace">
+      <div id="indicator-detail"><div class="ui-card-header"><span>指标工作区</span></div><div class="empty">点击左侧指标卡片查看详情</div></div>
+      <div class="ui-card-header" style="margin-top:18px"><span><i class="fas fa-flask"></i> 表达式预览</span><span id="latest-value" class="tag gray">未预览</span></div>
+      <div class="indicator-preview-bar">
+        <div class="ui-field"><label for="preview-code">示例股票</label><input id="preview-code" value="sh.600900" placeholder="sh.600900 / 600900"></div>
+        <div class="ui-field"><label for="preview-expr">指标表达式</label><input id="preview-expr" value="MA20" placeholder="例如 0.95*MIN(MA20,MA240)"></div>
       </div>
-      <div class="ui-card">
-        <div class="ui-card-header"><span><i class="fas fa-chart-line"></i> 最近 180 个交易日</span><span id="latest-value" class="tag gray">未预览</span></div>
-        <div id="preview-chart" class="preview-chart"><div class="empty">输入表达式后点击“验证并预览”</div></div>
-      </div>
+      <div class="formula-help">支持：<code>+ - * /</code>、<code>MA(close,20)</code>、<code>MIN</code>、<code>MAX</code>、<code>ABS</code> 和指标名称。</div>
+      <div class="indicator-preview-meta"><button type="button" class="ui-button ui-button-primary" onclick="previewExpression()"><i class="fas fa-play"></i> 验证并预览</button><span class="preview-result" id="preview-status"></span></div>
+      <div class="ui-card-header" style="margin-top:18px"><span><i class="fas fa-chart-line"></i> 最近 180 个交易日</span></div>
+      <div id="preview-chart" class="preview-chart"><div class="empty">点击左侧指标卡片或“验证并预览”查看结果</div></div>
     </section>
   </div>
 </main>
@@ -55,7 +52,9 @@
 const groupMeta = {base:['基础指标','green'], composite:['组合指标','orange'], code:['代码指标','blue'], valuation:['估值指标','orange'], business:['业务指标','gray'], decision:['持仓决策规则','red']};
 function escapeHtml(value){const div=document.createElement('div');div.textContent=value || '';return div.innerHTML;}
 async function loadIndicators(){
-  const response=await fetch('/api/indicators'); const data=await response.json();
+  const response=await fetch('/api/indicators'); const body=await response.text();
+  let data; try{data=body?JSON.parse(body):null;}catch(e){throw new Error(`指标接口返回了无效响应（HTTP ${response.status}）`);}
+  if(!response.ok || !data) throw new Error(`指标加载失败（HTTP ${response.status}）`);
   if(data.status!=='success') throw new Error(data.error || '指标库加载失败');
   indicators=data.groups; document.getElementById('indicator-count').textContent=data.count + ' 项'; renderIndicators();
 }
@@ -89,7 +88,7 @@ async function loadIndicators(){
    const detail=document.getElementById('indicator-detail');
    const parameters=item.parameters||{};
    const fields=Object.entries(parameters).map(([key,spec])=>`<label class="ui-field"><span>${escapeHtml(spec.label)} <small>(${escapeHtml(key)})</small></span><input data-ind-param="${escapeHtml(key)}" type="number" value="${escapeHtml(spec.default)}" min="${escapeHtml(spec.min)}" max="${escapeHtml(spec.max)}" step="0.1"></label>`).join('');
-    detail.innerHTML=`<div class="ui-card-header"><span>${escapeHtml(item.name)} <code>${escapeHtml(item.name)}</code></span><span class="tag gray">${item.parameter_editable?'可调整参数':'参数固定'}</span></div><div class="detail-copy"><p><b>业务意义：</b>${escapeHtml(item.meaning||item.description||'暂无说明')}</p><p><b>计算逻辑：</b>${escapeHtml(item.calculation||item.expr||'暂无说明')}</p><p><b>公式：</b><code>${escapeHtml(item.expr||'由业务逻辑计算')}</code></p><p><b>数据要求：</b>${escapeHtml(item.data_requirements||'按指标定义')}</p>${fields?`<div><b>可调整参数</b><div class="indicator-parameter-form">${fields}</div><button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="previewAdjustedIndicator()">预览调整后数值</button> <button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="saveAdjustedIndicator()">另存为自定义指标</button></div>`:''}<div class="help">当前示例股票：${escapeHtml(document.getElementById('preview-code').value)}；点击“验证并预览”查看最近值。</div></div>`;
+     detail.innerHTML=`<div class="ui-card-header"><span>${escapeHtml(item.name)} <code>${escapeHtml(item.name)}</code></span><span class="tag gray">${item.parameter_editable?'可调整参数':'参数固定'}</span></div><div class="indicator-detail-copy"><p><b>业务意义：</b>${escapeHtml(item.meaning||item.description||'暂无说明')}</p><p><b>计算逻辑：</b>${escapeHtml(item.calculation||item.expr||'暂无说明')}</p><p><b>公式：</b><code>${escapeHtml(item.expr||'由业务逻辑计算')}</code></p><p><b>数据要求：</b>${escapeHtml(item.data_requirements||'按指标定义')}</p>${fields?`<div><b>可调整参数</b><div class="indicator-parameter-form">${fields}</div><button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="previewAdjustedIndicator()">预览调整后数值</button> <button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="saveAdjustedIndicator()">另存为自定义指标</button></div>`:''}<div class="help">当前示例股票：${escapeHtml(document.getElementById('preview-code').value)}；点击“验证并预览”查看最近值。</div></div>`;
    document.getElementById('preview-expr').value=item.expr || item.name;
    if(item.expr || ['base','composite','code'].includes(item.kind)) previewExpression();
    else {
@@ -153,7 +152,10 @@ async function previewExpression(){
   const status=document.getElementById('preview-status'); status.textContent='计算中…'; status.className='preview-result';
   try{
     const response=await fetch('/api/indicators/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:document.getElementById('preview-code').value,expr:document.getElementById('preview-expr').value})});
-     const data=await response.json(); if(data.status!=='success') throw new Error(data.error || '预览失败');
+     const body=await response.text();
+     let data;
+     try{data=body?JSON.parse(body):null;}catch(e){throw new Error(`预览接口返回了无效响应（HTTP ${response.status}）`);}
+     if(!response.ok || !data || data.status!=='success') throw new Error((data&&data.error)||`预览失败（HTTP ${response.status}）`);
      status.textContent=`表达式有效 · 数据截至 ${data.as_of||'—'} · 来源 ${data.data_source==='published_stock_daily_or_warehouse_fallback'?'数据模块':'—'}`; status.className='preview-result ok'; document.getElementById('latest-value').textContent='最新 ' + data.latest;
      const series=data.series || []; const chartEl=document.getElementById('preview-chart'); StockChart.dispose(chartEl);
      const chart=StockChart.mount(chartEl); chart.setOption({tooltip:{trigger:'axis'},grid:{left:55,right:18,top:18,bottom:48},xAxis:{type:'category',data:series.map(x=>x.date),boundaryGap:false},yAxis:{type:'value',scale:true},dataZoom:[{type:'inside'},{type:'slider',height:16}],series:[{name:data.expr,type:'line',data:series.map(x=>x.value),showSymbol:false,lineStyle:{color:'#1a73e8',width:1.8}}]});
