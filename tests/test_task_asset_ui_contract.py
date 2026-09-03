@@ -58,3 +58,12 @@ def test_market_discovery_conditions_does_not_read_removed_board_field():
     assert "category:document.getElementById('category').value" in source
     assert "sector_id:s.value" in source
     assert "sector_name:option?.dataset.name" in source
+
+
+def test_market_discovery_labels_current_category_in_results():
+    source = (ROOT / "web/templates/market_discovery.html").read_text(encoding="utf-8")
+    assert "当前分类" in source
+    assert "行业/板块" in source
+    assert "category_label" in source
+    assert "sector_name?" in source
+    assert "未匹配当前分类" in source

@@ -54,6 +54,12 @@ DEFAULT_CONDITIONS = {
     "min_history": 80,
 }
 
+CATEGORY_LABELS = {
+    "csrc": "证监会行业",
+    "ths_industry": "同花顺行业",
+    "ths_concept": "同花顺概念",
+}
+
 
 def _number(value, name: str, *, minimum=None, maximum=None) -> Optional[float]:
     if value in (None, ""):
@@ -303,6 +309,10 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
     if industry_lookup is not None:
         results = [item for item in results if item["code"] in industry_lookup]
     _attach_names(results, warehouse, industry_lookup=industry_lookup, category=category)
+    category_label = CATEGORY_LABELS[category]
+    for item in results:
+        item.setdefault("category", category)
+        item.setdefault("category_label", category_label)
     results = [item for item in results if _matches_identity(item, c)]
     sort_key = sort if sort in {"price", "return_pct", "up_days", "down_days", "volume_ratio_5", "volume_5_20", "turnover", "pe_ttm", "pb", "amount_avg", "amplitude_pct"} else "return_pct"
     results.sort(key=lambda item: (item.get(sort_key) is None, item.get(sort_key) if item.get(sort_key) is not None else 0, item["code"]), reverse=descending)
@@ -313,8 +323,9 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
     page_items = results[start:start + page_size]
     return {"conditions": c, "as_of": as_of or (results[0]["date"] if results else None),
             "source": {"stock_daily": daily_result.context,
-                         "industry_membership": "published" if industry_lookup is not None else None,
-                        "category": category,
+                          "industry_membership": "published" if industry_lookup is not None else None,
+                          "category": category,
+                         "category_label": category_label,
                         "membership_as_of": membership_as_of or None,
                         "membership_context": membership_context},
             "count": len(page_items), "total_count": total_count, "page": page,
@@ -462,8 +473,14 @@ def _attach_names(items: list[dict], warehouse: Warehouse,
         meta = (industry_lookup or {}).get(item["code"], {})
         item["industry"] = (meta.get("label", "")
                              if industry_lookup is not None else industry or "")
+        item["category"] = category
         if meta:
-            item.update({"category": category, "sector_id": meta["sector_id"], "sector_name": meta.get("sector_name", meta["label"]), "as_of": item.get("date")})
+            item.update({"category_label": CATEGORY_LABELS.get(category, category),
+                         "sector_id": meta["sector_id"],
+                         "sector_name": meta.get("sector_name", meta["label"]),
+                         "as_of": item.get("date")})
+        else:
+            item["category_label"] = CATEGORY_LABELS.get(category, category)
 
 
 def _float(value):
