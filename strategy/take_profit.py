@@ -399,6 +399,10 @@ class TakeProfitOptimizer:
             by_type = params.get("drawdown_by_type")
             if isinstance(by_type, dict) and by_type:
                 self._right_drawdown = {k: float(v) for k, v in by_type.items()}
+            if "drawdown_stop" in params:
+                self.drawdown_stop = float(params["drawdown_stop"])
+            if "min_profit_for_dd" in params:
+                self.min_profit_for_dd = float(params["min_profit_for_dd"])
 
         # 技术止损
         rule = next((r for r in scheme.sell_rules if r.type == "technical_stop"), None)
@@ -412,11 +416,7 @@ class TakeProfitOptimizer:
             )
             self.technical_support_source = str(params.get("support_source", "strong"))
 
-        # 风控
-        if scheme.risk.drawdown_stop:
-            self.drawdown_stop = scheme.risk.drawdown_stop
-        if scheme.risk.min_profit_for_dd:
-            self.min_profit_for_dd = scheme.risk.min_profit_for_dd
+        # 回撤保护参数只从 right_side_trailing 规则读取；risk 保留为旧方案兼容字段。
 
     # ── 参数访问（带兜底）──────────────────────────────
 

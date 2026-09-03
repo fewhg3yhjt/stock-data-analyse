@@ -981,8 +981,13 @@ class DashboardService:
                 simulation_kline, initial_cash=scheme.backtest.initial_cash,
                 stock_type=p.stock_type, scheme=scheme,
             )
+            trailing_rule = scheme.rule("sell", "right_side_trailing")
+            trailing_params = trailing_rule.params if trailing_rule is not None else {}
+            trail_threshold = float(trailing_params.get(
+                "drawdown_stop", getattr(scheme.risk, "drawdown_stop", 0.05)
+            ) or 0.05)
             result = engine.run_custom(
-                trail_threshold=float(getattr(scheme.risk, "drawdown_stop", 0.05) or 0.05),
+                trail_threshold=trail_threshold,
                 offset=0.0,
                 trade_start_date=buy_date,
             )

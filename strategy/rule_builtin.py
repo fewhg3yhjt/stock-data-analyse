@@ -356,6 +356,10 @@ def _build_schemas() -> dict[str, list[ParamField]]:
     s["right_side_trailing"] = [
         ParamField("drawdown_by_type", "按类型回撤阈值", "map",
                    default={"A": 0.05, "B": 0.03, "C": 0.05, "D": 0.03}),
+        ParamField("drawdown_stop", "回撤保护阈值", "number", default=0.10, min=0, max=1,
+                   help="左侧止盈后，价格从持仓峰值回撤达到该比例时清仓；默认10%"),
+        ParamField("min_profit_for_dd", "启用回撤保护的最低盈利", "number", default=0.08, min=0, max=10,
+                   help="持仓峰值相对成本价曾达到该盈利比例后，才启用回撤保护；默认8%"),
     ]
 
     s["logic_stop"] = [

@@ -89,15 +89,6 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
         <button class="ui-button ui-button-ghost ui-button-sm" onclick="addRule('sell')"><i class="fas fa-plus"></i> 添加卖点规则</button>
       </div>
 
-      <div style="font-weight:600;font-size:14px;margin-bottom:8px;"><i class="fas fa-shield"></i> 风控参数</div>
-      <div class="config-help">风控优先于买入：出现止损条件时先给出卖出建议；这里只生成建议，不会自动下单。</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div class="ui-field"><label>回撤止盈阈值 <span class="help">从峰值回落多少触发保护</span></label><div class="unit-input"><input id="r-drawdown" type="number" min="0" max="100" step="0.1" value="8"><span>%</span></div></div>
-        <div class="ui-field"><label>回撤保护最小利润 <span class="help">曾经达到多少浮盈才启用</span></label><div class="unit-input"><input id="r-minprof" type="number" min="0" max="100" step="0.1" value="6"><span>%</span></div></div>
-        <div class="ui-field"><label>放量倍数 <span class="help">成交量达到 5 日均量的倍数</span></label><div class="unit-input"><input id="r-surge" type="number" min="0" step="0.1" value="1.8"><span>倍</span></div></div>
-        <div class="ui-field"><label>技术止损</label><select id="r-tech"><option value="true">启用</option><option value="false">停用</option></select></div>
-      </div>
-
       <div style="font-weight:600;font-size:14px;margin-bottom:8px;"><i class="fas fa-flask"></i> 回测</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="ui-field"><label>初始资金</label><input id="b-cash" type="number" value="100000"></div>
@@ -480,13 +471,7 @@ function collectModel(){
     strategy_spec:CURRENT_STRATEGY_SPEC,
     buy_rules:collectAllRules('buy'),
     sell_rules:collectAllRules('sell'),
-    risk:{
-      drawdown_stop:parseFloat(document.getElementById('r-drawdown').value||8)/100,
-      min_profit_for_dd:parseFloat(document.getElementById('r-minprof').value||6)/100,
-      volume_surge_threshold:parseFloat(document.getElementById('r-surge').value||1.8),
-      technical_stop_enabled:document.getElementById('r-tech').value==='true',
-      stop_loss_by_type:{}
-    },
+     risk:{},
     backtest:{
       initial_cash:parseFloat(document.getElementById('b-cash').value||100000),
       optimize:document.getElementById('b-opt').value==='true',
@@ -610,10 +595,6 @@ async function loadFromYaml(content){
   document.getElementById('sell-rules').innerHTML='';
   for(const b of m.buy_rules||[]){renderRuleFromType('buy', b.type, b.params);}
   for(const s of m.sell_rules||[]){renderRuleFromType('sell', s.type, s.params);}
-  if(m.risk){Object.assign(document.getElementById('r-drawdown'),{value:(Number(m.risk.drawdown_stop||0)*100).toFixed(1)});
-    document.getElementById('r-minprof').value=(Number(m.risk.min_profit_for_dd||0)*100).toFixed(1);
-    document.getElementById('r-surge').value=m.risk.volume_surge_threshold;
-    document.getElementById('r-tech').value=m.risk.technical_stop_enabled?'true':'false';}
   if(m.backtest){document.getElementById('b-cash').value=m.backtest.initial_cash;
     document.getElementById('b-opt').value=m.backtest.optimize?'true':'false';}
   document.getElementById('yaml-preview').value=content;
