@@ -287,6 +287,17 @@ def api_indicators():
     from StockInvestmentTool.indicators.engine import IndicatorRegistry
     try:
         reg = IndicatorRegistry()
+        parameter_specs = {
+            "dual_ma_low": {
+                "fast_window": {"label": "短周期均线", "type": "number", "default": 20, "min": 2, "max": 500},
+                "slow_window": {"label": "长周期均线", "type": "number", "default": 240, "min": 2, "max": 1000},
+                "discount": {"label": "安全折扣", "type": "percent", "default": 5, "min": 0, "max": 50},
+            },
+            "take_profit_reference": {
+                "window": {"label": "均线周期", "type": "number", "default": 20, "min": 2, "max": 500},
+                "ratio": {"label": "参考比例", "type": "percent", "default": 95, "min": 1, "max": 200},
+            },
+        }
         custom = {x["name"]: x for x in __import__(
             "StockInvestmentTool.indicators.store", fromlist=["list_indicators"]
         ).list_indicators()}
@@ -296,7 +307,7 @@ def api_indicators():
             if d is None:
                 continue
             kind = d.kind if d.kind in groups else "composite"
-            groups[kind].append({
+            item = {
                 "name": d.name,
                 "kind": d.kind,
                 "expr": d.expr,
@@ -306,7 +317,10 @@ def api_indicators():
                 "editable": bool(custom.get(name, {}).get("editable", False)),
                 "enabled": custom.get(name, {}).get("enabled", True),
                 **__import__("StockInvestmentTool.indicators.documentation", fromlist=["documentation_for"]).documentation_for(d.name, fallback=d.description),
-            })
+            }
+            item["parameters"] = parameter_specs.get(d.name, item.get("parameters", {}))
+            item["parameter_editable"] = bool(item["parameters"])
+            groups[kind].append(item)
         # Keep disabled custom indicators visible in the management catalogue.
         existing = {item["name"] for group in groups.values() for item in group}
         for item in custom.values():
@@ -1274,6 +1288,8 @@ def api_indicator_preview():
         return flask.jsonify({
             "status": "success", "code": code, "expr": expr,
             "latest": valid[-1], "series": rows,
+            "as_of": rows[-1]["date"] if rows else None,
+            "data_source": "published_stock_daily_or_warehouse_fallback",
         })
     except ValueError as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400
@@ -2540,9 +2556,22 @@ def api_market_discovery_series():
 def api_market_discovery_options():
     try:
         from StockInvestmentTool.warehouse.storage import Warehouse
-        with Warehouse()._conn() as conn:
-            rows = conn.execute("SELECT DISTINCT industry FROM instruments WHERE industry IS NOT NULL AND TRIM(industry) != '' ORDER BY industry").fetchall()
-        return flask.jsonify({"status": "success", "industries": [row[0] for row in rows]})
+        from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
+        warehouse = Warehouse()
+        options = {}
+        try:
+            frame = DatasetAccess(warehouse).load_dataset("industry_membership", required_quality="PASS").data
+            frame = frame[frame["industry_classification"].astype(str) == "csrc"]
+            options["csrc"] = [{"sector_id": str(row.industry_code), "sector_name": str(row.industry_name), "label": f"{row.industry_code}{row.industry_name}"} for row in frame.drop_duplicates(["industry_code", "industry_name"]).itertuples()]
+        except DatasetAccessError:
+            options["csrc"] = []
+        try:
+            frame = DatasetAccess(warehouse).load_dataset("ths_industry_membership", required_quality="PASS").data
+            options["ths_industry"] = [{"sector_id": str(row.industry_id), "sector_name": str(row.industry_name), "label": f"{row.industry_id}{row.industry_name}"} for row in frame.drop_duplicates(["industry_id", "industry_name"]).itertuples()]
+        except DatasetAccessError:
+            options["ths_industry"] = []
+        options["ths_concept"] = []
+        return flask.jsonify({"status": "success", "industries": [x["label"] for x in options["csrc"]], "options": options})
     except Exception as exc:
         return flask.jsonify({"status": "error", "error": str(exc)}), 500
 
@@ -3486,7 +3515,9 @@ def market_page():
                    "深证成指": "sz.399001", "创业板指": "sz.399006"}
         board_names = svc.board_names()
         board_overview = svc.board_overview()
-        industry_rotation = svc.industry_rotation_overview()
+        industry_rotation = svc.industry_rotation_overview(category="csrc")
+        ths_industry_rotation = svc.industry_rotation_overview(category="ths_industry")
+        ths_concept_rotation = svc.industry_rotation_overview(category="ths_concept")
         industry_membership = svc.industry_membership_overview()
         positions_codes = [{"code": p["stock_code"], "name": p["stock_name"]}
                            for p in svc.war_room()["positions"]]
@@ -3494,15 +3525,18 @@ def market_page():
                                      board_names=board_names,
                                      board_overview=board_overview,
                                       industry_rotation=industry_rotation,
+                                      ths_industry_rotation=ths_industry_rotation,
+                                      ths_concept_rotation=ths_concept_rotation,
                                      industry_membership=industry_membership,
                                      positions_codes=positions_codes, error=None)
     except Exception as e:
         logger.exception("大盘页加载失败")
         return flask.render_template("market.html", indices={}, board_names=[],
                                       board_overview=[],
-                                      industry_rotation={"status": "no_data", "items": [],
+                                       industry_rotation={"status": "no_data", "items": [],
                                                           "actual_data_as_of": None,
-                                                          "reason": "行业轮动数据读取失败"},
+                                                           "reason": "行业轮动数据读取失败"},
+                                       ths_industry_rotation={"status": "no_data", "items": []}, ths_concept_rotation={"status": "no_data", "items": []},
                                       industry_membership={},
                                      positions_codes=[], error=str(e))
 
@@ -3521,9 +3555,11 @@ def market_index_kline():
 def market_board_kline():
     from StockInvestmentTool.portfolio.dashboard import DashboardService
     name = flask.request.args.get("name", "")
-    if not name:
-        return flask.jsonify({"status": "error", "error": "缺少 name"}), 400
-    data = DashboardService(_get_manager()).board_index_kline(name)
+    category = flask.request.args.get("category", "ths_industry")
+    sector_id = flask.request.args.get("sector_id", "")
+    if not name and not sector_id:
+        return flask.jsonify({"status": "error", "error": "缺少 sector_id/name"}), 400
+    data = DashboardService(_get_manager()).board_index_kline(name, category=category, sector_id=sector_id)
     return flask.jsonify({"status": "success", **data})
 
 

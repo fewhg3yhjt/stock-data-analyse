@@ -14,13 +14,14 @@
   <div class="notice">
       <strong>指标定义工作区</strong> 内置指标只读；自定义基础/组合指标保存到独立的 <code>schemes/custom/indicators.yaml</code>，不会覆盖内置定义或天级行情数据。
   </div>
-  <div class="indicator-layout">
+<div class="indicator-layout">
     <section class="ui-card">
       <div class="ui-card-header"><span><i class="fas fa-book"></i> 可用指标</span><span><button class="ui-button ui-button-primary ui-button-sm" onclick="newIndicator()"><i class="fas fa-plus"></i> 新建指标</button> <span class="tag blue" id="indicator-count">加载中</span></span></div>
       <div class="ui-field"><label for="indicator-search">搜索名称、表达式或说明</label><input id="indicator-search" placeholder="例如 MA20、双均线低点" oninput="renderIndicators()"></div>
       <div id="indicator-list" class="indicator-list"></div>
     </section>
     <section>
+      <div class="ui-card" id="indicator-detail"><div class="ui-card-header"><span>指标详情</span></div><div class="empty">点击左侧指标卡片查看详情</div></div>
       <div class="ui-card">
         <div class="ui-card-header"><span><i class="fas fa-flask"></i> 表达式预览</span></div>
         <div class="ui-field"><label for="preview-code">股票代码</label><input id="preview-code" value="sh.600900" placeholder="sh.600900 / 600900"></div>
@@ -47,10 +48,10 @@
     <div style="margin-top:14px;display:flex;gap:8px;align-items:center;"><button class="ui-button ui-button-primary" onclick="saveIndicator()"><i class="fas fa-save"></i> 保存</button><span id="edit-status" class="preview-result"></span></div>
   </div>
 </div>
-<div class="indicator-help" id="indicator-help"></div>
 <script src="{{ static_asset('echarts.min.js') }}"></script>
 <script>
-let indicators = {base:[], composite:[], code:[]};
+ let indicators = {base:[], composite:[], code:[]};
+ let selectedIndicator = null;
 const groupMeta = {base:['基础指标','green'], composite:['组合指标','orange'], code:['代码指标','blue'], valuation:['估值指标','orange'], business:['业务指标','gray'], decision:['持仓决策规则','red']};
 function escapeHtml(value){const div=document.createElement('div');div.textContent=value || '';return div.innerHTML;}
 async function loadIndicators(){
@@ -58,7 +59,7 @@ async function loadIndicators(){
   if(data.status!=='success') throw new Error(data.error || '指标库加载失败');
   indicators=data.groups; document.getElementById('indicator-count').textContent=data.count + ' 项'; renderIndicators();
 }
-function renderIndicators(){
+ function renderIndicators(){
   const query=(document.getElementById('indicator-search').value || '').toLowerCase(); const target=document.getElementById('indicator-list'); target.innerHTML='';
   Object.entries(groupMeta).forEach(([kind,[label,color]])=>{
     const items=(indicators[kind] || []).filter(item=>[item.name,item.expr,item.description].join(' ').toLowerCase().includes(query));
@@ -68,9 +69,8 @@ function renderIndicators(){
       const row=document.createElement('button'); row.className='indicator-row'; row.type='button';
         const params=item.parameters ? Object.entries(item.parameters).map(([k,v])=>`${escapeHtml(k)}=${escapeHtml(v)}`).join(' · ') : '';
         const current=item.current_values&&item.current_values.length ? `当前：${item.current_values.slice(0,3).map(v=>`${escapeHtml(v.name||v.symbol)}=${escapeHtml(v.value)}`).join('；')}` : '';
-        row.innerHTML=`<strong>${escapeHtml(item.name)} <span class="indicator-info" title="查看指标说明">!</span> ${item.source==='custom' ? '<span class="tag gray">自定义</span>' : '<span class="tag gray">内置</span>'} ${item.enabled===false ? '<span class="tag off">已停用</span>' : ''}</strong><code>${escapeHtml(item.expr || '业务状态/持仓计算')}</code><span>${escapeHtml(item.description || item.meaning || '暂无说明')}</span>${params ? `<small class="indicator-params">参数：${params}</small>` : ''}${current ? `<small class="indicator-params">${current}</small>` : ''}`;
-       row.querySelector('.indicator-info').onclick=(event)=>{event.stopPropagation();showIndicatorHelp(event.currentTarget,item);};
-       if(['base','composite','code'].includes(item.kind)) row.onclick=()=>{document.getElementById('preview-expr').value=item.name; previewExpression();};
+        row.innerHTML=`<strong>${escapeHtml(item.name)} ${item.source==='custom' ? '<span class="tag gray">自定义</span>' : '<span class="tag gray">内置</span>'} ${item.enabled===false ? '<span class="tag off">已停用</span>' : ''}</strong><code>${escapeHtml(item.expr || '业务状态/持仓计算')}</code><span>${escapeHtml(item.description || item.meaning || '暂无说明')}</span>${params ? `<small class="indicator-params">参数：${params}</small>` : ''}${current ? `<small class="indicator-params">${current}</small>` : ''}`;
+        row.onclick=()=>selectIndicator(item);
       if(item.editable){
         const actions=document.createElement('div'); actions.className='indicator-actions';
         actions.innerHTML=`<button class="ui-button ui-button-ghost ui-button-sm" type="button">编辑</button><button class="ui-button ui-button-ghost ui-button-sm" type="button">${item.enabled===false?'启用':'停用'}</button><button class="ui-button ui-button-danger ui-button-sm" type="button">删除</button>`;
@@ -84,8 +84,36 @@ function renderIndicators(){
   });
   if(!target.innerHTML) target.innerHTML='<div class="empty">没有匹配的指标</div>';
 }
-function showIndicatorHelp(anchor,item){const box=document.getElementById('indicator-help');box.innerHTML=`<b>${escapeHtml(item.name)} · 指标定义</b><div><strong>含义：</strong>${escapeHtml(item.meaning||item.description||'暂无说明')}</div><div><strong>计算：</strong>${escapeHtml(item.calculation||item.expr||'暂无说明')}</div><div><strong>数据要求：</strong>${escapeHtml(item.data_requirements||'按指标定义')}</div>${item.notes?`<div><strong>注意：</strong>${escapeHtml(item.notes)}</div>`:''}`;const rect=anchor.getBoundingClientRect();box.style.left=Math.max(16,Math.min(rect.left,window.innerWidth-436))+'px';box.style.top=(rect.bottom+8)+'px';box.style.display='block';}
-document.addEventListener('click',()=>{document.getElementById('indicator-help').style.display='none';});
+ function selectIndicator(item){
+   selectedIndicator=item;
+   const detail=document.getElementById('indicator-detail');
+   const parameters=item.parameters||{};
+   const fields=Object.entries(parameters).map(([key,spec])=>`<label class="ui-field"><span>${escapeHtml(spec.label)} <small>(${escapeHtml(key)})</small></span><input data-ind-param="${escapeHtml(key)}" type="number" value="${escapeHtml(spec.default)}" min="${escapeHtml(spec.min)}" max="${escapeHtml(spec.max)}" step="0.1"></label>`).join('');
+    detail.innerHTML=`<div class="ui-card-header"><span>${escapeHtml(item.name)} <code>${escapeHtml(item.name)}</code></span><span class="tag gray">${item.parameter_editable?'可调整参数':'参数固定'}</span></div><div class="detail-copy"><p><b>业务意义：</b>${escapeHtml(item.meaning||item.description||'暂无说明')}</p><p><b>计算逻辑：</b>${escapeHtml(item.calculation||item.expr||'暂无说明')}</p><p><b>公式：</b><code>${escapeHtml(item.expr||'由业务逻辑计算')}</code></p><p><b>数据要求：</b>${escapeHtml(item.data_requirements||'按指标定义')}</p>${fields?`<div><b>可调整参数</b><div class="indicator-parameter-form">${fields}</div><button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="previewAdjustedIndicator()">预览调整后数值</button> <button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="saveAdjustedIndicator()">另存为自定义指标</button></div>`:''}<div class="help">当前示例股票：${escapeHtml(document.getElementById('preview-code').value)}；点击“验证并预览”查看最近值。</div></div>`;
+   document.getElementById('preview-expr').value=item.expr || item.name;
+   if(item.expr || ['base','composite','code'].includes(item.kind)) previewExpression();
+   else {
+     document.getElementById('preview-status').textContent='该指标由业务逻辑或数据目录提供当前值，不支持通用表达式计算';
+     document.getElementById('preview-status').className='preview-result';
+   }
+ }
+ function previewAdjustedIndicator(){
+   const base=document.getElementById('preview-expr').value;
+   const values=Object.fromEntries([...document.querySelectorAll('[data-ind-param]')].map(input=>[input.dataset.indParam,input.value]));
+   let expr=base;
+   if(selectedIndicator && selectedIndicator.name==='dual_ma_low') expr=`(1-${Number(values.discount||5)/100})*MIN(MA(close,${Number(values.fast_window||20)}),MA(close,${Number(values.slow_window||240)}))`;
+   if(selectedIndicator && selectedIndicator.name==='take_profit_reference') expr=`${Number(values.ratio||95)/100}*MA(close,${Number(values.window||20)})`;
+   document.getElementById('preview-expr').value=expr; previewExpression();
+ }
+ function saveAdjustedIndicator(){
+   if(!selectedIndicator) return;
+   document.getElementById('indicator-modal-title').textContent='另存为自定义指标';
+   document.getElementById('edit-name').value=selectedIndicator.name+'_custom';
+   document.getElementById('edit-kind').value='composite';
+   document.getElementById('edit-expr').value=document.getElementById('preview-expr').value;
+   document.getElementById('edit-description').value=(selectedIndicator.meaning||selectedIndicator.description||'')+'（基于当前参数调整）';
+   document.getElementById('edit-status').textContent=''; document.getElementById('indicator-modal').style.display='flex';
+ }
 function newIndicator(){
   document.getElementById('indicator-modal-title').textContent='新建自定义指标';
   ['edit-name','edit-expr','edit-description'].forEach(id=>document.getElementById(id).value='');
@@ -125,8 +153,8 @@ async function previewExpression(){
   const status=document.getElementById('preview-status'); status.textContent='计算中…'; status.className='preview-result';
   try{
     const response=await fetch('/api/indicators/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:document.getElementById('preview-code').value,expr:document.getElementById('preview-expr').value})});
-    const data=await response.json(); if(data.status!=='success') throw new Error(data.error || '预览失败');
-    status.textContent='表达式有效'; status.className='preview-result ok'; document.getElementById('latest-value').textContent='最新 ' + data.latest;
+     const data=await response.json(); if(data.status!=='success') throw new Error(data.error || '预览失败');
+     status.textContent=`表达式有效 · 数据截至 ${data.as_of||'—'} · 来源 ${data.data_source==='published_stock_daily_or_warehouse_fallback'?'数据模块':'—'}`; status.className='preview-result ok'; document.getElementById('latest-value').textContent='最新 ' + data.latest;
      const series=data.series || []; const chartEl=document.getElementById('preview-chart'); StockChart.dispose(chartEl);
      const chart=StockChart.mount(chartEl); chart.setOption({tooltip:{trigger:'axis'},grid:{left:55,right:18,top:18,bottom:48},xAxis:{type:'category',data:series.map(x=>x.date),boundaryGap:false},yAxis:{type:'value',scale:true},dataZoom:[{type:'inside'},{type:'slider',height:16}],series:[{name:data.expr,type:'line',data:series.map(x=>x.value),showSymbol:false,lineStyle:{color:'#1a73e8',width:1.8}}]});
   }catch(error){status.textContent=error.message; status.className='preview-result error-text';}

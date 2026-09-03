@@ -59,6 +59,8 @@ class IndicatorDocumentationRegistry:
             "双均线低点": IndicatorDocumentation("MA20 与 MA240 中较低值的 95%", "0.95 × MIN(MA20, MA240)"),
             "振幅_abs": IndicatorDocumentation("单日最高价与最低价之间的绝对价差", "ABS(high - low)"),
             "自定义示例": IndicatorDocumentation("代码指标示例，用于演示注册式指标扩展", "由注册的 Python 指标函数计算", "取决于代码指标函数的输入", "代码指标的具体实现以注册函数为准"),
+            "dual_ma_low": IndicatorDocumentation("在短期和长期趋势之间取更保守的支撑参考，再预留安全折扣", "先计算短周期和长周期收盘价均线，取两者较低值，再乘以(1-安全折扣)", "日线 close，至少覆盖最长均线周期", "适合支撑位或左侧买入参考，不代表确定底部"),
+            "take_profit_reference": IndicatorDocumentation("把均线下方或附近的价格作为止盈参考线", "计算指定周期收盘价均线，再乘以参考比例", "日线 close，至少覆盖均线周期", "这是参考线，不是自动卖出承诺"),
         })
         return items
 
