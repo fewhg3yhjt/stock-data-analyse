@@ -2,7 +2,7 @@
 """全量数据仓库 CLI — 离线全量采集 / 因子计算 / 全市场扫描 / 在线快照
 
 用法:
-    python -m StockInvestmentTool.warehouse init [--years 3] [--include-index]
+    python -m StockInvestmentTool.warehouse init --start YYYY-MM-DD --end YYYY-MM-DD [--include-index]
     python -m StockInvestmentTool.warehouse sync    [--start YYYY-MM-DD] [--max-symbols N]
     python -m StockInvestmentTool.warehouse factors [--max-symbols N]
     python -m StockInvestmentTool.warehouse scan    --start YYYY-MM-DD --end YYYY-MM-DD [--where SQL] [--limit N]
@@ -27,13 +27,14 @@ def setup_logging(verbose: bool):
 
 
 def cmd_init(args):
-    """首建：同步全市场代码清单 + 全量日线（默认近3年）。"""
+    """首建：同步全市场代码清单 + 显式日期范围日线。"""
     from StockInvestmentTool.warehouse.collector import MarketCollector
     c = MarketCollector()
     n = c.sync_instruments(include_etf=True, include_index=args.include_index)
     print(f"✅ 标的清单已入库: {n} 条")
-    start = (datetime.now() - timedelta(days=args.years * 365)).strftime("%Y-%m-%d")
-    end = datetime.now().strftime("%Y-%m-%d")
+    if not args.start or not args.end:
+        raise ValueError("init 必须显式传入 --start 和 --end")
+    start, end = args.start, args.end
     res = c.sync_daily(start_date=start, end_date=end, include_etf=True,
                        include_index=args.include_index, max_symbols=args.max_symbols)
     print(f"✅ 日线同步: +{res['added_rows']} 行, 失败 {len(res['failed'])}")
@@ -156,15 +157,12 @@ def cmd_backfill(args):
 
 
 def cmd_fundamentals(args):
-    """采集行业 + 财务史 进数据层（meta.db + fundamentals 分区）。"""
+    """采集财务史；行业旧命令已迁移至 industry membership。"""
     from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
     fc = FundamentalsCollector()
     result = {}
-    if args.kind in ("industry", "all"):
-        r = fc.collect_industry(max_symbols=args.max_symbols,
-                                refresh_all=args.refresh)
-        result["industry"] = r
-        print(f"✅ 行业采集: 更新 {r['updated']}, 跳过 {r['skipped']}")
+    if args.kind == "industry":
+        raise RuntimeError("fundamentals --kind industry 已废弃；请使用 industry membership")
     if args.kind in ("financial", "all"):
         r = fc.collect_fundamentals(max_symbols=args.max_symbols)
         result["financial"] = r
@@ -237,7 +235,9 @@ def main(argv: list[str] | None = None):
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_init = sub.add_parser("init", help="首建：代码清单 + 全量日线")
-    p_init.add_argument("--years", type=int, default=3, help="历史深度年数(默认3)")
+    p_init.add_argument("--years", type=int, default=3, help="已废弃，仅保留参数兼容")
+    p_init.add_argument("--start", required=False, help="起始日期 YYYY-MM-DD")
+    p_init.add_argument("--end", required=False, help="结束日期 YYYY-MM-DD")
     p_init.add_argument("--include-index", action="store_true", help="含指数")
     p_init.add_argument("--max-symbols", type=int, default=None, help="限定标的数(测试)")
 
@@ -287,7 +287,7 @@ def main(argv: list[str] | None = None):
     p_backfill.add_argument("--start", required=True, help="YYYY-MM-DD")
     p_backfill.add_argument("--end", required=True, help="YYYY-MM-DD")
 
-    p_fund = sub.add_parser("fundamentals", help="采集行业+财务史进数据层")
+    p_fund = sub.add_parser("fundamentals", help="采集财务史（行业采集已迁移）")
     p_fund.add_argument("--kind", choices=["industry", "financial", "all"],
                         default="all", help="采集类型")
     p_fund.add_argument("--max-symbols", type=int, default=None)

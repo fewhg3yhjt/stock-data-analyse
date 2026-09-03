@@ -12,7 +12,7 @@
   ├── daily/YYYY-MM.parquet      # 全市场日线（每行 = 一标的一日）
   ├── indicators/YYYY-MM.parquet # 技术指标宽表
   ├── online/YYYY-MM-DD/         # 观察池盘中快照（按日）
-  └── meta.db                    # SQLite: instruments / daily_manifest
+  └── management.db              # SQLite: management catalog / dataset metadata
 """
 
 from __future__ import annotations
@@ -76,12 +76,17 @@ class Warehouse:
         self.fundamental_dir = self.base_dir / "fundamentals"
         self.online_dir = self.base_dir / "online"
         self.minute_dir = self.base_dir / "minute"
-        # 生产统一使用 management.db 作为元数据库（含 dataset_current/versions/instruments）；
-        # 显式 meta_db_path 优先，其次 MANAGEMENT_DB_PATH，最后（本地/测试）回退到旧 meta.db。
+        # 生产统一使用 management.db；旧 warehouse/meta.db 不再隐式回退。
         import os as _os
         _mgmt = _os.getenv("MANAGEMENT_DB_PATH")
-        self.meta_db_path = (Path(meta_db_path) if meta_db_path is not None
-                             else (Path(_mgmt) if _mgmt else self.base_dir / "meta.db"))
+        if meta_db_path is not None:
+            self.meta_db_path = Path(meta_db_path)
+        elif _mgmt:
+            self.meta_db_path = Path(_mgmt)
+        elif base_dir is not None:
+            self.meta_db_path = self.base_dir.parent / "management.db"
+        else:
+            self.meta_db_path = Config.DATA_DIR / "management.db"
         for d in (self.daily_dir, self.indicator_dir, self.industry_features_dir,
                   self.fundamental_dir, self.online_dir, self.minute_dir):
             d.mkdir(parents=True, exist_ok=True)
@@ -157,22 +162,6 @@ class Warehouse:
                   r.get("listed_date"), r.get("industry", ""), now) for r in rows],
             )
 
-    def update_industry(self, code: str, industry: str):
-        """更新单只标的行业（低频静态，采集后写入）。"""
-        with self._conn() as c:
-            c.execute(
-                "UPDATE instruments SET industry=?, updated_at=? WHERE code=?",
-                (industry, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), code),
-            )
-
-    def get_industry(self, code: str) -> str:
-        """查询标的行业（meta.db）。"""
-        with self._conn() as c:
-            row = c.execute(
-                "SELECT industry FROM instruments WHERE code=?", (code,)
-            ).fetchone()
-        return (row[0] or "") if row else ""
-
     def all_codes(self) -> list[str]:
         with self._conn() as c:
             rows = c.execute("SELECT code FROM instruments").fetchall()
@@ -189,6 +178,44 @@ class Warehouse:
             c.row_factory = sqlite3.Row
             row = c.execute("SELECT * FROM instruments WHERE code=?", (normalized,)).fetchone()
         return dict(row) if row else None
+
+    def get_instruments(self, codes: Iterable[str]) -> dict[str, dict]:
+        """批量读取管理库标的目录。"""
+        normalized = [str(code).lower().replace(".", "") for code in codes]
+        if not normalized:
+            return {}
+        placeholders = ",".join("?" for _ in normalized)
+        with self._conn() as c:
+            c.row_factory = sqlite3.Row
+            rows = c.execute(f"SELECT * FROM instruments WHERE code IN ({placeholders})", normalized).fetchall()
+        return {str(row["code"]): dict(row) for row in rows}
+
+    def search_instruments(self, query: str, *, limit: int = 20) -> list[dict]:
+        """Search the management instrument catalog, not a legacy database."""
+        query = str(query or "").strip()
+        if not query:
+            return []
+        pattern = f"%{query}%"
+        code_pattern = f"%{query.lower().replace('.', '')}%"
+        with self._conn() as c:
+            c.row_factory = sqlite3.Row
+            rows = c.execute(
+                """SELECT * FROM instruments
+                   WHERE code LIKE ? OR name LIKE ?
+                   ORDER BY CASE WHEN name=? THEN 0 WHEN code=? THEN 1 ELSE 2 END, code
+                   LIMIT ?""",
+                (code_pattern, pattern, query, query.lower().replace('.', ''), max(1, int(limit))),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_instruments(self, *, asset_types: Iterable[str] | None = None) -> list[dict]:
+        """List the management instrument catalog for task scope resolution."""
+        with self._conn() as c:
+            c.row_factory = sqlite3.Row
+            rows = c.execute("SELECT * FROM instruments ORDER BY code").fetchall()
+        items = [dict(row) for row in rows]
+        allowed = set(asset_types or [])
+        return [item for item in items if not allowed or item.get("type") in allowed]
 
     # ── 日线分区读写 ────────────────────────────────────
 

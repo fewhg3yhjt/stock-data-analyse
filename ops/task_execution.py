@@ -225,12 +225,8 @@ def execute_task(db_path: Path, task_key: str, payload: dict,
     if not symbols:
         config = json.loads(task["config_versions"][0]["config"]) if task.get("config_versions") else {}
         asset_types = set((config.get("scope") or {}).get("asset_types") or [])
-        with sqlite3.connect(db_path) as conn:
-            has_instruments = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='instruments'"
-            ).fetchone()
-            rows = conn.execute("SELECT code,type FROM instruments ORDER BY code").fetchall() if has_instruments else []
-        symbols = [code for code, kind in rows if not asset_types or kind in asset_types]
+        catalog = Warehouse(meta_db_path=db_path).list_instruments(asset_types=asset_types)
+        symbols = [item["code"] for item in catalog]
     if not symbols:
         raise ValueError(f"任务 {task_key} 没有可执行的证券范围")
     payload = {**payload, "symbols": symbols}

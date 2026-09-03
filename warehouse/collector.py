@@ -106,7 +106,7 @@ class MarketCollector:
 
     def sync_instruments(self, include_etf: bool = True, include_index: bool = False,
                          day: Optional[str] = None) -> int:
-        """把全市场代码清单写入 meta.db 标的表。"""
+        """把全市场代码清单写入 management.db 标的目录。"""
         from StockInvestmentTool.screener.board import detect_board, board_name
 
         items = self.list_market(include_etf=include_etf,

@@ -2,7 +2,7 @@
 """只读数据契约诊断：不修改生产数据库或文件。
 
 输出每个数据集在每个分区的契约事实，用于识别低覆盖、日期滞后、
-Published 路径不可达等问题。诊断只读 management.db / meta.db 与
+ Published 路径不可达等问题。诊断只读 management.db 与显式迁移输入库，
 Parquet 文件元数据，不做任何写操作。
 """
 

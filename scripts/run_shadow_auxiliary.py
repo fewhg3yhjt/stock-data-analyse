@@ -18,6 +18,7 @@ from StockInvestmentTool.ops.task_center import TaskCenter
 from StockInvestmentTool.ops.task_runner import TaskRunner
 from StockInvestmentTool.warehouse.backfill import ValuationBackfill
 from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
+from StockInvestmentTool.warehouse.industry import IndustryCollector, stage_and_publish_industry_batch
 from StockInvestmentTool.warehouse.source_capture import capture_frames
 from StockInvestmentTool.warehouse.storage import Warehouse
 
@@ -120,21 +121,13 @@ def run_shadow_auxiliary(root: Path, symbols: list[str], start: str, end: str) -
 
 
 def _industry(warehouse, fetcher, symbols):
-    done, failed, frames = 0, [], []
-    for code in symbols:
-        try:
-            value = fetcher.get_stock_industry(code)
-            if value:
-                warehouse.update_industry(code, value)
-                frames.append(pd.DataFrame([{"code": code, "industry": value}]))
-                done += 1
-        except Exception:
-            failed.append(code)
-    raw = capture_frames(warehouse, dataset_name="industry", source_name="baostock", frames=frames,
-                         expected_symbols=len(symbols), success_symbols=done, failed_symbols=len(failed),
-                         universe_id="shadow_auxiliary_industry") if frames else None
-    return {"rows": done, "symbols": done, "failed": failed, "raw_batch_id": raw["batch_id"] if raw else None,
-            "quality": _quality("industry", done, done, len(symbols), "", "")}
+    result = IndustryCollector(warehouse).collect_membership(
+        codes=symbols, snapshot_date=datetime.now().strftime("%Y-%m-%d"))
+    if result.get("raw_batch_id"):
+        result["published"] = stage_and_publish_industry_batch(
+            warehouse, dataset_name="industry_membership", batch_id=result["raw_batch_id"],
+            expected_symbols=result.get("expected_symbols"))
+    return result
 
 
 def _fundamentals(warehouse, fetcher, symbols):

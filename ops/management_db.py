@@ -1,5 +1,8 @@
 """Unified management database for task and data-center runtime state.
 
+This module is migration/runtime-state infrastructure only; it is not a legacy
+data compatibility layer.
+
 Definitions still come from YAML. This database stores their runtime projection,
 execution facts, metric health, artifacts, and lineage in one queryable place.
 """

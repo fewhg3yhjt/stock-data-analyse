@@ -18,6 +18,7 @@ from StockInvestmentTool.warehouse.backfill import ValuationBackfill
 from StockInvestmentTool.warehouse.collector import MarketCollector
 from StockInvestmentTool.warehouse.daily_build import DailyBuilder
 from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
+from StockInvestmentTool.warehouse.industry import IndustryCollector, stage_and_publish_industry_batch
 from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
 from StockInvestmentTool.warehouse.pipeline_state import PipelineState
 from StockInvestmentTool.warehouse.publish import Publisher
@@ -41,12 +42,9 @@ def _quality(dataset: str, rows: int, covered: int, expected: int, start: str, e
 
 
 def _select_symbols(warehouse: Warehouse) -> list[str]:
-    with sqlite3.connect(warehouse.meta_db_path) as conn:
-        rows = conn.execute(
-            "SELECT code,type FROM instruments WHERE type IN ('stock','etf') ORDER BY code"
-        ).fetchall()
-    stocks = [code for code, kind in rows if kind == "stock"]
-    etfs = [code for code, kind in rows if kind == "etf"]
+    catalog = warehouse.list_instruments(asset_types={"stock", "etf"})
+    stocks = [item["code"] for item in catalog if item.get("type") == "stock"]
+    etfs = [item["code"] for item in catalog if item.get("type") == "etf"]
     if len(stocks) < 2 or not etfs:
         raise RuntimeError("生产证券清单不足 2 只股票 + 1 只 ETF")
     return stocks[:2] + etfs[:1]
@@ -249,22 +247,13 @@ def _publish(warehouse, versions):
 
 
 def _industry(warehouse, symbols):
-    from StockInvestmentTool.datasource.fetcher import StockDataFetcher
-    fetcher = StockDataFetcher()
-    frames, failed = [], []
-    for code in symbols:
-        try:
-            value = fetcher.get_stock_industry(code)
-            if value:
-                warehouse.update_industry(code, value)
-                frames.append(pd.DataFrame([{"code": code, "industry": value}]))
-        except Exception:
-            failed.append(code)
-    raw = capture_frames(warehouse, dataset_name="industry", source_name="baostock", frames=frames,
-                         expected_symbols=len(symbols), success_symbols=len(frames),
-                         failed_symbols=len(failed), universe_id="production_validation_industry")
-    return {"rows": len(frames), "symbols": len(frames), "failed": failed,
-            "raw_batch_id": raw["batch_id"], "quality": _quality("industry", len(frames), len(frames), len(symbols), "", "")}
+    result = IndustryCollector(warehouse).collect_membership(
+        codes=symbols, snapshot_date=datetime.now().strftime("%Y-%m-%d"))
+    if result.get("raw_batch_id"):
+        result["published"] = stage_and_publish_industry_batch(
+            warehouse, dataset_name="industry_membership", batch_id=result["raw_batch_id"],
+            expected_symbols=result.get("expected_symbols"))
+    return result
 
 
 def _fundamentals(warehouse, symbols):

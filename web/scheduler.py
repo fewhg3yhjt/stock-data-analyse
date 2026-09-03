@@ -276,19 +276,28 @@ def run_daily_data_pipeline(run_id: int | None = None) -> dict:
 def run_auxiliary_data_pipeline(parent_run_id: int | None = None) -> dict:
     """Collect auxiliary datasets according to the Active Config."""
     from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
+    from StockInvestmentTool.warehouse.industry import IndustryCollector, stage_and_publish_industry_batch
     from StockInvestmentTool.warehouse.storage import Warehouse
     from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
     from StockInvestmentTool.fundflow.capture import capture_money_flow
 
     warehouse = Warehouse()
-    for name in ("industry", "fundamentals", "valuation_daily", "money_flow_daily"):
+    for name in ("industry_membership", "fundamentals", "valuation_daily", "money_flow_daily"):
         warehouse.metadata.register_dataset(name)
     configured = TaskCenter(management_db_path()).active_configs()
     result = {"enabled_tasks": []}
     collector = FundamentalsCollector(warehouse=warehouse)
     if _task_schedule_enabled(configured, "industry_capture"):
         try:
-            result["industry"] = collector.collect_industry()
+            industry = IndustryCollector(warehouse).collect_membership(
+                snapshot_date=datetime.now().strftime("%Y-%m-%d"))
+            if industry.get("raw_batch_id"):
+                industry["published"] = stage_and_publish_industry_batch(
+                    warehouse, dataset_name="industry_membership",
+                    batch_id=industry["raw_batch_id"],
+                    expected_symbols=industry.get("expected_symbols"),
+                )
+            result["industry"] = industry
         except Exception as exc:
             logger.error("行业采集失败: %s", exc)
             result["industry"] = {"failed": [str(exc)]}

@@ -3,7 +3,7 @@
 
 设计:
   - 条件可配（CONDITIONS dict），改参数即可重新验证
-  - 用 DuckDB 窗口函数直接对 warehouse parquet 计算，2C2G 可跑
+    - 用 DuckDB 窗口函数读取数据模块分区计算，2C2G 可跑
   - 扫描: 找当前/历史某时点符合条件的所有股票
   - 回测: 历史每个时点选股 → 持有 N 天收益，与全市场基准对比
   - 图表: 折线图写入 Config.CHART_DIR，供 web /charts/ 展示
@@ -125,23 +125,13 @@ def scan(conditions: Optional[dict] = None, as_of: str = "",
 
 
 def _attach_names(hits: list[dict]) -> None:
-    """从 meta.db 批量补充股票中文名（就地修改 hits）。"""
+    """从管理库标的目录批量补充股票中文名（就地修改 hits）。"""
     if not hits:
         return
     w = Warehouse()
-    conn = w._conn()
-    try:
-        codes = [h["code"] for h in hits]
-        placeholders = ",".join("?" * len(codes))
-        rows = conn.execute(
-            f"SELECT code, name FROM instruments WHERE code IN ({placeholders})",
-            codes,
-        ).fetchall()
-        name_map = {r[0]: r[1] for r in rows}
-        for h in hits:
-            h["name"] = name_map.get(h["code"], "") or h["code"]
-    finally:
-        conn.close()
+    catalog = w.get_instruments([h["code"] for h in hits])
+    for h in hits:
+        h["name"] = catalog.get(h["code"], {}).get("name") or h["code"]
 
 
 # ═══════════════════════════════════════════════════════

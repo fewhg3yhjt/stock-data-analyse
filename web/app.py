@@ -2025,15 +2025,23 @@ def api_classify():
             return flask.jsonify({"status": "success", "stock_type": "E",
                                   "industry": "场内ETF/LOF", "roe": 0, "rev_growth": 0})
         fetcher = StockDataFetcher()
-        # 行业：优先读数据层 meta.db（采集后写入），无则实时拉+写缓存
+        # 行业只读 Published membership；页面请求不得实时采集或写旧缓存。
         from StockInvestmentTool.warehouse.storage import Warehouse
+        from StockInvestmentTool.warehouse.datasets import DatasetAccess
         wh = Warehouse()
         code_nodot = code.replace(".", "")
-        industry = wh.get_industry(code_nodot)
-        if not industry:
-            industry = fetcher.get_stock_industry(code)
-            if industry:
-                wh.update_industry(code_nodot, industry)
+        category = (flask.request.args.get("category") or "csrc").strip()
+        dataset = {"csrc": "industry_membership", "ths_industry": "ths_industry_membership"}.get(category)
+        if not dataset:
+            return flask.jsonify({"status": "error", "error": f"{category} 暂无 Published 行业成员数据"}), 422
+        membership = DatasetAccess(wh).load_dataset(
+            dataset, end_date=datetime.now().strftime("%Y-%m-%d"),
+            required_quality="PASS").data
+        membership = membership[membership["code"].astype(str).str.lower().str.replace(".", "", regex=False) == code_nodot]
+        if category == "csrc":
+            membership = membership[membership["industry_classification"].astype(str) == category]
+        industry = str(membership.iloc[-1]["industry_name"]) if not membership.empty else ""
+        sector_id = str(membership.iloc[-1].get("industry_code" if category == "csrc" else "industry_id") or "") if not membership.empty else ""
         # 财务史：优先读数据层 fundamentals 分区，无则实时拉
         roe = rev_growth = 0.0
         fund = wh.read_fundamentals(code_nodot)
@@ -2049,7 +2057,8 @@ def api_classify():
         stype = classify_stock(industry=industry, roe=roe,
                                revenue_growth=rev_growth, div_yield=0, pe=0)
         return flask.jsonify({"status": "success", "stock_type": stype,
-                              "industry": industry, "roe": roe, "rev_growth": rev_growth})
+                              "category": category, "industry": industry,
+                              "sector_id": sector_id, "roe": roe, "rev_growth": rev_growth})
     except Exception as e:
         logger.warning("类型识别失败 %s: %s", code, e)
         return flask.jsonify({"status": "error", "error": str(e)}), 400
@@ -2073,29 +2082,28 @@ def api_stock_lookup():
     try:
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
         from StockInvestmentTool.warehouse.storage import Warehouse
+        from StockInvestmentTool.warehouse.datasets import DatasetAccess
 
         norm = StockDataFetcher.normalize_code(code)
         code_nodot = norm.replace(".", "")
 
-        # 从 meta.db 查名称/类型/板块
+        # 从管理库标的目录查名称/类型；页面层不直接操作 instruments SQL。
         w = Warehouse()
-        conn = w._conn()
         name = ""
         asset_type = "stock"
         board = ""
-        try:
-            row = conn.execute(
-                "SELECT name, type, board FROM instruments WHERE code=?", (code_nodot,)
-            ).fetchone()
-            if row:
-                name, asset_type, board = row[0], row[1] or "stock", row[2] or ""
-        finally:
-            conn.close()
+        instrument = w.get_instrument(code_nodot) or {}
+        name = instrument.get("name") or ""
+        asset_type = instrument.get("type") or "stock"
+        board = instrument.get("board") or ""
+        if not board and asset_type == "stock":
+            board = ("科创板" if code_nodot[2:5] in ("688", "689") else
+                     "创业板" if code_nodot[2:5] in ("300", "301") else "主板")
 
         # 从 warehouse 查最近价格 + 指定日期价格
         current_price = None
         price_at_date = None
-        latest = w.read_daily(w.available_months("daily")[-1]) if w.available_months("daily") else None
+        latest = DatasetAccess(w).load_dataset("stock_daily", required_quality="PASS").data
         if latest is not None and not latest.empty and "code" in latest.columns:
             sub = latest[latest["code"] == code_nodot]
             if len(sub):
@@ -2125,23 +2133,12 @@ def api_stock_search():
         from StockInvestmentTool.warehouse.storage import Warehouse
         from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 
-        pattern = f"%{query}%"
-        code_query = query.lower().replace(".", "")
-        code_pattern = f"%{code_query}%"
         warehouse = Warehouse()
-        conn = warehouse._conn()
-        try:
-            rows = conn.execute(
-                """SELECT code,name,type,board FROM instruments
-                   WHERE code LIKE ? OR name LIKE ?
-                   ORDER BY CASE WHEN name=? THEN 0 WHEN code=? THEN 1 ELSE 2 END, code
-                   LIMIT 20""",
-                (code_pattern, pattern, query, code_query),
-            ).fetchall()
-        finally:
-            conn.close()
+        rows = warehouse.search_instruments(query, limit=20)
         items = []
-        for code, name, asset_type, board in rows:
+        for row in rows:
+            code, name = row.get("code", ""), row.get("name", "")
+            asset_type, board = row.get("type", "stock"), row.get("board", "")
             normalized = StockDataFetcher.normalize_code(code)
             items.append({"code": normalized, "name": name or normalized,
                           "asset_type": asset_type or "stock", "board": board or ""})

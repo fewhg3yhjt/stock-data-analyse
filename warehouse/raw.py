@@ -14,7 +14,7 @@
   │   ├── baostock/YYYY-MM.parquet   baostock源（含历史PE/PB，待接入）
   │   └── valuation/YYYY-MM.parquet  估值源（历史PE/PB，单点回补）
   ├── daily/YYYY-MM.parquet          加工层：完整宽表（下游唯一数据源）
-  └── meta.db
+  └── management.db（由管理库维护）
 """
 
 from __future__ import annotations

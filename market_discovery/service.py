@@ -463,10 +463,8 @@ def _attach_names(items: list[dict], warehouse: Warehouse,
     if not items:
         return
     codes = [item["code"] for item in items]
-    placeholders = ",".join("?" for _ in codes)
-    with warehouse._conn() as conn:
-        rows = conn.execute(f"SELECT code, name, industry FROM instruments WHERE code IN ({placeholders})", codes).fetchall()
-    lookup = {row[0]: (row[1], row[2]) for row in rows}
+    lookup = {code: (item.get("name", ""), item.get("industry", ""))
+              for code, item in warehouse.get_instruments(codes).items()}
     for item in items:
         name, industry = lookup.get(item["code"], ("", ""))
         item["name"] = name or item["code"]

@@ -438,15 +438,9 @@ class DashboardService:
         # 标的名称（meta 清单）
         try:
             w = Warehouse()
-            conn = w._conn()
-            try:
-                row = conn.execute(
-                    "SELECT name FROM instruments WHERE code=?", (code_nodot,)
-                ).fetchone()
-                if row and row[0]:
-                    result["name"] = row[0]
-            finally:
-                conn.close()
+            instrument = w.get_instrument(code_nodot)
+            if instrument and instrument.get("name"):
+                result["name"] = instrument["name"]
         except Exception as e:
             logger.warning("标的名称读取失败 %s: %s", code, e)
 
@@ -1709,9 +1703,13 @@ class DashboardService:
                         "insufficient_data": "数据不足"}
         leader_names = {}
         try:
-            with service.warehouse._conn() as conn:
-                leader_names = {str(code): str(name) for code, name in conn.execute(
-                    "SELECT code, name FROM instruments WHERE name IS NOT NULL AND name != ''")}
+            leader_names = {
+                code: str(item.get("name"))
+                for code, item in service.warehouse.get_instruments(
+                    [str(row.get("leader_code") or "") for row in rows]
+                ).items()
+                if item.get("name")
+            }
         except Exception as exc:
             logger.debug("读取行业龙头名称失败: %s", exc)
 

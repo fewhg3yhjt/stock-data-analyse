@@ -1,17 +1,23 @@
 dataset:
   name: industry
   display_name: 行业分类
-  description: 证券所属行业分类信息
-  grain: 一个证券的一条当前行业记录
-  primary_keys: [code]
-  partition: {type: snapshot, path: warehouse/meta.db.instruments}
+  description: 已废弃别名；正式消费者应直接使用 industry_membership
+  grain: 已废弃别名；正式行业归属使用 Published industry_membership 快照
+  primary_keys: [snapshot_date, code, industry_classification]
+  partition: {type: snapshot, path: 'warehouse/industry_membership/{partition}.parquet'}
   update_frequency: 低频定期更新
-  schema_version: industry.v1
+  schema_version: industry_membership.v1
 fields:
   - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
-  - {name: industry, display_name: 行业, data_type: string, nullable: true}
+  - {name: snapshot_date, display_name: 快照日期, data_type: date, nullable: false, primary_key: true}
+  - {name: industry_code, display_name: 行业代码, data_type: string, nullable: false}
+  - {name: industry_name, display_name: 行业名称, data_type: string, nullable: false}
+  - {name: raw_industry, display_name: 原始行业, data_type: string, nullable: false}
+  - {name: industry_classification, display_name: 分类体系, data_type: string, nullable: false, primary_key: true}
+  - {name: source_update_date, display_name: 来源更新日期, data_type: date, nullable: true}
+  - {name: source, display_name: 来源, data_type: string, nullable: false}
+  - {name: captured_at, display_name: 采集时间, data_type: datetime, nullable: false}
 sources:
-  - {name: baostock, role: primary, priority: 1, field_mapping: {code: code, industry: industry}, unit_conversions: {}}
-consumers:
-  - {name: market_discovery, type: business, purpose: 行业筛选, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式扫描}
+  - {name: industry_membership, role: primary, priority: 1, field_mapping: {}, unit_conversions: {}}
+consumers: []
 quality: {publish_warning: false, coverage: {pass_min: 0.98, warning_min: 0.95}}

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
@@ -140,17 +139,8 @@ class IndustryCollector:
             checkpoint_data = json.loads(checkpoint.read_text(encoding="utf-8"))
             completed = set(checkpoint_data.get("completed", []))
             saved_values = checkpoint_data.get("results", {})
-        # Older checkpoints only stored completed codes. Reconstruct their
-        # values from the current instrument cache instead of re-querying them.
-        if completed:
-            with sqlite3.connect(self.warehouse.meta_db_path) as conn:
-                placeholders = ",".join("?" for _ in completed)
-                cached = conn.execute(
-                    f"SELECT code, industry FROM instruments WHERE code IN ({placeholders})",
-                    tuple(completed),
-                ).fetchall()
-            saved_values.update({code: industry for code, industry in cached if industry and str(industry).strip()})
-            completed = {code for code in completed if code in saved_values}
+        # Checkpoints are source-pipeline state only. Never reconstruct a
+        # formal membership snapshot from the legacy instruments.industry cache.
         rows = [{"code": code, "industry": saved_values[code]} for code in codes if code in completed]
         failed, skipped = [], 0
         for code in codes:
