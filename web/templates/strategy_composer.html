@@ -467,7 +467,7 @@ function collectRuleParams(ruleBox){
     params[key]=params[key]||{};
     if(input.value!=='') params[key][input.dataset.mapKey]=parseFloat(input.value)/(key==='stop_loss_by_type'||key==='breakeven_activation_by_type'||key==='drawdown_by_type'||key==='ratio_by_type'?100:1);
   });
-  ruleBox.querySelectorAll('[data-f="half_profit_threshold"],[data-f="base_discount"],[data-f="offset"],[data-f="drawdown_protection_min_profit"],[data-f="drawdown_protection_threshold"]').forEach(inp=>{
+  ruleBox.querySelectorAll('[data-f="half_profit_threshold"],[data-f="base_discount"],[data-f="offset"],[data-f="min_profit_for_activation"],[data-f="drawdown_protection_min_profit"],[data-f="drawdown_protection_threshold"]').forEach(inp=>{
     if(inp.value!=='') params[inp.dataset.f]=parseFloat(inp.value)/100;
   });
   // 处理结构化 list/map_list

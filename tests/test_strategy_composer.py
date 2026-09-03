@@ -86,6 +86,19 @@ def test_optimization_run_requires_explicit_ranges(client):
     assert response.status_code == 400
 
 
+def test_right_side_profit_activation_percentage_is_serialized_as_ratio(client):
+    model = _sample_model()
+    model["sell_rules"] = [{"type": "right_side_trailing", "params": {
+        "profit_activation_enabled": True,
+        "profit_activation_basis": "peak_price",
+        "min_profit_for_activation": 0.08,
+        "drawdown_by_type": {"B": 0.05},
+    }}]
+    response = client.post("/api/schemes/compose", json=model)
+    assert response.status_code == 200
+    assert "min_profit_for_activation: 0.08" in response.get_json()["yaml"]
+
+
 def test_simulation_draft_is_one_time_and_non_persistent(client):
     model = _sample_model()
     response = client.post("/api/schemes/simulation-draft", json={"model": model})
