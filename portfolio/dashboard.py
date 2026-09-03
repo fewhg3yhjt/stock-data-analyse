@@ -1554,13 +1554,9 @@ class DashboardService:
             # with WARNING coverage; this is a display chart, while unpublished
             # and FAIL partitions remain blocked by DatasetAccess.
             frame = access.load_dataset("industry_daily", required_quality="WARNING").data
-            frames = [frame]
-            for frame in frames:
-                if frame is not None and not frame.empty:
-                    break
-            if not frames or frames[0] is None or frames[0].empty:
+            if frame is None or frame.empty:
                 return {**result, "error": "暂无板块日线数据"}
-            df = pd.concat(frames, ignore_index=True)
+            df = frame.copy()
             if category != "ths_industry":
                 return {**result, "error": "证监会行业板块暂无独立板块日线数据" if category == "csrc" else "同花顺概念暂无板块日线数据"}
             if sector_id:
@@ -1576,6 +1572,8 @@ class DashboardService:
                     .drop_duplicates("trading_date")
                     .sort_values("trading_date")
                     .tail(max(1, int(days))))
+            if df.empty:
+                return {**result, "error": "该板块暂无可用日线数据"}
             result["dates"] = [d.strftime("%Y-%m-%d") for d in df["trading_date"]]
             result["close"] = [round(float(value), 2) for value in df["close"]]
             return result
@@ -1589,10 +1587,10 @@ class DashboardService:
             from StockInvestmentTool.warehouse.storage import Warehouse
 
             warehouse = Warehouse()
-            months = warehouse.available_months("industry_daily")
-            if not months:
-                return []
-            frame = warehouse._read_partition(warehouse.base_dir / "industry_daily", months[-1])
+            from StockInvestmentTool.warehouse.datasets import DatasetAccess
+            frame = DatasetAccess(warehouse).load_dataset(
+                "industry_daily", required_quality="WARNING"
+            ).data
             if frame is None or frame.empty:
                 return []
             return sorted({str(name) for name in frame["industry_name"].dropna() if str(name).strip()})
@@ -1606,22 +1604,28 @@ class DashboardService:
         from StockInvestmentTool.warehouse.storage import Warehouse
 
         warehouse = Warehouse()
-        frames = []
-        for month in warehouse.available_months("industry_daily"):
-            frame = warehouse._read_partition(warehouse.base_dir / "industry_daily", month)
-            if frame is not None and not frame.empty:
-                frames.append(frame)
-        if not frames:
+        from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
+        try:
+            data = DatasetAccess(warehouse).load_dataset(
+                "industry_daily", required_quality="WARNING"
+            ).data
+        except DatasetAccessError as exc:
+            logger.warning("行业板块概览 Published 数据不可用: %s", exc)
             return []
-        data = pd.concat(frames, ignore_index=True)
+        if data is None or data.empty:
+            return []
         data["trading_date"] = pd.to_datetime(data["trading_date"], errors="coerce")
         data["close"] = pd.to_numeric(data["close"], errors="coerce")
         data = data.dropna(subset=["trading_date", "close"])
-        data = data.sort_values(["industry_name", "trading_date"]).drop_duplicates(
-            ["industry_name", "trading_date"], keep="last"
+        group_keys = ["industry_name"]
+        if "industry_id" in data.columns:
+            group_keys.insert(0, "industry_id")
+        data = data.sort_values(group_keys + ["trading_date"]).drop_duplicates(
+            group_keys + ["trading_date"], keep="last"
         )
         result = []
-        for name, group in data.groupby("industry_name", sort=False):
+        for group_key, group in data.groupby(group_keys, sort=False):
+            name = group_key[-1] if isinstance(group_key, tuple) else group_key
             group = group.tail(max(2, int(days)))
             latest = group.iloc[-1]
             previous = group.iloc[-2] if len(group) > 1 else None
@@ -1740,12 +1744,15 @@ class DashboardService:
         daily["close"] = pd.to_numeric(daily["close"], errors="coerce")
         daily["amount"] = pd.to_numeric(daily.get("amount", 0), errors="coerce").fillna(0)
         daily = daily[daily["date"] <= pd.Timestamp(as_of)].dropna(subset=["date", "close"])
-        latest = daily["date"].max(); rows = []
+        common_date = daily["date"].max()
+        rows = []
         for (industry_id, industry_name), relation in membership.groupby(["industry_id", "industry_name"]):
             frame = daily[daily["code"].isin(set(relation["code"].astype(str).str.lower().str.replace(".", "", regex=False)))].sort_values(["code", "date"]).copy()
             if frame.empty: continue
             for n in (1, 5, 20): frame[f"ret_{n}"] = frame.groupby("code")["close"].pct_change(n)
-            last = frame.groupby("code", as_index=False).tail(1)
+            last = frame[frame["date"] == common_date].copy()
+            if last.empty:
+                continue
             def avg(col):
                 values = pd.to_numeric(last[col], errors="coerce").dropna()
                 return float(values.mean()) if len(values) else None
@@ -1753,11 +1760,13 @@ class DashboardService:
             leader = last.sort_values(["ret_5", "amount"], ascending=False).iloc[0]
             amount = float(last["amount"].sum())
             amount_ma20 = float(frame.groupby("date")["amount"].sum().tail(20).mean())
-            rows.append({"industry_id": str(industry_id), "industry_code": str(industry_id), "industry_name": str(industry_name), "status": "strong" if score > .03 else "weak" if score < -.03 else "neutral", "status_label": "强势" if score > .03 else "弱势" if score < -.03 else "中性", "score": round(score, 4), "return_1d": avg("ret_1"), "return_5d": avg("ret_5"), "return_20d": avg("ret_20"), "up_ratio": float((last["ret_1"] > 0).mean()), "amount": amount, "amount_ratio": round(amount / amount_ma20, 4) if amount_ma20 else None, "member_count": int(relation["code"].nunique()), "leader_code": str(leader["code"]), "leader_name": str(leader["code"]), "reason": f"成员 {relation['code'].nunique()} 只；有效 {len(last)} 只"})
+            member_count = int(relation["code"].nunique())
+            valid_count = int(last["code"].nunique())
+            rows.append({"industry_id": str(industry_id), "industry_code": str(industry_id), "industry_name": str(industry_name), "status": "strong" if score > .03 else "weak" if score < -.03 else "neutral", "status_label": "强势" if score > .03 else "弱势" if score < -.03 else "中性", "score": round(score, 4), "return_1d": avg("ret_1"), "return_5d": avg("ret_5"), "return_20d": avg("ret_20"), "up_ratio": float((last["ret_1"] > 0).mean()), "amount": amount, "amount_ratio": round(amount / amount_ma20, 4) if amount_ma20 else None, "member_count": member_count, "valid_count": valid_count, "coverage": round(valid_count / member_count, 4) if member_count else 0.0, "leader_code": str(leader["code"]), "leader_name": str(leader["code"]), "reason": f"成员 {member_count} 只；共同交易日 {common_date.strftime('%Y-%m-%d')} 有效 {valid_count} 只"})
         rows.sort(key=lambda item: -(item["score"] or 0))
         for rank, row in enumerate(rows, 1): row["rank_5d"] = rank
         return {"status": "success" if rows else "no_data", "requested_as_of": as_of,
-                "actual_data_as_of": latest.strftime("%Y-%m-%d") if rows else None,
+                "actual_data_as_of": common_date.strftime("%Y-%m-%d") if rows else None,
                 "snapshot_date": snapshot_date.strftime("%Y-%m-%d"),
                 "reason": None if rows else "同花顺行业成员与股票日线没有重叠", "items": rows}
 
@@ -1769,7 +1778,7 @@ class DashboardService:
         from StockInvestmentTool.warehouse.storage import Warehouse
         try:
             frame = DatasetAccess(Warehouse()).load_dataset(
-                "industry_daily", required_quality="PASS"
+                "industry_daily", required_quality="WARNING"
             ).data
         except DatasetAccessError:
             return []

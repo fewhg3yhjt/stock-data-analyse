@@ -203,7 +203,10 @@ def check_industry_membership(path, expected_symbols: int | None = None) -> dict
     return _industry_quality(path, "industry_membership", expected_symbols)
 
 
-def check_ths_industry_membership(path, expected_symbols: int | None = None, *, expected_industries: int | None = None) -> dict:
+def check_ths_industry_membership(path, expected_symbols: int | None = None, *,
+                                  expected_industries: int | None = None,
+                                  expected_rows: int | None = None,
+                                  expected_source_commit: str | None = None) -> dict:
     frame = pd.read_parquet(path)
     config = load_dataset_config("ths_industry_membership")["quality"]
     keys = ["snapshot_date", "industry_id", "code"]
@@ -213,7 +216,8 @@ def check_ths_industry_membership(path, expected_symbols: int | None = None, *, 
         return {"status": "FAIL", "publish_allowed": False,
                 "checks": {"missing_columns": missing, "row_count": len(frame)}}
     duplicate = int(frame.duplicated(keys).sum())
-    valid = (frame["industry_id"].astype(str).str.strip().ne("") &
+    valid = (frame["snapshot_date"].astype(str).str[:10].str.fullmatch(r"\d{4}-\d{2}-\d{2}") &
+             frame["industry_id"].astype(str).str.strip().ne("") &
              frame["industry_name"].astype(str).str.strip().ne("") &
              frame["code"].astype(str).str.strip().ne("") &
              frame["stock_name"].astype(str).str.strip().ne("") &
@@ -223,13 +227,31 @@ def check_ths_industry_membership(path, expected_symbols: int | None = None, *, 
     relation_count = int(frame[keys].drop_duplicates().shape[0])
     expected_industries = expected_industries if expected_industries is not None else expected_symbols
     coverage = (industry_count / expected_industries if expected_industries else None)
-    fail = duplicate > 0 or int((~valid).sum()) > 0 or (coverage is not None and coverage < config["coverage"]["warning_min"])
+    baseline = config.get("source_baseline", {})
+    source_commits = frame["source_commit"].astype(str).str.strip()
+    source_commit = source_commits.iloc[0] if len(frame) else ""
+    baseline_applies = expected_source_commit is not None and source_commit == expected_source_commit
+    baseline_rows = expected_rows if baseline_applies else None
+    baseline_industries = expected_industries if baseline_applies else None
+    baseline_row_bad = baseline_rows is not None and count != baseline_rows
+    baseline_industry_bad = baseline_industries is not None and industry_count != baseline_industries
+    mixed_source_bad = source_commits.nunique() != 1
+    fail = (duplicate > 0 or int((~valid).sum()) > 0 or
+            (coverage is not None and coverage < config["coverage"]["warning_min"]) or
+            baseline_row_bad or baseline_industry_bad or mixed_source_bad)
     status = "FAIL" if fail else ("PASS" if coverage is None or coverage >= config["coverage"]["pass_min"] else "WARNING")
     return {"status": status, "publish_allowed": status != "FAIL" and (status == "PASS" or config["publish_warning"]),
             "checks": {"duplicate_primary_keys": duplicate, "invalid_rows": int((~valid).sum()),
                        "row_count": count, "industry_count": industry_count,
                        "relation_count": relation_count, "coverage": coverage,
-                       "expected_industries": expected_industries}}
+                       "expected_industries": expected_industries,
+                       "baseline_applies": baseline_applies,
+                       "baseline_expected_rows": baseline_rows,
+                       "baseline_expected_industries": baseline_industries,
+                       "baseline_row_count_mismatch": baseline_row_bad,
+                       "baseline_industry_count_mismatch": baseline_industry_bad,
+                       "mixed_source_commits": mixed_source_bad,
+                       "source_baseline": baseline}}
 
 
 def check_industry_daily(path, expected_symbols: int | None = None) -> dict:

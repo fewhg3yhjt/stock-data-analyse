@@ -17,6 +17,9 @@ from StockInvestmentTool.warehouse.quality import check_ths_industry_membership
 
 COMMIT = "fad8b3374fc8605ac723f5626e600d554b0c222a"
 CSV_URL = f"https://raw.githubusercontent.com/panghu11033/thsdk/{COMMIT}/data/industry_constituents.csv"
+_BASELINE = load_dataset_config("ths_industry_membership")["quality"]["source_baseline"]
+EXPECTED_INDUSTRIES = int(_BASELINE["industries"])
+EXPECTED_ROWS = int(_BASELINE["rows"])
 
 
 def build_ths_industry_candidate(warehouse, partition: str, raw_path: Path) -> dict:
@@ -135,7 +138,13 @@ def import_ths_industry_membership(warehouse, *, snapshot_date: str, csv_path: P
     build = build_ths_industry_candidate(warehouse, snapshot_date, Path(captured["raw"]["path"]))
     state = PipelineState(warehouse.meta_db_path)
     version = state.create_version(build, source_batches=[captured["batch_id"]], dataset_name="ths_industry_membership", schema_version="ths_industry_membership.v1")
-    quality = check_ths_industry_membership(build["path"], expected_industries=int(frame["industry_id"].nunique()))
+    baseline = source_commit == COMMIT
+    quality = check_ths_industry_membership(
+        build["path"],
+        expected_industries=EXPECTED_INDUSTRIES if baseline else None,
+        expected_rows=EXPECTED_ROWS if baseline else None,
+        expected_source_commit=COMMIT if baseline else None,
+    )
     state.quality(version, status=quality["status"], checks=quality["checks"], publish_allowed=quality["publish_allowed"])
     published = Publisher(warehouse).publish(version) if quality["publish_allowed"] else None
     return {"raw_batch_id": captured["batch_id"], "version_id": version,

@@ -3523,7 +3523,6 @@ def market_page():
         indices = {"沪深300": "sh.000300", "上证指数": "sh.000001",
                    "深证成指": "sz.399001", "创业板指": "sz.399006"}
         board_names = svc.board_names()
-        board_overview = svc.board_overview()
         industry_rotation = svc.industry_rotation_overview(category="csrc")
         ths_industry_rotation = svc.industry_rotation_overview(category="ths_industry")
         ths_concept_rotation = svc.industry_rotation_overview(category="ths_concept")
@@ -3532,7 +3531,7 @@ def market_page():
                            for p in svc.war_room()["positions"]]
         return flask.render_template("market.html", indices=indices,
                                      board_names=board_names,
-                                     board_overview=board_overview,
+                                      board_overview=[],
                                       industry_rotation=industry_rotation,
                                       ths_industry_rotation=ths_industry_rotation,
                                       ths_concept_rotation=ths_concept_rotation,
@@ -3569,6 +3568,8 @@ def market_board_kline():
     if not name and not sector_id:
         return flask.jsonify({"status": "error", "error": "缺少 sector_id/name"}), 400
     data = DashboardService(_get_manager()).board_index_kline(name, category=category, sector_id=sector_id)
+    if data.get("error") or not data.get("dates"):
+        return flask.jsonify({"status": "error", "error": data.get("error") or "暂无板块日线数据", **data}), 422
     return flask.jsonify({"status": "success", **data})
 
 

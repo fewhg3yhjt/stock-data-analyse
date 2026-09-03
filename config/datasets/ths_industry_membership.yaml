@@ -23,3 +23,7 @@ consumers:
 quality:
   publish_warning: true
   coverage: {pass_min: 0.98, warning_min: 0.95}
+  source_baseline:
+    commit: fad8b3374fc8605ac723f5626e600d554b0c222a
+    industries: 90
+    rows: 5556

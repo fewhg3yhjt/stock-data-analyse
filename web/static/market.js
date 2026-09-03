@@ -48,7 +48,7 @@
       const category = document.getElementById('board-category').value;
       const response = await fetch('/market/board_kline?category=' + encodeURIComponent(category) + '&sector_id=' + encodeURIComponent(select.dataset.sectorId || '') + '&name=' + encodeURIComponent(name));
       const data = await response.json();
-      if (data.status !== 'success') return showUiMessage(data.error || '板块加载失败', 'error');
+      if (data.status !== 'success' || data.error || !data.dates?.length) return showUiMessage(data.error || '暂无板块日线数据', 'error');
       makeChart(chartEls.board).setOption(lineOption(data.name, data.dates || [], [{name: data.name, data: data.close || []}], null), true);
       showUiMessage('板块 ' + data.name + ' 已加载', 'success');
     } catch (error) { showUiMessage('板块加载失败: ' + error.message, 'error'); }
