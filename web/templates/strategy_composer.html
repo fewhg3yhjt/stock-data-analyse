@@ -94,7 +94,7 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
         <div class="ui-field"><label>初始资金</label><input id="b-cash" type="number" value="100000"></div>
         <div class="ui-field"><label>自动验证参数</label><select id="b-opt"><option value="false">关闭（按当前参数）</option><option value="true">开启（仅验证当前已接入参数）</option></select></div>
       </div>
-      <div class="scheme-guide"><b>自动验证说明：</b>当前第一版只验证“回撤止盈阈值”和“买入偏移”两项。训练区间用于寻找候选，验证区间用于检查稳定性；结果只生成推荐，不会修改正式方案。其他配置暂未接入自动验证，避免出现页面可选但回测不生效的情况。<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;"><input id="opt-train-start" type="date" value="2019-01-01"><input id="opt-train-end" type="date" value="2023-12-31"><input id="opt-valid-start" type="date" value="2024-01-01"><input id="opt-valid-end" type="date"></div><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="previewOptimizationPlan()">查看验证范围</button><span class="help" id="optimization-hint"></span></div>
+      <div class="scheme-guide"><b>自动验证说明：</b>当前验证“回撤止盈阈值”和“买入偏移”两项。训练区间用于寻找候选，验证区间用于检查稳定性；结果只生成推荐，不会修改正式方案。其他配置暂未接入自动验证。<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;"><label class="help">训练开始<input id="opt-train-start" type="date" value="2019-01-01"></label><label class="help">训练结束<input id="opt-train-end" type="date" value="2023-12-31"></label><label class="help">验证开始<input id="opt-valid-start" type="date" value="2024-01-01"></label><label class="help">验证结束<input id="opt-valid-end" type="date" value="{{ yesterday }}"></label></div><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="previewOptimizationPlan()">查看验证范围</button><button type="button" class="ui-button ui-button-primary ui-button-sm" id="optimization-run-button" onclick="runOptimization()">运行自动验证</button><span class="help" id="optimization-hint"></span><div id="optimization-result"></div></div>
 
       <div style="display:flex;gap:10px;margin-top:6px;">
          <button class="ui-button ui-button-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
@@ -515,7 +515,26 @@ function schedulePreview(){
 async function previewOptimizationPlan(){
   const payload={train_start:document.getElementById('opt-train-start').value,train_end:document.getElementById('opt-train-end').value,validation_start:document.getElementById('opt-valid-start').value,validation_end:document.getElementById('opt-valid-end').value,trail_thresholds:[0.04,0.06,0.08],buy_offsets:[-0.02,0,0.02]};
   const d=await (await fetch('/api/schemes/optimization-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
-  document.getElementById('optimization-hint').textContent=d.status==='success'?`当前将验证 ${d.combinations} 组参数（回撤阈值 × 买入偏移）。`:d.error;
+  const hint=document.getElementById('optimization-hint');
+  hint.textContent=d.status==='success'?`当前将验证 ${d.combinations} 组参数（回撤阈值 × 买入偏移）。`:('验证范围无效：'+(d.error||'未知错误'));
+  hint.style.color=d.status==='success'?'var(--color-text-subtle)':'var(--color-danger)';
+}
+async function runOptimization(){
+  const button=document.getElementById('optimization-run-button');
+  const result=document.getElementById('optimization-result');
+  const preview=document.getElementById('yaml-preview');
+  if(!preview.value.trim()) await renderPreview();
+  if(!preview.value.trim() || preview.value.startsWith('# 生成失败')){showUiMessage('请先生成有效 YAML','error');return;}
+  const payload={content:preview.value,code:document.getElementById('validate-code').value.trim(),train_start:document.getElementById('opt-train-start').value,train_end:document.getElementById('opt-train-end').value,validation_start:document.getElementById('opt-valid-start').value,validation_end:document.getElementById('opt-valid-end').value,stock_type:'B',trail_thresholds:[0.04,0.06,0.08],buy_offsets:[-0.02,0,0.02]};
+  if(!payload.code || !payload.train_start || !payload.train_end || !payload.validation_start || !payload.validation_end){showUiMessage('请完整填写样本代码、训练区间和验证区间','error');return;}
+  button.disabled=true; button.textContent='自动验证中…'; result.innerHTML='<div class="help">正在逐组回测训练区间，并用验证区间复核，请稍候。</div>';
+  try{
+    const d=await (await fetch('/api/schemes/optimization-run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json();
+    if(d.status!=='success') throw new Error(d.error||'自动验证失败');
+    const r=d.recommended;
+    result.innerHTML=`<div class="scheme-guide"><b>推荐参数：</b>回撤止盈 ${(r.trail_threshold*100).toFixed(1)}% · 买入偏移 ${(r.offset*100).toFixed(1)}% · 综合评分 ${r.score}<br>训练区间：收益 ${r.train.return.toFixed(2)}%，最大回撤 ${r.train.max_drawdown.toFixed(2)}%，交易 ${r.train.trades} 笔<br>验证区间：收益 ${r.validation.return.toFixed(2)}%，最大回撤 ${r.validation.max_drawdown.toFixed(2)}%，交易 ${r.validation.trades} 笔<br><span class="help">结果仅供参考，不会自动修改正式方案。</span></div>`;
+  }catch(e){result.innerHTML=`<div class="error">自动验证失败：${escText(e.message)}</div>`;}
+  finally{button.disabled=false;button.textContent='运行自动验证';}
 }
 
 async function validateYaml(content){

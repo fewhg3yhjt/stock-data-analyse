@@ -1415,6 +1415,75 @@ def api_schemes_optimization_plan():
                               "parameters": {"trail_thresholds": trails, "buy_offsets": offsets}})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+@web_app.route("/api/schemes/optimization-run", methods=["POST"])
+def api_schemes_optimization_run():
+    """Run the bounded train/validation search without changing a scheme."""
+    from StockInvestmentTool.core.composer import yaml_to_model, model_to_config
+    from StockInvestmentTool.datasource.base import WarehouseSource
+    from StockInvestmentTool.backtest.engine import BacktestEngine
+
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    try:
+        content = payload.get("content") or ""
+        code = (payload.get("code") or "").strip()
+        train_start = (payload.get("train_start") or "").strip()
+        train_end = (payload.get("train_end") or "").strip()
+        valid_start = (payload.get("validation_start") or "").strip()
+        valid_end = (payload.get("validation_end") or "").strip()
+        trails = [float(x) for x in (payload.get("trail_thresholds") or [0.04, 0.06, 0.08])]
+        offsets = [float(x) for x in (payload.get("buy_offsets") or [-0.02, 0.0, 0.02])]
+        if not content or not code:
+            raise ValueError("需要方案 YAML 和股票代码")
+        if not all((train_start, train_end, valid_start, valid_end)):
+            raise ValueError("训练区间和验证区间必须完整填写")
+        if len(trails) * len(offsets) > 100:
+            raise ValueError("参数组合不能超过100组，请缩小测试范围")
+        scheme = model_to_config(yaml_to_model(content))
+        frame = WarehouseSource().fetch_daily_series(code, days=2500)
+        if frame is None or frame.empty or "date" not in frame.columns:
+            raise ValueError("没有可用的样本行情")
+        frame = frame.copy()
+        frame["date"] = frame["date"].astype(str).str[:10]
+        train = frame[(frame["date"] >= train_start) & (frame["date"] <= train_end)]
+        valid = frame[(frame["date"] >= valid_start) & (frame["date"] <= valid_end)]
+        if len(train) < 80 or len(valid) < 20:
+            raise ValueError(f"行情不足：训练区间{len(train)}条，验证区间{len(valid)}条")
+
+        def run(frame_part, trail, offset):
+            result = BacktestEngine(frame_part, initial_cash=scheme.backtest.initial_cash,
+                                    stock_type=(payload.get("stock_type") or "B").strip(),
+                                    scheme=scheme).run_custom(trail_threshold=trail, offset=offset)
+            detail = result.get("backtest") or {}
+            equity = [float(x.get("total_asset")) for x in (detail.get("equity_curve") or [])
+                      if isinstance(x, dict) and x.get("total_asset") is not None]
+            peak = max_dd = equity[0] if equity else 0.0
+            for value in equity:
+                peak = max(peak, value)
+                if peak > 0:
+                    max_dd = min(max_dd, value / peak - 1)
+            return {"return": float(detail.get("total_return") or 0),
+                    "max_drawdown": round(max_dd * 100, 2),
+                    "trades": len(detail.get("trades", []))}
+
+        results = []
+        for trail in trails:
+            for offset in offsets:
+                train_result = run(train, trail, offset)
+                valid_result = run(valid, trail, offset)
+                score = (valid_result["return"] - abs(valid_result["max_drawdown"]) * 0.5
+                         - abs(train_result["return"] - valid_result["return"]) * 0.1)
+                results.append({"trail_threshold": trail, "offset": offset,
+                                "train": train_result, "validation": valid_result,
+                                "score": round(score, 3)})
+        results.sort(key=lambda item: item["score"], reverse=True)
+        return flask.jsonify({"status": "success", "scheme": scheme.name,
+                              "combinations": len(results), "recommended": results[0],
+                              "results": results[:10],
+                              "note": "仅生成推荐结果，不会修改或发布正式方案"})
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
     except Exception as e:
         logger.exception("方案样本验证失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500

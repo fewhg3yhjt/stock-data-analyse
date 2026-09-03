@@ -79,6 +79,11 @@ def test_optimization_plan_is_bounded_and_non_persistent(client):
         "validation_start": "2024-01-01", "validation_end": "2025-12-31",
         "trail_thresholds": list(range(11)), "buy_offsets": list(range(10)),
     }).status_code == 400
+
+
+def test_optimization_run_requires_explicit_ranges(client):
+    response = client.post("/api/schemes/optimization-run", json={"content": "name: x", "code": "sh.600900"})
+    assert response.status_code == 400
 def test_compose_roundtrip(client):
     model = _sample_model()
     r = client.post("/api/schemes/compose", json=model)
