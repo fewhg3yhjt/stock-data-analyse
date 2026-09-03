@@ -100,7 +100,8 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
       <div style="display:flex;gap:10px;margin-top:6px;">
          <button type="button" class="ui-button ui-button-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
          <button type="button" id="validate-button" class="ui-button ui-button-secondary" onclick="validateRun(event)"><i class="fas fa-flask"></i> 样本验证</button>
-         <input id="validate-code" value="sh.600900" placeholder="样本股票代码" style="width:130px;">
+          <input id="validate-code" value="sh.600900" placeholder="样本股票代码" style="width:130px;">
+          <input id="validate-name" value="长江电力" placeholder="样本股票名称" style="width:130px;">
          <button type="button" class="ui-button ui-button-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
         <span class="help" id="save-hint"></span>
       </div>
@@ -617,7 +618,10 @@ async function validateRun(event){
   try{
     const draft=await (await fetch('/api/schemes/simulation-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:collectModel()})})).json();
     if(draft.status!=='success') throw new Error(draft.error||'无法创建模拟草稿');
-    const params=new URLSearchParams({code:document.getElementById('validate-code').value.trim(),name:document.getElementById('f-name').value||'样本股票',stock_type:'B',scheme:draft.scheme_name,draft_id:draft.draft_id,auto_run:'1'});
+    const code=document.getElementById('validate-code').value.trim();
+    const name=document.getElementById('validate-name').value.trim();
+    if(!code || !name){throw new Error('请填写样本股票代码和名称');}
+    const params=new URLSearchParams({code,name,stock_type:'B',scheme:draft.scheme_name,draft_id:draft.draft_id,auto_run:'1'});
     window.location.href='/strategy-simulation?'+params.toString();
     return;
   }catch(error){hint.textContent='样本验证失败：'+(error.message||'网络异常');hint.style.color='var(--color-danger)';}
