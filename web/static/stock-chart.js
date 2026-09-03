@@ -241,5 +241,5 @@ window.StockChart = (function(){
     _metricHandler(selected);
   }
 
-  return { drawLine, drawKLine, metricSelector, colorOf, mount, dispose, _metricChanged };
+  return { drawLine, drawKLine, drawKLineFull, metricSelector, colorOf, mount, dispose, _metricChanged };
 })();
