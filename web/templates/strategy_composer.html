@@ -98,7 +98,7 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
 
       <div style="display:flex;gap:10px;margin-top:6px;">
          <button class="ui-button ui-button-primary" onclick="renderPreview()"><i class="fas fa-eye"></i> 生成预览</button>
-         <button id="validate-button" class="ui-button ui-button-secondary" onclick="validateRun()"><i class="fas fa-flask"></i> 样本验证</button>
+         <button type="button" id="validate-button" class="ui-button ui-button-secondary" onclick="validateRun(event)"><i class="fas fa-flask"></i> 样本验证</button>
          <input id="validate-code" value="sh.600900" placeholder="样本股票代码" style="width:130px;">
         <button class="ui-button ui-button-primary" onclick="saveScheme()"><i class="fas fa-save"></i> 保存方案</button>
         <span class="help" id="save-hint"></span>
@@ -499,13 +499,16 @@ function collectModel(){
 async function renderPreview(){
   const model=collectModel();
   const r=await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
+  if(!r.ok) throw new Error(`生成预览失败（HTTP ${r.status}）`);
   const d=await r.json();
   if(d.status==='success'){
     document.getElementById('yaml-preview').value=d.yaml;
     const v=await validateYaml(d.yaml);
+    return d.yaml;
   }else{
     document.getElementById('yaml-preview').value='# 生成失败: '+d.error;
     document.getElementById('validate-hint').textContent=d.error;
+    throw new Error(d.error||'生成预览失败');
   }
 }
 
@@ -545,11 +548,13 @@ async function validateYaml(content){
   else{try{const cv=await (await fetch('/api/schemes/compose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collectModel())})).json();hint.textContent=cv.error||'校验失败';}catch(e){hint.textContent=d.error;}}
 }
 
-async function validateRun(){
+async function validateRun(event){
+  if(event) event.preventDefault();
   const hint=document.getElementById('validate-hint');
   const button=document.getElementById('validate-button');
   const preview=document.getElementById('yaml-preview');
-  if(!preview.value.trim()){await renderPreview();}
+  hint.textContent='正在准备样本验证…'; hint.style.color='var(--color-text-subtle)';
+  try{await renderPreview();}catch(error){hint.textContent='样本验证准备失败：'+(error.message||'无法生成方案');hint.style.color='var(--color-danger)';return;}
   if(!preview.value.trim() || preview.value.startsWith('# 生成失败')){hint.textContent='请先生成有效 YAML';return;}
   hint.textContent='样本回测中，请稍候…'; hint.style.color='var(--color-text-subtle)';
   button.disabled=true;
