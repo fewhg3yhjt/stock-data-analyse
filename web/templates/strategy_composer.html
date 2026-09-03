@@ -321,10 +321,11 @@ function renderField(f, rule){
       <button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 加一行</button></div>`;
   }
   if(type==='select'){
-    const optionLabels={fixed:'固定比例止损',breakeven:'保本止损（Breakeven Stop）',strong:'综合强支撑',weak:'综合弱支撑',ma60:'MA60 (ma60)',year_high:'滚动前高'};
+    const optionLabels={fixed:'固定比例止损',breakeven:'保本止损',strong:'综合防守位（最低）',weak:'综合支撑位（第二低）',ma60:'MA60（ma60）',year_high:'滚动前高（year_high）',true:'启动',false:'停用',high:'日最高价（high）',close:'收盘价（close）'};
     const hasValue=def!==undefined && def!==null && def!=='';
     const opts=(f.options||[]).map(o=>`<option value="${JSON.stringify(o)}" ${JSON.stringify(o)===JSON.stringify(def)?'selected':''}>${optionLabels[o]||o}</option>`).join('');
-    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
+    const modeHelp=key==='mode' ? '<div class="help"><b>固定比例止损：</b>价格下跌到配置比例时清仓，例如均价100元、15%则止损价为85元。<br><b>保本止损：</b>按成本价反推止损价，例如成本100元、8%则止损价为92.59元。当前只执行选中的模式。</div>' : '';
+    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>${modeHelp}
       <select data-f="${key}">${opts}<option value="" ${hasValue?'':'selected'}>默认</option></select></div>`;
   }
   if(type==='map'){

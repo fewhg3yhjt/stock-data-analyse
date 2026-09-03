@@ -313,15 +313,15 @@ def _build_schemas() -> dict[str, list[ParamField]]:
     ]
 
     s["hard_stop"] = [
-         ParamField("mode", "止损模式", "select", default="fixed",
+         ParamField("mode", "止损模式（两选一）", "select", default="fixed",
                     options=["fixed", "breakeven"],
-                    help="fixed=固定比例止损；breakeven=按成本价÷(1+阈值)计算保本止损价"),
-         ParamField("stop_loss_by_type", "按类型扣减率", "map",
-                    default={"A": 0.15, "B": 0.15, "C": 0.15, "D": 0.10},
-                    help="固定比例模式：止损价 = 持仓均价 × (1 - 扣减率)；默认 A/B/C=15%，D=10%"),
-         ParamField("breakeven_activation_by_type", "保本激活盈利阈值", "map",
-                    default={"A": 0.08, "B": 0.08, "C": 0.08, "D": 0.08},
-                    help="保本止损价 = 成本价 ÷ (1 + 激活阈值比例)"),
+                    help="固定比例止损：价格下跌到设定亏损比例时退出；保本止损：按成本价反推允许回撤后的止损价。当前只执行选中的模式。"),
+         ParamField("stop_loss_by_type", "固定止损比例（按证券类型）", "map",
+                    default={"A": 0.15, "B": 0.15, "C": 0.15, "D": 0.10, "E": 0.10},
+                    help="A-E 是证券类型，不同类型可单独设置。这里填写从持仓均价允许下跌的比例；止损价 = 持仓均价 × (1 - 该比例)。默认 A/B/C=15%、D=10%、E=10%。"),
+         ParamField("breakeven_activation_by_type", "保本止损回撤比例（按证券类型）", "map",
+                    default={"A": 0.08, "B": 0.08, "C": 0.08, "D": 0.08, "E": 0.08},
+                    help="A-E 是证券类型，不同类型可单独设置。这里填写成本价上浮比例；保本止损价 = 成本价 ÷ (1 + 该比例)。例如8%对应止损价为成本的92.59%，实际从成本价下跌7.41%。默认各类型8%。"),
     ]
 
     s["technical_stop"] = [

@@ -34,6 +34,9 @@ def test_hard_stop_rule_keeps_name_and_exposes_two_modes(reg):
     schema = reg.schema("sell", "hard_stop")
     mode = next(field for field in schema if field["key"] == "mode")
     assert mode["options"] == ["fixed", "breakeven"]
+    fixed = next(field for field in schema if field["key"] == "stop_loss_by_type")
+    assert "A-E 是证券类型" in fixed["help"]
+    assert "止损价" in fixed["help"]
 
 
 def test_schema_present_for_all(reg):
