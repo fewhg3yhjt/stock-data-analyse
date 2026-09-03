@@ -1551,15 +1551,44 @@ class DashboardService:
             warehouse = Warehouse()
             from StockInvestmentTool.warehouse.datasets import DatasetAccess
             access = DatasetAccess(warehouse)
-            # Historical industry index partitions may be formally published
-            # with WARNING coverage; this is a display chart, while unpublished
-            # and FAIL partitions remain blocked by DatasetAccess.
-            frame = access.load_dataset("industry_daily", required_quality="WARNING").data
+            if category == "csrc":
+                membership = access.load_dataset("industry_membership", end_date=pd.Timestamp.now().strftime("%Y-%m-%d"), required_quality="PASS").data.copy()
+                membership["snapshot_date"] = pd.to_datetime(membership["snapshot_date"], errors="coerce")
+                membership = membership[membership["snapshot_date"].notna()]
+                if membership.empty:
+                    return {**result, "error": "暂无证监会行业成员快照"}
+                membership = membership[membership["snapshot_date"] == membership["snapshot_date"].max()].copy()
+                membership["code"] = membership["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+                relation = membership[membership["industry_code"].astype(str) == str(sector_id)]
+                codes = sorted(set(relation["code"]))
+                if not codes:
+                    return {**result, "error": f"未找到证监会行业: {name or sector_id}"}
+                end_date = pd.Timestamp.now().strftime("%Y-%m-%d")
+                start_date = (pd.Timestamp.now() - pd.Timedelta(days=max(365, days * 3))).strftime("%Y-%m-%d")
+                daily = access.load_dataset("stock_daily", start_date=start_date, end_date=end_date, symbols=codes, required_quality="WARNING").data.copy()
+                if daily.empty:
+                    return {**result, "error": "该证监会行业暂无成员日线数据"}
+                daily["date"] = pd.to_datetime(daily["date"], errors="coerce")
+                daily["code"] = daily["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+                daily["close"] = pd.to_numeric(daily["close"], errors="coerce")
+                daily = daily.dropna(subset=["date", "close"]).sort_values(["code", "date"])
+                daily["return_1d"] = daily.groupby("code")["close"].pct_change()
+                index = daily.dropna(subset=["return_1d"]).groupby("date")["return_1d"].mean().sort_index()
+                index = ((1 + index).cumprod() * 100).tail(max(1, int(days)))
+                if index.empty:
+                    return {**result, "error": "该证监会行业暂无可用成员收益序列"}
+                result["name"] = str(relation.iloc[0].get("industry_name") or name)
+                result["dates"] = [d.strftime("%Y-%m-%d") for d in index.index]
+                result["close"] = [round(float(value), 4) for value in index.values]
+                result["as_of"] = result["dates"][-1]
+                result["series_type"] = "证监会行业成员等权指数"
+                return result
+            if category != "ths_industry":
+                return {**result, "error": "同花顺概念暂无板块日线数据"}
+            frame = access.load_dataset("industry_daily", start_date=(pd.Timestamp.now() - pd.Timedelta(days=max(365, days * 3))).strftime("%Y-%m-%d"), end_date=pd.Timestamp.now().strftime("%Y-%m-%d"), required_quality="WARNING").data
             if frame is None or frame.empty:
                 return {**result, "error": "暂无板块日线数据"}
             df = frame.copy()
-            if category != "ths_industry":
-                return {**result, "error": "证监会行业板块暂无独立板块日线数据" if category == "csrc" else "同花顺概念暂无板块日线数据"}
             if sector_id:
                 df = df[df["industry_id"].astype(str) == str(sector_id)].copy()
             else:
@@ -1695,11 +1724,12 @@ class DashboardService:
         for row in rows:
             leader_code = str(row.get("leader_code") or "")
             state = str(row.get("industry_state") or "")
+            display_state = "neutral" if state == "insufficient_data" and row.get("return_5d") is not None else state
             result["items"].append({
                 "industry_code": str(row.get("industry_code") or ""),
                 "industry_name": str(row.get("industry_name") or ""),
-                "status": state,
-                "status_label": state_labels.get(state, "未知"),
+                "status": display_state,
+                "status_label": state_labels.get(display_state, "未知"),
                 "score": numeric(row, "industry_score"),
                 "return_1d": numeric(row, "return_1d"),
                 "return_5d": numeric(row, "return_5d"),
@@ -1713,7 +1743,7 @@ class DashboardService:
                 "leader": leader_code,
                 "leader_code": leader_code,
                 "leader_name": leader_names.get(leader_code, leader_code),
-                "reason": str(row.get("state_reason") or ""),
+                "reason": str(row.get("state_reason") or "") + ("；有效成员较少，状态按中性展示" if state == "insufficient_data" and row.get("return_5d") is not None else ""),
             })
         return result
 

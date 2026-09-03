@@ -7,6 +7,6 @@ task:
   output_datasets: [industry_daily]
   producer_metrics: []
 scope: {asset_types: [industry], universe: ths_industry}
-schedule: {enabled: false, timezone: Asia/Shanghai, frequency: daily, time: "16:30", period_type: day, period_start: null, period_end: null}
+schedule: {enabled: true, timezone: Asia/Shanghai, frequency: daily, time: "16:30", period_type: day, period_start: null, period_end: null}
 execution: {manual_enabled: true, retry_limit: 3}
 policy: {on_partial_success: continue, on_failure: continue}

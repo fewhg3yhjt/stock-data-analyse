@@ -115,6 +115,36 @@ def test_board_kline_route_rejects_dashboard_error(monkeypatch):
     assert response.get_json()["error"] == "Published 数据不可用"
 
 
+def test_csrc_board_kline_builds_equal_weight_member_index(monkeypatch):
+    from StockInvestmentTool.portfolio.dashboard import DashboardService
+
+    membership = pd.DataFrame({
+        "snapshot_date": ["2026-09-02", "2026-09-02"],
+        "code": ["sh600900", "sz000001"],
+        "industry_code": ["E47", "E47"],
+        "industry_name": ["房屋建筑业", "房屋建筑业"],
+    })
+    daily = pd.DataFrame({
+        "date": pd.to_datetime(["2026-09-01", "2026-09-02"] * 2),
+        "code": ["sh600900", "sh600900", "sz000001", "sz000001"],
+        "close": [10, 11, 20, 19],
+    })
+
+    class Result:
+        def __init__(self, data): self.data = data
+
+    class Access:
+        def __init__(self, warehouse): pass
+        def load_dataset(self, name, **kwargs):
+            return Result(membership if name == "industry_membership" else daily)
+
+    monkeypatch.setattr("StockInvestmentTool.warehouse.datasets.DatasetAccess", Access)
+    result = DashboardService(object()).board_index_kline("房屋建筑业", category="csrc", sector_id="E47", days=120)
+    assert result["dates"] == ["2026-09-02"]
+    assert result["series_type"] == "证监会行业成员等权指数"
+    assert result["close"][-1] == 102.5
+
+
 def test_stock_series_respects_as_of(tmp_path):
     from StockInvestmentTool.warehouse.storage import Warehouse
 

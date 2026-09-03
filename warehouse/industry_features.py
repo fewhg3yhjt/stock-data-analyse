@@ -81,7 +81,7 @@ class IndustryFeaturesBuilder:
             return {
                 "status": "no_data", "rows": 0, "months": 0, "output_versions": {},
                 "input_versions": {name: result.context.get("partition_versions", {})
-                                    for name, result in (("industry_membership", membership), ("stock_daily", daily), ("indicators", indicators))},
+                                    for name, result in (("industry_membership", membership), ("stock_daily", daily))},
                 "membership_available_from": membership_available_from,
                 "actual_data_as_of": None,
                 "gap_reason": "membership 首次快照晚于 stock_daily 最新交易日，历史区间没有可用行业归属",
@@ -123,7 +123,7 @@ class IndustryFeaturesBuilder:
             return {
                 "status": "no_data", "rows": 0, "months": 0, "output_versions": {},
                 "input_versions": {name: result.context.get("partition_versions", {})
-                                    for name, result in (("industry_membership", membership), ("stock_daily", daily), ("indicators", indicators))},
+                                    for name, result in (("industry_membership", membership), ("stock_daily", daily))},
                 "membership_available_from": membership_available_from,
                 "actual_data_as_of": None,
                 "gap_reason": "行业成员快照与股票交易日没有重叠，未使用未来快照补齐历史数据",
