@@ -30,19 +30,22 @@
     <div class="note market-data-note">口径：同花顺行业指数的已发布行业日线数据；股票归属统计使用证监会行业分类，两套分类不强行合并。</div>
     <div class="table-wrap"><table class="ui-table market-table"><thead><tr><th>板块</th><th>最新日期</th><th>收盘</th><th>今日涨跌</th><th>近5日</th><th>判断</th></tr></thead><tbody>
       {% for board in board_overview %}
-      <tr><td><b>{{ board.name }}</b><br><span class="note">{{ board.industry_id }}</span></td><td>{{ board.latest_date }}</td><td>{{ board.close }}</td><td class="{{ 'positive' if (board.change_pct or 0) >= 0 else 'negative' }}">{{ '%+.2f'|format(board.change_pct or 0) }}%</td><td class="{{ 'positive' if (board.change_5d_pct or 0) >= 0 else 'negative' }}">{{ '%+.2f'|format(board.change_5d_pct or 0) }}%</td><td><span class="tag {{ 'green' if board.trend == '上涨' else ('red' if board.trend == '下跌' else 'gray') }}">{{ board.trend }}</span></td></tr>
+       <tr><td><b>{{ board.name }}</b><br><span class="note">{{ board.industry_id }}</span></td><td>{{ board.latest_date }}</td><td>{{ board.close }}</td><td class="{{ 'positive' if (board.change_pct or 0) >= 0 else 'negative' }}">{{ '%+.2f'|format(board.change_pct or 0) }}%</td><td class="{{ 'positive' if (board.change_5d_pct or 0) >= 0 else 'negative' }}">{{ '%+.2f'|format(board.change_5d_pct or 0) }}%</td><td><span class="tag {{ 'green' if board.trend == '上涨' else ('red' if board.trend == '下跌' else 'gray') }}">{{ board.trend }}</span></td></tr>
       {% endfor %}
     </tbody></table></div>
   </div>
 
   <div class="ui-card rotation-card">
-    <div class="ui-card-header"><span><i class="fas fa-arrows-rotate"></i> 行业轮动</span><span class="note">已发布 industry_features_daily · 实际交易日 {{ industry_rotation.actual_data_as_of or '暂无' }}</span></div>
-    <div class="note market-data-note">综合评分由 1/5/20 日收益、上涨比例和成交额比计算；状态与原因来自 IndustryRotationService，不在请求时访问外部接口。{% if industry_rotation.reason %} {{ industry_rotation.reason }}{% endif %}</div>
-    <div class="table-wrap"><table class="ui-table market-table rotation-table"><thead><tr><th>排名</th><th>行业</th><th>状态</th><th>评分</th><th>1日</th><th>5日</th><th>20日</th><th>上涨比例</th><th>成交额比</th><th>龙头</th><th>原因</th><th>行业内选股</th></tr></thead><tbody>
+     <div class="ui-card-header"><span><i class="fas fa-arrows-rotate"></i> 板块轮动</span><span class="note">证监会行业 / 同花顺行业 / 同花顺概念</span></div>
+     <div class="note market-data-note">轮动数据严格按分类读取 Published Dataset，不在分类之间回退或混用。</div>
+     <div class="market-tabs" role="tablist"><button class="ui-button market-tab active" data-tab="csrc">证监会行业</button><button class="ui-button market-tab" data-tab="ths_industry">同花顺行业</button><button class="ui-button market-tab" data-tab="ths_concept">同花顺概念</button></div>
+    <div id="rotation-csrc" class="rotation-panel"><div class="table-wrap"><table class="ui-table market-table rotation-table"><thead><tr><th>排名</th><th>行业</th><th>状态</th><th>评分</th><th>1日</th><th>5日</th><th>20日</th><th>上涨比例</th><th>成交额比</th><th>龙头</th><th>原因</th><th>行业内选股</th></tr></thead><tbody>
       {% for industry in industry_rotation['items'] or [] %}
       <tr><td>{{ industry.rank_5d if industry.rank_5d is not none else '—' }}</td><td><b>{{ industry.industry_name }}</b><br><span class="note">{{ industry.industry_code }}</span></td><td><span class="tag {{ 'green' if industry.status == 'strong' else ('red' if industry.status == 'weak' else 'gray') }}">{{ industry.status_label }}</span></td><td>{{ '%.3f'|format(industry.score) if industry.score is not none else '—' }}</td><td class="{{ 'positive' if (industry.return_1d or 0) >= 0 else 'negative' }}">{{ '%+.2f'|format(industry.return_1d * 100) if industry.return_1d is not none else '—' }}{% if industry.return_1d is not none %}%{% endif %}</td><td class="{{ 'positive' if (industry.return_5d or 0) >= 0 else 'negative' }}">{{ '%+.2f'|format(industry.return_5d * 100) if industry.return_5d is not none else '—' }}{% if industry.return_5d is not none %}%{% endif %}</td><td class="{{ 'positive' if (industry.return_20d or 0) >= 0 else 'negative' }}">{{ '%+.2f'|format(industry.return_20d * 100) if industry.return_20d is not none else '—' }}{% if industry.return_20d is not none %}%{% endif %}</td><td>{{ '%.1f'|format(industry.up_ratio * 100) if industry.up_ratio is not none else '—' }}{% if industry.up_ratio is not none %}%{% endif %}</td><td>{{ '%.2f'|format(industry.amount_ratio) if industry.amount_ratio is not none else '—' }}</td><td>{{ industry.leader_name or industry.leader_code or '—' }}{% if industry.leader_code %}<br><span class="note">{{ industry.leader_code }}</span>{% endif %}</td><td class="rotation-reason">{{ industry.reason or '—' }}</td><td><a class="ui-button" href="/market-discovery?industry={{ (industry.industry_code ~ industry.industry_name)|urlencode }}&as_of={{ industry_rotation.actual_data_as_of|urlencode }}">筛选行业内股票</a></td></tr>
       {% else %}<tr><td colspan="12" class="note">暂无可用的已发布行业轮动特征。</td></tr>{% endfor %}
-    </tbody></table></div>
+     </tbody></table></div></div>
+      <div id="rotation-ths_industry" class="rotation-panel" style="display:none"><div class="note">{{ ths_industry_rotation.reason or '基于 Published 成员关系和 stock_daily' }}</div><div class="table-wrap"><table class="ui-table market-table"><thead><tr><th>行业</th><th>状态</th><th>评分</th><th>1日</th><th>5日</th><th>20日</th><th>上涨比例</th><th>成员数</th><th>龙头</th><th>操作</th></tr></thead><tbody>{% for item in ths_industry_rotation['items'] or [] %}<tr><td>{{ item.industry_name }}<br><span class="note">{{ item.industry_id or item.industry_code }}</span></td><td>{{ item.status_label }}</td><td>{{ item.score }}</td><td>{{ item.return_1d }}</td><td>{{ item.return_5d }}</td><td>{{ item.return_20d }}</td><td>{{ '%.1f'|format(item.up_ratio * 100) }}%</td><td>{{ item.member_count }}</td><td>{{ item.leader_code }}</td><td><button class="ui-button" data-board-category="ths_industry" data-sector-id="{{ item.industry_id or item.industry_code }}" data-board-name="{{ item.industry_name }}" onclick="loadRotationBoard(this.dataset.boardCategory,this.dataset.sectorId,this.dataset.boardName)">展开K线</button> <a class="ui-button" href="/market-discovery?category=ths_industry&sector_id={{ item.industry_id or item.industry_code }}&sector_name={{ item.industry_name|urlencode }}&as_of={{ ths_industry_rotation.actual_data_as_of|urlencode }}&membership_as_of={{ ths_industry_rotation.snapshot_date|urlencode }}">筛选板块内股票</a></td></tr>{% else %}<tr><td colspan="10" class="note">暂无数据</td></tr>{% endfor %}</tbody></table></div></div>
+     <div id="rotation-ths_concept" class="rotation-panel" style="display:none"><div class="empty">暂无同花顺概念 Published 数据，当前不可用。</div></div>
   </div>
 
   <div class="ui-card">
@@ -63,7 +66,8 @@
     <div class="ui-card-header">
       <span><i class="fas fa-layer-group"></i> 关注板块走势</span>
       <div class="controls">
-        <select id="board-select">{% for b in board_names %}<option value="{{ b }}">{{ b }}</option>{% endfor %}</select>
+        <select id="board-category"><option value="ths_industry">同花顺行业</option><option value="csrc">证监会行业</option><option value="ths_concept">同花顺概念</option></select>
+        <select id="board-select"><option value="">加载板块列表…</option></select>
         <button class="ui-button" onclick="loadBoard()">加载板块</button>
       </div>
     </div>

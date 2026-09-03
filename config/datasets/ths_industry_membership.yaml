@@ -1,0 +1,25 @@
+dataset:
+  name: ths_industry_membership
+  display_name: 同花顺行业成员关系
+  description: 固定来源快照中的同花顺行业与股票成员关系
+  grain: 一个行业快照中的一只股票一条行业成员关系
+  primary_keys: [snapshot_date, industry_id, code]
+  partition: {type: snapshot, path: 'warehouse/ths_industry_membership/{partition}.parquet'}
+  update_frequency: 按来源快照更新
+  schema_version: ths_industry_membership.v1
+fields:
+  - {name: snapshot_date, display_name: 快照日期, data_type: date, nullable: false, primary_key: true}
+  - {name: industry_id, display_name: 行业代码, data_type: string, nullable: false, primary_key: true}
+  - {name: industry_name, display_name: 行业名称, data_type: string, nullable: false}
+  - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
+  - {name: stock_name, display_name: 股票名称, data_type: string, nullable: false}
+  - {name: source_commit, display_name: 来源提交, data_type: string, nullable: false}
+  - {name: source, display_name: 来源, data_type: string, nullable: false}
+  - {name: captured_at, display_name: 采集时间, data_type: datetime, nullable: false}
+sources:
+  - {name: github, role: primary, priority: 1, field_mapping: {}, unit_conversions: {}}
+consumers:
+  - {name: market_discovery, type: business, purpose: 同花顺行业股票筛选, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式扫描}
+quality:
+  publish_warning: true
+  coverage: {pass_min: 0.98, warning_min: 0.95}

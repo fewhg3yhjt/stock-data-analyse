@@ -1536,29 +1536,40 @@ class DashboardService:
                     logger.warning("指数 %s 获取失败: %s", code, e)
         return result
 
-    def board_index_kline(self, name: str, days: int = 120) -> dict:
+    def board_index_kline(self, name: str, days: int = 120, *, category: str = "ths_industry", sector_id: str = "") -> dict:
         """从已发布的 industry_daily 读取板块历史，不在页面请求时访问 AkShare。"""
         import pandas as pd
 
         name = str(name or "").strip()
         result = {"name": name, "dates": [], "close": []}
-        if not name:
+        if not name and not sector_id:
             return result
         try:
             from StockInvestmentTool.warehouse.storage import Warehouse
 
             warehouse = Warehouse()
-            frames = []
-            for month in warehouse.available_months("industry_daily"):
-                frame = warehouse._read_partition(warehouse.base_dir / "industry_daily", month)
+            from StockInvestmentTool.warehouse.datasets import DatasetAccess
+            access = DatasetAccess(warehouse)
+            # Historical industry index partitions may be formally published
+            # with WARNING coverage; this is a display chart, while unpublished
+            # and FAIL partitions remain blocked by DatasetAccess.
+            frame = access.load_dataset("industry_daily", required_quality="WARNING").data
+            frames = [frame]
+            for frame in frames:
                 if frame is not None and not frame.empty:
-                    frames.append(frame)
-            if not frames:
+                    break
+            if not frames or frames[0] is None or frames[0].empty:
                 return {**result, "error": "暂无板块日线数据"}
             df = pd.concat(frames, ignore_index=True)
-            df = df[df["industry_name"].astype(str) == name].copy()
+            if category != "ths_industry":
+                return {**result, "error": "证监会行业板块暂无独立板块日线数据" if category == "csrc" else "同花顺概念暂无板块日线数据"}
+            if sector_id:
+                df = df[df["industry_id"].astype(str) == str(sector_id)].copy()
+            else:
+                df = df[df["industry_name"].astype(str) == name].copy()
             if df.empty:
                 return {**result, "error": f"未找到板块: {name}"}
+            result["name"] = str(df.iloc[0]["industry_name"])
             df["trading_date"] = pd.to_datetime(df["trading_date"], errors="coerce")
             df["close"] = pd.to_numeric(df["close"], errors="coerce")
             df = (df.dropna(subset=["trading_date", "close"])
@@ -1634,9 +1645,14 @@ class DashboardService:
         return sorted(result, key=lambda item: (item["change_5d_pct"] is None,
                                                   -(item["change_5d_pct"] or 0)))
 
-    def industry_rotation_overview(self, as_of: str | None = None) -> dict:
+    def industry_rotation_overview(self, as_of: str | None = None, *, category: str = "csrc",
+                                   membership_as_of: str | None = None) -> dict:
         """读取已发布行业轮动特征，供市场页展示，不访问外部接口。"""
         from datetime import date
+        if category == "ths_industry":
+            return self._ths_industry_rotation(as_of or date.today().isoformat(), membership_as_of=membership_as_of)
+        if category == "ths_concept":
+            return {"status": "no_data", "requested_as_of": as_of or date.today().isoformat(), "actual_data_as_of": None, "reason": "同花顺概念暂无已发布数据", "items": []}
         from StockInvestmentTool.warehouse.industry_features import IndustryRotationService
 
         requested_as_of = as_of or date.today().isoformat()
@@ -1693,6 +1709,76 @@ class DashboardService:
                 "reason": str(row.get("state_reason") or ""),
             })
         return result
+
+    def _ths_industry_rotation(self, as_of: str, *, membership_as_of: str | None = None) -> dict:
+        from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        empty = {"status": "no_data", "requested_as_of": as_of, "actual_data_as_of": None,
+                 "reason": "暂无已发布同花顺行业成员或股票日线数据", "items": []}
+        try:
+            access = DatasetAccess(Warehouse())
+            membership_result = access.load_dataset(
+                "ths_industry_membership",
+                end_date=membership_as_of if membership_as_of else None,
+                required_quality="PASS",
+            )
+            membership = membership_result.data
+            membership["snapshot_date"] = pd.to_datetime(membership["snapshot_date"], errors="coerce")
+            membership = membership[membership["snapshot_date"].notna()]
+            if membership.empty:
+                return empty
+            snapshot_date = membership["snapshot_date"].max()
+            membership = membership[membership["snapshot_date"] == snapshot_date].copy()
+            codes = sorted(set(membership["code"].astype(str).str.lower().str.replace(".", "", regex=False)))
+            start = (pd.Timestamp(as_of) - pd.Timedelta(days=75)).strftime("%Y-%m-%d")
+            daily = access.load_dataset("stock_daily", start_date=start, end_date=as_of, symbols=codes, required_quality="WARNING").data
+        except DatasetAccessError:
+            return empty
+        if membership.empty or daily.empty: return empty
+        daily = daily.copy(); daily["date"] = pd.to_datetime(daily["date"], errors="coerce")
+        daily["code"] = daily["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+        daily["close"] = pd.to_numeric(daily["close"], errors="coerce")
+        daily["amount"] = pd.to_numeric(daily.get("amount", 0), errors="coerce").fillna(0)
+        daily = daily[daily["date"] <= pd.Timestamp(as_of)].dropna(subset=["date", "close"])
+        latest = daily["date"].max(); rows = []
+        for (industry_id, industry_name), relation in membership.groupby(["industry_id", "industry_name"]):
+            frame = daily[daily["code"].isin(set(relation["code"].astype(str).str.lower().str.replace(".", "", regex=False)))].sort_values(["code", "date"]).copy()
+            if frame.empty: continue
+            for n in (1, 5, 20): frame[f"ret_{n}"] = frame.groupby("code")["close"].pct_change(n)
+            last = frame.groupby("code", as_index=False).tail(1)
+            def avg(col):
+                values = pd.to_numeric(last[col], errors="coerce").dropna()
+                return float(values.mean()) if len(values) else None
+            score = sum((avg(f"ret_{n}") or 0) * weight for n, weight in ((1, .2), (5, .4), (20, .4)))
+            leader = last.sort_values(["ret_5", "amount"], ascending=False).iloc[0]
+            amount = float(last["amount"].sum())
+            amount_ma20 = float(frame.groupby("date")["amount"].sum().tail(20).mean())
+            rows.append({"industry_id": str(industry_id), "industry_code": str(industry_id), "industry_name": str(industry_name), "status": "strong" if score > .03 else "weak" if score < -.03 else "neutral", "status_label": "强势" if score > .03 else "弱势" if score < -.03 else "中性", "score": round(score, 4), "return_1d": avg("ret_1"), "return_5d": avg("ret_5"), "return_20d": avg("ret_20"), "up_ratio": float((last["ret_1"] > 0).mean()), "amount": amount, "amount_ratio": round(amount / amount_ma20, 4) if amount_ma20 else None, "member_count": int(relation["code"].nunique()), "leader_code": str(leader["code"]), "leader_name": str(leader["code"]), "reason": f"成员 {relation['code'].nunique()} 只；有效 {len(last)} 只"})
+        rows.sort(key=lambda item: -(item["score"] or 0))
+        for rank, row in enumerate(rows, 1): row["rank_5d"] = rank
+        return {"status": "success" if rows else "no_data", "requested_as_of": as_of,
+                "actual_data_as_of": latest.strftime("%Y-%m-%d") if rows else None,
+                "snapshot_date": snapshot_date.strftime("%Y-%m-%d"),
+                "reason": None if rows else "同花顺行业成员与股票日线没有重叠", "items": rows}
+
+    def board_options(self, category: str = "ths_industry") -> list[dict]:
+        """Return selectable published board series for the requested category."""
+        if category != "ths_industry":
+            return []
+        from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        try:
+            frame = DatasetAccess(Warehouse()).load_dataset(
+                "industry_daily", required_quality="PASS"
+            ).data
+        except DatasetAccessError:
+            return []
+        if frame.empty:
+            return []
+        return [{"sector_id": str(row.industry_id), "sector_name": str(row.industry_name),
+                 "label": f"{row.industry_id}{row.industry_name}"}
+                for row in frame.drop_duplicates(["industry_id", "industry_name"])
+                .sort_values(["industry_id", "industry_name"]).itertuples()]
 
     def industry_membership_overview(self) -> dict:
         """返回最新证监会行业归属覆盖统计及各行业股票数量。"""

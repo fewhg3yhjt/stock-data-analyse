@@ -203,6 +203,35 @@ def check_industry_membership(path, expected_symbols: int | None = None) -> dict
     return _industry_quality(path, "industry_membership", expected_symbols)
 
 
+def check_ths_industry_membership(path, expected_symbols: int | None = None, *, expected_industries: int | None = None) -> dict:
+    frame = pd.read_parquet(path)
+    config = load_dataset_config("ths_industry_membership")["quality"]
+    keys = ["snapshot_date", "industry_id", "code"]
+    required = set(keys) | {"industry_name", "stock_name", "source_commit", "source", "captured_at"}
+    missing = sorted(required - set(frame.columns))
+    if missing or frame.empty:
+        return {"status": "FAIL", "publish_allowed": False,
+                "checks": {"missing_columns": missing, "row_count": len(frame)}}
+    duplicate = int(frame.duplicated(keys).sum())
+    valid = (frame["industry_id"].astype(str).str.strip().ne("") &
+             frame["industry_name"].astype(str).str.strip().ne("") &
+             frame["code"].astype(str).str.strip().ne("") &
+             frame["stock_name"].astype(str).str.strip().ne("") &
+             frame["source_commit"].astype(str).str.len().eq(40))
+    count = len(frame)
+    industry_count = int(frame["industry_id"].astype(str).nunique())
+    relation_count = int(frame[keys].drop_duplicates().shape[0])
+    expected_industries = expected_industries if expected_industries is not None else expected_symbols
+    coverage = (industry_count / expected_industries if expected_industries else None)
+    fail = duplicate > 0 or int((~valid).sum()) > 0 or (coverage is not None and coverage < config["coverage"]["warning_min"])
+    status = "FAIL" if fail else ("PASS" if coverage is None or coverage >= config["coverage"]["pass_min"] else "WARNING")
+    return {"status": status, "publish_allowed": status != "FAIL" and (status == "PASS" or config["publish_warning"]),
+            "checks": {"duplicate_primary_keys": duplicate, "invalid_rows": int((~valid).sum()),
+                       "row_count": count, "industry_count": industry_count,
+                       "relation_count": relation_count, "coverage": coverage,
+                       "expected_industries": expected_industries}}
+
+
 def check_industry_daily(path, expected_symbols: int | None = None) -> dict:
     return _industry_quality(path, "industry_daily", expected_symbols)
 

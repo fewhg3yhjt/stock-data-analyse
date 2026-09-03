@@ -218,6 +218,16 @@ def cmd_industry(args):
     print(result)
 
 
+def cmd_ths_industry_import(args):
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    from StockInvestmentTool.warehouse.ths_industry import import_ths_industry_membership
+    warehouse = Warehouse()
+    warehouse.metadata.register_dataset("ths_industry_membership")
+    result = import_ths_industry_membership(warehouse, snapshot_date=args.snapshot_date,
+                                            csv_path=args.csv_path)
+    print(result)
+
+
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(
         prog="StockInvestmentTool.warehouse",
@@ -259,6 +269,12 @@ def main(argv: list[str] | None = None):
     p_online.add_argument("--codes", default="", help="逗号分隔代码，空=用观察池")
     p_online.add_argument("--day", default=None, help="YYYY-MM-DD")
 
+    p_ths = sub.add_parser("ths-industry-import", help="导入固定 GitHub 同花顺行业成员快照")
+    p_ths.add_argument("--snapshot-date", required=True, help="YYYY-MM-DD")
+    p_ths.add_argument("--csv-path", type=__import__("pathlib").Path, default=None,
+                       help="可选本地 CSV；未指定时只读取固定 commit")
+    p_ths.set_defaults(func=cmd_ths_industry_import)
+
     p_reset = sub.add_parser("reset", help="清空仓库数据(破坏性)")
     p_reset.add_argument("--kinds", default="daily,factor,online", help="daily/factor/online")
     p_reset.add_argument("--force", action="store_true", help="跳过确认")
@@ -296,7 +312,8 @@ def main(argv: list[str] | None = None):
     handlers = {"init": cmd_init, "sync": cmd_sync, "factors": cmd_factors,
                 "scan": cmd_scan, "online": cmd_online, "status": cmd_status,
                 "reset": cmd_reset, "process": cmd_process, "backfill": cmd_backfill,
-                 "fundamentals": cmd_fundamentals, "industry": cmd_industry}
+                 "fundamentals": cmd_fundamentals, "industry": cmd_industry,
+                 "ths-industry-import": cmd_ths_industry_import}
     try:
         handlers[args.cmd](args)
     except Exception as e:

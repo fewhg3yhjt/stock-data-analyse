@@ -41,16 +41,56 @@
   }
 
   async function loadBoard(){
-    const name = document.getElementById('board-select').value;
+    const select = document.getElementById('board-select');
+    const name = select.value;
     showUiMessage('加载板块 ' + name + '…', 'info');
     try {
-      const response = await fetch('/market/board_kline?name=' + encodeURIComponent(name));
+      const category = document.getElementById('board-category').value;
+      const response = await fetch('/market/board_kline?category=' + encodeURIComponent(category) + '&sector_id=' + encodeURIComponent(select.dataset.sectorId || '') + '&name=' + encodeURIComponent(name));
       const data = await response.json();
       if (data.status !== 'success') return showUiMessage(data.error || '板块加载失败', 'error');
       makeChart(chartEls.board).setOption(lineOption(data.name, data.dates || [], [{name: data.name, data: data.close || []}], null), true);
       showUiMessage('板块 ' + data.name + ' 已加载', 'success');
     } catch (error) { showUiMessage('板块加载失败: ' + error.message, 'error'); }
   }
+
+  async function loadBoardOptions(category){
+    const select = document.getElementById('board-select');
+    select.dataset.sectorId = '';
+    select.innerHTML = '<option value="">加载中…</option>';
+    try {
+      const response = await fetch('/market/board_options?category=' + encodeURIComponent(category));
+      const data = await response.json();
+      const options = data.status === 'success' ? (data.options || []) : [];
+      select.innerHTML = options.length
+        ? options.map(x => '<option value="' + esc(x.sector_name) + '" data-sector-id="' + esc(x.sector_id) + '">' + esc(x.label) + '</option>').join('')
+        : '<option value="">' + (category === 'ths_industry' ? '暂无已发布板块数据' : '该分类暂无独立板块日线') + '</option>';
+      select.dataset.sectorId = options.length ? (options[0].sector_id || '') : '';
+    } catch (error) {
+      select.innerHTML = '<option value="">暂无板块数据</option>';
+      showUiMessage('板块列表加载失败：' + error.message, 'error');
+    }
+  }
+
+  window.loadRotationBoard = (boardCategory, sectorId, name) => {
+    const select = document.getElementById('board-select');
+    const category = document.getElementById('board-category');
+    category.value = boardCategory;
+    if (![...select.options].some(o => o.value === name)) {
+      const option = document.createElement('option'); option.value = name; option.textContent = name; select.appendChild(option);
+    }
+    select.value = name;
+    select.dataset.sectorId = sectorId || '';
+    loadBoard();
+  };
+
+  document.getElementById('board-select').addEventListener('change', event => {
+    const selected = event.currentTarget.selectedOptions[0];
+    event.currentTarget.dataset.sectorId = selected?.dataset.sectorId || '';
+  });
+  document.getElementById('board-category').addEventListener('change', event => {
+    loadBoardOptions(event.currentTarget.value);
+  });
 
   async function loadStock(){
     const code = document.getElementById('stock-select').value;
@@ -77,7 +117,12 @@
 
   window.loadBoard = loadBoard;
   window.loadStock = loadStock;
+  document.querySelectorAll('.market-tab').forEach(tab => tab.addEventListener('click', () => {
+    document.querySelectorAll('.market-tab').forEach(x => x.classList.toggle('active', x === tab));
+    document.querySelectorAll('.rotation-panel').forEach(x => x.style.display = x.id === 'rotation-' + tab.dataset.tab ? '' : 'none');
+  }));
   window.MARKET_INDICES = window.MARKET_INDICES || {};
   initStocks();
   loadIndices();
+  loadBoardOptions(document.getElementById('board-category').value);
 })();

@@ -21,6 +21,9 @@ DEFAULT_CONDITIONS = {
     "market": "ALL",
     "board": "ALL",
     "industry": "ALL",
+    "category": "csrc",
+    "sector_id": "ALL",
+    "sector_name": "",
     "lookback_days": 3,
     "min_up_days": 0,
     # Empty range fields must not impose an implicit restriction.
@@ -100,6 +103,11 @@ def _conditions(raw: Optional[dict]) -> dict:
     current["market"] = str(current.get("market") or "ALL").upper()
     current["board"] = str(current.get("board") or "ALL").lower()
     current["industry"] = str(current.get("industry") or "ALL").strip()
+    current["category"] = str(current.get("category") or "csrc").strip().lower()
+    current["sector_id"] = str(current.get("sector_id") or "ALL").strip()
+    current["sector_name"] = str(current.get("sector_name") or "").strip()
+    if current["category"] not in ("csrc", "ths_industry", "ths_concept"):
+        raise ValueError("未知行业分类")
     if current["market"] not in ("ALL", "SH", "SZ", "BJ"):
         raise ValueError("未知市场")
     if current["board"] not in ("all", "main", "cyb", "kcb", "bse"):
@@ -125,7 +133,7 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                     as_of: str = "", warehouse: Optional[Warehouse] = None,
                     page: int = 1, page_size: int = 20,
                     sort: str = "return_pct", descending: bool = True,
-                    allow_legacy: bool = False) -> dict:
+                    allow_legacy: bool = False, membership_as_of: str = "") -> dict:
     """Screen the published stock_daily dataset.
 
     ``allow_legacy`` exists for explicitly marked test/fixture reads only.  It
@@ -139,15 +147,29 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
     lookback = c["lookback_days"]
     data_start, data_end = _discovery_range(as_of, lookback, c["min_history"])
     industry_lookup = None
+    category = c["category"]
+    membership_as_of = str(membership_as_of or "").strip()[:10]
+    membership_context = None
     industry_symbols = None
     try:
-        industry_lookup = _industry_lookup(warehouse, as_of)
-        if c["industry"] != "ALL":
+        lookup_as_of = membership_as_of if category == "ths_industry" and membership_as_of else as_of
+        industry_lookup = _industry_lookup(warehouse, lookup_as_of, category=category)
+        membership_context = {"dataset": "ths_industry_membership" if category == "ths_industry" else "industry_membership",
+                              "requested_as_of": lookup_as_of or None,
+                              "source": "published_dataset"}
+        if c["industry"] != "ALL" or c["sector_id"] != "ALL":
             industry_symbols = [code for code, label in industry_lookup.items()
-                                if label == c["industry"]]
+                                if (c["industry"] == "ALL" or label["label"] == c["industry"]) and
+                                (c["sector_id"] == "ALL" or label["sector_id"] == c["sector_id"])]
+        elif category != "ths_concept":
+            industry_symbols = list(industry_lookup)
     except DatasetAccessError:
-        if c["industry"] != "ALL":
-            raise
+        if allow_legacy and category == "csrc" and c["industry"] == "ALL" and c["sector_id"] == "ALL":
+            industry_lookup = None
+        else:
+            industry_lookup = {}
+    if category in ("ths_concept",) or (industry_lookup == {} and not allow_legacy):
+        industry_symbols = []
     daily_result = DatasetAccess(warehouse).load_dataset(
         "stock_daily", start_date=data_start, end_date=data_end,
         symbols=industry_symbols, required_quality="WARNING",
@@ -274,7 +296,7 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                         "explanations": explanations})
     if industry_lookup is not None:
         results = [item for item in results if item["code"] in industry_lookup]
-    _attach_names(results, warehouse, industry_lookup=industry_lookup)
+    _attach_names(results, warehouse, industry_lookup=industry_lookup, category=category)
     results = [item for item in results if _matches_identity(item, c)]
     sort_key = sort if sort in {"price", "return_pct", "up_days", "down_days", "volume_ratio_5", "volume_5_20", "turnover", "pe_ttm", "pb", "amount_avg", "amplitude_pct"} else "return_pct"
     results.sort(key=lambda item: (item.get(sort_key) is None, item.get(sort_key) if item.get(sort_key) is not None else 0, item["code"]), reverse=descending)
@@ -285,7 +307,10 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
     page_items = results[start:start + page_size]
     return {"conditions": c, "as_of": as_of or (results[0]["date"] if results else None),
             "source": {"stock_daily": daily_result.context,
-                       "industry_membership": "published" if industry_lookup is not None else None},
+                         "industry_membership": "published" if industry_lookup is not None else None,
+                        "category": category,
+                        "membership_as_of": membership_as_of or None,
+                        "membership_context": membership_context},
             "count": len(page_items), "total_count": total_count, "page": page,
             "page_size": page_size, "pages": max(1, math.ceil(total_count / page_size)), "items": page_items}
 
@@ -296,7 +321,7 @@ def _matches_identity(item: dict, conditions: dict) -> bool:
         return False
     if conditions["market"] != "ALL" and not code.startswith(conditions["market"].lower()):
         return False
-    if conditions["industry"] != "ALL" and item.get("industry") != conditions["industry"]:
+    if conditions["industry"] != "ALL" and conditions["sector_id"] == "ALL" and item.get("industry") != conditions["industry"]:
         return False
     from StockInvestmentTool.screener.board import detect_board
     board = detect_board(code)
@@ -389,26 +414,35 @@ def stock_frame_with_indicators(code: str, *, days: int = 750,
     return frame
 
 
-def _industry_lookup(warehouse: Warehouse, as_of: str = "") -> dict[str, str]:
+def _industry_lookup(warehouse: Warehouse, as_of: str = "", *, category: str = "csrc") -> dict[str, dict]:
     """Return published CSRC industry labels keyed by canonical symbol."""
     from StockInvestmentTool.warehouse.datasets import DatasetAccess
 
+    if category == "ths_concept":
+        return {}
+    dataset = "ths_industry_membership" if category == "ths_industry" else "industry_membership"
     result = DatasetAccess(warehouse).load_dataset(
-        "industry_membership", end_date=as_of or None, required_quality="PASS",
+        dataset, end_date=as_of or None, required_quality="PASS",
         allow_legacy=False,
     )
     frame = result.data
     if frame.empty:
         return {}
-    frame = frame[frame["industry_classification"].astype(str) == "csrc"]
-    return {
-        str(row.code): f"{row.industry_code}{row.industry_name}"
-        for row in frame.itertuples()
-    }
+    if category == "csrc":
+        frame = frame[frame["industry_classification"].astype(str) == "csrc"]
+        return {str(row.code).lower().replace(".", ""): {"label": f"{row.industry_code}{row.industry_name}", "sector_id": str(row.industry_code), "sector_name": str(row.industry_name)} for row in frame.itertuples()}
+    lookup = {}
+    for row in frame.itertuples():
+        code = str(row.code).strip().lower().replace(".", "")
+        if code:
+            lookup[code] = {"label": f"{row.industry_id}{row.industry_name}", "sector_id": str(row.industry_id),
+                            "sector_name": str(row.industry_name)}
+    return lookup
 
 
 def _attach_names(items: list[dict], warehouse: Warehouse,
-                  *, industry_lookup: dict[str, str] | None = None) -> None:
+                  *, industry_lookup: dict[str, dict] | None = None,
+                  category: str = "csrc") -> None:
     if not items:
         return
     codes = [item["code"] for item in items]
@@ -419,8 +453,11 @@ def _attach_names(items: list[dict], warehouse: Warehouse,
     for item in items:
         name, industry = lookup.get(item["code"], ("", ""))
         item["name"] = name or item["code"]
-        item["industry"] = ((industry_lookup or {}).get(item["code"], "")
+        meta = (industry_lookup or {}).get(item["code"], {})
+        item["industry"] = (meta.get("label", "")
                              if industry_lookup is not None else industry or "")
+        if meta:
+            item.update({"category": category, "sector_id": meta["sector_id"], "sector_name": meta.get("sector_name", meta["label"]), "as_of": item.get("date")})
 
 
 def _float(value):
