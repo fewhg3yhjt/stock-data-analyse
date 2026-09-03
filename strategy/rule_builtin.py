@@ -375,6 +375,20 @@ def _build_schemas() -> dict[str, list[ParamField]]:
     ]
 
     s["right_side_trailing"] = [
+        ParamField("peak_price_source", "峰值参考指标", "select", default="position_peak_price",
+                   options=["position_peak_price", "year_high"],
+                   help="默认使用持仓峰值，记录建仓后的最高价格；也可选择滚动前高"),
+        ParamField("peak_data_source", "峰值数据来源", "select", default="daily_plus_minute",
+                   options=["daily", "daily_plus_minute"],
+                   help="日线：只用日线最高价；日线+当天分钟：历史用日线，今日用分钟补充。默认日线+当天分钟"),
+        ParamField("profit_activation_enabled", "启用盈利条件", "select", default=True,
+                   options=[True, False],
+                   help="启动后，达到最低盈利条件才允许右侧止盈；停用则进入右侧阶段后直接判断回撤"),
+        ParamField("profit_activation_basis", "盈利条件依据", "select", default="peak_price",
+                   options=["peak_price", "current_price"],
+                   help="持仓峰值：曾经盈利达到门槛即可；当前价格：当前价仍需达到门槛"),
+        ParamField("min_profit_for_activation", "最低盈利比例", "number", default=0.08, min=0, max=1,
+                   help="成本价上浮比例，例如8%表示成本100元时盈利门槛为108元。默认8%"),
         ParamField("drawdown_by_type", "按类型回撤阈值", "map",
                    default={"A": 0.05, "B": 0.03, "C": 0.05, "D": 0.03}),
         ParamField("drawdown_stop", "回撤保护阈值", "number", default=0.10, min=0, max=1,
