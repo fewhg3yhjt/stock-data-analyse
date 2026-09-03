@@ -138,9 +138,19 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
     warehouse = warehouse or Warehouse()
     lookback = c["lookback_days"]
     data_start, data_end = _discovery_range(as_of, lookback, c["min_history"])
+    industry_lookup = None
+    industry_symbols = None
+    try:
+        industry_lookup = _industry_lookup(warehouse, as_of)
+        if c["industry"] != "ALL":
+            industry_symbols = [code for code, label in industry_lookup.items()
+                                if label == c["industry"]]
+    except DatasetAccessError:
+        if c["industry"] != "ALL":
+            raise
     daily_result = DatasetAccess(warehouse).load_dataset(
         "stock_daily", start_date=data_start, end_date=data_end,
-        required_quality="WARNING",
+        symbols=industry_symbols, required_quality="WARNING",
         allow_legacy=allow_legacy,
     )
     daily = _prepare_daily(daily_result.data)
@@ -262,14 +272,6 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                          "pe_ttm": None, "pb": None,
                         "signal_tags": tags,
                         "explanations": explanations})
-    industry_lookup = None
-    try:
-        industry_lookup = _industry_lookup(warehouse, as_of)
-    except DatasetAccessError:
-        # Industry metadata is optional for generic discovery, but when it is
-        # published it must be the display source rather than the stale cache.
-        if c["industry"] != "ALL":
-            raise
     if industry_lookup is not None:
         results = [item for item in results if item["code"] in industry_lookup]
     _attach_names(results, warehouse, industry_lookup=industry_lookup)
