@@ -111,7 +111,7 @@ table.mini td.v{color:var(--color-text);font-weight:500;}
           <td style="padding:6px 8px;">{{ t.stock_name }}<br><span style="font-size:11px;color:var(--color-text-subtle);">{{ t.stock_code }}</span></td>
           <td style="padding:6px 8px;"><span class="tag {{ 'green' if t.trans_type=='buy' else ('red' if t.trans_type in ('sell','sell_all') else 'gray') }}">
             {{ {'buy':'买入','sell':'卖出','sell_all':'清仓','dividend':'分红'}.get(t.trans_type, t.trans_type) }}</span></td>
-          <td style="padding:6px 8px;">{{ '%.2f' % t.price }}</td>
+            <td style="padding:6px 8px;">{{ '%.2f' % t.price }}{% if t.trigger_price %}<br><small>触发价 {{ '%.2f' % t.trigger_price }}</small>{% endif %}</td>
           <td style="padding:6px 8px;">{{ '{:,.0f}'.format(t.shares) }}</td>
           <td style="padding:6px 8px;">{{ '{:,.0f}'.format(t.amount) }}</td>
           <td style="padding:6px 8px;">{% if t.pnl is not none %}<span class="{{ 'green' if t.pnl>=0 else 'red' }}">{{ '%+.2f' % t.pnl }}</span>{% else %}—{% endif %}</td>

@@ -244,7 +244,8 @@ class ReportGenerator:
                     pnl = t.get("pnl", "")
                     pnl_str = f"{pnl:+.2f}" if isinstance(pnl, (int, float)) else "—"
                     reason = t.get("reason", "")
-                    lines.append(f"| {t['date']} | {t['type']} | {t['price']} | {t.get('shares', '—')} | {pnl_str} | {reason} |")
+                    price = f"成交 {t['price']} / 触发 {t['trigger_price']}" if t.get("trigger_price") else t["price"]
+                    lines.append(f"| {t['date']} | {t['type']} | {price} | {t.get('shares', '—')} | {pnl_str} | {reason} |")
                 if len(trades) > 30:
                     lines.append(f"| ... | 共 {len(trades)} 笔交易，仅展示前30笔 | ... | ... | ... |")
                 lines.append("")

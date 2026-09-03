@@ -594,7 +594,7 @@ class TakeProfitOptimizer:
         trigger_str = f"{trigger:.2f}" if abs(offset) < 0.001 else f"{trigger:.2f}(偏移{offset:+.0%})"
         buy_info = {
             "reason": f"最低价{low:.2f}≤{label}({trigger_str})，成交价{fill_price:.2f}，触发第{buy_stage}批买入",
-            "label": label, "trigger": trigger,
+            "label": label, "trigger": trigger, "fill_price": fill_price,
         }
 
         return cash, shares, total_cost, buy_stage, peak_price, sold_ratio, buy_info
@@ -909,11 +909,13 @@ class TakeProfitOptimizer:
                 )
                 if buy_info:
                     bought_this_bar = True
-                    fill_price = buy_info.get("trigger", close)
+                    fill_price = buy_info.get("fill_price", close)
+                    trigger_price = buy_info.get("trigger", fill_price)
                     trades.append({
                         "date": date,
                         "type": f"买入第{buy_stage}批",
                         "price": round(fill_price, 2),
+                        "trigger_price": round(trigger_price, 2),
                         "shares": round((self.initial_cash * self.buy_ratios[buy_stage - 1]) / fill_price, 2),
                         "amount": round(self.initial_cash * self.buy_ratios[buy_stage - 1], 2),
                         "reason": buy_info.get("reason", ""),

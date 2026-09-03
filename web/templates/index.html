@@ -469,7 +469,7 @@ function renderResults(data) {
     tradesCard.style.display = 'block';
     tbody.innerHTML = d.trades.map(t =>
       '<tr><td>' + t.date + '</td><td><span class="tag ' + (t.type.includes('买入') ? 'green' : t.type.includes('止损') ? 'red' : t.type.includes('回撤') ? 'orange' : 'blue') + '">' + t.type + '</span></td>' +
-      '<td>' + t.price + '</td><td>' + (t.shares ? Number(t.shares).toFixed(0) : '—') + '</td>' +
+      '<td>' + t.price + (t.trigger_price ? '<br><small>触发价 ' + t.trigger_price + '</small>' : '') + '</td><td>' + (t.shares ? Number(t.shares).toFixed(0) : '—') + '</td>' +
       '<td>' + (t.pnl != null ? (t.pnl >= 0 ? '+' : '') + Number(t.pnl).toFixed(2) : '—') + '</td>' +
       '<td class="reason">' + (t.reason || '') + '</td></tr>'
     ).join('');

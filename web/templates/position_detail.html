@@ -283,7 +283,7 @@ table.mini td.v{color:var(--color-text);font-weight:500;}
       <tr>
         <td>{{ t.date }}</td>
         <td><span class="tag {{ 'green' if t.trans_type == 'buy' else ('red' if t.trans_type in ('sell','sell_all') else 'orange') }}">{{ t.trans_type }}</span></td>
-        <td>{{ '%.2f' % t.price }}</td>
+        <td>{{ '%.2f' % t.price }}{% if t.trigger_price %}<br><small>触发价 {{ '%.2f' % t.trigger_price }}</small>{% endif %}</td>
         <td>{{ '{:,.0f}'.format(t.shares) }}</td>
         <td>{{ '{:,.0f}'.format(t.amount) }}</td>
         <td class="{{ 'red' if t.pnl >= 0 else 'green' }}">{{ '{:+,.2f}'.format(t.pnl) if t.pnl else '—' }}</td>
