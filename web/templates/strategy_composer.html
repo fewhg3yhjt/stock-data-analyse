@@ -223,6 +223,15 @@ function renderIndicators(){
   }
   if(!el.innerHTML) el.innerHTML='<div class="help">无匹配指标</div>';
 }
+function indicatorChoices(current, includeSupport=true){
+  const choices=[];
+  if(includeSupport) choices.push(['strong','综合防守位（strong）'],['weak','综合支撑位（weak）']);
+  Object.values(INDICATORS).flat().forEach(i=>{
+    if(!choices.some(x=>x[0]===i.name)) choices.push([i.name,`${i.name}（${i.expr||i.name}）`]);
+  });
+  if(current && !choices.some(x=>x[0]===String(current))) choices.unshift([String(current),`当前配置：${current}`]);
+  return choices;
+}
 
 async function loadRuleSchemas(){
   try{
@@ -319,6 +328,12 @@ function renderField(f, rule){
     return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>${modeHelp}
       <select data-f="${key}">${opts}<option value="" ${hasValue?'':'selected'}>默认</option></select></div>`;
   }
+  if(key==='support_source' || key==='reference_price'){
+    const choices=indicatorChoices(def, key==='support_source');
+    const optionLabels=Object.fromEntries(choices);
+    const opts=choices.map(([value,text])=>`<option value="${escapeAttr(value)}" ${String(value)===String(def)?'selected':''}>${escapeAttr(text)}</option>`).join('');
+    return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label><select data-f="${key}">${opts}</select><div class="help">已接入指标库，可选择内置指标、组合指标或自定义指标。当前：${escapeAttr(optionLabels[def]||def||'未选择')}</div></div>`;
+  }
   if(type==='map'){
     if(['stop_loss_by_type','breakeven_activation_by_type','drawdown_by_type','ratio_by_type'].includes(key)){
       const labels={A:'A 高成长',B:'B 价值白马',C:'C 强周期',D:'D 深度价值',E:'E 场内 ETF/基金'};
@@ -358,7 +373,7 @@ function listRowHtml(type, item, key){
       return `<div class="list-row"><select data-list-value>${custom}${options.map(([v,t])=>`<option value="${v}" ${String(v)===String(item)?'selected':''}>${t}</option>`).join('')}</select><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;
     }
     if(key==='support_sources'){
-       const options=[['dividend_anchor','股息率估值锚 (dividend_anchor)'],['ma60','MA60 (ma60)'],['low_3m','近3月低点 (low_3m)'],['year_low','年内低点 (year_low)'],['ma20','MA20 (ma20)'],['ma240','MA240 (ma240)'],['dual_ma_low','双均线低点 (dual_ma_low)'],['dividend_anchor_4pct','股息率4%估值锚 (dividend_anchor_4pct)']];
+      const options=[['dividend_anchor','股息率估值锚 (dividend_anchor)'],['ma60','MA60 (ma60)'],['low_3m','近3月低点 (low_3m)'],['year_low','年内低点 (year_low)'],['ma20','MA20 (ma20)'],['ma240','MA240 (ma240)'],['dual_ma_low','双均线低点 (dual_ma_low)'],['dividend_anchor_4pct','股息率4%估值锚 (dividend_anchor_4pct)'], ...indicatorChoices(item, false).filter(x=>!['ma60','low_3m','year_low','ma20','ma240','dual_ma_low'].includes(x[0]))];
       const known=options.some(([v])=>String(v)===String(item));
       const custom=known?'':`<option value="${escapeAttr(item)}" selected>当前表达式：${escapeAttr(item)}</option>`;
       return `<div class="list-row"><select data-list-value>${custom}${options.map(([v,t])=>`<option value="${v}" ${String(v)===String(item)?'selected':''}>${t}</option>`).join('')}</select><button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="this.parentElement.remove()"><i class="fas fa-minus"></i></button></div>`;

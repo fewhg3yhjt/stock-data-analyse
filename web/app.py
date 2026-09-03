@@ -1504,7 +1504,8 @@ def _scheme_indicator_refs(rule: dict) -> list[dict]:
     if rule.get("type") == "trend_following":
         names.extend((str(value), "趋势跟随前置条件") for value in params.get("conditions") or [])
     if rule.get("type") == "technical_stop":
-        names.extend([("vol_ma5", "放量判断"), ("strong_support", "强支撑跌破")])
+        names.extend([("vol_ma5", "放量判断"),
+                      (str(params.get("support_source", "strong")), "跌破支撑线")])
     if rule.get("type") == "left_side_fixed":
         names.append((str(params.get("reference_price", "year_high")), "左侧止盈参考"))
     if rule.get("type") == "right_side_trailing":

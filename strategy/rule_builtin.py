@@ -144,7 +144,11 @@ def _execute_technical_stop(ctx: RuleContext, params: dict) -> RuleResult:
     source = str(params.get("support_source", "strong"))
     support = {"strong": ctx.extra.get("strong_support", 0),
                "weak": ctx.extra.get("weak_support", 0),
-               "ma60": ctx.extra.get("ma60", 0)}.get(source, 0) or 0
+               "ma60": ctx.extra.get("ma60", 0)}.get(source)
+    if support is None:
+        support = ctx.indicators.get(source, 0) if isinstance(ctx.indicators, dict) else 0
+        support = support or (ctx.row.get(source, 0) if ctx.row is not None else 0)
+    support = support or 0
     low = float(ctx.row.get("low", ctx.current_price)) if ctx.row is not None else ctx.current_price
     triggered = support > 0 and low < support and vol_surge
     return RuleResult(
@@ -327,17 +331,16 @@ def _build_schemas() -> dict[str, list[ParamField]]:
     s["technical_stop"] = [
         ParamField("volume_surge_ratio", "成交量放大倍数", "number", default=1.8, min=1.0,
                    help="当天成交量 ÷ 前5个交易日平均成交量；默认达到1.8倍才算放量"),
-        ParamField("support_source", "跌破支撑线", "select", default="strong",
-                   options=["strong", "weak", "ma60"],
-                   help="strong=综合防守位（候选支撑中的最低值）；weak=综合支撑位（第二低）；ma60=MA60。默认：strong"),
+         ParamField("support_source", "跌破支撑线", "text", default="strong",
+                    help="可选择综合防守位、综合支撑位或指标库中的任一指标；默认：综合防守位（strong）"),
         ParamField("technical_stop_enabled", "规则状态", "select", default=True,
                    options=[True, False],
                    help="启动时参与判断；停用时完全跳过技术止损。默认：启动"),
     ]
 
     s["left_side_fixed"] = [
-        ParamField("reference_price", "止盈参考指标", "select", default="year_high",
-                   options=["year_high"]),
+         ParamField("reference_price", "止盈参考指标", "text", default="year_high",
+                    help="可填写指标库中的指标 key；默认：滚动前高（year_high）"),
         ParamField("year_high_window", "前高回看交易日数", "number", default=252, min=20, max=2000,
                    help="在最近多少个交易日内寻找前高；默认 252 日约一年"),
         ParamField("year_high_price_field", "前高计算价格字段", "select", default="high",

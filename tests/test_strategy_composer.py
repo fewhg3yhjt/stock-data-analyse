@@ -141,6 +141,20 @@ def test_scheme_list_exposes_indicator_bindings(client):
     assert {"ma60", "low_3m", "year_low", "dividend_anchor_4pct"} <= keys
 
 
+def test_scheme_indicator_refs_follow_configured_reference(client):
+    model = _sample_model()
+    model["sell_rules"] = [{"type": "technical_stop", "params": {
+        "support_source": "MA20", "volume_surge_ratio": 1.8,
+        "technical_stop_enabled": True,
+    }}]
+    yaml_out = client.post("/api/schemes/compose", json=model).get_json()["yaml"]
+    client.post("/api/schemes/save", json={"name": model["name"], "content": yaml_out})
+    scheme = next(item for item in client.get("/api/schemes/list").get_json()["schemes"]
+                  if item["name"] == model["name"])
+    assert any(ref["key"] == "MA20" for ref in scheme["sell_rules"][0]["indicator_refs"])
+    client.post("/api/schemes/delete", json={"name": model["name"]})
+
+
 def test_validate_run_returns_backtest_result(client):
     model = _sample_model()
     yaml_out = client.post("/api/schemes/compose", json=model).get_json()["yaml"]

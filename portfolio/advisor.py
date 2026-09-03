@@ -313,27 +313,33 @@ class PostPurchaseAdvisor:
         from StockInvestmentTool.strategy.rule_registry import dispatch_rule
 
         params = rule.params if rule is not None else {}
+        reference = str(params.get("reference_price", "year_high"))
+        reference_value = ctx.year_high
+        if reference != "year_high":
+            reference_value = ctx.indicators.get(reference, 0) or (ctx.row.get(reference, 0) if ctx.row is not None else 0)
         result = dispatch_rule("sell", "left_side_fixed", RuleContext(
             row=ctx.row, current_price=ctx.current_price, avg_cost=position.avg_cost,
-            year_high=ctx.year_high, left_tier_sold=position.left_tier_sold,
+            year_high=reference_value, left_tier_sold=position.left_tier_sold,
+            indicators=ctx.indicators,
         ), params)
         detail = result.detail or {}
         tier, ratio = detail.get("tier", 0), detail.get("sell_ratio", 0.0)
 
         check_results["left_side"] = {
-            "year_high": round(ctx.year_high, 2),
-            "pct_of_year_high": round(ctx.current_price / ctx.year_high * 100, 1) if ctx.year_high > 0 else 0,
+            "year_high": round(reference_value, 2),
+            "reference_price": reference,
+            "pct_of_year_high": round(ctx.current_price / reference_value * 100, 1) if reference_value > 0 else 0,
             "tier": tier,
             "sell_ratio": ratio,
             "left_tier_sold": position.left_tier_sold,
         }
 
         # 补充止盈区间的具体价格范围（前高×区间边界），便于通知展示"怎么得来的"
-        if ctx.year_high > 0 and zones:
+        if reference_value > 0 and zones:
             lo_pct = zones.get("预警区", (0.90, 0.95))[0] if "预警区" in zones else 0.90
             hi_pct = zones.get("第一止盈区", (0.95, 1.00))[1] if "第一止盈区" in zones else 1.00
-            check_results["left_side"]["zone_price_lo"] = round(ctx.year_high * lo_pct, 2)
-            check_results["left_side"]["zone_price_hi"] = round(ctx.year_high * hi_pct, 2)
+            check_results["left_side"]["zone_price_lo"] = round(reference_value * lo_pct, 2)
+            check_results["left_side"]["zone_price_hi"] = round(reference_value * hi_pct, 2)
         # 建议减仓股数（当前档位的减持数量）
         if tier in (1, 2) and position.left_tier_sold < tier and ratio > 0:
             check_results["left_side"]["sell_shares"] = round(position.total_shares * ratio, 0)
@@ -346,7 +352,7 @@ class PostPurchaseAdvisor:
                 stock_name=position.stock_name,
                 advice_type=ADVICE_PARTIAL_SELL, urgency="attention",
                 reason=f"📈 左侧止盈({tier_label})：当前价{ctx.current_price:.2f}"
-                       f"达前高{ctx.year_high:.2f}的{ctx.current_price/ctx.year_high*100:.1f}%，建议减持{ratio*100:.0f}%",
+                       f"达{reference}{reference_value:.2f}的{ctx.current_price/reference_value*100:.1f}%，建议减持{ratio*100:.0f}%",
                 suggested_price=ctx.current_price,
                 suggested_shares=sell_shares,
                 suggested_amount=round(sell_shares * ctx.current_price, 2),
