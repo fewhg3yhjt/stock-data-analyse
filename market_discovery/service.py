@@ -157,10 +157,16 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
         membership_context = {"dataset": "ths_industry_membership" if category == "ths_industry" else "industry_membership",
                               "requested_as_of": lookup_as_of or None,
                               "source": "published_dataset"}
-        if c["industry"] != "ALL" or c["sector_id"] != "ALL":
+        if c["sector_id"] != "ALL":
+            # The category-specific sector ID is the authoritative condition.
+            # ``industry`` is a legacy display label and may contain a code
+            # prefix, so requiring both values would reject valid links.
             industry_symbols = [code for code, label in industry_lookup.items()
-                                if (c["industry"] == "ALL" or label["label"] == c["industry"]) and
-                                (c["sector_id"] == "ALL" or label["sector_id"] == c["sector_id"])]
+                                if label["sector_id"] == c["sector_id"]]
+        elif c["industry"] != "ALL" or c["sector_name"]:
+            wanted = c["sector_name"] or c["industry"]
+            industry_symbols = [code for code, label in industry_lookup.items()
+                                if label["sector_name"] == wanted or label["label"] == wanted]
         elif category != "ths_concept":
             industry_symbols = list(industry_lookup)
     except DatasetAccessError:

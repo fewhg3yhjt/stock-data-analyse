@@ -55,3 +55,6 @@ def test_market_discovery_conditions_does_not_read_removed_board_field():
     source = (ROOT / "web/templates/market_discovery.html").read_text(encoding="utf-8")
     assert "board:'ALL'" in source
     assert "board:document.getElementById('board').value" not in source
+    assert "category:document.getElementById('category').value" in source
+    assert "sector_id:s.value" in source
+    assert "sector_name:option?.dataset.name" in source

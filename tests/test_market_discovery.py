@@ -25,6 +25,28 @@ def test_discovery_uses_explicit_ths_snapshot_after_quote_date(tmp_path, monkeyp
     assert result["source"]["membership_as_of"] == "2026-09-03"
 
 
+def test_discovery_filters_by_category_specific_sector_id(tmp_path, monkeypatch):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    daily = _daily_frame()
+    dates = pd.bdate_range("2026-05-01", periods=90)
+    daily["date"] = list(dates) * 2
+    warehouse.write_daily_partition("2026-09", daily)
+    monkeypatch.setattr(
+        "StockInvestmentTool.market_discovery.service._industry_lookup",
+        lambda warehouse, as_of, category: {
+            "sh600900": {"label": "881121半导体", "sector_id": "881121", "sector_name": "半导体"},
+            "sz000001": {"label": "881101种植业与林业", "sector_id": "881101", "sector_name": "种植业与林业"},
+        },
+    )
+    result = discover_stocks(
+        {"category": "ths_industry", "sector_id": "881121", "sector_name": "半导体",
+         "industry": "半导体", "min_history": 20},
+        as_of="2026-09-02", membership_as_of="2026-09-02", warehouse=warehouse,
+        top_n=10, allow_legacy=True,
+    )
+    assert [item["code"] for item in result["items"]] == ["sh600900"]
+
+
 def _daily_frame():
     dates = pd.date_range("2026-01-01", periods=90, freq="B")
     rows = []
