@@ -322,7 +322,7 @@ function renderField(f, rule){
       <button type="button" class="ui-button ui-button-ghost ui-button-sm" onclick="addListRow(this,'${key}')"><i class="fas fa-plus"></i> 加一行</button></div>`;
   }
   if(type==='select'){
-    const optionLabels={fixed:'固定比例止损',breakeven:'保本止损',strong:'综合防守位（最低）',weak:'综合支撑位（第二低）',ma60:'MA60（ma60）',year_high:'滚动前高（year_high）',true:'启动',false:'停用',high:'日最高价（high）',close:'收盘价（close）'};
+    const optionLabels={fixed:'固定比例止损',breakeven:'保本止损',strong:'综合防守位（最低）',weak:'综合支撑位（第二低）',ma60:'MA60（ma60）',year_high:'滚动前高（year_high）',position_peak_price:'持仓峰值（position_peak_price）',daily:'仅日线',daily_plus_minute:'日线 + 当天分钟',minute:'仅分钟数据（只看当天）',true:'启动',false:'停用',high:'日最高价（high）',close:'日收盘价（close）'};
     const hasValue=def!==undefined && def!==null && def!=='';
     const opts=(f.options||[]).map(o=>`<option value="${JSON.stringify(o)}" ${JSON.stringify(o)===JSON.stringify(def)?'selected':''}>${optionLabels[o]||o}</option>`).join('');
     const modeHelp=key==='mode' ? '<div class="help"><b>固定比例止损：</b>价格下跌到配置比例时清仓，例如均价100元、15%则止损价为85元。<br><b>保本止损：</b>按成本价反推止损价，例如成本100元、8%则止损价为92.59元。当前只执行选中的模式。</div>' : '';
@@ -348,8 +348,8 @@ function renderField(f, rule){
     return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label>
       <textarea data-f="${key}" placeholder='JSON 键值，如 {"A":0.15,"B":0.15}'>${JSON.stringify(def||{})}</textarea></div>`;
   }
-  if(type==='number' && ['half_profit_threshold','base_discount','offset'].includes(key)){
-    const value=Number(def||0)*100;
+  if(type==='number' && ['half_profit_threshold','base_discount','offset','drawdown_stop','min_profit_for_activation'].includes(key)){
+     const value=Number(def||0)*100;
     return `<div class="ui-field"><label>${label} <span class="help">${f.help||''}</span></label><div class="unit-input"><input data-f="${key}" type="number" min="${key==='offset'?-20:0}" max="${key==='offset'?20:100}" step="0.1" value="${escapeAttr(value)}"><span>%</span></div></div>`;
   }
   if(type==='number'){

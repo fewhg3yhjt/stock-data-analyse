@@ -603,6 +603,12 @@ class PostPurchaseAdvisor:
                     daily=kline, minute=None, buy_date=position.buy_date,
                     buy_price=position.avg_cost, current_price=ctx.current_price,
                 )
+            elif peak_source == "minute":
+                peak = calculate_position_peak(
+                    daily=None, minute=minute, buy_date=position.buy_date,
+                    buy_price=position.avg_cost, current_price=None,
+                    minute_only_latest_day=True,
+                )
             if peak.get("value") is not None:
                 position.peak_price = peak["value"]
             metrics = calculate_post_metrics(

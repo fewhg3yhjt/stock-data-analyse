@@ -41,7 +41,8 @@ def calculate_right_side_trigger_price(peak_price: float | None,
 def calculate_position_peak(daily: pd.DataFrame | None = None,
                             minute: pd.DataFrame | None = None,
                             *, buy_date: str = "", buy_price: float = 0,
-                            current_price: float | None = None) -> dict:
+                            current_price: float | None = None,
+                            minute_only_latest_day: bool = False) -> dict:
     """计算持仓以来峰值。
 
     口径：建仓日及以后，日线收盘价与分钟实时 close 的最大值；
@@ -64,6 +65,9 @@ def calculate_position_peak(daily: pd.DataFrame | None = None,
         frame = minute.copy()
         time_col = "time" if "time" in frame.columns else "trade_date"
         frame["_time"] = pd.to_datetime(frame[time_col], errors="coerce")
+        if minute_only_latest_day:
+            latest_day = frame["_time"].dt.normalize().max()
+            frame = frame[frame["_time"].dt.normalize() == latest_day]
         if pd.notna(buy_day):
             frame = frame[frame["_time"] >= buy_day.normalize()]
         for _, row in frame.dropna(subset=["_time"]).iterrows():
