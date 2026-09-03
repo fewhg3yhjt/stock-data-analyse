@@ -106,6 +106,12 @@ class AnalysisResult:
                     for o, c, l, h in zip(kdf["open"], kdf["close"], kdf["low"], kdf["high"])
                 ]
                 d["kline_vol"] = [float(v) for v in (kdf["volume"] if "volume" in kdf.columns else [0]*len(kdf))]
+                d["kline_ma"] = {
+                    "ma5": [float(v) if v==v else None for v in (kdf["ma5"] if "ma5" in kdf.columns else [0]*len(kdf))],
+                    "ma10": [float(v) if v==v else None for v in (kdf["ma10"] if "ma10" in kdf.columns else [0]*len(kdf))],
+                    "ma20": [float(v) if v==v else None for v in (kdf["ma20"] if "ma20" in kdf.columns else [0]*len(kdf))],
+                    "ma60": [float(v) if v==v else None for v in (kdf["ma60"] if "ma60" in kdf.columns else [0]*len(kdf))],
+                }
             except Exception:
                 d["kline_dates"], d["kline_ohlc"], d["kline_vol"] = [], [], []
         pe_info = self.valuation.get("pe") or {}

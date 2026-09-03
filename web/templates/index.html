@@ -488,20 +488,25 @@ function renderResults(data) {
     });
   }
 
-  // 交互式蜡烛图 + 买卖点（K线走势）
+  // 交互式蜡烛图 + 均线 + 成交量 + 买卖点（与持仓页样式一致）
   if (d.kline_dates && d.kline_dates.length && d.kline_ohlc && d.kline_ohlc.length) {
     const kBox = document.createElement('div');
     kBox.className = 'chart-item chart-card';
-    kBox.innerHTML = '<div class="label">K线走势（买卖点标记）</div><div id="kline-chart" style="width:100%;height:360px;"></div>';
+    kBox.innerHTML = '<div class="label">K线走势（模拟买卖点标记）</div><div id="kline-chart" style="width:100%;height:420px;"></div>';
     gallery.insertBefore(kBox, gallery.firstChild);
     const signals = (d.trades || []).map(t => ({
       date: String(t.date || '').slice(0, 10),
       value: Number(t.price),
       type: String(t.type || '').includes('买入') ? 'buy' : 'sell'
     })).filter(s => s.date);
-    window.StockChart.drawKLine(document.getElementById('kline-chart'), {
+    window.StockChart.drawKLineFull(document.getElementById('kline-chart'), {
       dates: d.kline_dates,
       ohlc: d.kline_ohlc,
+      closes: d.kline_ohlc.map(o => o[1]),
+      highs: d.kline_ohlc.map(o => o[3]),
+      lows: d.kline_ohlc.map(o => o[2]),
+      volumes: d.kline_vol || [],
+      ma: d.kline_ma || {},
       signals: signals
     }, {});
   }
