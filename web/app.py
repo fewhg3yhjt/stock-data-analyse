@@ -94,7 +94,7 @@ def _store_analysis_task(task_id: str, task_type: str, code: str, status: dict) 
                           status.get("_created_at", _dt.now().isoformat(timespec="seconds")),
                           _dt.now().isoformat(timespec="seconds") if status.get("status") in ("success", "error") else None))
     except Exception:
-        logger.warning("持久化分析任务失败: %s", task_id)
+        logger.exception("持久化分析任务失败: %s（数据库路径=%s）", task_id, _analysis_db_path())
 
 
 def _recover_analysis_tasks() -> int:

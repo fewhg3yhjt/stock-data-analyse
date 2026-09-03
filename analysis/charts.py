@@ -102,10 +102,8 @@ class ChartGenerator:
         avail_mav = [w for w in [5, 10, 20, 60] if f"ma_{w}" in df.columns]
         save_path = str(self.output_dir / filename)
 
-        mpf.plot(
-            df_plot,
+        plot_kwargs = dict(
             type="candle",
-            mav=tuple(avail_mav) if avail_mav else None,
             volume=True,
             title=f"{stock_name} 日K线图",
             ylabel="价格 (元)",
@@ -115,6 +113,10 @@ class ChartGenerator:
             style=_MPF_STYLE,
             savefig=dict(fname=save_path, dpi=Config.CHART_DPI),
         )
+        # mplfinance 不接受 mav=None；没有可用均线时直接省略该参数。
+        if avail_mav:
+            plot_kwargs["mav"] = tuple(avail_mav)
+        mpf.plot(df_plot, **plot_kwargs)
         logger.info("K 线图已保存: %s", save_path)
         return save_path
 
