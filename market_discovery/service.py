@@ -10,9 +10,10 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-import duckdb
+import pandas as pd
 
 from StockInvestmentTool.warehouse.storage import Warehouse
+from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
 
 
 DEFAULT_CONDITIONS = {
@@ -51,23 +52,6 @@ DEFAULT_CONDITIONS = {
 }
 
 
-def _files(warehouse: Warehouse) -> str:
-    paths = [warehouse.daily_partition(month) for month in warehouse.available_months("daily")]
-    paths = [str(path) for path in paths if path.exists()]
-    if not paths:
-        raise ValueError("本地 daily 仓库没有可用分区")
-    return "[" + ",".join("'" + path.replace("'", "''") + "'" for path in paths) + "]"
-
-
-def _has_column(con, files: str, column: str) -> bool:
-    """探测 daily 分区是否含指定列（列缺失时容错，避免查询报错）。"""
-    try:
-        con.execute(f"SELECT {column} FROM read_parquet({files}) LIMIT 1")
-        return True
-    except Exception:
-        return False
-
-
 def _number(value, name: str, *, minimum=None, maximum=None) -> Optional[float]:
     if value in (None, ""):
         return None
@@ -77,6 +61,20 @@ def _number(value, name: str, *, minimum=None, maximum=None) -> Optional[float]:
         raise ValueError(f"{name} 必须是数字") from exc
     if not math.isfinite(result) or (minimum is not None and result < minimum) or (maximum is not None and result > maximum):
         raise ValueError(f"{name} 超出有效范围")
+    return result
+
+
+def _prepare_daily(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalize the Published stock_daily shape for discovery calculations."""
+    result = frame.copy()
+    if result.empty:
+        return result
+    result["code"] = result["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+    result["date"] = pd.to_datetime(result["date"])
+    for column in ("open", "high", "low", "close", "volume", "amount", "turn"):
+        if column not in result:
+            result[column] = None
+        result[column] = pd.to_numeric(result[column], errors="coerce")
     return result
 
 
@@ -111,57 +109,59 @@ def _conditions(raw: Optional[dict]) -> dict:
     return current
 
 
+def _discovery_range(as_of: str, lookback: int, min_history: int) -> tuple[str, str]:
+    """Bound the published read while retaining the requested history window."""
+    end = pd.Timestamp(as_of) if as_of else pd.Timestamp.now().normalize()
+    # A trading year is roughly 250 calendar days. Keep a generous buffer for
+    # holidays and suspensions without loading the whole warehouse by default.
+    calendar_days = max(180, int(min_history * 2.5 + lookback * 3))
+    if min_history > 1000:
+        calendar_days = max(calendar_days, 3650)
+    return (str((end - pd.Timedelta(days=calendar_days)).date()),
+            str(end.date()))
+
+
 def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                     as_of: str = "", warehouse: Optional[Warehouse] = None,
                     page: int = 1, page_size: int = 20,
-                    sort: str = "return_pct", descending: bool = True) -> dict:
-    """Screen local daily data and return rows plus the applied data date."""
+                    sort: str = "return_pct", descending: bool = True,
+                    allow_legacy: bool = False) -> dict:
+    """Screen the published stock_daily dataset.
+
+    ``allow_legacy`` exists for explicitly marked test/fixture reads only.  It
+    is deliberately false for the production business entry point.
+    """
     c = _conditions(conditions)
     top_n = max(1, min(int(top_n), 5000))
     page = max(1, int(page))
     page_size = max(10, min(int(page_size), 100))
     warehouse = warehouse or Warehouse()
-    files = _files(warehouse)
-    as_of_sql = "" if not as_of else "AND date <= ?"
     lookback = c["lookback_days"]
-    con = duckdb.connect()
-    try:
-        has_pe = _has_column(con, files, "pe_ttm")
-        pe_sql = ", pe_ttm, pb_mrq" if has_pe else ""
-        query = f"""
-        WITH base AS (
-          SELECT code, CAST(date AS DATE) AS date, close, high, low, volume, amount
-                 {pe_sql},
-                 LAG(close, 1) OVER (PARTITION BY code ORDER BY date) AS prev_close,
-                 LAG(close, {lookback}) OVER (PARTITION BY code ORDER BY date) AS old_close,
-                 LAG(volume, {lookback}) OVER (PARTITION BY code ORDER BY date) AS old_volume,
-                 AVG(volume) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) AS avg_volume_5,
-                 AVG(volume) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS avg_volume_20,
-                 AVG(volume) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN {lookback} PRECEDING AND 1 PRECEDING) AS avg_volume_prev_n,
-                 COUNT(*) OVER (PARTITION BY code) AS history_count
-          FROM read_parquet({files})
-          WHERE 1=1 {as_of_sql}
-        ), changes AS (
-          SELECT *, close > prev_close AS is_up, close < prev_close AS is_down
-          FROM base
-        ), source AS (
-          SELECT *,
-                 SUM(CASE WHEN is_up THEN 1 ELSE 0 END) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN {lookback - 1} PRECEDING AND CURRENT ROW) AS up_days,
-                 SUM(CASE WHEN is_down THEN 1 ELSE 0 END) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN {lookback - 1} PRECEDING AND CURRENT ROW) AS down_days
-          FROM changes
-        ), latest AS (
-          SELECT *, ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) AS rn
-          FROM source
-        )
-        SELECT code, date, close, high, low, volume, amount, prev_close, old_close,
-               old_volume, avg_volume_5, avg_volume_20, avg_volume_prev_n, history_count, rn
-               {pe_sql}
-        FROM latest WHERE rn <= ? AND history_count >= ?
-        """
-        params = ([as_of, lookback + 1, c["min_history"]] if as_of else [lookback + 1, c["min_history"]])
-        rows = con.execute(query, params).fetchdf().to_dict("records")
-    finally:
-        con.close()
+    data_start, data_end = _discovery_range(as_of, lookback, c["min_history"])
+    daily_result = DatasetAccess(warehouse).load_dataset(
+        "stock_daily", start_date=data_start, end_date=data_end,
+        required_quality="WARNING",
+        allow_legacy=allow_legacy,
+    )
+    daily = _prepare_daily(daily_result.data)
+    if as_of:
+        daily = daily[daily["date"] <= pd.Timestamp(as_of)]
+    rows = []
+    for code, group in daily.groupby("code", sort=False):
+        group = group.sort_values("date").copy()
+        group["prev_close"] = group["close"].shift(1)
+        group["old_close"] = group["close"].shift(lookback)
+        group["old_volume"] = group["volume"].shift(lookback)
+        group["avg_volume_5"] = group["volume"].rolling(5, min_periods=1).mean()
+        group["avg_volume_20"] = group["volume"].rolling(20, min_periods=1).mean()
+        group["avg_volume_prev_n"] = group["volume"].shift(1).rolling(lookback, min_periods=1).mean()
+        group["history_count"] = len(group)
+        group["is_up"] = group["close"] > group["prev_close"]
+        group["is_down"] = group["close"] < group["prev_close"]
+        group["rn"] = range(len(group), 0, -1)
+        group["up_days"] = group["is_up"].rolling(lookback, min_periods=1).sum()
+        group["down_days"] = group["is_down"].rolling(lookback, min_periods=1).sum()
+        rows.extend(group.tail(lookback + 1).to_dict("records"))
 
     grouped = {}
     for row in rows:
@@ -258,10 +258,18 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                         "up_down_volume": _round(up_down_volume),
                         "volume_change_pct": _round(volume_change),
                         "amount": _round(row.get("amount")), "amount_avg_yi": _round((sum(valid_amounts) / len(valid_amounts) / 1e8) if valid_amounts else None), "turnover": _round(row.get("turn")),
-                        "pe_ttm": _round(row.get("pe_ttm")), "pb": _round(row.get("pb_mrq")),
+                         # Valuation is not part of the stock_daily contract.
+                         "pe_ttm": None, "pb": None,
                         "signal_tags": tags,
                         "explanations": explanations})
-    industry_lookup = _industry_lookup(warehouse, as_of) if c["industry"] != "ALL" else None
+    industry_lookup = None
+    try:
+        industry_lookup = _industry_lookup(warehouse, as_of)
+    except DatasetAccessError:
+        # Industry metadata is optional for generic discovery, but when it is
+        # published it must be the display source rather than the stale cache.
+        if c["industry"] != "ALL":
+            raise
     if industry_lookup is not None:
         results = [item for item in results if item["code"] in industry_lookup]
     _attach_names(results, warehouse, industry_lookup=industry_lookup)
@@ -274,6 +282,8 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
     start = (page - 1) * page_size
     page_items = results[start:start + page_size]
     return {"conditions": c, "as_of": as_of or (results[0]["date"] if results else None),
+            "source": {"stock_daily": daily_result.context,
+                       "industry_membership": "published" if industry_lookup is not None else None},
             "count": len(page_items), "total_count": total_count, "page": page,
             "page_size": page_size, "pages": max(1, math.ceil(total_count / page_size)), "items": page_items}
 
@@ -313,60 +323,62 @@ def _matches_identity(item: dict, conditions: dict) -> bool:
 
 
 def stock_series(code: str, *, days: int = 120, as_of: str = "",
-                 warehouse: Optional[Warehouse] = None) -> dict:
-    """Return local daily series for the discovery detail panel."""
+                 warehouse: Optional[Warehouse] = None,
+                 allow_legacy: bool = False) -> dict:
+    """Return a date-bounded series from Published stock_daily."""
     warehouse = warehouse or Warehouse()
-    files = _files(warehouse)
     days = max(20, min(int(days), 750))
-    con = duckdb.connect()
-    try:
-        query = f"SELECT CAST(date AS DATE) AS date, open, close, high, low, volume, amount FROM read_parquet({files}) WHERE code=? "
-        params = [code]
-        if as_of:
-            query += "AND date <= ? "
-            params.append(as_of)
-        query += "ORDER BY date DESC LIMIT ?"
-        params.append(days)
-        frame = con.execute(query, params).fetchdf().sort_values("date")
-    finally:
-        con.close()
+    result = DatasetAccess(warehouse).load_dataset(
+        "stock_daily", symbols=[str(code).lower().replace(".", "")],
+        required_quality="WARNING", allow_legacy=allow_legacy,
+    )
+    frame = _prepare_daily(result.data)
+    if as_of:
+        frame = frame[frame["date"] <= pd.Timestamp(as_of)]
+    frame = frame.sort_values("date").tail(days)
     return {"code": code, "dates": [str(x)[:10] for x in frame["date"]],
             "open": [_round(x) for x in frame.get("open", [])],
             "close": [_round(x) for x in frame.get("close", [])],
             "high": [_round(x) for x in frame.get("high", [])],
             "low": [_round(x) for x in frame.get("low", [])],
             "volume": [_round(x) for x in frame.get("volume", [])],
-            "amount": [_round(x) for x in frame.get("amount", [])]}
+             "amount": [_round(x) for x in frame.get("amount", [])],
+            "context": {"stock_daily": result.context}}
 
 
 def stock_frame_with_indicators(code: str, *, days: int = 750,
                                 as_of: str = "",
-                                warehouse: Optional[Warehouse] = None,
-                                indicator_columns: Optional[list[str]] = None) -> pd.DataFrame:
+                                 warehouse: Optional[Warehouse] = None,
+                                 indicator_columns: Optional[list[str]] = None,
+                                 allow_legacy: bool = False) -> pd.DataFrame:
     """取某标的原始 OHLCV + 统一指标列（indicators 分区），按日期对齐。
 
     供策略层（operation_points 等）消费统一指标层，避免自算。
     """
-    import pandas as _pd
     warehouse = warehouse or Warehouse()
     code_nodot = str(code).lower().replace(".", "")
-    files = _files(warehouse)
     days = max(20, min(int(days), 750))
-    con = duckdb.connect()
+    daily_result = DatasetAccess(warehouse).load_dataset(
+        "stock_daily", symbols=[code_nodot],
+        required_quality="WARNING", allow_legacy=allow_legacy,
+    )
+    frame = _prepare_daily(daily_result.data)
+    if as_of:
+        frame = frame[frame["date"] <= pd.Timestamp(as_of)].tail(days)
+    frame = frame.sort_values("date").tail(days)
     try:
-        query = (f"SELECT CAST(date AS DATE) AS date, open, close, high, low, volume, amount "
-                 f"FROM read_parquet({files}) WHERE code=? ")
-        params = [code_nodot]
-        if as_of:
-            query += "AND date <= ? "
-            params.append(as_of)
-        query += "ORDER BY date DESC LIMIT ?"
-        params.append(days)
-        frame = con.execute(query, params).fetchdf().sort_values("date")
-    finally:
-        con.close()
-    ind = warehouse.read_indicator_code(code_nodot, days=days)
+        indicator_result = DatasetAccess(warehouse).load_dataset(
+            "indicators", symbols=[code_nodot],
+            required_quality="PASS", allow_legacy=False,
+        )
+        ind = indicator_result.data.copy()
+    except DatasetAccessError:
+        ind = None
+        indicator_result = None
     if ind is not None and not ind.empty:
+        ind["date"] = pd.to_datetime(ind["date"])
+        if as_of:
+            ind = ind[ind["date"] <= pd.Timestamp(as_of)]
         ind = ind.sort_values("date").reset_index(drop=True)
         want = [c for c in (indicator_columns or ["ma5", "ma20", "ma60", "atr14"])
                 if c in ind.columns]
@@ -381,6 +393,7 @@ def _industry_lookup(warehouse: Warehouse, as_of: str = "") -> dict[str, str]:
 
     result = DatasetAccess(warehouse).load_dataset(
         "industry_membership", end_date=as_of or None, required_quality="PASS",
+        allow_legacy=False,
     )
     frame = result.data
     if frame.empty:
@@ -404,7 +417,8 @@ def _attach_names(items: list[dict], warehouse: Warehouse,
     for item in items:
         name, industry = lookup.get(item["code"], ("", ""))
         item["name"] = name or item["code"]
-        item["industry"] = (industry_lookup or {}).get(item["code"], industry or "")
+        item["industry"] = ((industry_lookup or {}).get(item["code"], "")
+                             if industry_lookup is not None else industry or "")
 
 
 def _float(value):
