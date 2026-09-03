@@ -218,6 +218,15 @@ class WarehouseSource:
         """从在线源退化为空快照；仓库源不持实时快照。"""
         return {}
 
+    def fetch_fundamental_history(self, code: str) -> pd.DataFrame:
+        """Read the symbol-partitioned fundamentals warehouse data."""
+        normalized = self._validated_code(code)
+        frame = self._warehouse.read_fundamentals(normalized)
+        return frame if frame is not None else pd.DataFrame()
+
+    def fetch_instrument(self, code: str) -> dict:
+        return self._warehouse.get_instrument(self._validated_code(code)) or {}
+
     def fetch_minute_series(self, code: str, day: Optional[str] = None) -> pd.DataFrame:
         from datetime import datetime
 

@@ -74,6 +74,7 @@ class AnalysisResult:
     chart_backtest_path: Optional[str] = None
     chart_perf_path: Optional[str] = None
     report_path: Optional[str] = None
+    data_sources: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """转前端可用 dict"""
@@ -86,6 +87,7 @@ class AnalysisResult:
             "current_price": self.technical.get("current_price"),
             "trend": self.technical.get("trend"),
             "volatility": self.technical.get("volatility"),
+            "data_sources": self.data_sources,
         }
         if self.kline is not None and len(self.kline):
             d["data_start"] = str(self.kline["date"].iloc[0])[:10]
@@ -170,13 +172,26 @@ class AnalysisEngine:
             logger.warning("统一数据源 K线读取失败(%s)，回退 baostock: %s", code, e)
         if kline is None or kline.empty:
             kline = fetcher.get_kline(code=code, start_date=start_date, end_date=end_date)
-        basic = fetcher.get_stock_basic(code)
-        profit = fetcher.get_profit_data(code, profit_year, profit_q)
+        from StockInvestmentTool.datasource.base import WarehouseSource
+        warehouse_source = WarehouseSource()
+        basic = warehouse_source.fetch_instrument(code)
+        basic_source = "warehouse" if basic else "online_fallback"
+        fundamentals = warehouse_source.fetch_fundamental_history(code)
+        profit = {}
+        if not fundamentals.empty:
+            latest = fundamentals.sort_values("stat_date").iloc[-1]
+            profit = latest.to_dict()
+            profit_source = "warehouse"
+        else:
+            profit = fetcher.get_profit_data(code, profit_year, profit_q)
+            profit_source = "online_fallback"
         divs = []
         for y in range(profit_year - 5, profit_year + 1):
             divs.extend(fetcher.get_dividend_data(code, y))
 
-        return {"kline": kline, "basic": basic, "profit": profit, "dividends": divs}
+        return {"kline": kline, "basic": basic, "profit": profit, "dividends": divs,
+                "data_sources": {"basic": basic_source, "fundamentals": profit_source,
+                                  "dividends": "online_fallback"}}
 
     # ── 技术指标 ─────────────────────────────────────────
 
@@ -395,6 +410,7 @@ class AnalysisEngine:
         with StockDataFetcher() as fetcher:
             data = self._fetch(fetcher, code, start_date, end_date)
         result.kline = data["kline"]
+        result.data_sources = data.get("data_sources", {})
 
         # 2. 技术指标
         _progress("技术分析", 30)

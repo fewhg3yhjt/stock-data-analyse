@@ -182,6 +182,14 @@ class Warehouse:
         with self._conn() as c:
             return {r[0]: r[1] for r in c.execute("SELECT code,type FROM instruments")}
 
+    def get_instrument(self, code: str) -> Optional[dict]:
+        """读取数据模块中的标的基础资料。"""
+        normalized = str(code).lower().replace(".", "")
+        with self._conn() as c:
+            c.row_factory = sqlite3.Row
+            row = c.execute("SELECT * FROM instruments WHERE code=?", (normalized,)).fetchone()
+        return dict(row) if row else None
+
     # ── 日线分区读写 ────────────────────────────────────
 
     def daily_partition(self, month: str) -> Path:

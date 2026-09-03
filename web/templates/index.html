@@ -314,6 +314,10 @@ form.addEventListener('submit', async (e) => {
     if (data.status === 'error') { showError(data.error); return; }
     if (data.status === 'success') {
       loading.style.display = 'none';
+      if (data.data_sources) {
+        const sources = Object.entries(data.data_sources).map(([key, value]) => `${key}: ${value === 'warehouse' ? '数据模块' : '在线兜底'}`).join(' · ');
+        document.getElementById('save-hint').textContent = '数据来源：' + sources;
+      }
       renderResults(data);
     } else if (data.status === 'running' && data._query_url) {
       pollAnalysisTask(data._query_url);
