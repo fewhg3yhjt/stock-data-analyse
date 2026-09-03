@@ -2521,6 +2521,7 @@ def api_market_discovery_stocks():
         result = discover_stocks(
             payload.get("conditions"), top_n=payload.get("top_n", 50),
             as_of=(payload.get("as_of") or "")[:10],
+            membership_as_of=(payload.get("membership_as_of") or payload.get("sector_snapshot_date") or "")[:10],
         )
         result["run_id"] = DiscoveryRunStore().save(
             as_of=result.get("as_of"), conditions=result.get("conditions", {}),
@@ -2574,6 +2575,14 @@ def api_market_discovery_options():
         return flask.jsonify({"status": "success", "industries": [x["label"] for x in options["csrc"]], "options": options})
     except Exception as exc:
         return flask.jsonify({"status": "error", "error": str(exc)}), 500
+
+
+@web_app.route("/market/board_options", methods=["GET"])
+def market_board_options():
+    from StockInvestmentTool.portfolio.dashboard import DashboardService
+    category = flask.request.args.get("category", "ths_industry")
+    return flask.jsonify({"status": "success", "category": category,
+                          "options": DashboardService(_get_manager()).board_options(category)})
 
 
 @web_app.route("/operation-points", methods=["GET"])
