@@ -440,59 +440,59 @@ class TakeProfitOptimizer:
 
     @property
     def _trail_thresholds(self) -> list[float]:
-        return getattr(self, "__trail_thresholds", [0.03, 0.04, 0.05, 0.06, 0.08, 0.10])
+        return self.__dict__.setdefault("_trail_thresholds", [0.03, 0.04, 0.05, 0.06, 0.08, 0.10])
 
     @_trail_thresholds.setter
     def _trail_thresholds(self, v):
-        self.__trail_thresholds = v
+        self.__dict__["_trail_thresholds"] = v
 
     @property
     def _buy_offsets(self) -> list[float]:
-        return getattr(self, "__buy_offsets", list(Config.MA_OFFSETS))
+        return self.__dict__.setdefault("_buy_offsets", list(Config.MA_OFFSETS))
 
     @_buy_offsets.setter
     def _buy_offsets(self, v):
-        self.__buy_offsets = v
+        self.__dict__["_buy_offsets"] = v
 
     @property
     def _left_zones(self) -> dict:
-        return getattr(self, "__left_zones", LEFT_SIDE_ZONES)
+        return self.__dict__.setdefault("_left_zones", LEFT_SIDE_ZONES)
 
     @_left_zones.setter
     def _left_zones(self, v):
-        self.__left_zones = v
+        self.__dict__["_left_zones"] = v
 
     @property
     def _left_sell_ratio(self) -> float:
-        return getattr(self, "__left_sell_ratio", LEFT_SIDE_SELL_RATIO)
+        return self.__dict__.setdefault("_left_sell_ratio", LEFT_SIDE_SELL_RATIO)
 
     @_left_sell_ratio.setter
     def _left_sell_ratio(self, v):
-        self.__left_sell_ratio = v
+        self.__dict__["_left_sell_ratio"] = v
 
     @property
     def _left_half_profit(self) -> float:
-        return getattr(self, "__left_half_profit", LEFT_SIDE_HALF_PROFIT)
+        return self.__dict__.setdefault("_left_half_profit", LEFT_SIDE_HALF_PROFIT)
 
     @_left_half_profit.setter
     def _left_half_profit(self, v):
-        self.__left_half_profit = v
+        self.__dict__["_left_half_profit"] = v
 
     @property
     def _right_drawdown(self) -> dict:
-        return getattr(self, "__right_drawdown", RIGHT_SIDE_DRAWDOWN_THRESHOLD)
+        return self.__dict__.setdefault("_right_drawdown", RIGHT_SIDE_DRAWDOWN_THRESHOLD)
 
     @_right_drawdown.setter
     def _right_drawdown(self, v):
-        self.__right_drawdown = v
+        self.__dict__["_right_drawdown"] = v
 
     @property
     def _volume_surge(self) -> float:
-        return getattr(self, "__volume_surge", VOLUME_SURGE_THRESHOLD)
+        return self.__dict__.setdefault("_volume_surge", VOLUME_SURGE_THRESHOLD)
 
     @_volume_surge.setter
     def _volume_surge(self, v):
-        self.__volume_surge = v
+        self.__dict__["_volume_surge"] = v
 
     # ── 交叉验证支撑位（对齐 Prompt Part4）─────────────────
 
@@ -711,7 +711,8 @@ class TakeProfitOptimizer:
                 or activation_value >= avg_cost * (1 + self.min_profit_for_activation)
             )
             drawdown_by_type = dict(self._right_drawdown or {})
-            drawdown_by_type[self.stock_type] = float(trail_threshold)
+            resolved_trail = float(trail_threshold if trail_threshold is not None else self._right_drawdown.get(self.stock_type, 0.05))
+            drawdown_by_type[self.stock_type] = resolved_trail
             should_sell = profit_ready and right_side_sell_action(
                 peak_price=peak_price,
                 current_price=close,
@@ -728,7 +729,7 @@ class TakeProfitOptimizer:
                     "amount": round(shares * fill, 2),
                     "pnl": round(shares * (fill - avg_cost), 2),
                     "reason": f"达到盈利启动条件后从峰值{peak_price:.2f}回撤{dd_pct:.1f}%"
-                               f"（阈值{self.stock_type}类{trail_threshold*100:.0f}%），触发右侧清仓",
+                               f"（阈值{self.stock_type}类{resolved_trail*100:.0f}%），触发右侧清仓",
                 })
                 return cash, 0.0, 0.0, 0, 0.0, "closed", left_tier_sold, True
 

@@ -48,7 +48,8 @@ class AnalysisOptions:
 
     # 回测模式: 默认参数网格搜索优化；为 True 时跳过优化用固定参数
     no_optimize: bool = False
-    trail_threshold: float = 0.05
+    trail_threshold: Optional[float] = None
+    auto_optimize: bool = False
 
     # 可选: LLM 流式输出
     api_stream: bool = False

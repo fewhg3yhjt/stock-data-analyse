@@ -160,7 +160,8 @@ class ChartGenerator:
 
         ax1.legend(loc="best")
         ax1.grid(True, alpha=0.3)
-        ax1.set_title(f"{stock_name} 回测 — 右侧回撤阈值 {int(trail_threshold * 100)}%")
+        threshold_pct = int(float(trail_threshold or 0.05) * 100)
+        ax1.set_title(f"{stock_name} 回测 — 右侧回撤阈值 {threshold_pct}%")
         ax1.set_ylabel("价格 (元)")
 
         # ── 下子图：权益曲线 ──

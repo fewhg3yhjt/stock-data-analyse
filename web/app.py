@@ -171,6 +171,7 @@ def _run_analysis(task_id: str, code: str, name: str,
                     skip_charts=False,
                     stock_type=stock_type,
                     initial_cash=initial_cash if initial_cash else None,
+                    no_optimize=True,
                 )
 
                 result = engine.analyze(
