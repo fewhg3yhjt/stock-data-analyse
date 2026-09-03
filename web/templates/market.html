@@ -15,19 +15,6 @@
     <div class="ui-card-header"><span><i class="fas fa-arrows-rotate"></i> 板块轮动</span><span class="note">证监会行业 / 同花顺行业 / 同花顺概念</span></div>
     <div class="note market-data-note">轮动数据严格按分类读取 Published Dataset，不在分类之间回退或混用。</div>
     <div class="market-tabs" role="tablist"><button class="ui-button market-tab active" data-tab="csrc">证监会行业</button><button class="ui-button market-tab" data-tab="ths_industry">同花顺行业</button><button class="ui-button market-tab" data-tab="ths_concept">同花顺概念</button></div>
-    <div class="rotation-filters controls" aria-label="轮动表筛选">
-      <label>状态 <select data-filter="status"><option value="">全部</option></select></label>
-      <label>行业/板块 <select data-filter="sector"><option value="">全部</option></select></label>
-      <label>评分 <select data-filter="score"><option value="">全部</option></select></label>
-      <label>1日 <select data-filter="return_1d"><option value="">全部</option></select></label>
-      <label>5日 <select data-filter="return_5d"><option value="">全部</option></select></label>
-      <label>20日 <select data-filter="return_20d"><option value="">全部</option></select></label>
-      <label>上涨比例 <select data-filter="up_ratio"><option value="">全部</option></select></label>
-      <label>成交额比 <select data-filter="amount_ratio"><option value="">全部</option></select></label>
-      <label>成员数 <select data-filter="member_count"><option value="">全部</option></select></label>
-      <label>龙头 <select data-filter="leader"><option value="">全部</option></select></label>
-      <button class="ui-button" type="button" data-filter-reset>重置筛选</button>
-    </div>
     <div id="rotation-csrc" class="rotation-panel"></div><div id="rotation-ths_industry" class="rotation-panel" style="display:none"></div><div id="rotation-ths_concept" class="rotation-panel" style="display:none"></div>
   </div>
   <div class="ui-card"><div class="ui-card-header"><span><i class="fas fa-sitemap"></i> 股票行业归属覆盖</span><span class="note">证监会行业分类 · 快照 {{ industry_membership.snapshot_date or '暂无' }}</span></div><div class="stat-grid compact-stats"><div class="stat-card"><div class="value">{{ industry_membership.total_stocks or 0 }}</div><div class="label">有效股票总数</div></div><div class="stat-card"><div class="value">{{ industry_membership.covered_stocks or 0 }}</div><div class="label">已有行业归属</div></div><div class="stat-card"><div class="value">{{ industry_membership.uncovered_stocks or 0 }}</div><div class="label">未归属/历史标的</div></div><div class="stat-card"><div class="value">{{ industry_membership.coverage_pct or 0 }}%</div><div class="label">行业归属覆盖率</div></div></div><div class="note market-data-note">未归属标的不会被硬塞进某个板块；主要是退市、暂停上市或行业源未返回的历史代码。</div><div class="table-wrap"><table class="ui-table market-table"><thead><tr><th>证监会行业</th><th>股票数量</th><th>占有效股票</th></tr></thead><tbody>{% for industry in industry_membership.industries or [] %}<tr><td>{{ industry.name }}</td><td>{{ industry.count }}</td><td>{{ '%.2f'|format(industry.count / industry_membership.total_stocks * 100) if industry_membership.total_stocks else '0.00' }}%</td></tr>{% endfor %}</tbody></table></div></div>

@@ -6,13 +6,18 @@
   const stateClass = s => s === 'strong' ? 'green' : s === 'weak' ? 'red' : 'gray';
   const value = (item, key) => key === 'as_of' ? item.as_of : item[key];
   const filterKeys = ['status', 'sector', 'score', 'return_1d', 'return_5d', 'return_20d', 'up_ratio', 'amount_ratio', 'member_count', 'leader'];
+  const filterLabels = {status:'状态', sector:'行业/板块', score:'评分', return_1d:'1日', return_5d:'5日', return_20d:'20日', up_ratio:'上涨比例', amount_ratio:'成交额比', member_count:'成员数', leader:'龙头'};
 
   function table(category, payload) {
     const panel = document.getElementById(`rotation-${category}`);
     const items = payload?.items || [];
     if (!items.length) { panel.innerHTML = `<div class="empty">${esc(payload?.reason || '暂无可用的已发布行业轮动特征。')}</div>`; return; }
-    const headers = [['rank_5d','排名（按5日收益）'],['as_of','最新日期'],['industry_name','行业/板块'],['status','状态'],['score','评分'],['return_1d','1日'],['return_5d','5日'],['return_20d','20日'],['up_ratio','上涨比例'],['amount_ratio','成交额比'],['member_count','成员数']];
-    const th = headers.map(([key, label]) => `<th data-sort="${key}">${label}<span class="sort-icon" aria-hidden="true"></span></th>`).join('');
+    const headers = [['rank_5d','排名（按5日收益）'],['as_of','最新日期'],['industry_name','行业/板块'],['status','状态'],['score','评分'],['return_1d','1日'],['return_5d','5日'],['return_20d','20日'],['up_ratio','上涨比例'],['amount_ratio','成交额比'],['member_count','成员数'],['leader','龙头']];
+    const th = headers.map(([key, label]) => {
+      const filterKey = key === 'industry_name' ? 'sector' : key;
+      const filter = filterKeys.includes(filterKey) ? `<select class="rotation-filter" data-filter="${filterKey}" aria-label="筛选${label}"><option value="">全部</option></select>` : '';
+      return `<th data-sort="${key}"><button class="rotation-sort" type="button">${label}<span class="sort-icon" aria-hidden="true"><i class="fas fa-arrow-down"></i><i class="fas fa-arrow-up"></i></span></button>${filter}</th>`;
+    }).join('');
     const rows = items.map(item => {
       item.as_of = payload.actual_data_as_of || '';
       const id = item.industry_id || item.industry_code || '';
@@ -25,11 +30,7 @@
         <td>${fmt(item.up_ratio, 1, true)}</td><td>${fmt(item.amount_ratio, 2)}</td><td>${esc(item.member_count ?? '—')}</td><td>${esc(item.leader_name || item.leader_code || '—')}</td><td class="rotation-reason">${esc(item.reason || '—')}</td>
         <td><button class="ui-button rotation-chart" data-category="${esc(category)}" data-sector-id="${esc(id)}" data-name="${esc(name)}">看走势/展开K线</button> <a class="ui-button" href="${discovery}">筛选板块内股票</a></td></tr>`;
     }).join('');
-    panel.innerHTML = `<div class="note">${esc(payload.reason || '已发布轮动数据')} · 实际交易日 ${esc(payload.actual_data_as_of || '暂无')}</div><div class="table-wrap"><table class="ui-table market-table rotation-table"><thead><tr>${th}<th>龙头</th><th>原因</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-    const defaultSort = panel.querySelector('th[data-sort="rank_5d"]');
-    defaultSort.dataset.direction = 'asc';
-    defaultSort.querySelector('.sort-icon').innerHTML = '<i class="fas fa-arrow-down" title="正序"></i>';
-    sortTable(defaultSort, false);
+    panel.innerHTML = `<div class="note">${esc(payload.reason || '已发布轮动数据')} · 实际交易日 ${esc(payload.actual_data_as_of || '暂无')}</div><div class="table-wrap"><table class="ui-table market-table rotation-table"><thead><tr>${th}<th>原因</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   function activePanel() { return document.querySelector('.rotation-panel:not([style*="display: none"])'); }
@@ -52,7 +53,7 @@
     const panel = activePanel(); if (!panel) return;
     const rows = [...panel.querySelectorAll('tbody tr:not(.rotation-chart-row)')];
     filterKeys.forEach(key => {
-      const select = document.querySelector(`[data-filter="${key}"]`); if (!select) return;
+      const select = panel.querySelector(`[data-filter="${key}"]`); if (!select) return;
       const values = new Map();
       rows.forEach(row => { const item = JSON.parse(row.dataset.item || '{}'); const raw = filterValue(row, key, item); if (raw !== '') values.set(raw, filterLabel(key, raw, item)); });
       const sorted = [...values.entries()].sort((a, b) => ['status', 'sector', 'leader'].includes(key) ? a[1].localeCompare(b[1], 'zh') : Number(a[0]) - Number(b[0]));
@@ -61,8 +62,9 @@
     });
   }
   function applyFilters() {
-    const selected = Object.fromEntries(filterKeys.map(key => [key, document.querySelector(`[data-filter="${key}"]`)?.value || '']));
-    activePanel()?.querySelectorAll('tbody tr:not(.rotation-chart-row)').forEach(row => {
+    const panel = activePanel();
+    const selected = Object.fromEntries(filterKeys.map(key => [key, panel?.querySelector(`[data-filter="${key}"]`)?.value || '']));
+    panel?.querySelectorAll('tbody tr:not(.rotation-chart-row)').forEach(row => {
       const item = JSON.parse(row.dataset.item || '{}');
       row.hidden = filterKeys.some(key => selected[key] && filterValue(row, key, item) !== selected[key]);
       const detail = row.nextElementSibling;
@@ -70,12 +72,8 @@
     });
   }
   function sortTable(th, toggle = true) {
-    const table = th.closest('table'); const key = th.dataset.sort; const current = th.dataset.direction || 'desc'; const direction = current === 'desc' ? 'asc' : 'desc';
-    if (!toggle) {
-      th.dataset.direction = 'asc';
-    }
-    const effectiveDirection = toggle ? direction : 'asc';
-    table.querySelectorAll('th[data-sort]').forEach(x => { x.dataset.direction = ''; x.querySelector('.sort-icon').innerHTML = ''; }); th.dataset.direction = effectiveDirection; th.querySelector('.sort-icon').innerHTML = effectiveDirection === 'asc' ? '<i class="fas fa-arrow-down" title="正序"></i>' : '<i class="fas fa-arrow-up" title="逆序"></i>';
+    const table = th.closest('table'); const key = th.dataset.sort; const current = th.dataset.direction || 'desc'; const effectiveDirection = current === 'desc' ? 'asc' : 'desc';
+    table.querySelectorAll('th[data-sort]').forEach(x => { x.dataset.direction = ''; x.classList.remove('sort-active'); }); th.dataset.direction = effectiveDirection; th.classList.add('sort-active');
     const body = table.tBodies[0];
     const entries = [...body.querySelectorAll('tr:not(.rotation-chart-row)')].map(row => ({row, detail: row.nextElementSibling?.classList.contains('rotation-chart-row') ? row.nextElementSibling : null}));
     entries.sort((a, b) => { const ai = JSON.parse(a.row.dataset.item || '{}'); const bi = JSON.parse(b.row.dataset.item || '{}'); const av = value(ai,key), bv = value(bi,key); const an = Number(av), bn = Number(bv); const cmp = av == null ? 1 : bv == null ? -1 : Number.isNaN(an) || Number.isNaN(bn) ? String(av).localeCompare(String(bv),'zh') : an - bn; return effectiveDirection === 'asc' ? cmp : -cmp; });
@@ -88,7 +86,7 @@
     const chartId = `rotation-chart-${btn.dataset.category}-${btn.dataset.sectorId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
     const detail = document.createElement('tr');
     detail.className = 'rotation-chart-row';
-    detail.innerHTML = `<td colspan="15"><div class="rotation-chart-meta">${esc(btn.dataset.name)} · 加载中…</div><div id="${chartId}" class="chart rotation-inline-chart"></div></td>`;
+    detail.innerHTML = `<td colspan="14"><div class="rotation-chart-meta">${esc(btn.dataset.name)} · 加载中…</div><div id="${chartId}" class="chart rotation-inline-chart"></div></td>`;
     row.after(detail); btn.textContent = '收起K线';
     try {
       const query = new URLSearchParams({category: btn.dataset.category, sector_id: btn.dataset.sectorId, name: btn.dataset.name});
@@ -109,8 +107,8 @@
   async function loadStock() { const code=document.getElementById('stock-select').value; if(!code)return; try { const d=await (await fetch('/market/stock_chart?code='+encodeURIComponent(code))).json(); if(d.status!=='success')return showUiMessage(d.error||'股票加载失败','error'); StockChart.drawLine(document.getElementById(chartEls.stock), {dates:d.dates||[],series:[{name:code,key:'close',data:d.close||[]}] ,lines:d.lines||[]}); document.getElementById('stock-state').textContent='市场状态：'+(d.market_state||''); document.getElementById('stock-legend').textContent='数据截至：'+(d.as_of||d.dates?.at(-1)||'—'); } catch(e) { showUiMessage('股票加载失败: '+e.message,'error'); } }
   function initRotation() { Object.entries(rotations).forEach(([category,payload])=>table(category,payload)); rebuildFilters(); drawRotationCharts(); }
   document.querySelectorAll('.market-tab').forEach(tab=>tab.onclick=()=>{ document.querySelectorAll('.market-tab').forEach(x=>x.classList.toggle('active',x===tab)); document.querySelectorAll('.rotation-panel').forEach(x=>x.style.display=x.id===`rotation-${tab.dataset.tab}`?'':'none'); rebuildFilters(); applyFilters(); });
-  document.querySelector('.rotation-card').addEventListener('click', e=>{ const th=e.target.closest('th[data-sort]'); if(th)sortTable(th); });
-  document.querySelectorAll('[data-filter]').forEach(x=>x.onchange=applyFilters); document.querySelector('[data-filter-reset]').onclick=()=>{filterKeys.forEach(key=>{const select=document.querySelector(`[data-filter="${key}"]`);if(select)select.value='';});applyFilters();};
+  document.querySelector('.rotation-card').addEventListener('click', e=>{ const sortButton=e.target.closest('.rotation-sort'); if(sortButton)sortTable(sortButton.closest('th')); });
+  document.querySelector('.rotation-card').addEventListener('change', e=>{ if(e.target.matches('[data-filter]')) applyFilters(); });
   document.getElementById('board-select').onchange=e=>e.currentTarget.dataset.sectorId=e.currentTarget.selectedOptions[0]?.dataset.sectorId||''; document.getElementById('board-category').onchange=e=>loadBoardOptions(e.target.value);
   window.loadBoard=loadBoard; window.loadStock=loadStock; const stock=document.getElementById('stock-select'); (window.MARKET_POSITIONS||[]).forEach(x=>{const o=document.createElement('option');o.value=x.code;o.textContent=x.name;stock.appendChild(o);}); if(stock.options.length)loadStock();
   initRotation(); loadIndices(); loadBoardOptions(document.getElementById('board-category').value);
