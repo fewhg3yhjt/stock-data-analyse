@@ -69,8 +69,7 @@ _heavy_task_lock = threading.BoundedSemaphore(1)
 
 
 def _analysis_db_path() -> str:
-    from StockInvestmentTool.config import Config
-    return str(Config.DATA_DIR / "management.db")
+    return str(management_db_path())
 
 
 def _store_analysis_task(task_id: str, task_type: str, code: str, status: dict) -> None:
@@ -149,19 +148,21 @@ def _run_analysis(task_id: str, code: str, name: str,
                    scheme_content: str = ""):
     """后台执行分析流程（通过统一 AnalysisEngine）"""
     status = _analysis_status[task_id]
+    def update_status(**values):
+        status.update(values)
+        _store_analysis_task(task_id, "analysis", code, status)
+
     with _heavy_task_lock:
         with monitor_memory(f"analysis:{task_id}") as memory:
             try:
-                status["stage"] = "初始化引擎"
-                status["progress"] = 5
+                update_status(stage="初始化引擎", progress=5)
                 scheme = None
                 if scheme_content:
                     from StockInvestmentTool.core.composer import model_to_config, yaml_to_model
                     scheme = model_to_config(yaml_to_model(scheme_content))
                 engine = AnalysisEngine(scheme_name, scheme=scheme)
 
-                status["stage"] = "获取数据"
-                status["progress"] = 10
+                update_status(stage="获取数据（数据模块优先）", progress=10)
 
                 options = AnalysisOptions(
                     do_backtest=do_backtest,
@@ -178,13 +179,12 @@ def _run_analysis(task_id: str, code: str, name: str,
                     start_date=start_date,
                     end_date=end_date,
                     options=options,
-                    progress_callback=lambda stage, progress: status.update(
+                    progress_callback=lambda stage, progress: update_status(
                         stage=stage, progress=progress
                     ),
                 )
 
-                status["stage"] = "生成结果"
-                status["progress"] = 95
+                update_status(stage="生成结果", progress=95)
 
                 result_data = result.to_dict()
 
@@ -205,17 +205,11 @@ def _run_analysis(task_id: str, code: str, name: str,
                     except OSError:
                         pass
 
-                status["result"] = result_data
-                status["status"] = "success"
-                status["stage"] = "完成"
-                status["progress"] = 100
+                update_status(result=result_data, status="success", stage="完成", progress=100)
 
             except Exception as e:
                 logger.exception("分析失败")
-                status["status"] = "error"
-                status["error"] = str(e)
-                status["stage"] = "失败"
-                status["progress"] = -1
+                update_status(status="error", error=str(e), stage="失败", progress=-1)
             finally:
                 # monitor_memory finalizes its result after this block exits.
                 pass
@@ -3492,19 +3486,24 @@ def market_page():
                    "深证成指": "sz.399001", "创业板指": "sz.399006"}
         board_names = svc.board_names()
         board_overview = svc.board_overview()
+        industry_rotation = svc.industry_rotation_overview()
         industry_membership = svc.industry_membership_overview()
         positions_codes = [{"code": p["stock_code"], "name": p["stock_name"]}
                            for p in svc.war_room()["positions"]]
         return flask.render_template("market.html", indices=indices,
                                      board_names=board_names,
                                      board_overview=board_overview,
+                                      industry_rotation=industry_rotation,
                                      industry_membership=industry_membership,
                                      positions_codes=positions_codes, error=None)
     except Exception as e:
         logger.exception("大盘页加载失败")
         return flask.render_template("market.html", indices={}, board_names=[],
-                                     board_overview=[],
-                                     industry_membership={},
+                                      board_overview=[],
+                                      industry_rotation={"status": "no_data", "items": [],
+                                                          "actual_data_as_of": None,
+                                                          "reason": "行业轮动数据读取失败"},
+                                      industry_membership={},
                                      positions_codes=[], error=str(e))
 
 
@@ -3761,6 +3760,10 @@ def create_app():
 
     # 每日自动任务（APScheduler，时间 DAILY_RUN_TIME 可配置）
     from StockInvestmentTool.web.scheduler import init_scheduler
+    # 分析任务状态复用数据模块的统一管理库，确保重构后的库已建表。
+    from StockInvestmentTool.ops.management_db import ManagementDB
+    ManagementDB(management_db_path())
+    _recover_analysis_tasks()
     init_scheduler(app)
 
     return app
