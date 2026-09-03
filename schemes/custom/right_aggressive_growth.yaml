@@ -64,8 +64,8 @@ sell_rules:
 - type: left_side_fixed
   params:
     reference_price: year_high
-    profit_activation_enabled: false
-    min_profit_for_activation: 0
+    profit_activation_enabled: true
+    min_profit_for_activation: 0.1
     year_high_window: 252
     zones:
     - name: 预警区
@@ -93,11 +93,11 @@ sell_rules:
     profit_activation_enabled: true
     min_profit_for_activation: 0.0
     drawdown_by_type:
-      A: 0.01
-      B: 0.01
-      C: 0.01
-      D: 0.01
-      E: 0.01
+      A: 0.02
+      B: 0.02
+      C: 0.02
+      D: 0.02
+      E: 0.02
 risk:
   stop_loss_by_type: {}
   volume_surge_threshold: 1.8
