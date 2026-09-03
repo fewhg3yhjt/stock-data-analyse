@@ -3158,6 +3158,54 @@ def api_notify_rules():
         return flask.jsonify({"status": "error", "error": str(e)}), 400
 
 
+@web_app.route("/api/notify/rules/bulk", methods=["POST"])
+def api_notify_rules_bulk():
+    """批量启用、停用或删除通知规则。"""
+    from StockInvestmentTool.biz.triggers import (
+        NOTIFICATION_SUBSCRIPTION_KIND,
+        load_triggers,
+        save_triggers,
+    )
+
+    try:
+        payload = flask.request.get_json(force=True, silent=True) or {}
+        action = str(payload.get("action") or "").strip().lower()
+        rule_ids = payload.get("ids") or []
+        if action not in {"enable", "disable", "delete"}:
+            return flask.jsonify({"status": "error", "error": "不支持的批量操作"}), 400
+        if not isinstance(rule_ids, list) or not rule_ids:
+            return flask.jsonify({"status": "error", "error": "请选择至少一条规则"}), 400
+
+        selected = {str(rule_id) for rule_id in rule_ids if str(rule_id).strip()}
+        rules = load_triggers()
+        matched = [rule for rule in rules if str(rule.get("id") or "") in selected]
+        if not matched:
+            return flask.jsonify({"status": "error", "error": "未找到选中的规则"}), 404
+
+        protected = {
+            str(rule.get("id")) for rule in matched
+            if rule.get("kind") == NOTIFICATION_SUBSCRIPTION_KIND
+        }
+        if action == "delete":
+            deletable = selected - protected
+            rules = [rule for rule in rules if str(rule.get("id") or "") not in deletable]
+            save_triggers(rules)
+        else:
+            for rule in rules:
+                if str(rule.get("id") or "") in selected:
+                    rule["enabled"] = action == "enable"
+            save_triggers(rules)
+
+        return flask.jsonify({
+            "status": "success",
+            "action": action,
+            "count": len(matched) - len(protected) if action == "delete" else len(matched),
+            "protected": sorted(protected),
+        })
+    except Exception as e:
+        return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
 @web_app.route("/api/notify/config", methods=["GET"])
 def api_notify_config():
     """渠道 + 邮件收件人配置状态（I5 相关，不回显明文）。"""

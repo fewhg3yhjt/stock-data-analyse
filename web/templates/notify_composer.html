@@ -12,6 +12,7 @@
   {% if error %}<div class="error notify-error">{{ error }}</div>{% endif %}
   <div class="ui-card">
     <h2><i class="fas fa-filter"></i> 触发器规则（条件 × 时间 × 渠道）</h2>
+    <div class="rule-bulk-bar"><label class="rule-select-all"><input id="rules-select-all" type="checkbox"> 全选</label><span class="help" id="rules-selected-count">已选 0 条</span><div class="rule-bulk-actions"><button class="ui-button ui-button-ghost ui-button-sm" data-action="bulk-enable" disabled>批量启用</button><button class="ui-button ui-button-ghost ui-button-sm" data-action="bulk-disable" disabled>批量停用</button><button class="ui-button ui-button-danger ui-button-sm" data-action="bulk-delete" disabled>批量删除</button></div></div>
     <div id="rules-list"></div>
     <button class="ui-button ui-button-ghost ui-button-sm" data-action="add-rule"><i class="fas fa-plus"></i> 添加触发器</button>
     <div class="notify-save-actions"><button class="ui-button ui-button-primary" data-action="save-rules"><i class="fas fa-save"></i> 保存触发器（即时生效）</button><span class="help" id="save-hint"></span></div>

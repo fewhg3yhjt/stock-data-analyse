@@ -91,3 +91,33 @@ class TestApi:
         # 可能因无邮件配置报错，但应返回 JSON 而非崩溃
         r = client.post("/api/notify/test", json={"channel": "email", "to": ""})
         assert r.status_code in (200, 400)
+
+    def test_bulk_rule_actions(self, client, monkeypatch, tmp_path):
+        from StockInvestmentTool.biz import triggers
+
+        target = tmp_path / "rules.yaml"
+        monkeypatch.setattr(triggers, "RULES_PATH", target)
+        triggers.save_triggers([
+            {"id": "r1", "name": "一", "enabled": True, "conditions": [], "schedule": {}, "channel": "email"},
+            {"id": "r2", "name": "二", "enabled": True, "conditions": [], "schedule": {}, "channel": "email"},
+        ], target)
+        response = client.post("/api/notify/rules/bulk", json={"action": "disable", "ids": ["r1", "r2"]})
+        assert response.status_code == 200
+        assert all(not rule["enabled"] for rule in triggers.load_triggers(target) if rule["id"] in {"r1", "r2"})
+
+    def test_bulk_delete_keeps_system_subscription(self, client, monkeypatch, tmp_path):
+        from StockInvestmentTool.biz import triggers
+
+        target = tmp_path / "rules.yaml"
+        monkeypatch.setattr(triggers, "RULES_PATH", target)
+        triggers.save_triggers([{
+            "id": "notification_task_failed", "name": "任务失败", "enabled": True,
+            "kind": "notification_subscription", "event_type": "TASK_FAILED",
+            "conditions": [], "schedule": {}, "channel": "email",
+        }, {"id": "custom", "name": "自定义", "enabled": True,
+              "conditions": [], "schedule": {}, "channel": "email"}], target)
+        response = client.post("/api/notify/rules/bulk", json={"action": "delete", "ids": ["notification_task_failed", "custom"]})
+        assert response.status_code == 200
+        ids = {rule["id"] for rule in triggers.load_triggers(target)}
+        assert "notification_task_failed" in ids
+        assert "custom" not in ids
