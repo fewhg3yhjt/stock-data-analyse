@@ -89,7 +89,7 @@ def _store_analysis_task(task_id: str, task_type: str, code: str, status: dict) 
                           status.get("status", "running"),
                           status.get("stage", ""),
                           int(status.get("progress", 0) or 0),
-                          _to_json_safe(status.get("result")),
+                           json.dumps(_to_json_safe(status.get("result")), ensure_ascii=False),
                           status.get("error"),
                           status.get("_created_at", _dt.now().isoformat(timespec="seconds")),
                           _dt.now().isoformat(timespec="seconds") if status.get("status") in ("success", "error") else None))
