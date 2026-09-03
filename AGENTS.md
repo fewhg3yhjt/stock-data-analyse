@@ -26,3 +26,8 @@
 - `TENCENT_HTTP_TIMEOUT` controls each Tencent HTTP request timeout (default 15 seconds). Keep requests serial and preserve `BAOSTOCK_QUERY_INTERVAL` (default 0.3 seconds); do not use these settings for broad or historical collection.
 - Failed/timeout task notifications are written to the existing business notification outbox as `TASK_FAILED`; delivery is performed by the outbox worker, never synchronously via SMTP.
 - `EMAIL_TO` must be configured for task-failure email delivery. Missing `EMAIL_TO` still records the event but creates no email delivery.
+
+## Charting conventions
+
+- Web pages must use the shared `StockChart` component. Prefer `StockChart.drawLine` or `StockChart.drawKLine`; do not duplicate chart options, tooltip, dataZoom, or resize configuration in page scripts.
+- Chart data must come from a Published Dataset and include an explicit `as_of` date in the response or data contract.

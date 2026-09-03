@@ -1541,7 +1541,8 @@ class DashboardService:
         import pandas as pd
 
         name = str(name or "").strip()
-        result = {"name": name, "dates": [], "close": []}
+        result = {"name": name, "dates": [], "close": [], "as_of": None,
+                  "category": category, "sector_id": str(sector_id or "")}
         if not name and not sector_id:
             return result
         try:
@@ -1576,6 +1577,7 @@ class DashboardService:
                 return {**result, "error": "该板块暂无可用日线数据"}
             result["dates"] = [d.strftime("%Y-%m-%d") for d in df["trading_date"]]
             result["close"] = [round(float(value), 2) for value in df["close"]]
+            result["as_of"] = result["dates"][-1]
             return result
         except Exception as e:
             logger.warning("板块指数 %s 获取失败: %s", name, e)
@@ -1707,6 +1709,7 @@ class DashboardService:
                 "rank_1d": numeric(row, "rank_1d", 0),
                 "rank_5d": numeric(row, "rank_5d", 0),
                 "rank_20d": numeric(row, "rank_20d", 0),
+                "member_count": int(row.get("member_count")) if row.get("member_count") is not None and not pd.isna(row.get("member_count")) else None,
                 "leader": leader_code,
                 "leader_code": leader_code,
                 "leader_name": leader_names.get(leader_code, leader_code),

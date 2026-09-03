@@ -23,3 +23,27 @@ def test_data_assets_page_loads_management_actions_after_inline_details():
     assert "/regenerate" in admin
     assert "/publish" in admin
     assert "/rollback" in admin
+
+
+def test_market_page_rotation_contract():
+    template = (ROOT / "web/templates/market.html").read_text(encoding="utf-8")
+    script = (ROOT / "web/static/market.js").read_text(encoding="utf-8")
+
+    assert "window.MARKET_ROTATIONS" in template
+    assert 'data-filter="status"' in template
+    assert 'data-filter="sector"' in template
+    rotation_markup = template.split('<div class="ui-card rotation-card">', 1)[1].split(
+        '<div class="ui-card"><div class="ui-card-header"><span><i class="fas fa-sitemap"', 1
+    )[0]
+    assert '<tbody>{% for' not in rotation_markup
+    assert "排名（按5日收益）" in script
+    for field in (
+        "rank_5d", "as_of", "industry_name", "status", "score", "return_1d",
+        "return_5d", "return_20d", "up_ratio", "amount_ratio", "member_count",
+    ):
+        assert field in script
+    assert "看走势/展开K线" in script
+    assert "筛选板块内股票" in script
+    assert "StockChart.drawLine" in script
+    assert "tooltip:" not in script
+    assert "dataZoom" not in script
