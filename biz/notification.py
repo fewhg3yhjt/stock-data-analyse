@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import smtplib
 from dataclasses import dataclass, field
 from email.mime.text import MIMEText
@@ -351,6 +352,58 @@ class NotificationService:
                 "requested_quantity": requested, "executed_quantity": executed_quantity}
 
     # ── 投递 ──────────────────────────────────────────────
+
+    @staticmethod
+    def _notification_rules() -> list[dict]:
+        """读取统一通知规则；业务事件不再各自维护投递开关。"""
+        from StockInvestmentTool.biz.triggers import load_triggers
+        return load_triggers()
+
+    @classmethod
+    def _rule_for_event(cls, event: NotificationEvent) -> dict | None:
+        """按触发器 ID 或事件类型匹配一条启用规则。"""
+        for rule in cls._notification_rules():
+            if not rule.get("enabled", True):
+                continue
+            if event.event_type == "TRIGGER":
+                if str(rule.get("id") or "") == event.subject_id:
+                    return rule
+                continue
+            event_types = rule.get("event_types") or []
+            if rule.get("event_type") == event.event_type or event.event_type in event_types:
+                return rule
+        return None
+
+    def create_rule_delivery(self, event: NotificationEvent, *, template: str = "",
+                             recipient: str | None = None,
+                             channel: str | None = None) -> NotificationDelivery | None:
+        """根据统一通知规则创建投递；未匹配/已关闭规则时只保留事件。"""
+        rule = self._rule_for_event(event)
+        if rule is None:
+            logger.info("通知规则未启用或未匹配，跳过投递: %s", event.event_type)
+            return None
+        target = recipient or rule.get("use_email_to") or os.getenv("EMAIL_TO", "")
+        target_channel = channel or rule.get("channel", "email")
+        if not target:
+            return None
+        existing = self.repo.db.fetchone(
+            "SELECT * FROM notification_deliveries "
+            "WHERE event_id=? AND channel=? AND recipient=? LIMIT 1",
+            (event.event_id, target_channel, target),
+        )
+        if existing:
+            return NotificationDelivery(
+                delivery_id=existing["delivery_id"], event_id=existing["event_id"],
+                channel=existing["channel"], recipient=existing["recipient"],
+                template=existing["template"], status=existing["status"],
+                attempts=existing["attempts"], last_error=existing["last_error"],
+                next_attempt_at=existing["next_attempt_at"] or None,
+                sent_at=existing["sent_at"] or None, claimed_by=existing["claimed_by"],
+                claimed_at=existing["claimed_at"] or None,
+                lease_expires_at=existing["lease_expires_at"] or None,
+                created_at=existing["created_at"],
+            )
+        return self.create_delivery(event, target_channel, target, template=template)
 
     def create_delivery(self, event: NotificationEvent, channel: str,
                         recipient: str, template: str = "") -> NotificationDelivery:

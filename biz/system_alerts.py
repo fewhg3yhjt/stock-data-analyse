@@ -47,6 +47,9 @@ def enqueue_alerts(status: dict, *, pending_threshold: int = 20, repo=None) -> l
     from StockInvestmentTool.biz.reporting import SystemAlertService
 
     service = SystemAlertService(repo)
+    from StockInvestmentTool.biz.notification import NotificationService
+
+    notifications = NotificationService(service.repo)
     ids = []
     for alert in collect_alerts(status, pending_threshold=pending_threshold):
         record = service.detect(
@@ -57,5 +60,14 @@ def enqueue_alerts(status: dict, *, pending_threshold: int = 20, repo=None) -> l
             details={"key": alert["key"]},
             priority=2,
         )
+        event = notifications.create_event(
+            event_type="SYSTEM_ALERT", subject_type="system_alert",
+            subject_id=record["alert_id"], priority=record.get("priority", 0),
+            payload={"subject": f"系统告警：{alert['alert_type']}", "text": alert["message"],
+                     "alert_id": record["alert_id"], "alert": alert},
+            data_as_of=alert["key"].rsplit(":", 1)[-1], action=alert["alert_type"],
+            trigger_fingerprint=alert["key"],
+        )
+        notifications.create_rule_delivery(event, template="system_alert")
         ids.append(record["alert_id"])
     return ids

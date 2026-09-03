@@ -272,10 +272,9 @@ def build_daily_digest(repo=None) -> dict:
         action="REPORT",
         trigger_fingerprint=f"daily|{data_date}",
     )
-    recipient = _email_recipients()
     delivery_id = ""
-    if recipient:
-        delivery = notification.create_delivery(event, "email", recipient, template="daily_digest")
+    delivery = notification.create_rule_delivery(event, template="daily_digest")
+    if delivery:
         delivery_id = delivery.delivery_id
     return {"sections": len(sections), "event_id": event.event_id, "delivery_id": delivery_id}
 

@@ -183,16 +183,12 @@ class JobRunStore:
                 data_as_of=job.get("run_date") or job.get("started_at", "")[:10],
                 action="failure", trigger_fingerprint=f"job-run|{run_id}",
             )
-            recipient = __import__("os").getenv("EMAIL_TO", "")
-            if recipient:
-                existing = service.repo.db.fetchone(
-                    "SELECT delivery_id FROM notification_deliveries "
-                    "WHERE event_id=? AND channel=? AND recipient=?",
-                    (event.event_id, "email", recipient),
-                )
-                if existing is None:
-                    service.create_delivery(event, "email", recipient,
-                                            template="task_failed")
+            existing = service.repo.db.fetchone(
+                "SELECT delivery_id FROM notification_deliveries WHERE event_id=?",
+                (event.event_id,),
+            )
+            if existing is None:
+                service.create_rule_delivery(event, template="task_failed")
         except Exception as exc:  # notification failure must not alter task result
             import logging
             logging.getLogger(__name__).warning("创建任务失败通知事件失败: %s", exc)

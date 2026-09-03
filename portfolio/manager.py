@@ -512,9 +512,6 @@ class PortfolioManager:
         from StockInvestmentTool.biz.signal_notify import ALL_SIGNALS, signal_enabled, signal_code
         from datetime import datetime as _dt
 
-        email_to = os.getenv("EMAIL_TO", "")
-        if not email_to:
-            return
         cr = (getattr(advice, "check_results", None) or {})
         # 信号 → (check_results 键, 触发字段, 中文名)
         signal_map = {
@@ -552,7 +549,7 @@ class PortfolioManager:
                 data_as_of=today, action=label,
                 trigger_fingerprint=finger,
             )
-            service.create_delivery(event, "email", email_to, template="position_signal")
+            service.create_rule_delivery(event, template="position_signal")
             logger.info("持仓信号通知已生成: %s %s", position.stock_code, signal)
 
     # ══════════════════════════════════════════════════

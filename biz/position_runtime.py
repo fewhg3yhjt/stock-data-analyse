@@ -282,12 +282,7 @@ class PositionRuntimeService:
             action="SELL_ALL",
             trigger_fingerprint=trigger_fingerprint,
         )
-        from StockInvestmentTool.biz.notification import NotificationService as _NS
-        recipient = _email_recipient()
-        if recipient:
-            NotificationService(self.repo).create_delivery(
-                event, "email", recipient, template="position_drawdown"
-            )
+        NotificationService(self.repo).create_rule_delivery(event, template="position_drawdown")
         logger.info("回撤通知已生成: %s drawdown=%.2f%% (as_of=%s)",
                     state.symbol, state.drawdown_from_high * 100, state.price_as_of)
 

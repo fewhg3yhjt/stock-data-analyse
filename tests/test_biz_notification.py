@@ -113,6 +113,40 @@ class TestNotificationService:
             "SELECT status FROM notification_deliveries WHERE delivery_id=?", (delivery.delivery_id,)
         )["status"] == DELIVERY_PROCESSING
 
+    def test_rule_delivery_respects_rule_and_is_idempotent(self, svc, tmp_path, monkeypatch):
+        from StockInvestmentTool.biz import triggers
+
+        path = tmp_path / "rules.yaml"
+        triggers.save_triggers([{
+            "id": "rule-risk", "name": "风险", "enabled": True,
+            "kind": "notification_subscription", "event_type": "RISK_ALERT",
+            "channel": "email", "priority": "instant",
+        }], path)
+        monkeypatch.setattr(triggers, "RULES_PATH", path)
+        monkeypatch.setenv("EMAIL_TO", "alerts@example.com")
+        event = svc.create_event(event_type="RISK_ALERT", symbol="sh600908")
+
+        first = svc.create_rule_delivery(event, template="risk")
+        second = svc.create_rule_delivery(event, template="risk")
+        assert first.delivery_id == second.delivery_id
+        assert svc.repo.db.fetchone("SELECT COUNT(*) AS n FROM notification_deliveries")["n"] == 1
+
+    def test_rule_delivery_keeps_event_when_disabled(self, svc, tmp_path, monkeypatch):
+        from StockInvestmentTool.biz import triggers
+
+        path = tmp_path / "rules.yaml"
+        triggers.save_triggers([{
+            "id": "rule-risk", "name": "风险", "enabled": False,
+            "kind": "notification_subscription", "event_type": "RISK_ALERT",
+        }], path)
+        monkeypatch.setattr(triggers, "RULES_PATH", path)
+        monkeypatch.setenv("EMAIL_TO", "alerts@example.com")
+        event = svc.create_event(event_type="RISK_ALERT", symbol="sh600908")
+
+        assert svc.create_rule_delivery(event) is None
+        assert svc.repo.db.fetchone("SELECT COUNT(*) AS n FROM notification_events")["n"] == 1
+        assert svc.repo.db.fetchone("SELECT COUNT(*) AS n FROM notification_deliveries")["n"] == 0
+
     def test_failed_delivery_is_backed_off(self, svc):
         event = svc.create_event(event_type="RISK_ALERT", symbol="sh600908")
         delivery = svc.create_delivery(event, channel="email", recipient="a@b.com")

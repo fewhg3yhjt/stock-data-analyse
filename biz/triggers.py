@@ -526,12 +526,9 @@ def run_trigger_rule(rule: dict, repo=None) -> dict:
         trigger_fingerprint=f"{rule.get('id')}|{datetime.now():%Y-%m-%d %H}",
     )
 
-    recipient = rule.get("use_email_to") or _email_recipients()
     delivery_id = ""
-    if recipient:
-        delivery = NotificationService(repo).create_delivery(
-            event, rule.get("channel", "email"), recipient, template="trigger"
-        )
+    delivery = NotificationService(repo).create_rule_delivery(event, template="trigger")
+    if delivery:
         delivery_id = delivery.delivery_id
         # 即时触发器立即投递；批次随 outbox_delivery 定时发送
         if rule.get("priority") == "instant":

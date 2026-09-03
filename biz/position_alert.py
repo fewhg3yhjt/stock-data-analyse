@@ -239,11 +239,7 @@ def emit_alert_event(repo=None, *, rule: dict, state: dict,
         action="ALERT_PRICE",
         trigger_fingerprint=trigger_fingerprint,
     )
-    recipient = _email_recipient()
-    if recipient:
-        NotificationService(repo).create_delivery(
-            event, "email", recipient, template="position_price_alert"
-        )
+    NotificationService(repo).create_rule_delivery(event, template="position_price_alert")
     logger.info("持仓目标价通知已生成: %s %s -> target=%s (as_of=%s)",
                 state.get("symbol"), rule["direction"], target, as_of_day)
     return {"event_id": event.event_id, "target_price": target}
