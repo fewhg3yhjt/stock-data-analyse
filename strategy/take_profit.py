@@ -316,6 +316,9 @@ class TakeProfitOptimizer:
         self.profit_activation_enabled = False
         self.profit_activation_basis = "peak_price"
         self.min_profit_for_activation = 0.08
+        self.left_profit_activation_enabled = False
+        self.left_profit_activation_basis = "current_price"
+        self.left_min_profit_for_activation = 0.0
         self.technical_support_source = "strong"
         self.dividend_anchor = dividend_anchor
         self.scheme = scheme
@@ -383,6 +386,9 @@ class TakeProfitOptimizer:
         # 左侧止盈参数
         params = rule_params("sell", "left_side_fixed")
         if params:
+            self.left_profit_activation_enabled = params.get("profit_activation_enabled", False) is not False
+            self.left_profit_activation_basis = str(params.get("profit_activation_basis", "current_price"))
+            self.left_min_profit_for_activation = float(params.get("min_profit_for_activation", 0.0))
             zones = params.get("zones")
             if isinstance(zones, list) and zones:
                 self._left_zones = {}
@@ -696,6 +702,13 @@ class TakeProfitOptimizer:
         # 当日刚买入(bought_this_bar)时不触发止盈，避免"刚在低点买、当天
         # 高点又卖"的同bar矛盾。
         if not bought_this_bar and position_phase in ("accumulating", "holding", "left_side"):
+            activation_value = peak_price if self.left_profit_activation_basis == "peak_price" else close
+            left_profit_ready = (
+                not self.left_profit_activation_enabled
+                or activation_value >= avg_cost * (1 + self.left_min_profit_for_activation)
+            )
+            if not left_profit_ready:
+                return cash, shares, total_cost, buy_stage, peak_price, position_phase, left_tier_sold, False
             tier, _ = left_side_sell_action(
                 current_price=high,
                 avg_cost=avg_cost,

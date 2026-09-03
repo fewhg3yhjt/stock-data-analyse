@@ -313,6 +313,20 @@ class PostPurchaseAdvisor:
         from StockInvestmentTool.strategy.rule_registry import dispatch_rule
 
         params = rule.params if rule is not None else {}
+        activation_enabled = params.get("profit_activation_enabled", False) is not False
+        activation_basis = str(params.get("profit_activation_basis", "current_price"))
+        activation_threshold = float(params.get("min_profit_for_activation", 0.0))
+        activation_value = position.peak_price if activation_basis == "peak_price" else ctx.current_price
+        if activation_enabled and activation_value < position.avg_cost * (1 + activation_threshold):
+            check_results["left_side"] = {
+                "reference_price": str(params.get("reference_price", "year_high")),
+                "profit_activation_enabled": True,
+                "profit_activation_basis": activation_basis,
+                "min_profit_for_activation": activation_threshold,
+                "profit_ready": False, "tier": 0, "sell_ratio": 0.0,
+                "left_tier_sold": position.left_tier_sold,
+            }
+            return None
         reference = str(params.get("reference_price", "year_high"))
         reference_value = ctx.year_high
         if reference != "year_high":
