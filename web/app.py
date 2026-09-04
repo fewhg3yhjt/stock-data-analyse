@@ -3900,6 +3900,10 @@ def create_app():
     app.register_blueprint(web_app, url_prefix="/")
     from StockInvestmentTool.web.biz_api import biz_api
     app.register_blueprint(biz_api, url_prefix="/api/biz")
+    # Public data endpoints intentionally bypass the admin-only web Blueprint.
+    # They expose only GET reads backed by published datasets.
+    from StockInvestmentTool.web.public_api import public_api
+    app.register_blueprint(public_api, url_prefix="/api/public")
 
     # 基础安全响应头（S-03）：当前页面仍有内联脚本与 CDN 静态资源，
     # CSP 分阶段启用：允许内联脚本与已知 CDN，后续内联脚本治理完成后收紧。
@@ -3920,6 +3924,8 @@ def create_app():
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "same-origin")
+        if flask.request.path.startswith("/api/public/"):
+            response.headers.setdefault("Access-Control-Allow-Origin", "*")
         return response
 
     # 操作日志: 规则检查值可读格式化
