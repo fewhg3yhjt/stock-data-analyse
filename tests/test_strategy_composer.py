@@ -134,6 +134,12 @@ def test_lowma_research_requires_explicit_dates_and_symbols(client):
     assert "明确" in response.get_json()["error"]
 
 
+def test_lowma_page_contains_explicit_simulation_fallback_link(client):
+    page = client.get("/strategy-composer").get_data(as_text=True)
+    assert "如果没有自动跳转" in page
+    assert "simulation_url" in page
+
+
 def test_lowma_research_result_requires_existing_run(client):
     response = client.get("/api/low-ma/research/not-found")
     assert response.status_code == 404

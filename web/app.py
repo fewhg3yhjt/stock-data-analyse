@@ -1933,6 +1933,7 @@ def api_low_ma_research():
         response = {
             "status": "success",
             "run_id": run_id,
+            "simulation_url": f"/strategy-simulation?lowma_run_id={run_id}",
             "config": _to_json_safe(config.__dict__),
             "data_context": _to_json_safe(result.get("data_context", {})),
             "summary": records(result.get("summary")),
