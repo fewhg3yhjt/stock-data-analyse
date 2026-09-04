@@ -44,9 +44,13 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
 
   <div class="notice"><strong>策略编排</strong> 当前页面负责方案编辑和校验，保存草稿不会自动发布；正式发布前请查看版本和影响范围。规则按顺序评估，先命中的高优先级操作生效。</div>
 
-  <div class="ui-card lowma-panel" id="lowma-panel">
-    <h2><i class="fas fa-wave-square"></i> LowMA 承接研究</h2>
-    <div class="config-help">独立研究策略，使用 Published 日线数据。T 日收盘后生成限价单，T+1 只有盘中区间触及才成交；普通策略编排不会受影响。</div>
+  <div class="ui-card scheme-overview">
+    <h2><i class="fas fa-books"></i> 已有方案与运行逻辑</h2>
+    <div class="scheme-guide"><b>怎么运行：</b>持仓刷新时读取方案快照，先按卖出规则判断风险和止盈，再按买入规则判断是否补仓；规则只生成操作建议，不会自动下单。LowMA 研究策略使用次日盘中限价触价模型，回测结果进入策略模拟页。</div>
+    <div id="scheme-overview-list" class="scheme-grid"><div class="help">方案加载中...</div></div>
+    <div class="ui-card lowma-panel" id="lowma-panel" style="display:none;margin-top:16px;">
+    <h2><i class="fas fa-wave-square"></i> LowMA 承接策略配置</h2>
+    <div class="config-help">T 日收盘后生成限价单，T+1 只有盘中区间触及才成交；批量运行后进入策略模拟页。</div>
     <div class="lowma-form">
       <label class="ui-field wide"><span>股票代码（逗号分隔）</span><input id="lowma-symbols" value="sz000400,sz000425,sz000725,sh603019,sz300750,sh601318,sh600519,sh600036,sz002594,sh600031,sh601899,sh600941"></label>
       <label class="ui-field"><span>开始日期</span><input id="lowma-start" type="date" value="2024-01-01"></label>
@@ -62,12 +66,7 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
     </div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><button type="button" class="ui-button ui-button-primary" id="lowma-run" onclick="runLowMAResearch()"><i class="fas fa-play"></i> 批量运行并进入策略模拟</button><span id="lowma-status" class="help"></span></div>
     <div id="lowma-results" class="lowma-results"></div>
-  </div>
-
-  <div class="ui-card scheme-overview">
-    <h2><i class="fas fa-books"></i> 已有方案与运行逻辑</h2>
-    <div class="scheme-guide"><b>怎么运行：</b>持仓刷新时读取方案快照，先按卖出规则判断风险和止盈，再按买入规则判断是否补仓；规则只生成操作建议，不会自动下单。回测则按每根日 K 的最低价/最高价/收盘价模拟触发。</div>
-    <div id="scheme-overview-list" class="scheme-grid"><div class="help">方案加载中...</div></div>
+    </div>
   </div>
 
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
@@ -215,9 +214,12 @@ async function loadSchemeOverview(){
     if(data.status!=='success') throw new Error(data.error||'方案加载失败');
     SCHEMES=data.schemes||[];
     const el=document.getElementById('scheme-overview-list');
-    el.innerHTML=SCHEMES.map(s=>`<article class="scheme-card"><h3>${escText(s.name)} <span class="tag ${s.is_builtin?'tag-buy':'tag-sell'}">${s.is_builtin?'内置':'自定义'}</span></h3><p>${escText(s.description||'暂无描述')}</p><div class="help">版本 ${escText(s.version)} · 适用：${escText((s.applicable_types||[]).join('、')||'未限定')}</div><div class="scheme-actions"><button class="ui-button ui-button-primary ui-button-sm" onclick="showSchemeGuide('${escText(s.name)}')">查看运行逻辑</button><button class="ui-button ui-button-ghost ui-button-sm" onclick="editScheme('${escText(s.name)}')">编辑配置</button></div></article>`).join('')||'<div class="help">暂无可用方案</div>';
+    const lowmaCard='<article class="scheme-card"><h3>LowMA 承接策略 <span class="tag tag-buy">研究策略</span></h3><p>低位承接、次日盘中限价成交、结构止损、保本保护和右侧跟随。</p><div class="help">Published 日线 · 批量运行 · 结果进入策略模拟</div><div class="scheme-actions"><button class="ui-button ui-button-primary ui-button-sm" onclick="openLowMAConfig()">配置并批量运行</button><button class="ui-button ui-button-ghost ui-button-sm" onclick="showLowMAGuide()">查看运行逻辑</button></div></article>';
+    el.innerHTML=lowmaCard+SCHEMES.map(s=>`<article class="scheme-card"><h3>${escText(s.name)} <span class="tag ${s.is_builtin?'tag-buy':'tag-sell'}">${s.is_builtin?'内置':'自定义'}</span></h3><p>${escText(s.description||'暂无描述')}</p><div class="help">版本 ${escText(s.version)} · 适用：${escText((s.applicable_types||[]).join('、')||'未限定')}</div><div class="scheme-actions"><button class="ui-button ui-button-primary ui-button-sm" onclick="showSchemeGuide('${escText(s.name)}')">查看运行逻辑</button><button class="ui-button ui-button-ghost ui-button-sm" onclick="editScheme('${escText(s.name)}')">编辑配置</button></div></article>`).join('')||'<div class="help">暂无可用方案</div>';
   }catch(error){document.getElementById('scheme-overview-list').innerHTML=`<div class="error">${escText(error.message)}</div>`;}
 }
+function openLowMAConfig(){const panel=document.getElementById('lowma-panel');panel.style.display='block';panel.scrollIntoView({behavior:'smooth',block:'start'});}
+function showLowMAGuide(){openModal('LowMA 承接策略 · 运行逻辑');document.getElementById('modal-body').innerHTML='<div class="scheme-guide"><b>入场：</b>T 日收盘后计算低位、量价承接和 LowMA 限价；T+1 只用 Open/High/Low 判断是否触价，未触价不成交。<br><b>退出：</b>结构连续破坏、保本保护、浮盈达到阈值后的右侧回撤，未进入趋势跟随时按 Position20 高位兑现。<br><b>结果：</b>运行后跳转“策略模拟”，展示汇总、逐笔记录、事件、K线和收益曲线。</div>'}
 function showSchemeGuide(name){
   const scheme=SCHEMES.find(s=>s.name===name); if(!scheme)return;
   let html=`<div class="scheme-guide"><b>方案：</b>${escText(scheme.name)}<br><b>描述：</b>${escText(scheme.description||'暂无')}<br><b>适用类型：</b>${escText((scheme.applicable_types||[]).join('、')||'未限定')}</div>`;

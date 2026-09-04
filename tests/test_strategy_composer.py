@@ -120,8 +120,10 @@ def test_stock_search_and_classification_support_sample_security(client):
 
 def test_strategy_composer_contains_lowma_research(client):
     page = client.get("/strategy-composer").get_data(as_text=True)
-    assert "LowMA 承接研究" in page
+    assert "LowMA 承接策略配置" in page
     assert "/api/low-ma/research" in page
+    assert page.index('id="scheme-overview-list"') < page.index('id="lowma-panel"')
+    assert "openLowMAConfig" in page
 
 
 def test_lowma_research_requires_explicit_dates_and_symbols(client):
