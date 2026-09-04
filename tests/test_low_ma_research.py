@@ -37,6 +37,7 @@ def test_features_do_not_use_current_day_for_prior_low_or_volume_average():
 def test_limit_fill_uses_range_and_open_price_improvement():
     row = pd.Series({"open": 9.5, "high": 10.5, "low": 9.4})
     assert _fill_price(row, 10.0) == pytest.approx(9.5)
+    assert _fill_price(pd.Series({"open": 9.5, "high": 9.8, "low": 9.4}), 10.0) == pytest.approx(9.5)
     assert _fill_price(pd.Series({"open": 10.5, "high": 10.8, "low": 10.2}), 10.0) is None
 
 
@@ -51,20 +52,18 @@ def test_structure_stop_requires_consecutive_closes_and_executes_next_open():
     ]
     frame = make_frame(rows)
     features = build_low_ma_features(frame)
-    features.loc[25, "path_a"] = True
-    features.loc[25, "lowma5"] = 9.8
     features.loc[25, "base_qualified"] = True
-    features.loc[25, "close_location"] = 0.5
-    features.loc[25, "sell_volume_ratio"] = 1.0
-
-    # The runner intentionally rebuilds features from raw OHLCV.  Inject the
-    # prepared fixture here so this test focuses on execution order, not on
-    # manufacturing a second synthetic market pattern that passes Path A.
+    features.loc[25, "lowma5"] = 9.8
+    # Use the baseline path so the fixture tests the exit state machine rather
+    # than depending on a second synthetic Path A volume pattern.
     import StockInvestmentTool.research.low_ma as low_ma
     original_builder = low_ma.build_low_ma_features
     low_ma.build_low_ma_features = lambda _: features
     try:
-        result = run_low_ma_experiment(features, LowMAConfig(entry_path="path_a", breakeven_activation=None, trend_activation=None))
+        result = run_low_ma_experiment(features, LowMAConfig(
+            entry_path="baseline", position_limit=1.0,
+            breakeven_activation=None, trend_activation=None,
+        ))
     finally:
         low_ma.build_low_ma_features = original_builder
     exits = result["events"][result["events"]["event"] == "EXIT_SIGNAL"]

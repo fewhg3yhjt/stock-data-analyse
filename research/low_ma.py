@@ -120,9 +120,12 @@ def build_low_ma_features(frame: pd.DataFrame) -> pd.DataFrame:
 def _fill_price(row: pd.Series, limit_price: float) -> float | None:
     """Model a next-day limit buy with price improvement at the open."""
 
+    open_price = float(row["open"])
+    if float(row["low"]) <= open_price <= limit_price:
+        return open_price
     if float(row["low"]) > limit_price or float(row["high"]) < limit_price:
         return None
-    return min(float(row["open"]), limit_price)
+    return limit_price
 
 
 def _sell_price(row: pd.Series, stop_price: float | None = None) -> tuple[float, str] | None:
@@ -180,6 +183,13 @@ def run_low_ma_experiment(frame: pd.DataFrame, config: LowMAConfig | None = None
 
     config = config or LowMAConfig()
     data = build_low_ma_features(frame)
+    data["base_qualified"] = (
+        (data["position20"] <= config.position_limit)
+        & ~data["new20_low"]
+        & ~data.groupby("code")["new20_low"].shift(1).fillna(False).astype(bool)
+        & ~data["volume_down"]
+        & ~data.groupby("code")["volume_down"].shift(1).fillna(False).astype(bool)
+    )
     data["path_a"] = (
         data["base_qualified"]
         & data["close_location"].gt(config.close_location_low)
@@ -226,7 +236,11 @@ def run_low_ma_experiment(frame: pd.DataFrame, config: LowMAConfig | None = None
 
             if position is None and i > 0:
                 signal = stock_frame.iloc[i - 1]
-                path_passed = bool(signal[config.entry_path])
+                path_passed = (
+                    bool(signal["base_qualified"])
+                    if config.entry_path == "baseline"
+                    else bool(signal[config.entry_path])
+                )
                 limit_value = signal[f"lowma{config.limit_period}"]
                 if path_passed and pd.notna(limit_value):
                     limit_price = float(limit_value)
