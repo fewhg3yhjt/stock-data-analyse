@@ -38,6 +38,7 @@ body {
 .ui-field input:focus { border-color: var(--color-info); box-shadow: 0 0 0 2px rgba(26,115,232,.12); }
 .ui-field .hint { font-size: 13px; color: var(--color-text-subtle); margin-top: 2px; }
 .simulation-picker{position:relative}.simulation-suggestions{position:absolute;left:0;right:0;top:100%;z-index:30;display:none;max-height:240px;overflow:auto;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;box-shadow:0 8px 20px rgba(0,0,0,.14)}.simulation-suggestion{display:block;width:100%;padding:9px 11px;border:0;border-bottom:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);text-align:left;cursor:pointer}.simulation-suggestion:hover{background:var(--color-surface-subtle)}.simulation-stock-table{margin-top:12px}.simulation-stock-table button{padding:4px 8px}.batch-summary{margin-bottom:14px}.batch-detail{display:none;background:var(--color-surface-subtle)}.batch-detail.open{display:table-row}.batch-detail-cell{padding:14px!important}.batch-kline,.batch-returns{height:360px;margin-top:10px}.batch-operation-table{font-size:12px;margin-top:12px}
+.simulation-add-row{display:grid;grid-template-columns:1.3fr 1.3fr 1fr auto;gap:14px;align-items:end}.simulation-add-row .ui-field{min-width:0}
 
 /* 选项 */
 .opts { display: flex; flex-wrap: wrap; gap: 18px; margin: 12px 0 6px; }
@@ -129,7 +130,7 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
 .trade-table .reason { font-size: 12px; color: var(--color-text-subtle); max-width: 240px; }
 
 @media (max-width: 640px) {
-  .form-row, .form-row.three { grid-template-columns: 1fr; }
+  .form-row, .form-row.three, .simulation-add-row { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: 1fr 1fr; }
 }
 </style>
@@ -151,21 +152,8 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
      <div class="ui-card-header"><i class="fas fa-flask"></i> 策略模拟参数</div>
     <form id="analyze-form" autocomplete="off">
       <input type="hidden" name="draft_id" id="sim-draft-id">
-      <div class="form-row">
-        <div class="ui-field simulation-picker">
-          <label>添加股票（代码或名称）</label>
-          <input type="text" name="code" id="sim-code" placeholder="sh.600900 / 600900 / 长江电力" value="{{ prefill_code or 'sh.600900' }}" autocomplete="off">
-          <div id="sim-code-suggestions" class="simulation-suggestions"></div>
-          <span class="hint">输入代码或名称，从候选中选择后自动关联名称和证券类型</span>
-        </div>
-        <div class="ui-field simulation-picker">
-          <label>股票名称</label>
-          <input type="text" name="name" id="sim-name" placeholder="如 长江电力" value="{{ prefill_name or '长江电力' }}" autocomplete="off">
-          <div id="sim-name-suggestions" class="simulation-suggestions"></div>
-          <span class="hint" id="sim-classify-hint">选择候选后自动回填，可手动调整类型</span>
-        </div>
-      </div>
-      <div class="form-row three" style="margin-top:12px;">
+      <div class="ui-card-header" style="margin-top:4px;"><span>全局参数</span></div>
+      <div class="form-row three">
         <div class="ui-field">
           <label>开始日期</label>
           <input type="date" name="start_date" value="{{ last_year }}">
@@ -179,18 +167,37 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
           <input type="number" name="initial_cash" value="100000" min="10000" step="10000">
         </div>
       </div>
-      <div class="form-row three" style="margin-top:12px;">
-        <div class="ui-field">
-          <label>策略方案</label>
-          <select name="scheme">
-            {% for s in schemes %}
-            <option value="{{ s.name }}" {% if s.name == (prefill_scheme or 'default_value') %}selected{% endif %}>{{ s.name }} <span class="hint">({{ s.description }})</span></option>
-            {% endfor %}
-          </select>
-          <span class="hint">方案 = 买点规则 × 卖点规则 × 风控规则</span>
+      <div class="ui-field" style="margin-top:12px;max-width:520px;">
+        <label>策略方案</label>
+        <select name="scheme">
+          {% for s in schemes %}
+          <option value="{{ s.name }}" {% if s.name == (prefill_scheme or 'default_value') %}selected{% endif %}>{{ s.name }} — {{ s.description }}</option>
+          {% endfor %}
+        </select>
+        <span class="hint">同一批次内所有标的使用同一策略方案或临时草稿。</span>
+      </div>
+
+      <div class="ui-card-header" style="margin-top:20px;"><span>输出选项</span></div>
+      <div class="opts">
+        <label><input type="checkbox" name="backtest" checked> 📊 策略回测</label>
+        <label><input type="checkbox" name="prompt" checked> 🤖 生成 AI Prompt</label>
+        <label><input type="checkbox" name="api" {% if not has_api_key %}disabled title="需配置 DEEPSEEK_API_KEY"{% endif %}> 🧠 LLM 分析{% if not has_api_key %}<span class="hint">(需 API Key)</span>{% endif %}</label>
+      </div>
+
+      <div class="ui-card-header" style="margin-top:20px;"><span>添加标的</span></div>
+      <div class="simulation-add-row">
+        <div class="ui-field simulation-picker">
+          <label>股票代码/名称</label>
+          <input type="text" name="code" id="sim-code" placeholder="sh.600900 / 600900 / 长江电力" value="{{ prefill_code or 'sh.600900' }}" autocomplete="off">
+          <div id="sim-code-suggestions" class="simulation-suggestions"></div>
+        </div>
+        <div class="ui-field simulation-picker">
+          <label>股票名称</label>
+          <input type="text" name="name" id="sim-name" placeholder="选择候选后自动带出" value="{{ prefill_name or '长江电力' }}" autocomplete="off">
+          <div id="sim-name-suggestions" class="simulation-suggestions"></div>
         </div>
         <div class="ui-field">
-          <label>当前添加标的类型</label>
+          <label>证券类型</label>
           <select name="stock_type" id="sim-stock-type">
              <option value="B" {% if (prefill_stock_type or 'B') == 'B' %}selected{% endif %}>B 价值白马</option>
              <option value="A" {% if prefill_stock_type == 'A' %}selected{% endif %}>A 高成长</option>
@@ -198,19 +205,17 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
              <option value="D" {% if prefill_stock_type == 'D' %}selected{% endif %}>D 深度价值</option>
              <option value="E" {% if prefill_stock_type == 'E' %}selected{% endif %}>E 场内 ETF/基金</option>
           </select>
-          <span class="hint">影响止损率与移动止盈阈值</span>
+          <span class="hint" id="sim-classify-hint">选择候选后自动识别，可手动调整。</span>
         </div>
         <div class="ui-field">
           <label>&nbsp;</label>
-          <button type="button" class="ui-button ui-button-secondary" onclick="addSimulationStock()"><i class="fas fa-plus"></i> 加入模拟列表</button>
+          <button type="button" class="ui-button ui-button-secondary" onclick="addSimulationStock()"><i class="fas fa-plus"></i> 加入列表</button>
         </div>
       </div>
-      <div class="simulation-stock-table ui-table-wrap"><table class="ui-table"><thead><tr><th>股票代码/名称</th><th>证券类型</th><th>操作</th></tr></thead><tbody id="simulation-stock-rows"></tbody></table><div class="hint" id="simulation-stock-hint">单只股票按当前方案模拟；多只股票严格串行运行，最多10只。</div></div>
-      <div class="opts">
-        <label><input type="checkbox" name="backtest" checked> 📊 策略回测</label>
-        <label><input type="checkbox" name="prompt" checked> 🤖 生成 AI Prompt</label>
-        <label><input type="checkbox" name="api" {% if not has_api_key %}disabled title="需配置 DEEPSEEK_API_KEY"{% endif %}> 🧠 LLM 分析{% if not has_api_key %}<span class="hint">(需 API Key)</span>{% endif %}</label>
-      </div>
+
+      <div class="ui-card-header" style="margin-top:20px;"><span>已添加标的 <span class="hint" id="simulation-stock-count">（0/10）</span></span></div>
+      <div class="simulation-stock-table ui-table-wrap"><table class="ui-table"><thead><tr><th>股票代码</th><th>股票名称</th><th>证券类型</th><th>操作</th></tr></thead><tbody id="simulation-stock-rows"></tbody></table></div>
+      <div class="hint" id="simulation-stock-hint" style="margin-top:8px;">说明：列表中的标的将按同一策略参数统一运行，严格串行执行。</div>
       <div class="form-actions">
         <button type="submit" class="ui-button ui-button-primary" id="run-btn"><i class="fas fa-play"></i> 开始策略模拟</button>
         <button type="reset" class="ui-button ui-button-secondary" onclick="resetForm()"><i class="fas fa-undo"></i> 重置</button>
