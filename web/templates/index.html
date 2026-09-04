@@ -232,6 +232,7 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
 
   <!-- 结果 -->
   <div class="result-section" id="result-section">
+    <div class="ui-card" id="lowma-results-card" style="display:none;"></div>
     <div class="ui-card" id="batch-results-card" style="display:none;"></div>
 
     <!-- 指标 -->
@@ -294,6 +295,7 @@ const loadingFill = document.getElementById('loading-fill');
 const errorArea = document.getElementById('error-area');
 const resultSection = document.getElementById('result-section');
 const autoRun = new URLSearchParams(location.search).get('auto_run') === '1';
+const lowmaRunId = new URLSearchParams(location.search).get('lowma_run_id');
 let analysisPollTimer = null;
 let analysisPollStartedAt = 0;
 let simulationStocks = [];
@@ -377,6 +379,15 @@ function renderBatchResults(payload){
   resultSection.style.display='block';
 }
 
+function renderLowMAResults(data){
+  const card=document.getElementById('lowma-results-card'); const summary=data.summary||[], trades=data.trades||[], events=data.events||[], klines=data.kline||[];
+  const stocks=[...new Set(summary.map(x=>x.stock).concat(klines.map(x=>x.stock)))];
+  const fmt=v=>v==null?'—':(typeof v==='number'?v.toFixed(4):String(v));
+  const rows=summary.map(x=>`<tr><td>${x.stock||''}<br><small>${x.code||''}</small></td><td>${fmt(x.trades)}</td><td>${fmt(x.win_rate_pct)}%</td><td>${fmt(x.cumulative_return_pct)}%</td><td>${fmt(x.avg_return_pct)}%</td><td>${fmt(x.avg_mae_pct)}%</td><td>${fmt(x.avg_mfe_pct)}%</td></tr>`).join('');
+  card.innerHTML='<div class="ui-card-header"><span><i class="fas fa-wave-square"></i> LowMA 策略模拟结果</span><span class="hint">'+(data.data_context?.source||'')+' · as_of '+(data.data_context?.data_as_of||'')+' · 执行：T+1 盘中限价触价</span></div><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>股票</th><th>交易数</th><th>胜率</th><th>累计收益</th><th>平均单笔</th><th>平均MAE</th><th>平均MFE</th></tr></thead><tbody>'+rows+'</tbody></table></div><div id="lowma-simulation-details"></div>'; const host=document.getElementById('lowma-simulation-details');
+  stocks.forEach((stock,index)=>{const safe='lowma-sim-'+index, kb=safe+'-k', cb=safe+'-c', tr=trades.filter(x=>x.stock===stock), kd=klines.filter(x=>x.stock===stock), cv=(data.curves||[]).filter(x=>x.stock===stock); const box=document.createElement('div'); box.style.cssText='margin-top:16px;border-top:1px solid var(--color-border);padding-top:12px'; box.innerHTML=`<div class="ui-card-header"><span>${stock}</span><button type="button" class="ui-button ui-button-secondary ui-button-sm">展开</button></div><div style="display:none"><div id="${kb}" style="height:400px;width:100%"></div><div id="${cb}" style="height:280px;width:100%;margin-top:10px"></div><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>资格日</th><th>成交日</th><th>成交价</th><th>卖出日</th><th>卖出价</th><th>收益</th><th>退出原因</th></tr></thead><tbody>${tr.map(x=>`<tr><td>${x.qualification_date||''}</td><td>${x.entry_date||''}</td><td>${fmt(x.entry_price)}</td><td>${x.exit_date||''}</td><td>${fmt(x.exit_price)}</td><td>${fmt(x.return_pct)}%</td><td>${x.exit_reason||''}</td></tr>`).join('')}</tbody></table></div><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>事件日</th><th>事件</th><th>限价</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>原因</th></tr></thead><tbody>${events.filter(x=>x.stock===stock).map(x=>`<tr><td>${x.date||''}</td><td>${x.event||''}</td><td>${fmt(x.limit_price)}</td><td>${fmt(x.open)}</td><td>${fmt(x.high)}</td><td>${fmt(x.low)}</td><td>${fmt(x.close)}</td><td>${x.reason||''}</td></tr>`).join('')}</tbody></table></div></div>`; const body=box.querySelector('div[style*="display:none"]'); box.querySelector('button').onclick=()=>{const open=body.style.display==='none';body.style.display=open?'':'none';if(open){window.StockChart.drawKLineFull(document.getElementById(kb),{dates:kd.map(x=>x.date),ohlc:kd.map(x=>[x.open,x.close,x.low,x.high]),closes:kd.map(x=>x.close),highs:kd.map(x=>x.high),lows:kd.map(x=>x.low),volumes:kd.map(x=>x.volume),ma:{},signals:tr.flatMap(x=>[{date:x.entry_date,value:x.entry_price,type:'buy'},{date:x.exit_date,value:x.exit_price,type:'sell'}])},{});window.StockChart.drawLine(document.getElementById(cb),{dates:cv.map(x=>x.date),series:[{name:'策略持仓',key:'strategy',data:cv.map(x=>(x.strategy-1)*100)},{name:'买入持有',key:'buy_hold',data:cv.map(x=>(x.buy_hold-1)*100)}]},{yFormatter:'{value}%'});}};host.appendChild(box);}); card.style.display='block'; resultSection.style.display='block';
+}
+
 function toggleBatchDetail(id){
   const row=document.getElementById(id); if(!row)return;
   row.classList.toggle('open');
@@ -397,6 +408,7 @@ bindSimulationAutocomplete('sim-code','sim-code-suggestions');
 bindSimulationAutocomplete('sim-name','sim-name-suggestions');
 document.getElementById('sim-draft-id').value=new URLSearchParams(location.search).get('draft_id')||'';
 if(document.getElementById('sim-code').value && document.getElementById('sim-name').value) addSimulationStock();
+if(lowmaRunId){fetch('/api/low-ma/research/'+encodeURIComponent(lowmaRunId)).then(r=>r.json()).then(data=>{if(data.status==='success')renderLowMAResults(data);else showError(data.error||'LowMA 结果读取失败');}).catch(error=>showError('LowMA 结果读取失败: '+error.message));}
 
 if (autoRun && form.querySelector('[name="code"]').value) {
   setTimeout(() => form.requestSubmit(), 200);

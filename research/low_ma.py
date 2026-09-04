@@ -321,7 +321,45 @@ def run_low_ma_experiment(frame: pd.DataFrame, config: LowMAConfig | None = None
         summary_df = pd.DataFrame(summaries)
     else:
         summary_df = pd.DataFrame()
-    return {"features": data, "events": events_df, "trades": trades_df, "summary": summary_df}
+    kline_rows = data[["code", "date", "open", "high", "low", "close", "volume"]].copy()
+    kline_rows["date"] = kline_rows["date"].dt.strftime("%Y-%m-%d")
+    curve_rows: list[dict[str, Any]] = []
+    for stock, stock_kline in kline_rows.groupby("code", sort=True):
+        stock_trades = trades_df[trades_df["code"].astype(str) == str(stock)] if not trades_df.empty else pd.DataFrame()
+        equity = 1.0
+        active = None
+        for _, row in stock_kline.iterrows():
+            date = row["date"]
+            if active is None and not stock_trades.empty:
+                matches = stock_trades[stock_trades["entry_date"] == date]
+                if not matches.empty:
+                    active = matches.iloc[0]
+            if active is not None:
+                entry_date = active["entry_date"]
+                exit_date = active["exit_date"]
+                entry_price = float(active["entry_price"])
+                if date == exit_date:
+                    strategy_value = equity * float(active["exit_price"]) / entry_price
+                    active = None
+                    equity = strategy_value
+                else:
+                    strategy_value = equity * float(row["close"]) / entry_price
+            else:
+                strategy_value = equity
+            curve_rows.append({
+                "stock": str(stock),
+                "date": date,
+                "strategy": strategy_value,
+                "buy_hold": float(row["close"]) / float(stock_kline.iloc[0]["close"]),
+            })
+    return {
+        "features": data,
+        "events": events_df,
+        "trades": trades_df,
+        "summary": summary_df,
+        "kline": kline_rows,
+        "curves": pd.DataFrame(curve_rows),
+    }
 
 
 def run_low_ma_dataset(warehouse: Any, *, start_date: str, end_date: str,

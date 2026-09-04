@@ -110,3 +110,26 @@ def test_dataset_runner_requires_explicit_dates(monkeypatch):
     from StockInvestmentTool.research.low_ma import run_low_ma_dataset
     with pytest.raises(ValueError):
         run_low_ma_dataset(object(), start_date="", end_date="2026-01-02")
+
+
+def test_experiment_returns_kline_and_curve_contract():
+    frame = make_frame([
+        {"open": 10, "high": 11, "low": 9, "close": 10, "volume": 100},
+    ] * 25 + [
+        {"open": 9.5, "high": 10.5, "low": 9.4, "close": 10, "volume": 100},
+    ])
+    prepared = build_low_ma_features(frame)
+    prepared.loc[24, "base_qualified"] = True
+    prepared.loc[24, "lowma5"] = 10.0
+    import StockInvestmentTool.research.low_ma as low_ma
+    original_builder = low_ma.build_low_ma_features
+    low_ma.build_low_ma_features = lambda _: prepared
+    try:
+        result = run_low_ma_experiment(frame, LowMAConfig(
+            entry_path="baseline", breakeven_activation=None,
+            trend_activation=None,
+        ))
+    finally:
+        low_ma.build_low_ma_features = original_builder
+    assert len(result["kline"]) == len(frame)
+    assert len(result["curves"]) == len(frame)

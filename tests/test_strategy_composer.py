@@ -130,6 +130,11 @@ def test_lowma_research_requires_explicit_dates_and_symbols(client):
     })
     assert response.status_code == 400
     assert "明确" in response.get_json()["error"]
+
+
+def test_lowma_research_result_requires_existing_run(client):
+    response = client.get("/api/low-ma/research/not-found")
+    assert response.status_code == 404
 def test_compose_roundtrip(client):
     model = _sample_model()
     r = client.post("/api/schemes/compose", json=model)

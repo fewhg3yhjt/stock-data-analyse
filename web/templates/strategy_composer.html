@@ -44,7 +44,7 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
 
   <div class="notice"><strong>策略编排</strong> 当前页面负责方案编辑和校验，保存草稿不会自动发布；正式发布前请查看版本和影响范围。规则按顺序评估，先命中的高优先级操作生效。</div>
 
-  <div class="ui-card lowma-panel">
+  <div class="ui-card lowma-panel" id="lowma-panel">
     <h2><i class="fas fa-wave-square"></i> LowMA 承接研究</h2>
     <div class="config-help">独立研究策略，使用 Published 日线数据。T 日收盘后生成限价单，T+1 只有盘中区间触及才成交；普通策略编排不会受影响。</div>
     <div class="lowma-form">
@@ -60,7 +60,7 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
       <label class="ui-field"><span>峰值回撤（比例）</span><input id="lowma-trailing" type="number" step="0.01" value="0.07"></label>
       <label class="ui-field"><span>固定硬止损（比例，可空）</span><input id="lowma-hard-stop" type="number" step="0.01" placeholder="不启用"></label>
     </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><button type="button" class="ui-button ui-button-primary" id="lowma-run" onclick="runLowMAResearch()"><i class="fas fa-play"></i> 运行 LowMA 研究</button><span id="lowma-status" class="help"></span></div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><button type="button" class="ui-button ui-button-primary" id="lowma-run" onclick="runLowMAResearch()"><i class="fas fa-play"></i> 批量运行并进入策略模拟</button><span id="lowma-status" class="help"></span></div>
     <div id="lowma-results" class="lowma-results"></div>
   </div>
 
@@ -735,7 +735,7 @@ async function runLowMAResearch(){
   const button=document.getElementById('lowma-run'), status=document.getElementById('lowma-status'); button.disabled=true; status.textContent='正在读取 Published 数据并运行...';
   try{
     const payload={symbols:document.getElementById('lowma-symbols').value,start_date:document.getElementById('lowma-start').value,end_date:document.getElementById('lowma-end').value,entry_path:document.getElementById('lowma-path').value,limit_period:Number(document.getElementById('lowma-period').value),position_limit:lowmaValue('lowma-position'),structure_confirm_days:Number(document.getElementById('lowma-structure-days').value),breakeven_activation:lowmaValue('lowma-breakeven'),trend_activation:lowmaValue('lowma-trend'),trailing_drawdown:lowmaValue('lowma-trailing'),hard_stop_pct:lowmaValue('lowma-hard-stop')};
-    const response=await fetch('/api/low-ma/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const data=await response.json(); if(!response.ok||data.status!=='success')throw new Error(data.error||`HTTP ${response.status}`); renderLowMAResults(data); status.textContent=`完成：${data.trades.length} 笔成交，${data.events.length} 个事件`;
+    const response=await fetch('/api/low-ma/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const data=await response.json(); if(!response.ok||data.status!=='success')throw new Error(data.error||`HTTP ${response.status}`); status.textContent=`运行完成，正在进入策略模拟（${data.trades.length} 笔成交）`; window.location.href='/strategy-simulation?lowma_run_id='+encodeURIComponent(data.run_id);
   }catch(error){status.textContent='运行失败：'+error.message;showUiMessage('LowMA 研究失败：'+error.message,'error');}finally{button.disabled=false;}
 }
 

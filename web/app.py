@@ -569,7 +569,7 @@ def api_health_details():
             item = dict(r)
             item["id"] = r["delivery_id"]
             recent_items.append(item)
-        return flask.jsonify({
+        response = {
             "status": "success",
             "scheduler": {"enabled": bool(scheduler), "jobs": len(jobs)},
             "warehouse": {"daily_partitions": len(daily_months), "minute_days": len(minute_days)},
@@ -585,7 +585,8 @@ def api_health_details():
             },
             "paths": {"data_dir": str(Config.DATA_DIR)},
             "memory": memory_snapshot(),
-        })
+        }
+        return flask.jsonify(response)
     except Exception as e:
         logger.exception("健康详情读取失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
@@ -1927,19 +1928,35 @@ def api_low_ma_research():
                 return []
             return _to_json_safe(frame.replace({np.nan: None}).to_dict(orient="records"))
 
-        return flask.jsonify({
+        from uuid import uuid4
+        run_id = f"lowma_{uuid4().hex[:16]}"
+        response = {
             "status": "success",
+            "run_id": run_id,
             "config": _to_json_safe(config.__dict__),
             "data_context": _to_json_safe(result.get("data_context", {})),
             "summary": records(result.get("summary")),
             "trades": records(result.get("trades")),
             "events": records(result.get("events")),
-        })
+            "kline": records(result.get("kline")),
+            "curves": records(result.get("curves")),
+        }
+        _lowma_runs[run_id] = response
+        return flask.jsonify(response)
     except ValueError as exc:
         return flask.jsonify({"status": "error", "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001
         logger.exception("LowMA 研究运行失败")
         return flask.jsonify({"status": "error", "error": str(exc)}), 500
+
+
+@web_app.route("/api/low-ma/research/<run_id>", methods=["GET"])
+def api_low_ma_research_result(run_id):
+    """Return a completed LowMA run for the strategy simulation page."""
+    result = _lowma_runs.get(run_id)
+    if result is None:
+        return flask.jsonify({"status": "error", "error": "LowMA 运行结果不存在或已过期"}), 404
+    return flask.jsonify(result)
 
 
 @web_app.route("/indicator-center", methods=["GET"])
