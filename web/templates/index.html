@@ -480,13 +480,6 @@ function renderResults(data) {
   // 图表
   const gallery = document.getElementById('chart-gallery');
   gallery.innerHTML = '';
-  if (d.charts && d.charts.length) {
-    d.charts.forEach(c => {
-      const div = document.createElement('div'); div.className = 'chart-item';
-      div.innerHTML = '<img src="/charts/' + c.file + '?t=' + Date.now() + '" alt="' + c.name + '" onclick="openModal(this.src)"><div class="label">' + c.name + ' <span style="color:var(--color-info);font-size:12px;">点击放大</span></div>';
-      gallery.appendChild(div);
-    });
-  }
 
   // 交互式蜡烛图 + 均线 + 成交量 + 买卖点（与持仓页样式一致）
   if (d.kline_dates && d.kline_dates.length && d.kline_ohlc && d.kline_ohlc.length) {
