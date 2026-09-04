@@ -178,6 +178,11 @@ def test_lowma_batch_accepts_system_strategy_without_scheme_registry(client, mon
     assert captured["target"].__name__ == "_run_lowma_batch"
 
 
+def test_strategy_simulation_routes_single_lowma_stock_to_batch_endpoint(client):
+    page = client.get("/strategy-simulation?scheme=lowma_pullback").get_data(as_text=True)
+    assert "simulationStocks.length === 1 && document.getElementById('sim-scheme').value !== 'lowma_pullback'" in page
+
+
 def test_lowma_research_result_requires_existing_run(client):
     response = client.get("/api/low-ma/research/not-found")
     assert response.status_code == 404

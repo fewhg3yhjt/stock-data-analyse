@@ -482,7 +482,7 @@ form.addEventListener('submit', async (e) => {
     if (!simulationStocks.length) addSimulationStock();
     if (!simulationStocks.length) throw new Error('请添加至少一只股票');
     let data;
-    if (simulationStocks.length === 1) {
+    if (simulationStocks.length === 1 && document.getElementById('sim-scheme').value !== 'lowma_pullback') {
       const stock=simulationStocks[0];
       fd.set('code',stock.code); fd.set('name',stock.name); fd.set('stock_type',stock.stock_type);
       data = await UI_UTILS.fetchJson('/strategy-simulation', { method: 'POST', body: fd });
