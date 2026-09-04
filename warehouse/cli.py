@@ -193,6 +193,16 @@ def cmd_status(args):
     print("=" * 56)
 
 
+def cmd_export_public_daily(args):
+    """Export configured static public JSON files from Published stock_daily."""
+    from StockInvestmentTool.warehouse.public_export import export_public_daily
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    codes = tuple(item.strip() for item in args.codes.split(",") if item.strip()) if args.codes else None
+    result = export_public_daily(Warehouse(), codes=codes)
+    print(result)
+
+
 def cmd_industry(args):
     from StockInvestmentTool.warehouse.industry import IndustryCollector, stage_and_publish_industry_batch
     from StockInvestmentTool.warehouse.storage import Warehouse
@@ -269,6 +279,10 @@ def main(argv: list[str] | None = None):
     p_online.add_argument("--codes", default="", help="逗号分隔代码，空=用观察池")
     p_online.add_argument("--day", default=None, help="YYYY-MM-DD")
 
+    p_public = sub.add_parser("export-public-daily", help="从 Published 日线导出静态公开 JSON")
+    p_public.add_argument("--codes", default="", help="逗号分隔股票代码；空时使用 PUBLIC_DAILY_EXPORT_CODES 或默认列表")
+    p_public.set_defaults(func=cmd_export_public_daily)
+
     p_ths = sub.add_parser("ths-industry-import", help="导入固定 GitHub 同花顺行业成员快照")
     p_ths.add_argument("--snapshot-date", required=True, help="YYYY-MM-DD")
     p_ths.add_argument("--csv-path", type=__import__("pathlib").Path, default=None,
@@ -312,8 +326,9 @@ def main(argv: list[str] | None = None):
     handlers = {"init": cmd_init, "sync": cmd_sync, "factors": cmd_factors,
                 "scan": cmd_scan, "online": cmd_online, "status": cmd_status,
                 "reset": cmd_reset, "process": cmd_process, "backfill": cmd_backfill,
-                 "fundamentals": cmd_fundamentals, "industry": cmd_industry,
-                 "ths-industry-import": cmd_ths_industry_import}
+                "fundamentals": cmd_fundamentals, "industry": cmd_industry,
+                 "ths-industry-import": cmd_ths_industry_import,
+                 "export-public-daily": cmd_export_public_daily}
     try:
         handlers[args.cmd](args)
     except Exception as e:

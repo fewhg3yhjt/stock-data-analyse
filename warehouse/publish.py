@@ -70,6 +70,11 @@ class Publisher:
                 raise ValueError("版本不存在或质量不允许发布")
             result = self._publish_locked(conn, version_id, row, "")
             conn.commit()
+            if row[0] == "stock_daily":
+                # Public JSON is a derived, static representation of formal
+                # data. Export only after the database current pointer commits.
+                from StockInvestmentTool.warehouse.public_export import export_public_daily
+                result["public_exports"] = export_public_daily(self.warehouse)
             return result
         except Exception:
             conn.rollback()
