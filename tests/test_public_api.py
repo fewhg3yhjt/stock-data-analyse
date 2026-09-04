@@ -21,16 +21,30 @@ def test_public_routes_are_registered_and_allow_cross_origin(app):
     assert "/api/public/reports" in routes
     assert "/api/public/stock-sectors" in routes
     assert "/public-api" in routes
+    assert "/public-api/health" in routes
+    assert "/public-api/stock/daily" in routes
     response = app.test_client().get("/api/public/openapi.json")
     assert response.status_code == 200
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert response.get_json()["openapi"] == "3.0.3"
 
 
-def test_public_api_portal_is_available_without_login(app):
+def test_public_api_index_and_docs_are_available_without_login(app):
     response = app.test_client().get("/public-api")
     assert response.status_code == 200
+    assert response.is_json
+    assert response.get_json()["service"] == "stock-public-api"
+    response = app.test_client().get("/public-api/docs")
+    assert response.status_code == 200
     assert "在线构造并查询" in response.get_data(as_text=True)
+
+
+def test_public_api_health_is_direct_json(app):
+    response = app.test_client().get("/public-api/health")
+    assert response.status_code == 200
+    assert response.content_type.startswith("application/json")
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    assert response.get_json() == {"status": "ok", "service": "stock-public-api"}
 
 
 def test_daily_report_requires_explicit_dates(app):
@@ -59,6 +73,41 @@ def test_stock_daily_returns_published_records_with_pagination(app, monkeypatch)
     assert payload["has_next"] is True
     assert payload["data"][0]["date"].startswith("2026-09-01")
     assert payload["meta"]["quality_status"] == "PASS"
+
+
+def test_compat_stock_daily_accepts_six_digit_and_exchange_codes(app, monkeypatch):
+    data = pd.DataFrame({
+        "date": pd.to_datetime(["2026-09-01", "2026-09-02"]),
+        "code": ["sz000400", "sz000400"], "open": [21.0, 21.1],
+        "high": [21.5, 21.6], "low": [20.8, 20.9], "close": [21.3, 21.4],
+        "volume": [100, 200], "amount": [2100.0, 4300.0], "turn": [1.1, 1.2],
+    })
+    monkeypatch.setattr(
+        "StockInvestmentTool.web.public_api.DatasetAccess.load_dataset",
+        lambda *args, **kwargs: DatasetResult(data, {"data_as_of": "2026-09-02", "quality_status": "PASS", "source": "published_dataset", "partition_versions": {"2026-09": "v1"}}),
+    )
+    monkeypatch.setattr(
+        "StockInvestmentTool.web.public_api.Warehouse.get_instrument",
+        lambda *args, **kwargs: {"name": "许继电气"},
+    )
+    response = app.test_client().get(
+        "/public-api/stock/daily?code=000400.SZ&start=2026-09-01&end=2026-09-02"
+    )
+    assert response.status_code == 200
+    assert response.content_type.startswith("application/json")
+    payload = response.get_json()
+    assert payload["code"] == "000400"
+    assert payload["name"] == "许继电气"
+    assert payload["adjust"] == "qfq"
+    assert payload["count"] == 2
+    assert payload["data"][0]["turnover_rate"] == 1.1
+
+
+def test_compat_stock_daily_rejects_unpublished_adjustment(app):
+    response = app.test_client().get(
+        "/public-api/stock/daily?code=000400&start=2026-09-01&end=2026-09-02&adjust=hfq"
+    )
+    assert response.status_code == 422
 
 
 def test_stock_sector_relationships_keep_classification_and_source(app, monkeypatch):

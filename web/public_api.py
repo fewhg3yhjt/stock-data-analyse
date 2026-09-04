@@ -71,6 +71,27 @@ def _records(frame: pd.DataFrame) -> list[dict]:
     ]
 
 
+def _normalize_stock_code(value: str) -> tuple[str, str]:
+    """Accept a six-digit code or an exchange-qualified code without guessing its market."""
+    raw = str(value or "").strip().lower()
+    if not raw:
+        raise ValueError("code 为必填参数")
+    compact = raw.replace(".", "").replace("_", "").replace("-", "")
+    suffix = ""
+    if compact.endswith(("sz", "sh", "bj")):
+        suffix, compact = compact[-2:], compact[:-2]
+    elif compact.startswith(("sz", "sh", "bj")):
+        suffix, compact = compact[:2], compact[2:]
+    if len(compact) != 6 or not compact.isdigit():
+        raise ValueError("code 必须为 6 位股票代码，例如 000400 或 000400.SZ")
+    inferred = "sh" if compact.startswith(("60", "68", "69")) else "sz" if compact.startswith(("00", "20", "30")) else "bj" if compact.startswith(("4", "8")) else ""
+    if suffix and suffix != inferred:
+        raise ValueError(f"code 的交易所后缀与代码不匹配：{value}")
+    if not inferred:
+        raise ValueError(f"无法识别股票代码所属市场：{value}")
+    return compact, f"{inferred}{compact}"
+
+
 def _response(report: str, frame: pd.DataFrame, *, page: int, page_size: int,
               start: str | None = None, end: str | None = None, context: dict | None = None):
     total = len(frame)
@@ -176,6 +197,77 @@ def reports():
 def public_api_page():
     """Human-facing API portal; data requests remain on the JSON endpoints."""
     return flask.render_template("public_api.html")
+
+
+def public_api_index():
+    """Compatibility index for clients that expect /public-api to be JSON."""
+    return flask.jsonify({
+        "status": "ok",
+        "service": "stock-public-api",
+        "endpoints": [
+            {"method": "GET", "path": "/public-api/health", "description": "公开 API 健康检查"},
+            {"method": "GET", "path": "/public-api/stock/daily", "description": "获取已发布股票历史日线"},
+            {"method": "GET", "path": "/public-api/docs", "description": "网页 API 文档与在线查询器"},
+            {"method": "GET", "path": "/api/public/reports", "description": "列出完整公开数据报告与字段"},
+            {"method": "GET", "path": "/api/public/openapi.json", "description": "OpenAPI 3.0 文档"},
+        ],
+    })
+
+
+def public_api_health():
+    return flask.jsonify({"status": "ok", "service": "stock-public-api"})
+
+
+def public_api_docs():
+    return flask.render_template("public_api.html")
+
+
+def public_stock_daily():
+    """Flat, direct JSON daily-series endpoint for generic HTTP clients."""
+    try:
+        start, end = _date_arg("start"), _date_arg("end")
+        if not start or not end:
+            raise ValueError("start 和 end 为必填日期参数")
+        if start > end:
+            raise ValueError("start 不能晚于 end")
+        adjust = (flask.request.args.get("adjust") or "qfq").strip().lower()
+        if adjust not in {"none", "qfq", "hfq"}:
+            raise ValueError("adjust 仅支持 none、qfq 或 hfq")
+        if adjust != "qfq":
+            return _error("当前已发布 stock_daily 数据仅提供 qfq 前复权口径", 422)
+        code, internal_code = _normalize_stock_code(flask.request.args.get("code", ""))
+        warehouse = Warehouse()
+        result = DatasetAccess(warehouse).load_dataset(
+            "stock_daily", start_date=start, end_date=end, required_quality="WARNING"
+        )
+        frame = result.data.copy()
+        frame = frame[frame["code"].astype(str).str.lower().str.replace(".", "", regex=False) == internal_code]
+        frame = frame.sort_values("date")
+        names = {"turn": "turnover_rate"}
+        fields = ("date", "open", "high", "low", "close", "volume", "amount", "pre_close", "turn")
+        data = []
+        for row in _records(frame[[field for field in fields if field in frame]].rename(columns=names)):
+            row["date"] = str(row["date"])[:10]
+            data.append(row)
+        instrument = warehouse.get_instrument(internal_code) or {}
+        return flask.jsonify({
+            "status": "ok",
+            "code": code,
+            "name": instrument.get("name") or "",
+            "adjust": adjust,
+            "start_date": start,
+            "end_date": end,
+            "count": len(data),
+            "data": data,
+            "meta": {
+                "data_as_of": result.context.get("data_as_of"),
+                "quality_status": result.context.get("quality_status"),
+                "source": result.context.get("source"),
+                "partition_versions": result.context.get("partition_versions", {}),
+            },
+        })
+    except (ValueError, DatasetAccessError) as exc:
+        return _error(str(exc), 404 if isinstance(exc, DatasetAccessError) else 400)
 
 
 @public_api.route("/stocks", methods=["GET"])

@@ -3902,9 +3902,14 @@ def create_app():
     app.register_blueprint(biz_api, url_prefix="/api/biz")
     # Public data endpoints intentionally bypass the admin-only web Blueprint.
     # They expose only GET reads backed by published datasets.
-    from StockInvestmentTool.web.public_api import public_api, public_api_page
+    from StockInvestmentTool.web.public_api import (
+        public_api, public_api_docs, public_api_health, public_api_index, public_stock_daily,
+    )
     app.register_blueprint(public_api, url_prefix="/api/public")
-    app.add_url_rule("/public-api", endpoint="public_api_portal", view_func=public_api_page)
+    app.add_url_rule("/public-api", endpoint="public_api_index", view_func=public_api_index)
+    app.add_url_rule("/public-api/health", endpoint="public_api_health", view_func=public_api_health)
+    app.add_url_rule("/public-api/stock/daily", endpoint="public_stock_daily", view_func=public_stock_daily)
+    app.add_url_rule("/public-api/docs", endpoint="public_api_docs", view_func=public_api_docs)
 
     # 基础安全响应头（S-03）：当前页面仍有内联脚本与 CDN 静态资源，
     # CSP 分阶段启用：允许内联脚本与已知 CDN，后续内联脚本治理完成后收紧。
@@ -3925,7 +3930,7 @@ def create_app():
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "same-origin")
-        if flask.request.path.startswith("/api/public/"):
+        if flask.request.path.startswith(("/api/public/", "/public-api")):
             response.headers.setdefault("Access-Control-Allow-Origin", "*")
         return response
 
