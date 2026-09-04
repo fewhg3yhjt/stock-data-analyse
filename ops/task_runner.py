@@ -104,7 +104,9 @@ class TaskRunner:
                                 output_dataset=task_key)
             runs.append(item)
             parent_run_id = item["run_id"]
-            if item["status"] in {"failed", "timeout"}:
+            # A skipped upstream stage has no fresh output for its child. Stop
+            # here instead of letting a downstream stage publish stale input.
+            if item["status"] not in {"success", "partial_success"}:
                 break
         return {"request_ids": [item["request_id"] for item in runs], "runs": runs,
                 "status": runs[-1]["status"] if runs else "failed"}

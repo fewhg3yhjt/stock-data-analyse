@@ -36,6 +36,25 @@ def test_task_runner_finishes_timeout_without_leaving_running(tmp_path, monkeypa
     assert runner.jobs.get(result["run_id"])["status"] == "timeout"
 
 
+def test_task_runner_stops_pipeline_when_upstream_is_skipped(tmp_path):
+    runner = TaskRunner(tmp_path / "tasks.db")
+    runner.center.sync_definitions()
+
+    def skipped_worker(_run_id, _request):
+        return {"status": "skipped", "up_to_date": True}
+
+    def downstream_worker(_run_id, _request):
+        raise AssertionError("skipped upstream 后不应执行下游")
+
+    result = runner.execute_pipeline(
+        [("stock_daily_capture", skipped_worker), ("stock_daily_build", downstream_worker)],
+        period_start="2026-09-04", period_end="2026-09-04",
+    )
+
+    assert result["status"] == "skipped"
+    assert len(result["runs"]) == 1
+
+
 def test_task_runner_failure_enqueues_outbox_event(tmp_path, monkeypatch):
     runner = TaskRunner(tmp_path / "tasks.db")
     runner.center.sync_definitions()

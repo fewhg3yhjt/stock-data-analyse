@@ -48,3 +48,24 @@ def test_task_execution_rejects_missing_universe(tmp_path):
     center.sync_definitions()
     with pytest.raises(ValueError, match="证券范围"):
         execute_task(tmp_path / "management.db", "indicators_build", {})
+
+
+def test_execute_pipeline_stops_when_capture_is_skipped(monkeypatch, tmp_path):
+    import StockInvestmentTool.ops.task_execution as execution
+
+    calls = []
+
+    def fake_execute_task(_db, task_key, _payload):
+        calls.append(task_key)
+        return {"status": "skipped", "run_id": 1, "request_id": "req-1",
+                "result": {"reason": "任务锁被占用"}}
+
+    monkeypatch.setattr(execution, "execute_task", fake_execute_task)
+    result = execution.execute_pipeline(
+        tmp_path / "management.db",
+        ["stock_daily_capture", "stock_daily_build", "stock_daily_quality"],
+        {"period_start": "2026-09-04", "period_end": "2026-09-04"},
+    )
+
+    assert result["status"] == "skipped"
+    assert calls == ["stock_daily_capture"]

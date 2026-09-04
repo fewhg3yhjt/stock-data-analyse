@@ -583,6 +583,12 @@ def _recover_stale_task_state() -> int:
     recovered += store.reclaim_data_running(before=boundary)
     # 回收更宽时间窗内的孤儿运行记录，避免异常退出后任务永久 running。
     orphan = store.cancel_orphan_running(
+        job_names=[
+            "daily_tasks", "daily_sync", "stock_daily_capture", "stock_daily_build",
+            "stock_daily_quality", "stock_daily_publish", "indicators_build",
+            "rebuild_indicators", "rebuild_factors", "valuation_capture",
+            "industry_daily_capture", "industry_features_build",
+        ],
         before=(datetime.now() - timedelta(minutes=60)).isoformat(timespec="seconds"))
     recovered += orphan["jobs"] + orphan["plans"]
     recovered += store.recover_stale_locks()

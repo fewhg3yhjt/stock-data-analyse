@@ -276,7 +276,10 @@ def execute_pipeline(db_path: Path, task_keys: list[str], payload: dict | None =
             input_versions = output_versions
         if result.get("source_batch_id"):
             payload["input_batch_id"] = result["source_batch_id"]
-        if item.get("status") not in {"success", "partial_success", "skipped"}:
+        # skipped means this stage produced no new input (for example its lock
+        # is held or it is already up-to-date). Downstream build/quality/publish
+        # must never run against stale versions in that case.
+        if item.get("status") not in {"success", "partial_success"}:
             break
     return {"status": runs[-1].get("status", "failed"), "runs": runs,
             "request_ids": [item.get("request_id") for item in runs]}
