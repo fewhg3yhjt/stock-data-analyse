@@ -173,17 +173,25 @@ def _auxiliary(warehouse: Warehouse, request: dict, task_key: str) -> dict:
         output["success_codes"] = [code for code in symbols if warehouse.fundamental_path(code).exists()]
         return output
     if task_key == "valuation_capture":
-        frames = []
+        frames, failed_codes = [], []
         for code in symbols:
-            frame = ValuationBackfill.fetch_valuation_em(code, request.get("period_start"), request.get("period_end"))
+            try:
+                frame = ValuationBackfill.fetch_valuation_em(code, request.get("period_start"), request.get("period_end"))
+            except Exception as exc:  # noqa: BLE001
+                failed_codes.append(code)
+                logger.warning("估值拉取失败 %s: %s", code, exc)
+                continue
             if not frame.empty:
                 frames.append(frame)
                 for _, group in frame.groupby(frame["date"].dt.strftime("%Y-%m")):
                     warehouse.raw.upsert_rows("valuation", group)
+        if not frames:
+            return {"rows": 0, "symbols": 0, "raw_batch_id": None, "failed_codes": failed_codes}
         raw = capture_frames(warehouse, dataset_name="valuation_daily", source_name="eastmoney", frames=frames,
                              trade_date_start=request.get("period_start"), trade_date_end=request.get("period_end"),
                              expected_symbols=len(symbols), success_symbols=len(frames), universe_id="valuation_task")
-        return {"rows": sum(len(frame) for frame in frames), "symbols": len(frames), "raw_batch_id": raw["batch_id"]}
+        return {"rows": sum(len(frame) for frame in frames), "symbols": len(frames), "raw_batch_id": raw["batch_id"],
+                "failed_codes": failed_codes}
     output = capture_money_flow("stock", "now", warehouse=warehouse)
     return output
 

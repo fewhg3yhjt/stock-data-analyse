@@ -188,20 +188,27 @@ class IndustryCollector:
             {"industry_id": str(row.get("code", row.get("板块代码", row.get("代码", "")))), "industry_name": str(row.get("name", row.get("板块", row.get("行业名称", ""))))}
             for _, row in self._call(self.ths_names or ak.stock_board_industry_name_ths).iterrows()
         ]
+        # 同花顺行业指数接口在单日窗口下经常只返回少量板块，导致质量检查 FAIL、
+        # 旧版本不被替换，行业指数因此停滞。采集时向前扩展一个足够的历史窗口，
+        # 覆盖全部板块且保证请求日有行情；后续 build 只发布请求日的分区。
+        from datetime import timedelta
+        collect_start = (pd.Timestamp(end_date) - pd.Timedelta(days=45)).strftime("%Y-%m-%d")
+        d_start = collect_start.replace("-", "")
+        d_end = end_date.replace("-", "")
         frames, failed = [], []
         for item in names:
             try:
                 raw = self._call(self.ths_history or ak.stock_board_industry_index_ths,
-                                 symbol=item["industry_name"], start_date=start_date.replace("-", ""), end_date=end_date.replace("-", ""))
+                                 symbol=item["industry_name"], start_date=d_start, end_date=d_end)
                 frames.append(normalize_industry_daily(raw, **item, source_symbol=item["industry_name"]))
             except Exception as exc:
                 failed.append(item["industry_id"] or item["industry_name"])
                 logger.warning("行业指数采集失败 %s: %s", item, exc)
             self.sleep(self.interval)
         raw_result = capture_frames(self.warehouse, dataset_name="industry_daily", source_name="akshare", frames=frames,
-                                    run_date=end_date, trade_date_start=start_date, trade_date_end=end_date,
+                                    run_date=end_date, trade_date_start=collect_start, trade_date_end=end_date,
                                     expected_symbols=len(names), success_symbols=len(frames), failed_symbols=len(failed),
-                                    universe_id="ths_industry", request_context={"start_date": start_date, "end_date": end_date,
+                                    universe_id="ths_industry", request_context={"start_date": collect_start, "end_date": end_date,
                                     "api_name": "stock_board_industry_index_ths"}, schema_version="industry_daily.v1",
                                     failure_details=failed) if frames else None
         return {"raw_batch_id": raw_result["batch_id"] if raw_result else None, "success": len(frames), "expected_symbols": len(names), "failed": failed}
@@ -246,8 +253,13 @@ def stage_and_publish_industry(warehouse, *, dataset_name: str, partition: str,
 
 
 def stage_and_publish_industry_batch(warehouse, *, dataset_name: str, batch_id: str,
-                                    expected_symbols: int | None = None) -> dict:
-    """Publish every month represented by one industry_daily Raw Batch."""
+                                    expected_symbols: int | None = None,
+                                    partition: str | None = None) -> dict:
+    """Publish every month represented by one industry_daily Raw Batch.
+
+    ``partition`` (YYYY-MM) restricts publish to one month, used by the daily
+    retry so a wide capture window does not re-publish the prior month.
+    """
     batch = SourceBatchStore(warehouse.meta_db_path).get(batch_id)
     if not batch or not batch.get("raw_path"):
         raise ValueError(f"Raw Batch 不存在或没有文件: {batch_id}")
@@ -257,6 +269,8 @@ def stage_and_publish_industry_batch(warehouse, *, dataset_name: str, batch_id: 
     partitions = ([str(value)[:10] for value in frame[date_col].dropna().unique()]
                   if dataset_name == "industry_membership" else
                   [str(value)[:7] for value in frame[date_col].dropna().unique()])
+    if partition:
+        partitions = [p for p in partitions if p == partition]
     for partition in sorted(set(partitions)):
         try:
             results[partition] = stage_and_publish_industry(

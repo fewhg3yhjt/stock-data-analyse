@@ -54,11 +54,13 @@ class ValuationBackfill:
 
         digits = code.replace("sh", "").replace("sz", "").replace("bj", "").replace(".", "")
         df = ak.stock_value_em(symbol=digits)
-        if df is None or df.empty:
-            raise RuntimeError(f"东财估值无数据: {code}")
+        # stock_value_em 可能返回 None 或缺少列，必须防御，否则单只失败会让整个
+        # valuation_capture 任务崩溃并停在 failed。
+        if df is None or df.empty or "数据日期" not in df.columns:
+            return pd.DataFrame(columns=["date", "code", "pe_ttm", "pb_mrq"])
 
         out = pd.DataFrame({
-            "date": pd.to_datetime(df["数据日期"]),
+            "date": pd.to_datetime(df["数据日期"], errors="coerce"),
             "pe_ttm": pd.to_numeric(df["PE(TTM)"], errors="coerce"),
             "pb_mrq": pd.to_numeric(df["市净率"], errors="coerce"),
         })

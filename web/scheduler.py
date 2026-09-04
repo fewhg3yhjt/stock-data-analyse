@@ -694,7 +694,8 @@ def run_post_close_retry_job() -> dict:
                 published = stage_and_publish_industry_batch(
                     Warehouse(meta_db_path=management_db_path()),
                     dataset_name="industry_daily", batch_id=full_result["raw_batch_id"],
-                    expected_symbols=full_result.get("expected_symbols"))
+                    expected_symbols=full_result.get("expected_symbols"),
+                    partition=trading_date[:7])
                 result["industry_daily_publish"] = published
             if enabled("industry_features_build") and _dataset_released("industry_daily", trading_date):
                 result["industry_features"] = execute_task(
