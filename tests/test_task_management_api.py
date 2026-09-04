@@ -69,3 +69,31 @@ def test_execute_pipeline_stops_when_capture_is_skipped(monkeypatch, tmp_path):
 
     assert result["status"] == "skipped"
     assert calls == ["stock_daily_capture"]
+
+
+def test_industry_daily_capture_does_not_require_security_universe(monkeypatch, tmp_path):
+    import StockInvestmentTool.ops.task_execution as execution
+
+    center = TaskCenter(tmp_path / "management.db")
+    center.sync_definitions()
+
+    class FakeRunner:
+        def __init__(self, *_args):
+            pass
+
+        def execute(self, task_key, worker, **_kwargs):
+            assert task_key == "industry_daily_capture"
+            result = worker(1, {"period_start": "2026-09-04", "period_end": "2026-09-04", "symbols": []})
+            return {"run_id": 1, "status": "success", "result": result}
+
+    monkeypatch.setattr("StockInvestmentTool.ops.task_runner.TaskRunner", FakeRunner)
+    monkeypatch.setattr(execution, "worker", lambda task_key, _warehouse, request, _run_id: {
+        "task_key": task_key, "symbols": request["symbols"], "rows": 1,
+    })
+
+    result = execution.execute_task(tmp_path / "management.db", "industry_daily_capture", {
+        "period_start": "2026-09-04", "period_end": "2026-09-04",
+    })
+
+    assert result["status"] == "success"
+    assert result["result"]["symbols"] == []

@@ -450,7 +450,10 @@ def init_scheduler(app) -> None:
     # 通知触发器（FR-3.4 免重启：按触发器配置挂载，保存后重挂即可）
     _schedule_from_triggers(scheduler)
 
-    _recover_stale_task_state()
+    # No worker thread from a previous web process can survive this startup.
+    # Reclaim every run older than this process immediately, not after an
+    # arbitrary grace window, so a restart never leaves a false running task.
+    _recover_stale_task_state(before=startup_boundary)
 
     scheduler.start()
     app.extensions["scheduler"] = scheduler
@@ -569,7 +572,7 @@ def _schedule_configured_data_tasks(scheduler) -> None:
         logger.info("配置任务已注册: %s (%s %s)", key, frequency, spec)
 
 
-def _recover_stale_task_state() -> int:
+def _recover_stale_task_state(*, before: datetime | None = None) -> int:
     """启动时回收遗留任务状态（进程重启后的残留在途状态）。
 
     回收 running JobRun、过期任务锁、running SourceBatch，并标记残留
@@ -579,7 +582,7 @@ def _recover_stale_task_state() -> int:
     from datetime import datetime
     from StockInvestmentTool.ops.job_runs import JobRunStore
     store = JobRunStore()
-    boundary = datetime.now() - timedelta(minutes=5)
+    boundary = before or (datetime.now() - timedelta(minutes=5))
     recovered += store.reclaim_data_running(before=boundary)
     # 回收更宽时间窗内的孤儿运行记录，避免异常退出后任务永久 running。
     orphan = store.cancel_orphan_running(
@@ -589,7 +592,7 @@ def _recover_stale_task_state() -> int:
             "rebuild_indicators", "rebuild_factors", "valuation_capture",
             "industry_daily_capture", "industry_features_build",
         ],
-        before=(datetime.now() - timedelta(minutes=60)).isoformat(timespec="seconds"))
+        before=(before or (datetime.now() - timedelta(minutes=60))).isoformat(timespec="seconds"))
     recovered += orphan["jobs"] + orphan["plans"]
     recovered += store.recover_stale_locks()
     try:

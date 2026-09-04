@@ -222,12 +222,16 @@ def execute_task(db_path: Path, task_key: str, payload: dict,
     if task is None:
         raise ValueError(f"任务不存在: {task_key}")
     symbols = payload.get("symbols") or []
-    if not symbols:
+    # Industry index capture discovers its 90 THS industries from the source;
+    # it is not a security-universe task and must not require instruments with
+    # type=industry in the management catalog.
+    requires_security_scope = task_key != "industry_daily_capture"
+    if not symbols and requires_security_scope:
         config = json.loads(task["config_versions"][0]["config"]) if task.get("config_versions") else {}
         asset_types = set((config.get("scope") or {}).get("asset_types") or [])
         catalog = Warehouse(meta_db_path=db_path).list_instruments(asset_types=asset_types)
         symbols = [item["code"] for item in catalog]
-    if not symbols:
+    if not symbols and requires_security_scope:
         raise ValueError(f"任务 {task_key} 没有可执行的证券范围")
     payload = {**payload, "symbols": symbols}
     if request_id is None:
