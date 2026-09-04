@@ -70,3 +70,16 @@ class SourceBatchStore:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM source_batches WHERE batch_id=?", (batch_id,)).fetchone()
         return dict(row) if row else None
+
+    def recover_running(self, *, before: datetime | str) -> int:
+        """Finish batches abandoned by a terminated worker process."""
+        boundary = before.isoformat(timespec="seconds") if isinstance(before, datetime) else str(before)
+        now = _now()
+        with self._connect() as conn:
+            cur = conn.execute(
+                """UPDATE source_batches SET status='failed', finished_at=?,
+                   error_summary='采集进程已结束，SourceBatch 自动回收'
+                   WHERE status='running' AND started_at<?""",
+                (now, boundary),
+            )
+        return cur.rowcount

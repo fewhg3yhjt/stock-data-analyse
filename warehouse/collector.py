@@ -363,30 +363,38 @@ class MarketCollector:
         #   - 已到 end_date → 跳过（不重拉）
         last_dates: dict[str, pd.Timestamp] = {}
         if raw_source:
-            lm_months = self.warehouse.raw.available_months(raw_source)
-            months_to_scan = lm_months
+            # Resume from immutable Raw Batches so an hourly retry only fetches
+            # symbols still missing after a prior deadline.
+            with self.warehouse._conn() as conn:
+                rows = conn.execute(
+                    """SELECT raw_path FROM source_batches
+                       WHERE dataset_name='stock_daily' AND source_name=?
+                       AND status IN ('success','partial_success')
+                       AND raw_path IS NOT NULL AND trade_date_start<=?""",
+                    (raw_source, end_date),
+                ).fetchall()
+            files = [str(row[0]) for row in rows if row[0] and Path(row[0]).exists()]
+            files.extend(
+                str(self.warehouse.raw.partition_path(raw_source, ym))
+                for ym in self.warehouse.raw.available_months(raw_source)
+                if self.warehouse.raw.partition_path(raw_source, ym).exists()
+            )
         else:
-            months_to_scan = self.warehouse.available_months("daily")
-        if months_to_scan:
+            files = [str(self.warehouse.daily_partition(ym))
+                     for ym in self.warehouse.available_months("daily")
+                     if self.warehouse.daily_partition(ym).exists()]
+        if files:
             try:
                 import duckdb
-                files = []
-                for ym in months_to_scan:
-                    if raw_source:
-                        files.append(str(self.warehouse.raw.partition_path(raw_source, ym)))
-                    else:
-                        files.append(str(self.warehouse.daily_partition(ym)))
-                files = [f for f in files if Path(f).exists()]
-                if files:
-                    con = duckdb.connect()
-                    try:
-                        file_list = "[" + ",".join("'" + f + "'" for f in files) + "]"
-                        rows = con.execute(
-                            f"SELECT code, MAX(date) AS last_date FROM read_parquet({file_list}) GROUP BY code"
-                        ).fetchall()
-                        last_dates = {r[0]: pd.Timestamp(r[1]) for r in rows}
-                    finally:
-                        con.close()
+                con = duckdb.connect()
+                try:
+                    file_list = "[" + ",".join("'" + f.replace("'", "''") + "'" for f in files) + "]"
+                    rows = con.execute(
+                        f"SELECT code, MAX(date) AS last_date FROM read_parquet({file_list}, union_by_name=true) GROUP BY code"
+                    ).fetchall()
+                    last_dates = {r[0]: pd.Timestamp(r[1]) for r in rows}
+                finally:
+                    con.close()
             except Exception as e:
                 logger.warning("构建标的最新日期索引失败(%s)，退回旧覆盖判断", e)
         logger.info("已覆盖标的: %d 个（跳过）", len(last_dates))

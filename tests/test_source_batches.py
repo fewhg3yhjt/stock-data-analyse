@@ -25,6 +25,19 @@ def test_source_batch_has_unique_ids_and_traceable_stats(tmp_path):
     assert row["batch_id"] != row["raw_path"]
 
 
+def test_source_batch_recovery_finishes_abandoned_running_row(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    store = SourceBatchStore(warehouse.meta_db_path)
+    batch_id = store.start(run_date="2026-08-28", trade_date_start="2026-08-28",
+                           trade_date_end="2026-08-28", expected_symbols=1,
+                           universe_id="u1", request_context={})
+    recovered = store.recover_running(before="2099-01-01T00:00:00")
+    assert recovered == 1
+    row = store.get(batch_id)
+    assert row["status"] == "failed"
+    assert row["finished_at"]
+
+
 def test_raw_batch_is_atomic_and_immutable(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     frame = pd.DataFrame({"date": pd.to_datetime(["2026-08-28"]),
@@ -118,3 +131,34 @@ def test_daily_capture_timeout_marks_unprocessed_symbols_failed(tmp_path, monkey
     assert result["status"] == "timeout"
     assert result["failed"] == ["sh600000", "sh600001", "sh600002"]
     assert calls == []
+
+
+def test_daily_capture_resumes_from_partial_raw_batch(tmp_path, monkeypatch):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    store = SourceBatchStore(warehouse.meta_db_path)
+    partial = warehouse.raw.write_batch("tencent", "stock_daily", "2026-08-28", [
+        pd.DataFrame({"date": pd.to_datetime(["2026-08-28"]), "code": ["sh600000"],
+                      "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+                      "volume": [100], "amount": [1000], "turn": [1.0]})
+    ])
+    batch_id = store.start(run_date="2026-08-28", trade_date_start="2026-08-28",
+                           trade_date_end="2026-08-28", expected_symbols=2,
+                           universe_id="u1", request_context={}, source_name="tencent")
+    store.finish(batch_id, success_symbols=1, failed_symbols=1, skipped_symbols=0,
+                 row_count=1, raw_path=str(partial["path"]), checksum=partial["checksum"],
+                 file_size=partial["file_size"], status="partial_success", failure_details=["sh600001"])
+    collector = MarketCollector(warehouse=warehouse, query_interval=0)
+    calls = []
+
+    def fake_fetch(code, start, end, request_timeout=None):
+        calls.append(code)
+        return pd.DataFrame({"date": pd.to_datetime(["2026-08-28"]), "code": [code],
+                             "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+                             "volume": [100], "amount": [1000], "turn": [1.0]})
+
+    monkeypatch.setattr(collector, "_fetch_symbol_tencent", fake_fetch)
+    result = collector.sync_daily(start_date="2026-08-28", end_date="2026-08-28",
+                                  symbols=["sh600000", "sh600001"], source="tencent",
+                                  target="raw:tencent", capture_raw=True)
+    assert calls == ["sh600001"]
+    assert result["skipped_symbols"] == 1

@@ -596,6 +596,12 @@ def _recover_stale_task_state(*, before: datetime | None = None) -> int:
     recovered += orphan["jobs"] + orphan["plans"]
     recovered += store.recover_stale_locks()
     try:
+        from StockInvestmentTool.warehouse.source_batches import SourceBatchStore
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        recovered += SourceBatchStore(Warehouse().meta_db_path).recover_running(before=boundary)
+    except Exception as exc:
+        logger.warning("SourceBatch 遗留状态回收失败: %s", exc)
+    try:
         from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
         center = TaskCenter(management_db_path())
         recovered += center.recover_inflight_requests()
