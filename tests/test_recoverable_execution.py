@@ -118,6 +118,15 @@ def test_recover_inflight_requests_marks_running_failed(tmp_path):
     assert center.request(request_id)["status"] == "failed"
 
 
+def test_recover_inflight_requests_keeps_newer_running_request(tmp_path):
+    center = TaskCenter(tmp_path / "runs.db")
+    center.sync_definitions()
+    request_id = center.create_request("indicators_build", "manual", period_start="2026-08-01", period_end="2026-08-28")
+    center.update_request(request_id, "running")
+    assert center.recover_inflight_requests(before="2000-01-01T00:00:00") == 0
+    assert center.request(request_id)["status"] == "running"
+
+
 def test_recover_inflight_publishing_marks_failed(tmp_path):
     from StockInvestmentTool.warehouse.pipeline_state import PipelineState, recover_inflight_publishing
     state = PipelineState(tmp_path / "meta.db")

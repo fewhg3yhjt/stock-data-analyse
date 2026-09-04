@@ -455,11 +455,21 @@ class TaskCenter:
         with self._connect() as conn:
             conn.execute("UPDATE task_execution_requests SET status=? WHERE request_id=?", (status, request_id))
 
-    def recover_inflight_requests(self) -> int:
-        """启动时回收遗留 running 执行请求（进程重启）。"""
+    def recover_inflight_requests(self, *, before: str | None = None) -> int:
+        """Recover abandoned running requests without touching live work.
+
+        ``before`` is required by periodic recovery so a request started at the
+        same scheduler tick is not immediately marked failed. Startup callers
+        pass the process start boundary to reclaim work killed by that restart.
+        """
         with self._connect() as conn:
-            cur = conn.execute(
-                "UPDATE task_execution_requests SET status='failed' WHERE status='running'")
+            if before:
+                cur = conn.execute(
+                    "UPDATE task_execution_requests SET status='failed' "
+                    "WHERE status='running' AND created_at<?", (before,))
+            else:
+                cur = conn.execute(
+                    "UPDATE task_execution_requests SET status='failed' WHERE status='running'")
         return cur.rowcount
 
     def event(self, run_id: int, message: str, *, level="INFO", phase="", event_type="log",

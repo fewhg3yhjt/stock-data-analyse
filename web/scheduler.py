@@ -604,7 +604,8 @@ def _recover_stale_task_state(*, before: datetime | None = None) -> int:
     try:
         from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
         center = TaskCenter(management_db_path())
-        recovered += center.recover_inflight_requests()
+        recovered += center.recover_inflight_requests(
+            before=boundary.isoformat(timespec="seconds"))
     except Exception as exc:
         logger.warning("任务中心遗留状态回收失败: %s", exc)
     try:
