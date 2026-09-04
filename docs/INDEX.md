@@ -31,6 +31,7 @@
 
 ## 专项设计与实施
 
+- [公开市场数据 API](PUBLIC_MARKET_DATA_API.md)：面向在线大模型和外部工具的无认证只读数据接口、参数、字段、分页与调用示例。
 - [策略核心与回测模拟子模块设计](STRATEGY_CORE_AND_SIMULATION_DESIGN.md)：指标条件、策略编排、统一决策协议和回测/模拟执行模型。
 - [选股与行情分析子模块设计](SCREENING_AND_MARKET_ANALYSIS_DESIGN.md)：筛选方案、筛选运行、候选追溯、走势图查询及观察池/模拟衔接。
 - [个股研究与分析子模块设计](RESEARCH_AND_ANALYSIS_DESIGN.md)：ResearchRun、研究证据、结构化研究结果与策略决策衔接。
