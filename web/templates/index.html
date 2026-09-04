@@ -37,6 +37,7 @@ body {
 }
 .ui-field input:focus { border-color: var(--color-info); box-shadow: 0 0 0 2px rgba(26,115,232,.12); }
 .ui-field .hint { font-size: 13px; color: var(--color-text-subtle); margin-top: 2px; }
+.simulation-picker{position:relative}.simulation-suggestions{position:absolute;left:0;right:0;top:100%;z-index:30;display:none;max-height:240px;overflow:auto;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;box-shadow:0 8px 20px rgba(0,0,0,.14)}.simulation-suggestion{display:block;width:100%;padding:9px 11px;border:0;border-bottom:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);text-align:left;cursor:pointer}.simulation-suggestion:hover{background:var(--color-surface-subtle)}.simulation-stock-table{margin-top:12px}.simulation-stock-table button{padding:4px 8px}.batch-summary{margin-bottom:14px}.batch-detail{display:none;background:var(--color-surface-subtle)}.batch-detail.open{display:table-row}.batch-detail-cell{padding:14px!important}.batch-kline,.batch-returns{height:360px;margin-top:10px}.batch-operation-table{font-size:12px;margin-top:12px}
 
 /* 选项 */
 .opts { display: flex; flex-wrap: wrap; gap: 18px; margin: 12px 0 6px; }
@@ -149,15 +150,19 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
   <div class="ui-card">
      <div class="ui-card-header"><i class="fas fa-flask"></i> 策略模拟参数</div>
     <form id="analyze-form" autocomplete="off">
+      <input type="hidden" name="draft_id" id="sim-draft-id">
       <div class="form-row">
-        <div class="ui-field">
-          <label>股票代码</label>
-          <input type="text" name="code" placeholder="sh.600900 / 600900 / sz.000001" value="{{ prefill_code or 'sh.600900' }}" required>
-          <span class="hint">6xx/9xx 沪市 · 0xx/2xx/3xx 深市 · 输纯数字自动识别</span>
+        <div class="ui-field simulation-picker">
+          <label>添加股票（代码或名称）</label>
+          <input type="text" name="code" id="sim-code" placeholder="sh.600900 / 600900 / 长江电力" value="{{ prefill_code or 'sh.600900' }}" autocomplete="off">
+          <div id="sim-code-suggestions" class="simulation-suggestions"></div>
+          <span class="hint">输入代码或名称，从候选中选择后自动关联名称和证券类型</span>
         </div>
-        <div class="ui-field">
+        <div class="ui-field simulation-picker">
           <label>股票名称</label>
-          <input type="text" name="name" placeholder="如 长江电力" value="{{ prefill_name or '长江电力' }}" required>
+          <input type="text" name="name" id="sim-name" placeholder="如 长江电力" value="{{ prefill_name or '长江电力' }}" autocomplete="off">
+          <div id="sim-name-suggestions" class="simulation-suggestions"></div>
+          <span class="hint" id="sim-classify-hint">选择候选后自动回填，可手动调整类型</span>
         </div>
       </div>
       <div class="form-row three" style="margin-top:12px;">
@@ -185,8 +190,8 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
           <span class="hint">方案 = 买点规则 × 卖点规则 × 风控规则</span>
         </div>
         <div class="ui-field">
-          <label>股票类型</label>
-          <select name="stock_type">
+          <label>当前添加标的类型</label>
+          <select name="stock_type" id="sim-stock-type">
              <option value="B" {% if (prefill_stock_type or 'B') == 'B' %}selected{% endif %}>B 价值白马</option>
              <option value="A" {% if prefill_stock_type == 'A' %}selected{% endif %}>A 高成长</option>
              <option value="C" {% if prefill_stock_type == 'C' %}selected{% endif %}>C 强周期</option>
@@ -197,9 +202,10 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
         </div>
         <div class="ui-field">
           <label>&nbsp;</label>
-          <a href="/schemes" target="_blank" class="ui-button ui-button-secondary" style="justify-content:center;"><i class="fas fa-list"></i> 查看全部方案</a>
+          <button type="button" class="ui-button ui-button-secondary" onclick="addSimulationStock()"><i class="fas fa-plus"></i> 加入模拟列表</button>
         </div>
       </div>
+      <div class="simulation-stock-table ui-table-wrap"><table class="ui-table"><thead><tr><th>股票代码/名称</th><th>证券类型</th><th>操作</th></tr></thead><tbody id="simulation-stock-rows"></tbody></table><div class="hint" id="simulation-stock-hint">单只股票按当前方案模拟；多只股票严格串行运行，最多10只。</div></div>
       <div class="opts">
         <label><input type="checkbox" name="backtest" checked> 📊 策略回测</label>
         <label><input type="checkbox" name="prompt" checked> 🤖 生成 AI Prompt</label>
@@ -221,6 +227,7 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
 
   <!-- 结果 -->
   <div class="result-section" id="result-section">
+    <div class="ui-card" id="batch-results-card" style="display:none;"></div>
 
     <!-- 指标 -->
     <div class="ui-card">
@@ -284,6 +291,107 @@ const resultSection = document.getElementById('result-section');
 const autoRun = new URLSearchParams(location.search).get('auto_run') === '1';
 let analysisPollTimer = null;
 let analysisPollStartedAt = 0;
+let simulationStocks = [];
+
+const typeLabels = {A:'A 高成长', B:'B 价值白马', C:'C 强周期', D:'D 深度价值', E:'E 场内 ETF/基金'};
+
+function renderSimulationStocks(){
+  const body=document.getElementById('simulation-stock-rows');
+  body.innerHTML=simulationStocks.map((stock,index)=>'<tr><td><b>'+stock.name+'</b><br><small>'+stock.code+'</small></td><td>'+typeLabels[stock.stock_type]+'</td><td><button type="button" class="ui-button ui-button-danger ui-button-sm" onclick="removeSimulationStock('+index+')">移除</button></td></tr>').join('') || '<tr><td colspan="3" class="hint">请添加至少一只股票</td></tr>';
+  document.getElementById('simulation-stock-hint').textContent=simulationStocks.length+' 只标的；同一方案严格串行运行，单次最多10只。';
+}
+
+function removeSimulationStock(index){ simulationStocks.splice(index,1); renderSimulationStocks(); }
+
+async function applySimulationStock(item){
+  document.getElementById('sim-code').value=item.code||'';
+  document.getElementById('sim-name').value=item.name||item.code||'';
+  document.querySelectorAll('.simulation-suggestions').forEach(menu=>{menu.style.display='none'; menu.replaceChildren();});
+  try{
+    const response=await fetch('/api/classify?code='+encodeURIComponent(item.code));
+    const data=await response.json();
+    if(data.status==='success'){
+      document.getElementById('sim-stock-type').value=data.stock_type||'B';
+      document.getElementById('sim-classify-hint').textContent='自动识别：'+(data.industry||'未知行业')+' → '+(typeLabels[data.stock_type]||data.stock_type)+'（可手动调整）';
+    }
+  }catch(e){ document.getElementById('sim-classify-hint').textContent='自动分类失败，可手动选择类型'; }
+}
+
+function bindSimulationAutocomplete(inputId, menuId){
+  const input=document.getElementById(inputId), menu=document.getElementById(menuId); let timer, controller;
+  const close=()=>{menu.style.display='none';menu.replaceChildren();};
+  input.addEventListener('input',()=>{
+    const query=input.value.trim(); clearTimeout(timer); if(controller) controller.abort();
+    if(!query){close();return;}
+    timer=setTimeout(async()=>{
+      try{
+        controller=new AbortController();
+        const response=await fetch('/api/stock/search?q='+encodeURIComponent(query),{signal:controller.signal});
+        const data=await response.json(); menu.replaceChildren();
+        (data.items||[]).forEach(item=>{
+          const button=document.createElement('button'); button.type='button'; button.className='simulation-suggestion';
+          button.textContent=(item.name||item.code)+' · '+item.code+' · '+(item.asset_type==='etf'?'ETF':'股票');
+          button.addEventListener('mousedown',event=>{event.preventDefault();applySimulationStock(item);}); menu.appendChild(button);
+        });
+        menu.style.display=menu.children.length?'block':'none';
+      }catch(e){ if(e.name!=='AbortError') close(); }
+    },180);
+  });
+  input.addEventListener('blur',()=>setTimeout(close,180));
+}
+
+function addSimulationStock(){
+  const code=document.getElementById('sim-code').value.trim();
+  const name=document.getElementById('sim-name').value.trim();
+  const stock_type=document.getElementById('sim-stock-type').value;
+  if(!code||!name){showError('请先输入并选择股票代码或名称');return;}
+  if(simulationStocks.some(s=>s.code===code)){showError('该股票已经在模拟列表中');return;}
+  if(simulationStocks.length>=10){showError('单次批量模拟最多10只股票');return;}
+  simulationStocks.push({code,name,stock_type}); renderSimulationStocks();
+}
+
+function batchDetailId(code){ return 'batch-detail-'+String(code).replace(/[^a-zA-Z0-9]/g,'_'); }
+
+function renderBatchResults(payload){
+  const batch=payload.result||payload;
+  const card=document.getElementById('batch-results-card');
+  const successes=(batch.items||[]).filter(x=>x.status==='success');
+  const failures=(batch.items||[]).filter(x=>x.status!=='success');
+  document.getElementById('stats-grid').innerHTML='';
+  document.getElementById('buy-plan-card').style.display='none';
+  document.getElementById('sell-plan-card').style.display='none';
+  document.getElementById('trades-card').style.display='none';
+  document.getElementById('chart-gallery').innerHTML='';
+  document.getElementById('report-content').textContent='批量模拟请在下方展开单只查看操作说明。';
+  card.style.display='block';
+  card.innerHTML='<div class="ui-card-header"><span>批量模拟汇总</span><span class="hint">方案 '+(batch.scheme_name||'—')+' · 成功 '+successes.length+' / 失败 '+failures.length+' · 点击“展开”查看K线、操作说明和收益曲线</span></div><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>股票</th><th>类型</th><th>策略收益</th><th>买入持有</th><th>超额收益</th><th>最大回撤</th><th>交易数</th><th>操作</th></tr></thead><tbody>'+successes.map((item,index)=>{
+    const r=item.result||{}; const excess=(Number(r.total_return||0)-Number(r.buy_hold_return||0)); const id=batchDetailId(item.code);
+    return '<tr><td><b>'+item.name+'</b><br><small>'+item.code+'</small></td><td>'+typeLabels[item.stock_type]+'</td><td>'+(Number(r.total_return||0)>=0?'+':'')+Number(r.total_return||0).toFixed(2)+'%</td><td>'+(Number(r.buy_hold_return||0)>=0?'+':'')+Number(r.buy_hold_return||0).toFixed(2)+'%</td><td>'+(excess>=0?'+':'')+excess.toFixed(2)+'%</td><td>'+Number(r.max_drawdown||0).toFixed(2)+'%</td><td>'+(r.trade_count||r.trades?.length||0)+'</td><td><button type="button" class="ui-button ui-button-secondary ui-button-sm" onclick="toggleBatchDetail(\''+id+'\')">展开</button></td></tr><tr id="'+id+'" class="batch-detail"><td colspan="8" class="batch-detail-cell"><div class="batch-detail-content"></div></td></tr>';
+  }).join('')+failures.map(item=>'<tr><td><b>'+item.name+'</b><br><small>'+item.code+'</small></td><td>'+typeLabels[item.stock_type]+'</td><td colspan="6" class="error">模拟失败：'+(item.error||'未知错误')+'</td></tr>').join('')+'</tbody></table></div>';
+  successes.forEach(item=>renderBatchDetail(batchDetailId(item.code),item));
+  resultSection.style.display='block';
+}
+
+function toggleBatchDetail(id){
+  const row=document.getElementById(id); if(!row)return;
+  row.classList.toggle('open');
+  if(row.classList.contains('open')) setTimeout(()=>{const charts=row.querySelectorAll('[data-batch-chart]');charts.forEach(el=>{const chart=echarts.getInstanceByDom(el);if(chart)chart.resize();});},0);
+}
+
+function renderBatchDetail(id,item){
+  const host=document.querySelector('#'+id+' .batch-detail-content'); const r=item.result||{};
+  const safe=id.replace(/[^a-zA-Z0-9_]/g,'_'); const kId=safe+'-kline'; const eId=safe+'-returns';
+  host.innerHTML='<div class="batch-summary"><b>'+item.name+'</b> · 策略收益 '+Number(r.total_return||0).toFixed(2)+'% · 买入持有 '+Number(r.buy_hold_return||0).toFixed(2)+'% · 大盘 '+((r.return_curves?.market||[]).filter(x=>x!=null).at(-1)??'—')+'%</div><div id="'+kId+'" data-batch-chart style="height:420px;width:100%;"></div><div style="margin-top:14px;"><b>操作说明</b><div class="ui-table-wrap"><table class="ui-table batch-operation-table"><thead><tr><th>日期</th><th>操作</th><th>成交价</th><th>触发价</th><th>数量</th><th>盈亏</th><th>操作说明</th></tr></thead><tbody>'+(r.trades||[]).map(t=>'<tr><td>'+String(t.date||'').slice(0,10)+'</td><td>'+t.type+'</td><td>'+Number(t.price||0).toFixed(2)+'</td><td>'+(t.trigger_price!=null?Number(t.trigger_price).toFixed(2):'—')+'</td><td>'+Number(t.shares||0).toFixed(0)+'</td><td>'+(t.pnl!=null?Number(t.pnl).toFixed(2):'—')+'</td><td>'+ (t.reason||'')+'</td></tr>').join('')+'</tbody></table></div></div><div id="'+eId+'" data-batch-chart class="batch-returns"></div>';
+  const signals=(r.trades||[]).map(t=>({date:String(t.date||'').slice(0,10),value:Number(t.price),type:String(t.type||'').includes('买入')?'buy':'sell'}));
+  window.StockChart.drawKLineFull(document.getElementById(kId),{dates:r.kline_dates||[],ohlc:r.kline_ohlc||[],closes:(r.kline_ohlc||[]).map(o=>o[1]),highs:(r.kline_ohlc||[]).map(o=>o[3]),lows:(r.kline_ohlc||[]).map(o=>o[2]),volumes:r.kline_vol||[],ma:r.kline_ma||{},signals},{});
+  const curves=r.return_curves||{};
+  window.StockChart.drawLine(document.getElementById(eId),{dates:curves.dates||[],series:[{name:'策略收益率',key:'close',data:curves.strategy||[]},{name:'买入持有收益率',key:'ma20',data:curves.buy_hold||[]},{name:'沪深300收益率',key:'ma60',data:curves.market||[]}]},{yFormatter:'{value}%'});
+}
+
+bindSimulationAutocomplete('sim-code','sim-code-suggestions');
+bindSimulationAutocomplete('sim-name','sim-name-suggestions');
+document.getElementById('sim-draft-id').value=new URLSearchParams(location.search).get('draft_id')||'';
+if(document.getElementById('sim-code').value && document.getElementById('sim-name').value) addSimulationStock();
 
 if (autoRun && form.querySelector('[name="code"]').value) {
   setTimeout(() => form.requestSubmit(), 200);
@@ -312,7 +420,20 @@ form.addEventListener('submit', async (e) => {
   loadingFill.style.width = '0%';
   const fd = new FormData(form);
   try {
-    const data = await UI_UTILS.fetchJson('/strategy-simulation', { method: 'POST', body: fd });
+    if (!simulationStocks.length) addSimulationStock();
+    if (!simulationStocks.length) throw new Error('请添加至少一只股票');
+    let data;
+    if (simulationStocks.length === 1) {
+      const stock=simulationStocks[0];
+      fd.set('code',stock.code); fd.set('name',stock.name); fd.set('stock_type',stock.stock_type);
+      data = await UI_UTILS.fetchJson('/strategy-simulation', { method: 'POST', body: fd });
+    } else {
+      loadingStage.textContent = '批量任务初始化（严格串行）...';
+      data = await UI_UTILS.fetchJson('/strategy-simulation/batch', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        stocks: simulationStocks, scheme: fd.get('scheme'), draft_id: fd.get('draft_id'),
+        start_date: fd.get('start_date'), end_date: fd.get('end_date'), initial_cash: fd.get('initial_cash')
+      }) });
+    }
     if (data.status === 'error') { showError(data.error); return; }
     if (data.status === 'success') {
       loading.style.display = 'none';
@@ -346,7 +467,8 @@ function pollAnalysisTask(url) {
       loadingFill.style.width = `${Math.max(0, Math.min(100, Number(task.progress) || 0))}%`;
       if (task.status === 'success') {
         loading.style.display = 'none';
-        renderResults({result: task.result});
+        if (task.result && task.result.batch) renderBatchResults({result: task.result});
+        else renderResults({result: task.result});
         return;
       }
       if (task.status === 'error' || task.status === 'failed') {

@@ -139,6 +139,95 @@ def _attach_memory(status: dict, label: str, memory_result: dict) -> None:
         status["memory"] = result
 
 
+def _simulation_return_curves(result_data: dict, initial_cash: float,
+                              start_date: str, end_date: str) -> dict:
+    """Build comparable strategy, buy-and-hold, and benchmark return series."""
+    dates = result_data.get("kline_dates") or []
+    ohlc = result_data.get("kline_ohlc") or []
+    closes = [float(item[1]) for item in ohlc if len(item) >= 2]
+    if not dates or len(closes) != len(dates):
+        return {"dates": [], "strategy": [], "buy_hold": [], "market": [],
+                "market_code": "sh.000300"}
+    base_close = closes[0] or 1.0
+    buy_hold = [round((value / base_close - 1) * 100, 4) for value in closes]
+    equity_by_date = dict(zip(result_data.get("equity_dates") or [],
+                              result_data.get("equity_values") or []))
+    strategy = [round((float(equity_by_date.get(day, initial_cash)) / initial_cash - 1) * 100, 4)
+                for day in dates]
+    market = []
+    try:
+        from StockInvestmentTool.datasource.base import WarehouseSource
+        benchmark = WarehouseSource().fetch_kline("sh.000300", start_date, end_date)
+        if benchmark is not None and not benchmark.empty:
+            market_by_date = {str(day)[:10]: float(close)
+                              for day, close in zip(benchmark["date"], benchmark["close"])}
+            first = next((market_by_date.get(day) for day in dates if market_by_date.get(day)), None)
+            market = [round((market_by_date[day] / first - 1) * 100, 4)
+                      if first and day in market_by_date else None for day in dates]
+    except Exception as exc:
+        logger.warning("策略模拟大盘基准读取失败: %s", exc)
+    return {"dates": dates, "strategy": strategy, "buy_hold": buy_hold,
+            "market": market, "market_code": "sh.000300"}
+
+
+def _run_batch_analysis(task_id: str, stocks: list[dict], start_date: str,
+                        end_date: str, initial_cash: float, scheme_name: str,
+                        scheme_content: str = "") -> None:
+    """Run one shared scheme against multiple stocks serially and release memory per stock."""
+    status = _analysis_status[task_id]
+
+    def update_status(**values):
+        status.update(values)
+        _store_analysis_task(task_id, "batch_analysis", "batch", status)
+
+    with _heavy_task_lock:
+        with monitor_memory(f"batch_analysis:{task_id}") as memory:
+            try:
+                from StockInvestmentTool.core.composer import model_to_config, yaml_to_model
+                scheme = model_to_config(yaml_to_model(scheme_content)) if scheme_content else None
+                items = []
+                total = len(stocks)
+                for index, stock in enumerate(stocks, 1):
+                    code = StockDataFetcher.normalize_code(str(stock.get("code") or ""))
+                    name = str(stock.get("name") or code)
+                    stock_type = str(stock.get("stock_type") or "B").upper()
+                    update_status(stage=f"模拟 {index}/{total}: {name}",
+                                  progress=round((index - 1) / total * 90) + 5)
+                    try:
+                        engine = AnalysisEngine(scheme_name, scheme=scheme)
+                        result = engine.analyze(
+                            code=code, name=name, start_date=start_date, end_date=end_date,
+                            options=AnalysisOptions(do_backtest=True, do_prompt=False, do_api=False,
+                                                    skip_charts=True, stock_type=stock_type,
+                                                    initial_cash=initial_cash, no_optimize=True),
+                        )
+                        data = _to_json_safe(result.to_dict())
+                        data["trades"] = [{**trade, "date": str(trade.get("date", ""))[:10]}
+                                          for trade in data.get("trades", [])]
+                        data["return_curves"] = _simulation_return_curves(
+                            data, initial_cash, start_date, end_date
+                        )
+                        items.append({"status": "success", "code": code, "name": name,
+                                      "stock_type": stock_type, "result": data})
+                    except Exception as exc:
+                        logger.exception("批量策略模拟失败: %s", code)
+                        items.append({"status": "error", "code": code, "name": name,
+                                      "stock_type": stock_type, "error": str(exc)})
+                    finally:
+                        import gc
+                        gc.collect()
+                succeeded = sum(item["status"] == "success" for item in items)
+                update_status(result={"batch": True, "scheme_name": scheme_name,
+                                      "items": items, "succeeded": succeeded,
+                                      "failed": total - succeeded},
+                              status="success", stage="完成", progress=100)
+            except Exception as exc:
+                logger.exception("批量策略模拟任务失败")
+                update_status(status="error", error=str(exc), stage="失败", progress=-1)
+        _attach_memory(status, "batch_analysis", memory)
+        _store_analysis_task(task_id, "batch_analysis", "batch", status)
+
+
 def _run_analysis(task_id: str, code: str, name: str,
                   start_date: str, end_date: str,
                   do_backtest: bool, do_prompt: bool, do_api: bool,
@@ -1857,6 +1946,51 @@ def analyze():
         "progress": 0,
         "_query_url": f"/api/analysis/tasks/{task_id}",
     }), 202
+
+
+@web_app.route("/strategy-simulation/batch", methods=["POST"])
+def analyze_batch():
+    """Submit a bounded serial batch strategy simulation using one scheme or draft."""
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    stocks = payload.get("stocks") or []
+    if not isinstance(stocks, list) or not stocks:
+        return flask.jsonify({"status": "error", "error": "请至少添加一只股票"}), 400
+    if len(stocks) > 10:
+        return flask.jsonify({"status": "error", "error": "单次批量模拟最多10只股票"}), 400
+    start_date = str(payload.get("start_date") or "")[:10]
+    end_date = str(payload.get("end_date") or "")[:10]
+    scheme_name = str(payload.get("scheme") or "default_value").strip()
+    draft_id = str(payload.get("draft_id") or "").strip()
+    scheme_content = (_simulation_drafts.pop(draft_id, {}) or {}).get("content", "") if draft_id else ""
+    if not start_date or not end_date:
+        return flask.jsonify({"status": "error", "error": "请填写完整的回测日期区间"}), 400
+    try:
+        initial_cash = float(payload.get("initial_cash") or 100000)
+        if initial_cash <= 0:
+            raise ValueError("初始资金必须大于0")
+        checked = []
+        for stock in stocks:
+            code = StockDataFetcher.normalize_code(str(stock.get("code") or ""))
+            name = str(stock.get("name") or "").strip()
+            stock_type = str(stock.get("stock_type") or "B").upper()
+            if not name:
+                raise ValueError(f"{code} 缺少股票名称")
+            if stock_type not in ("A", "B", "C", "D", "E"):
+                raise ValueError(f"{name} 的证券类型无效")
+            checked.append({"code": code, "name": name, "stock_type": stock_type})
+        if not scheme_content and not SchemeRegistry().has(scheme_name):
+            raise ValueError(f"方案 '{scheme_name}' 不存在")
+        task_id = f"batch_{datetime.now().strftime('%H%M%S_%f')}"
+        _analysis_status[task_id] = {"status": "running", "stage": "初始化", "progress": 0,
+                                     "result": None, "_created_at": datetime.now().isoformat(timespec="seconds")}
+        _store_analysis_task(task_id, "batch_analysis", "batch", _analysis_status[task_id])
+        threading.Thread(target=_run_batch_analysis,
+                         args=(task_id, checked, start_date, end_date, initial_cash,
+                               scheme_name, scheme_content), daemon=True).start()
+        return flask.jsonify({"status": "running", "task_id": task_id, "stage": "初始化",
+                              "progress": 0, "_query_url": f"/api/analysis/tasks/{task_id}"}), 202
+    except Exception as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
 
 
 @web_app.route("/api/schemes/simulation-draft", methods=["POST"])
