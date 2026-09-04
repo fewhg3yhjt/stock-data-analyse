@@ -8,6 +8,35 @@
   const filterKeys = ['status', 'sector', 'score', 'return_1d', 'return_5d', 'return_20d', 'up_ratio', 'amount_ratio', 'member_count', 'leader'];
   const filterLabels = {status:'状态', sector:'行业/板块', score:'评分', return_1d:'1日', return_5d:'5日', return_20d:'20日', up_ratio:'上涨比例', amount_ratio:'成交额比', member_count:'成员数', leader:'龙头'};
 
+  function renderLiveRotation(payload) {
+    const panel = document.getElementById('live-rotation-panel');
+    const meta = document.getElementById('live-rotation-meta');
+    if (payload?.status !== 'success' || !payload.items?.length) {
+      meta.textContent = payload?.error || '暂无在线板块数据';
+      panel.innerHTML = `<div class="empty">${esc(payload?.error || '暂无在线板块数据')}</div>`;
+      return;
+    }
+    meta.textContent = `${payload.warning} · 请求时间 ${payload.data_as_of}`;
+    const rows = payload.items.map(item => {
+      const positive = Number(item.change_pct) >= 0;
+      const netClass = Number(item.net) >= 0 ? 'positive' : 'negative';
+      const stateClass = item.state === '强势上行' || item.state === '资金回流' ? 'green' : item.state === '弱势下行' || item.state === '价涨钱走' ? 'red' : 'gray';
+      return `<tr><td><b>${esc(item.name)}</b></td><td class="${positive ? 'positive' : 'negative'}">${item.change_pct == null ? '—' : `${Number(item.change_pct).toFixed(2)}%`}</td><td class="${netClass}">${item.net == null ? '—' : `${Number(item.net).toFixed(2)}亿`}</td><td class="${Number(item.net_days) >= 0 ? 'positive' : 'negative'}">${item.net_days == null ? '—' : `${Number(item.net_days).toFixed(2)}亿`}</td><td>${esc(item.trend || '—')}</td><td><span class="tag ${stateClass}">${esc(item.state)}</span></td><td>${esc(item.advice)}</td><td>${esc(item.leader || '—')}</td></tr>`;
+    }).join('');
+    panel.innerHTML = `<table class="ui-table market-table live-rotation-table"><thead><tr><th>板块</th><th>今日涨跌</th><th>即时净额</th><th>近3日净额</th><th>资金趋势</th><th>趋势判断</th><th>操作建议</th><th>领涨股</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  async function loadLiveRotation() {
+    const button = document.getElementById('live-rotation-refresh');
+    button.disabled = true; button.textContent = '加载中…';
+    try {
+      const response = await fetch('/market/live_rotation?kind=industry');
+      renderLiveRotation(await response.json());
+    } catch (error) {
+      renderLiveRotation({status: 'error', error: `在线板块数据加载失败：${error.message}`});
+    } finally { button.disabled = false; button.textContent = '刷新在线数据'; }
+  }
+
   function table(category, payload) {
     const panel = document.getElementById(`rotation-${category}`);
     const items = payload?.items || [];
@@ -92,7 +121,7 @@
       const query = new URLSearchParams({category: btn.dataset.category, sector_id: btn.dataset.sectorId, name: btn.dataset.name});
       const d = await (await fetch('/market/board_kline?' + query)).json();
       if (d.status !== 'success' || !d.dates?.length) throw new Error(d.error || '暂无板块日线数据');
-      detail.querySelector('.rotation-chart-meta').textContent = `${d.name || btn.dataset.name} · 数据截至 ${d.as_of || '—'}`;
+      detail.querySelector('.rotation-chart-meta').textContent = `${d.name || btn.dataset.name} · ${d.series_type || '行业走势'} · 数据截至 ${d.as_of || '—'}`;
       StockChart.drawLine(document.getElementById(chartId), {dates: d.dates, series: [{name: d.name || btn.dataset.name, key: 'close', data: d.close || []}]});
     } catch (e) {
       detail.querySelector('.rotation-chart-meta').textContent = `加载失败：${e.message}`;
@@ -111,5 +140,5 @@
   document.querySelector('.rotation-card').addEventListener('change', e=>{ if(e.target.matches('[data-filter]')) applyFilters(); });
   document.getElementById('board-select').onchange=e=>e.currentTarget.dataset.sectorId=e.currentTarget.selectedOptions[0]?.dataset.sectorId||''; document.getElementById('board-category').onchange=e=>loadBoardOptions(e.target.value);
   window.loadBoard=loadBoard; window.loadStock=loadStock; const stock=document.getElementById('stock-select'); (window.MARKET_POSITIONS||[]).forEach(x=>{const o=document.createElement('option');o.value=x.code;o.textContent=x.name;stock.appendChild(o);}); if(stock.options.length)loadStock();
-  initRotation(); loadIndices(); loadBoardOptions(document.getElementById('board-category').value);
+  initRotation(); loadIndices(); loadBoardOptions(document.getElementById('board-category').value); document.getElementById('live-rotation-refresh').onclick=loadLiveRotation; loadLiveRotation();
 })();

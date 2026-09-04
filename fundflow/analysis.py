@@ -92,6 +92,49 @@ def sector_analysis(now_df: pd.DataFrame, days_df: Optional[pd.DataFrame] = None
     return out.head(top).reset_index(drop=True)
 
 
+def sector_rotation_view(now_df: pd.DataFrame, days_df: Optional[pd.DataFrame] = None) -> list[dict]:
+    """生成在线板块趋势观察结果。
+
+    这是研究展示口径，不是 Published 策略输入：用即时涨跌配合即时/多日
+    资金方向，给出透明的观察建议，不把建议解释为自动买卖信号。
+    """
+    out = merge_trend(now_df, days_df, on="name")
+    rows = []
+    for _, row in out.iterrows():
+        chg = row.get("chg")
+        net = row.get("net")
+        net_days = row.get("net_days")
+        if pd.isna(chg):
+            state, advice = "数据不足", "等待行情数据"
+        elif chg > 0 and net is not None and net > FLOW_EPS and net_days is not None and net_days > FLOW_EPS:
+            state, advice = "强势上行", "重点观察，等待回踩确认"
+        elif chg > 0 and net is not None and net < -FLOW_EPS:
+            state, advice = "价涨钱走", "谨慎追高，等待资金重新配合"
+        elif chg < 0 and net is not None and net > FLOW_EPS:
+            state, advice = "资金回流", "观察反转，不宜急于追涨"
+        elif chg < 0 and net is not None and net < -FLOW_EPS and net_days is not None and net_days < -FLOW_EPS:
+            state, advice = "弱势下行", "暂不参与，等待资金止流出"
+        else:
+            state, advice = "方向不明", "观望，等待价格与资金确认"
+        def number(key):
+            value = row.get(key)
+            return None if value is None or pd.isna(value) else round(float(value), 4)
+        rows.append({
+            "name": str(row.get("name") or ""),
+            "index": number("index"),
+            "change_pct": number("chg"),
+            "net": number("net"),
+            "net_days": number("net_days"),
+            "trend": str(row.get("trend") or "无多日对比"),
+            "state": state,
+            "advice": advice,
+            "count": int(row["count"]) if row.get("count") is not None and not pd.isna(row.get("count")) else None,
+            "leader": str(row.get("leader") or ""),
+            "leader_change_pct": number("leader_chg"),
+        })
+    return sorted(rows, key=lambda item: (item["net"] is None, -(item["net"] or 0)))
+
+
 def stock_analysis(now_df: pd.DataFrame, days_df: Optional[pd.DataFrame] = None,
                    top: int = 15) -> dict:
     """个股资金流分析: 净流入榜 / 净流出榜 / 持续流入榜 / 背离榜。"""

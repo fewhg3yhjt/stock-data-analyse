@@ -65,6 +65,7 @@ def static_asset(path: str) -> str:
 # 在线程中存储分析进度
 _analysis_status: dict[str, dict] = {}
 _simulation_drafts: dict[str, dict] = {}
+_lowma_runs: dict[str, dict] = {}
 _heavy_task_lock = threading.BoundedSemaphore(1)
 
 
@@ -2784,6 +2785,28 @@ def market_board_options():
     category = flask.request.args.get("category", "ths_industry")
     return flask.jsonify({"status": "success", "category": category,
                           "options": DashboardService(_get_manager()).board_options(category)})
+
+
+@web_app.route("/market/live_rotation", methods=["GET"])
+def market_live_rotation():
+    """在线板块趋势观察，仅供研究，不作为正式策略输入。"""
+    try:
+        from StockInvestmentTool.fundflow import analysis, sources
+        kind = flask.request.args.get("kind", "industry")
+        if kind not in {"industry", "concept"}:
+            return flask.jsonify({"status": "error", "error": "kind 必须是 industry 或 concept"}), 400
+        now = sources.fetch_sector(kind, "now")
+        days = sources.fetch_sector(kind, "3d")
+        items = analysis.sector_rotation_view(now, days)
+        return flask.jsonify({
+            "status": "success", "kind": kind, "items": items,
+            "data_type": "online_research_only",
+            "data_as_of": datetime.now().isoformat(timespec="seconds"),
+            "warning": "临时在线资金流数据，仅供研究观察，不作为正式策略输入或自动买卖信号",
+        })
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("在线板块趋势读取失败")
+        return flask.jsonify({"status": "error", "error": f"在线板块趋势读取失败：{str(exc)[:120]}"}), 502
 
 
 @web_app.route("/operation-points", methods=["GET"])
