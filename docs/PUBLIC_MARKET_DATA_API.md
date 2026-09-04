@@ -8,6 +8,16 @@
 
 数据来自已发布的 Published Dataset。也就是说，数据已经经过现有的候选构建、质量检查和发布流程；尚未发布、质量不达标或采集失败的内容不会通过此 API 暴露。
 
+为兼容只识别固定路径的 HTTP 客户端，也提供简化入口：
+
+```text
+GET https://www.stock.easyconnect.ltd/public-api
+GET https://www.stock.easyconnect.ltd/public-api/health
+GET https://www.stock.easyconnect.ltd/public-api/stock/daily?code=000400&start=2025-09-01&end=2026-09-04&adjust=qfq
+```
+
+`/public-api` 和 `/public-api/health` 均直接返回 JSON；人类可读的网页文档和在线查询器位于 `https://www.stock.easyconnect.ltd/public-api/docs`。
+
 让大模型接入时，先请求下面两个地址即可发现能力：
 
 ```text
@@ -171,6 +181,50 @@ https://www.stock.easyconnect.ltd/api/public/stock-sectors?sector_id=881101&clas
 返回字段随来源略有差异，公共字段包括：`symbol`、`sector_id`、`sector_name`、`classification`、`snapshot_date`、`source`、`captured_at`。同花顺行业成员数据还会带 `stock_name`。
 
 ## 个股日线
+
+### 简化兼容接口：`GET /public-api/stock/daily`
+
+这是面向 `curl`、Python requests 和只识别固定路径的大模型工具的直接 JSON 接口。不需要 Cookie、登录、认证头或浏览器 JavaScript。
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `code` | 是 | 支持 `000400`、`000400.SZ`、`sz000400` 等代码形式 |
+| `start` | 是 | 起始交易日期，`YYYY-MM-DD` |
+| `end` | 是 | 结束交易日期，`YYYY-MM-DD` |
+| `adjust` | 否 | 固定支持 `qfq`，默认 `qfq`；当前未发布 `none`、`hfq` 口径时会明确返回 `422` |
+
+```text
+https://www.stock.easyconnect.ltd/public-api/stock/daily?code=000400&start=2025-09-01&end=2026-09-04&adjust=qfq
+```
+
+返回结构：
+
+```json
+{
+  "status": "ok",
+  "code": "000400",
+  "name": "许继电气",
+  "adjust": "qfq",
+  "start_date": "2025-09-01",
+  "end_date": "2026-09-04",
+  "count": 244,
+  "data": [
+    {
+      "date": "2025-09-01",
+      "open": 22.87,
+      "high": 23.2,
+      "low": 22.73,
+      "close": 22.81,
+      "volume": 25953400,
+      "amount": 606226800,
+      "pre_close": null,
+      "turnover_rate": 2.57
+    }
+  ]
+}
+```
+
+`data` 不做分页，会完整返回所请求日期范围内该股票的所有已发布交易日记录。请求一年区间时会返回完整的一年交易日，而不是只取最近几十条。
 
 ### `GET /api/public/stock-daily`
 
