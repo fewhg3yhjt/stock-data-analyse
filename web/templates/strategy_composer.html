@@ -720,7 +720,7 @@ function lowmaValue(id){const value=document.getElementById(id).value;return val
 function lowmaTable(rows, columns){
   if(!rows||!rows.length)return '<div class="help">暂无数据</div>';
   const head=columns.map(c=>`<th>${escText(c[1])}</th>`).join('');
-  const body=rows.map(row=>`<tr>${columns.map(c=>`<td>${escText(row[c[0]]==null?'':(typeof row[c[0]]==='number'?Number(row[c[0]).toFixed(4):row[c[0]]))}</td>`).join('')}</tr>`).join('');
+  const body=rows.map(row=>`<tr>${columns.map(c=>{const value=row[c[0]];const text=value==null?'':(typeof value==='number'?value.toFixed(4):value);return `<td>${escText(text)}</td>`;}).join('')}</tr>`).join('');
   return `<table class="kv"><tr>${head}</tr>${body}</table>`;
 }
 function renderLowMAResults(data){
