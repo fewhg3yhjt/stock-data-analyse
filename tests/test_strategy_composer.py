@@ -116,6 +116,20 @@ def test_stock_search_and_classification_support_sample_security(client):
     assert search.status_code == 200
     assert search.get_json()["status"] == "success"
     assert "validate-stock-type" in client.get("/strategy-composer").get_data(as_text=True)
+
+
+def test_strategy_composer_contains_lowma_research(client):
+    page = client.get("/strategy-composer").get_data(as_text=True)
+    assert "LowMA 承接研究" in page
+    assert "/api/low-ma/research" in page
+
+
+def test_lowma_research_requires_explicit_dates_and_symbols(client):
+    response = client.post("/api/low-ma/research", json={
+        "symbols": ["sz000425"], "end_date": "2026-07-31",
+    })
+    assert response.status_code == 400
+    assert "明确" in response.get_json()["error"]
 def test_compose_roundtrip(client):
     model = _sample_model()
     r = client.post("/api/schemes/compose", json=model)

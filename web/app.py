@@ -1873,6 +1873,74 @@ def strategy_composer_page():
     return flask.render_template("strategy_composer.html", error=None)
 
 
+@web_app.route("/api/low-ma/research", methods=["POST"])
+def api_low_ma_research():
+    """Run the LowMA limit-order research strategy from Published data."""
+    from StockInvestmentTool.research.low_ma import LowMAConfig, run_low_ma_dataset
+    from StockInvestmentTool.warehouse import Warehouse
+
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    start_date = str(payload.get("start_date") or "").strip()
+    end_date = str(payload.get("end_date") or "").strip()
+    symbols = payload.get("symbols") or []
+    if isinstance(symbols, str):
+        symbols = [item.strip() for item in symbols.split(",") if item.strip()]
+    if not start_date or not end_date:
+        return flask.jsonify({"status": "error", "error": "必须明确填写开始日期和结束日期"}), 400
+    if not symbols or len(symbols) > 30:
+        return flask.jsonify({"status": "error", "error": "请选择 1 至 30 只股票"}), 400
+
+    def number(key, default):
+        value = payload.get(key, default)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"参数 {key} 不是有效数字")
+
+    try:
+        config = LowMAConfig(
+            entry_path=str(payload.get("entry_path") or "path_a"),
+            limit_period=int(payload.get("limit_period", 5)),
+            position_limit=number("position_limit", 0.25),
+            close_location_low=number("close_location_low", 1 / 3),
+            close_location_high=number("close_location_high", 2 / 3),
+            sell_volume_ratio_low=number("sell_volume_ratio_low", 0.8),
+            sell_volume_ratio_high=number("sell_volume_ratio_high", 1.2),
+            structure_confirm_days=int(payload.get("structure_confirm_days", 2)),
+            breakeven_activation=(None if payload.get("breakeven_activation") in (None, "")
+                                  else number("breakeven_activation", 0.05)),
+            trend_activation=(None if payload.get("trend_activation") in (None, "")
+                              else number("trend_activation", 0.10)),
+            trailing_drawdown=(None if payload.get("trailing_drawdown") in (None, "")
+                               else number("trailing_drawdown", 0.07)),
+            hard_stop_pct=(None if payload.get("hard_stop_pct") in (None, "")
+                           else number("hard_stop_pct", 0.08)),
+        )
+        result = run_low_ma_dataset(
+            Warehouse(), start_date=start_date, end_date=end_date,
+            symbols=[str(symbol).strip() for symbol in symbols], config=config,
+        )
+
+        def records(frame):
+            if frame is None or frame.empty:
+                return []
+            return _to_json_safe(frame.replace({np.nan: None}).to_dict(orient="records"))
+
+        return flask.jsonify({
+            "status": "success",
+            "config": _to_json_safe(config.__dict__),
+            "data_context": _to_json_safe(result.get("data_context", {})),
+            "summary": records(result.get("summary")),
+            "trades": records(result.get("trades")),
+            "events": records(result.get("events")),
+        })
+    except ValueError as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("LowMA 研究运行失败")
+        return flask.jsonify({"status": "error", "error": str(exc)}), 500
+
+
 @web_app.route("/indicator-center", methods=["GET"])
 def indicator_center_page():
     """Read-only indicator catalogue with expression validation and preview."""

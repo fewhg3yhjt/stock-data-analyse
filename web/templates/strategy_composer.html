@@ -26,7 +26,9 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
 .help{font-size:12px;color:var(--color-text-subtle);line-height:1.6;}
 .config-help{font-size:12px;color:var(--color-text-subtle);margin:-4px 0 10px;line-height:1.65;}
 .unit-input{display:flex;align-items:center;gap:6px;}.unit-input input{flex:1;}.unit-input span{font-size:13px;color:var(--color-text-subtle);}
-.list-row{display:flex;gap:7px;align-items:center;margin-bottom:6px;}.list-row input,.list-row select{flex:1;min-width:0;}
+ .list-row{display:flex;gap:7px;align-items:center;margin-bottom:6px;}.list-row input,.list-row select{flex:1;min-width:0;}
+ .lowma-panel{margin:18px 0;border:1px solid var(--color-info);border-radius:8px;padding:16px;background:linear-gradient(135deg,rgba(227,242,253,.65),var(--color-surface));}.lowma-panel h2{margin-bottom:8px}.lowma-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.lowma-form .wide{grid-column:span 2}.lowma-results{margin-top:14px;overflow:auto}.lowma-results table{min-width:860px}.lowma-results td,.lowma-results th{white-space:nowrap}.lowma-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.lowma-tab.active{background:var(--color-info);color:#fff}.lowma-meta{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--color-text-subtle)}
+ @media(max-width:900px){.lowma-form{grid-template-columns:1fr 1fr}.lowma-form .wide{grid-column:span 2}}@media(max-width:560px){.lowma-form{grid-template-columns:1fr}.lowma-form .wide{grid-column:span 1}}
 .scheme-overview{margin-bottom:18px;}.scheme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;}.scheme-card{border:1px solid var(--color-border);border-radius:8px;padding:14px;background:var(--color-surface-subtle);}.scheme-card h3{font-size:15px;margin-bottom:5px;}.scheme-card p{font-size:13px;color:var(--color-text-subtle);min-height:42px;margin-bottom:8px;}.scheme-card .scheme-actions{display:flex;gap:7px;flex-wrap:wrap;}.scheme-guide{border-left:3px solid var(--color-info);padding:8px 12px;margin:8px 0 12px;background:var(--color-surface-subtle);font-size:13px;line-height:1.7;}.rule-guide{margin:-5px 0 10px;padding:8px 10px;border-radius:5px;background:var(--color-surface);border:1px dashed var(--color-border);font-size:12px;color:var(--color-text-subtle);line-height:1.65;}.rule-guide b{color:var(--color-text);}
 </style>
 {% endblock %}
@@ -41,6 +43,26 @@ textarea.code{width:100%;min-height:420px;font-family:Consolas,Monaco,'Courier N
   </div>
 
   <div class="notice"><strong>策略编排</strong> 当前页面负责方案编辑和校验，保存草稿不会自动发布；正式发布前请查看版本和影响范围。规则按顺序评估，先命中的高优先级操作生效。</div>
+
+  <div class="ui-card lowma-panel">
+    <h2><i class="fas fa-wave-square"></i> LowMA 承接研究</h2>
+    <div class="config-help">独立研究策略，使用 Published 日线数据。T 日收盘后生成限价单，T+1 只有盘中区间触及才成交；普通策略编排不会受影响。</div>
+    <div class="lowma-form">
+      <label class="ui-field wide"><span>股票代码（逗号分隔）</span><input id="lowma-symbols" value="sz000400,sz000425,sz000725,sh603019,sz300750,sh601318,sh600519,sh600036,sz002594,sh600031,sh601899,sh600941"></label>
+      <label class="ui-field"><span>开始日期</span><input id="lowma-start" type="date" value="2024-01-01"></label>
+      <label class="ui-field"><span>结束日期</span><input id="lowma-end" type="date" value="2026-07-31"></label>
+      <label class="ui-field"><span>入场路径</span><select id="lowma-path"><option value="path_a">Path A：中部收盘 + 正常量</option><option value="path_b">Path B：低位收盘 + 缩量</option><option value="baseline">基准：原始资格</option></select></label>
+      <label class="ui-field"><span>挂单 LowMA</span><select id="lowma-period"><option value="5" selected>LowMA5</option><option value="10">LowMA10</option><option value="20">LowMA20</option></select></label>
+      <label class="ui-field"><span>Position20 上限</span><input id="lowma-position" type="number" step="0.01" value="0.25"></label>
+      <label class="ui-field"><span>结构确认天数</span><input id="lowma-structure-days" type="number" min="1" value="2"></label>
+      <label class="ui-field"><span>保本激活（比例）</span><input id="lowma-breakeven" type="number" step="0.01" value="0.05"></label>
+      <label class="ui-field"><span>右侧启动（比例）</span><input id="lowma-trend" type="number" step="0.01" value="0.10"></label>
+      <label class="ui-field"><span>峰值回撤（比例）</span><input id="lowma-trailing" type="number" step="0.01" value="0.07"></label>
+      <label class="ui-field"><span>固定硬止损（比例，可空）</span><input id="lowma-hard-stop" type="number" step="0.01" placeholder="不启用"></label>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><button type="button" class="ui-button ui-button-primary" id="lowma-run" onclick="runLowMAResearch()"><i class="fas fa-play"></i> 运行 LowMA 研究</button><span id="lowma-status" class="help"></span></div>
+    <div id="lowma-results" class="lowma-results"></div>
+  </div>
 
   <div class="ui-card scheme-overview">
     <h2><i class="fas fa-books"></i> 已有方案与运行逻辑</h2>
@@ -154,7 +176,7 @@ const RULE_GUIDE = {
   hard_stop:['硬止损','用途：价格触及预设风险线时保护本金。先选择一种止损模式，再按股票类型设置该模式的比例；未选中的模式不参与计算。触发：当日最低价或当前价 <= 计算出的止损价。动作：建议清仓。'],
   technical_stop:['技术止损','用途：识别“放量跌破关键支撑”的风险。触发：当日最低价 < 所选支撑线，且当天成交量 ÷ 前5个交易日平均成交量 >= 放量倍数，两个条件必须同时满足。动作：建议清仓；默认启动。'],
   left_side_fixed:['左侧固定止盈','用途：价格接近历史前高但尚未突破时分批落袋。触发：当前价 ÷ 滚动前高落入配置区间。动作：按区间比例减仓。默认前高窗口252个交易日，取日最高价。'],
-  right_side_trailing:['右侧移动止盈','用途：突破前高后保护已经获得的利润。触发：当前价从持仓峰值回撤达到对应类型阈值。动作：建议清仓。'],
+  right_side_trailing:['右侧移动止盈','用途：达到盈利启动条件后保护已经获得的利润。触发：当前价从持仓峰值回撤达到对应类型阈值；不要求突破前高。动作：建议清仓。'],
   logic_stop:['逻辑止损','用途：投资逻辑被证伪时退出。触发：逻辑状态被标记为不成立。动作：建议退出。'],
   price_stop:['价格止损与贝塔保护','用途：结合个股跌幅、市场跌幅和股债收益差判断是否执行价格止损。触发：配置的宏观与价格条件组合满足。动作：止损或转入逻辑审视。'],
   time_stop:['时间止损','用途：持仓长期没有进展时释放资金。触发：持有天数超过上限且未出现豁免条件。动作：按配置减仓或退出。']
@@ -692,6 +714,29 @@ async function saveScheme(){
 function copyYaml(){
   const t=document.getElementById('yaml-preview');
   navigator.clipboard.writeText(t.value).then(()=>showUiMessage('已复制 YAML', 'success'));
+}
+
+function lowmaValue(id){const value=document.getElementById(id).value;return value===''?null:Number(value);}
+function lowmaTable(rows, columns){
+  if(!rows||!rows.length)return '<div class="help">暂无数据</div>';
+  const head=columns.map(c=>`<th>${escText(c[1])}</th>`).join('');
+  const body=rows.map(row=>`<tr>${columns.map(c=>`<td>${escText(row[c[0]]==null?'':(typeof row[c[0]]==='number'?Number(row[c[0]).toFixed(4):row[c[0]]))}</td>`).join('')}</tr>`).join('');
+  return `<table class="kv"><tr>${head}</tr>${body}</table>`;
+}
+function renderLowMAResults(data){
+  const meta=data.data_context||{}; const summary=data.summary||[], trades=data.trades||[], events=data.events||[];
+  const summaryCols=[['stock','股票'],['trades','交易数'],['win_rate_pct','胜率%'],['cumulative_return_pct','累计收益%'],['avg_return_pct','平均收益%'],['avg_mae_pct','平均MAE%'],['avg_mfe_pct','平均MFE%']];
+  const tradeCols=[['stock','股票'],['qualification_date','资格日'],['position20','Position20'],['limit_price','挂单价'],['entry_date','成交日'],['entry_price','成交价'],['exit_signal_date','卖出信号日'],['exit_date','卖出日'],['exit_price','卖出价'],['exit_reason','退出原因'],['return_pct','收益%'],['mae_pct','MAE%'],['mfe_pct','MFE%']];
+  const eventCols=[['date','事件日'],['stock','股票'],['event','事件'],['qualification_date','资格日'],['limit_price','限价'],['open','Open'],['high','High'],['low','Low'],['close','Close'],['reason','原因']];
+  document.getElementById('lowma-results').innerHTML=`<div class="lowma-meta"><span>数据：${escText(meta.source||'')}</span><span>质量：${escText(meta.quality_status||'')}</span><span>实际范围：${escText(meta.returned_start||'')} 至 ${escText(meta.returned_end||'')}</span><span>as_of：${escText(meta.data_as_of||'')}</span></div><div class="lowma-tabs"><button class="ui-button ui-button-ghost ui-button-sm lowma-tab active" onclick="showLowMATab('lowma-summary',this)">汇总（${summary.length}）</button><button class="ui-button ui-button-ghost ui-button-sm lowma-tab" onclick="showLowMATab('lowma-trades',this)">逐笔交易（${trades.length}）</button><button class="ui-button ui-button-ghost ui-button-sm lowma-tab" onclick="showLowMATab('lowma-events',this)">每日事件（${events.length}）</button></div><div id="lowma-summary">${lowmaTable(summary,summaryCols)}</div><div id="lowma-trades" style="display:none">${lowmaTable(trades,tradeCols)}</div><div id="lowma-events" style="display:none">${lowmaTable(events,eventCols)}</div>`;
+}
+function showLowMATab(id,button){document.querySelectorAll('#lowma-results>div[id^="lowma-"]').forEach(el=>{if(el.id!=='lowma-results')el.style.display=el.id===id?'block':'none';});document.querySelectorAll('.lowma-tab').forEach(el=>el.classList.remove('active'));button.classList.add('active');}
+async function runLowMAResearch(){
+  const button=document.getElementById('lowma-run'), status=document.getElementById('lowma-status'); button.disabled=true; status.textContent='正在读取 Published 数据并运行...';
+  try{
+    const payload={symbols:document.getElementById('lowma-symbols').value,start_date:document.getElementById('lowma-start').value,end_date:document.getElementById('lowma-end').value,entry_path:document.getElementById('lowma-path').value,limit_period:Number(document.getElementById('lowma-period').value),position_limit:lowmaValue('lowma-position'),structure_confirm_days:Number(document.getElementById('lowma-structure-days').value),breakeven_activation:lowmaValue('lowma-breakeven'),trend_activation:lowmaValue('lowma-trend'),trailing_drawdown:lowmaValue('lowma-trailing'),hard_stop_pct:lowmaValue('lowma-hard-stop')};
+    const response=await fetch('/api/low-ma/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const data=await response.json(); if(!response.ok||data.status!=='success')throw new Error(data.error||`HTTP ${response.status}`); renderLowMAResults(data); status.textContent=`完成：${data.trades.length} 笔成交，${data.events.length} 个事件`;
+  }catch(error){status.textContent='运行失败：'+error.message;showUiMessage('LowMA 研究失败：'+error.message,'error');}finally{button.disabled=false;}
 }
 
 // 方案列表管理
