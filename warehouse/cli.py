@@ -4,7 +4,6 @@
 用法:
     python -m StockInvestmentTool.warehouse init --start YYYY-MM-DD --end YYYY-MM-DD [--include-index]
     python -m StockInvestmentTool.warehouse sync    [--start YYYY-MM-DD] [--max-symbols N]
-    python -m StockInvestmentTool.warehouse factors [--max-symbols N]
     python -m StockInvestmentTool.warehouse scan    --start YYYY-MM-DD --end YYYY-MM-DD [--where SQL] [--limit N]
     python -m StockInvestmentTool.warehouse online  [--codes c1,c2] [--day YYYY-MM-DD]
     python -m StockInvestmentTool.warehouse status
@@ -53,13 +52,6 @@ def cmd_sync(args):
                        flush_every=args.flush_every, source=args.source,
                        target=args.target)
     print(f"✅ 日线增量: +{res['added_rows']} 行, 失败 {len(res['failed'])}, 耗时 {res['elapsed_sec']}s")
-
-
-def cmd_factors(args):
-    """计算全市场技术指标宽表（研究因子已并入 indicators）。"""
-    from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
-    res = IndicatorsBuilder(allow_legacy=False).build_all(max_symbols=args.max_symbols)
-    print(f"✅ 指标计算: {res['symbols']} 标的, {res['months']} 个月, 耗时 {res['elapsed_sec']}s")
 
 
 def cmd_scan(args):
@@ -264,9 +256,6 @@ def main(argv: list[str] | None = None):
     p_sync.add_argument("--target", default="daily",
                         help="写入目标: daily(加工层,默认)/raw:tencent(贴源层)")
 
-    p_factors = sub.add_parser("factors", help="计算技术指标宽表（研究因子已并入 indicators）")
-    p_factors.add_argument("--max-symbols", type=int, default=None)
-
     p_scan = sub.add_parser("scan", help="全市场指标扫描（indicators 分区）")
     p_scan.add_argument("--start", required=True)
     p_scan.add_argument("--end", required=True)
@@ -323,7 +312,7 @@ def main(argv: list[str] | None = None):
     args = parser.parse_args(argv)
     setup_logging(args.verbose)
 
-    handlers = {"init": cmd_init, "sync": cmd_sync, "factors": cmd_factors,
+    handlers = {"init": cmd_init, "sync": cmd_sync,
                 "scan": cmd_scan, "online": cmd_online, "status": cmd_status,
                 "reset": cmd_reset, "process": cmd_process, "backfill": cmd_backfill,
                 "fundamentals": cmd_fundamentals, "industry": cmd_industry,

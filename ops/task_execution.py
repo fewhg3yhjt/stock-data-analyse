@@ -173,8 +173,17 @@ def _auxiliary(warehouse: Warehouse, request: dict, task_key: str) -> dict:
         output["success_codes"] = [code for code in symbols if warehouse.fundamental_path(code).exists()]
         return output
     if task_key == "valuation_capture":
-        frames, failed_codes = [], []
+        # 估值是全市场逐只串行拉取，必须设 whole-task deadline，否则会长时间
+        # 占用 web worker、拖垮其它页面请求。到期即收尾为超时，其余标的留给下一轮。
+        import time as _time
+        started = _time.monotonic()
+        deadline = started + float(request.get("task_timeout") or 900)
+        frames, failed_codes, pending = [], [], []
+        first_frame = None
         for code in symbols:
+            if _time.monotonic() >= deadline:
+                pending.extend(symbols[symbols.index(code):] if code in symbols else [])
+                break
             try:
                 frame = ValuationBackfill.fetch_valuation_em(code, request.get("period_start"), request.get("period_end"))
             except Exception as exc:  # noqa: BLE001
@@ -182,16 +191,20 @@ def _auxiliary(warehouse: Warehouse, request: dict, task_key: str) -> dict:
                 logger.warning("估值拉取失败 %s: %s", code, exc)
                 continue
             if not frame.empty:
+                if first_frame is None:
+                    first_frame = frame
                 frames.append(frame)
                 for _, group in frame.groupby(frame["date"].dt.strftime("%Y-%m")):
                     warehouse.raw.upsert_rows("valuation", group)
+        timed_out = bool(pending)
         if not frames:
-            return {"rows": 0, "symbols": 0, "raw_batch_id": None, "failed_codes": failed_codes}
+            return {"rows": 0, "symbols": 0, "raw_batch_id": None, "failed_codes": failed_codes,
+                    "timed_out": timed_out, "pending": len(pending)}
         raw = capture_frames(warehouse, dataset_name="valuation_daily", source_name="eastmoney", frames=frames,
                              trade_date_start=request.get("period_start"), trade_date_end=request.get("period_end"),
                              expected_symbols=len(symbols), success_symbols=len(frames), universe_id="valuation_task")
         return {"rows": sum(len(frame) for frame in frames), "symbols": len(frames), "raw_batch_id": raw["batch_id"],
-                "failed_codes": failed_codes}
+                "failed_codes": failed_codes, "timed_out": timed_out, "pending": len(pending)}
     output = capture_money_flow("stock", "now", warehouse=warehouse)
     return output
 

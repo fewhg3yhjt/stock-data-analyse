@@ -542,6 +542,9 @@ def _schedule_configured_data_tasks(scheduler) -> None:
         if task_key == "stock_daily_capture":
             payload["task_timeout"] = _daily_timeout()
             configured_keys = TaskCenter(management_db_path()).active_configs()
+        elif task_key == "valuation_capture":
+            # 估值是全市场逐只串行，设置批次超时，避免阻塞 web worker。
+            payload["task_timeout"] = _daily_timeout()
             chain = [key for key in ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
                                      "stock_daily_publish", "indicators_build")
                      if (configured_keys.get(key) or {}).get("enabled")]

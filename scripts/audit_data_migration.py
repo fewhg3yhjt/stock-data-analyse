@@ -17,7 +17,6 @@ import yaml
 DATASET_LAYOUTS = {
     "stock_daily": ("daily", ["date", "code"]),
     "indicators": ("indicators", ["date", "code"]),
-    "factors": ("factors", ["date", "code"]),
     "fundamentals": ("fundamentals", ["code", "stat_date"]),
     "valuation_daily": ("raw/valuation", ["date", "code"]),
     "money_flow_daily": ("raw/ths/money_flow_daily", ["period", "code"]),

@@ -94,19 +94,19 @@ def test_diagnose_is_read_only(tmp_path):
 
 def test_coverage_alert_flags_severe_low_coverage():
     rows = [
-        {"dataset": "stock_daily", "partition": "2026-08", "symbol_count": 6800},
-        {"dataset": "factors", "partition": "2026-08", "symbol_count": 8},
+        {"dataset": "valuation_daily", "partition": "2026-08", "symbol_count": 6800},
+        {"dataset": "valuation_daily", "partition": "2026-08", "symbol_count": 8},
     ]
     alerts = coverage_alert([rows[1]], expected_symbols=6800)
     assert len(alerts) == 1
-    assert alerts[0]["dataset"] == "factors"
+    assert alerts[0]["dataset"] == "valuation_daily"
     assert alerts[0]["coverage_ratio"] < 0.1
 
 
 def test_coverage_alert_uses_dataset_benchmark_not_self():
     rows = [
-        {"dataset": "factors", "partition": "2026-07", "symbol_count": 6800},
-        {"dataset": "factors", "partition": "2026-08", "symbol_count": 8},
+        {"dataset": "valuation_daily", "partition": "2026-07", "symbol_count": 6800},
+        {"dataset": "valuation_daily", "partition": "2026-08", "symbol_count": 8},
     ]
     alerts = coverage_alert(rows)
     assert len(alerts) == 1

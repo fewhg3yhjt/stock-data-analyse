@@ -19,7 +19,6 @@ LAYOUTS = {
     "fundamentals": "fundamentals",
     "valuation_daily": "raw/valuation",
     "indicators": "indicators",
-    "factors": "factors",
     "industry": "raw/baostock/industry",
     "money_flow_daily": "raw/ths/money_flow_daily",
 }
