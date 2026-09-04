@@ -169,12 +169,28 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
       </div>
       <div class="ui-field" style="margin-top:12px;max-width:520px;">
         <label>策略方案</label>
-        <select name="scheme">
+        <select name="scheme" id="sim-scheme" onchange="onSimulationSchemeChange()">
+          <option value="lowma_pullback" {% if prefill_scheme == 'lowma_pullback' %}selected{% endif %}>LowMA 承接策略 — 次日盘中限价触价</option>
           {% for s in schemes %}
           <option value="{{ s.name }}" {% if s.name == (prefill_scheme or 'default_value') %}selected{% endif %}>{{ s.name }} — {{ s.description }}</option>
           {% endfor %}
         </select>
-        <span class="hint">同一批次内所有标的使用同一策略方案或临时草稿。</span>
+        <span class="hint">同一批次内所有标的使用同一策略方案；LowMA 使用次日盘中限价成交。</span>
+      </div>
+
+      <div class="ui-card" id="lowma-sim-options" style="display:none;margin-top:14px;">
+        <div class="ui-card-header"><i class="fas fa-wave-square"></i> LowMA 承接参数</div>
+        <div class="form-grid">
+          <div><label>入场路径</label><select id="sim-lowma-path"><option value="path_a">Path A：中部收盘 + 正常量</option><option value="path_b">Path B：低位收盘 + 缩量</option><option value="baseline">基准：原始资格</option></select></div>
+          <div><label>挂单 LowMA</label><select id="sim-lowma-period"><option value="5">LowMA5</option><option value="10">LowMA10</option><option value="20">LowMA20</option></select></div>
+          <div><label>Position20 上限</label><input id="sim-lowma-position" type="number" step="0.01" value="0.25"></div>
+          <div><label>结构确认天数</label><input id="sim-lowma-structure" type="number" min="1" value="2"></div>
+          <div><label>保本激活比例</label><input id="sim-lowma-breakeven" type="number" step="0.01" value="0.05"></div>
+          <div><label>右侧启动比例</label><input id="sim-lowma-trend" type="number" step="0.01" value="0.10"></div>
+          <div><label>峰值回撤比例</label><input id="sim-lowma-trailing" type="number" step="0.01" value="0.07"></div>
+          <div><label>固定硬止损比例（可空）</label><input id="sim-lowma-hard-stop" type="number" step="0.01" placeholder="不启用"></div>
+        </div>
+        <div class="hint">信号在 T 日收盘后生成；T+1 仅在 Open/High/Low 覆盖预设限价时成交。开盘低于限价时按更优开盘价成交。</div>
       </div>
 
       <div class="ui-card-header" style="margin-top:20px;"><span>输出选项</span></div>
@@ -302,6 +318,13 @@ let simulationStocks = [];
 
 const typeLabels = {A:'A 高成长', B:'B 价值白马', C:'C 强周期', D:'D 深度价值', E:'E 场内 ETF/基金'};
 
+function onSimulationSchemeChange(){
+  const lowma=document.getElementById('sim-scheme').value==='lowma_pullback';
+  document.getElementById('lowma-sim-options').style.display=lowma?'block':'none';
+  document.getElementById('simulation-stock-count').textContent=lowma?'（0/30）':'（0/10）';
+}
+function lowmaOption(id){const value=document.getElementById(id).value;return value===''?null:Number(value);}
+
 function renderSimulationStocks(){
   const body=document.getElementById('simulation-stock-rows');
   body.innerHTML=simulationStocks.map((stock,index)=>'<tr><td><b>'+stock.name+'</b><br><small>'+stock.code+'</small></td><td>'+typeLabels[stock.stock_type]+'</td><td><button type="button" class="ui-button ui-button-danger ui-button-sm" onclick="removeSimulationStock('+index+')">移除</button></td></tr>').join('') || '<tr><td colspan="3" class="hint">请添加至少一只股票</td></tr>';
@@ -353,7 +376,8 @@ function addSimulationStock(){
   const stock_type=document.getElementById('sim-stock-type').value;
   if(!code||!name){showError('请先输入并选择股票代码或名称');return;}
   if(simulationStocks.some(s=>s.code===code)){showError('该股票已经在模拟列表中');return;}
-  if(simulationStocks.length>=10){showError('单次批量模拟最多10只股票');return;}
+  const limit=document.getElementById('sim-scheme').value==='lowma_pullback'?30:10;
+  if(simulationStocks.length>=limit){showError('该策略单次最多'+limit+'只股票');return;}
   simulationStocks.push({code,name,stock_type}); renderSimulationStocks();
 }
 
@@ -424,6 +448,7 @@ function renderBatchDetail(id,item){
 bindSimulationAutocomplete('sim-code','sim-code-suggestions');
 bindSimulationAutocomplete('sim-name','sim-name-suggestions');
 document.getElementById('sim-draft-id').value=new URLSearchParams(location.search).get('draft_id')||'';
+onSimulationSchemeChange();
 if(document.getElementById('sim-code').value && document.getElementById('sim-name').value) addSimulationStock();
 if(lowmaRunId){fetch('/api/low-ma/research/'+encodeURIComponent(lowmaRunId)).then(r=>r.json()).then(data=>{if(data.status==='success')renderLowMAResults(data);else showError(data.error||'LowMA 结果读取失败');}).catch(error=>showError('LowMA 结果读取失败: '+error.message));}
 
@@ -463,9 +488,11 @@ form.addEventListener('submit', async (e) => {
       data = await UI_UTILS.fetchJson('/strategy-simulation', { method: 'POST', body: fd });
     } else {
       loadingStage.textContent = '批量任务初始化（严格串行）...';
+      const lowma=document.getElementById('sim-scheme').value==='lowma_pullback';
+      const lowma_options=lowma?{entry_path:document.getElementById('sim-lowma-path').value,limit_period:Number(document.getElementById('sim-lowma-period').value),position_limit:lowmaOption('sim-lowma-position'),structure_confirm_days:Number(document.getElementById('sim-lowma-structure').value),breakeven_activation:lowmaOption('sim-lowma-breakeven'),trend_activation:lowmaOption('sim-lowma-trend'),trailing_drawdown:lowmaOption('sim-lowma-trailing'),hard_stop_pct:lowmaOption('sim-lowma-hard-stop')}:null;
       data = await UI_UTILS.fetchJson('/strategy-simulation/batch', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
         stocks: simulationStocks, scheme: fd.get('scheme'), draft_id: fd.get('draft_id'),
-        start_date: fd.get('start_date'), end_date: fd.get('end_date'), initial_cash: fd.get('initial_cash')
+        start_date: fd.get('start_date'), end_date: fd.get('end_date'), initial_cash: fd.get('initial_cash'), lowma_options
       }) });
     }
     if (data.status === 'error') { showError(data.error); return; }

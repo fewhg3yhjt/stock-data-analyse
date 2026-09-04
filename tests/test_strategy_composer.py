@@ -148,6 +148,36 @@ def test_strategy_simulation_has_unified_lowma_tabs(client):
     assert "事件日志" in page
 
 
+def test_strategy_simulation_lists_lowma_system_strategy(client):
+    page = client.get("/strategy-simulation?scheme=lowma_pullback").get_data(as_text=True)
+    assert 'value="lowma_pullback"' in page
+    assert "LowMA 承接参数" in page
+    assert "next_day_limit_range" not in page  # execution detail remains backend-owned
+
+
+def test_composer_lowma_card_links_to_selected_simulator(client):
+    page = client.get("/strategy-composer").get_data(as_text=True)
+    assert "/strategy-simulation?scheme=lowma_pullback" in page
+
+
+def test_lowma_batch_accepts_system_strategy_without_scheme_registry(client, monkeypatch):
+    captured = {}
+
+    def run(target, args=(), daemon=None):
+        captured["target"] = target
+        captured["args"] = args
+        return type("Thread", (), {"start": lambda self: None})()
+
+    monkeypatch.setattr("StockInvestmentTool.web.app.threading.Thread", run)
+    response = client.post("/strategy-simulation/batch", json={
+        "scheme": "lowma_pullback", "start_date": "2024-01-01", "end_date": "2024-06-30",
+        "initial_cash": 100000, "stocks": [{"code": "sz000425", "name": "徐工机械", "stock_type": "B"}],
+        "lowma_options": {"entry_path": "path_a"},
+    })
+    assert response.status_code == 202
+    assert captured["target"].__name__ == "_run_lowma_batch"
+
+
 def test_lowma_research_result_requires_existing_run(client):
     response = client.get("/api/low-ma/research/not-found")
     assert response.status_code == 404

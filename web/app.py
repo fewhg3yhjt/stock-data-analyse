@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 def _to_json_safe(obj):
     """递归将 numpy 类型转为 Python 原生类型"""
+    if isinstance(obj, (pd.Timestamp, datetime)):
+        return str(obj)[:10]
     if isinstance(obj, (np.integer,)):
         return int(obj)
     if isinstance(obj, (np.floating,)):
@@ -192,35 +194,26 @@ def _run_batch_analysis(task_id: str, stocks: list[dict], start_date: str,
                     code = StockDataFetcher.normalize_code(str(stock.get("code") or ""))
                     name = str(stock.get("name") or code)
                     stock_type = str(stock.get("stock_type") or "B").upper()
-                    update_status(stage=f"模拟 {index}/{total}: {name}",
-                                  progress=round((index - 1) / total * 90) + 5)
+                    update_status(stage=f"模拟 {index}/{total}: {name}", progress=round((index - 1) / total * 90) + 5)
                     try:
                         engine = AnalysisEngine(scheme_name, scheme=scheme)
-                        result = engine.analyze(
-                            code=code, name=name, start_date=start_date, end_date=end_date,
-                            options=AnalysisOptions(do_backtest=True, do_prompt=False, do_api=False,
-                                                    skip_charts=True, stock_type=stock_type,
-                                                    initial_cash=initial_cash, no_optimize=True),
-                        )
+                        result = engine.analyze(code=code, name=name, start_date=start_date, end_date=end_date,
+                                                options=AnalysisOptions(do_backtest=True, do_prompt=False, do_api=False,
+                                                                        skip_charts=True, stock_type=stock_type,
+                                                                        initial_cash=initial_cash, no_optimize=True))
                         data = _to_json_safe(result.to_dict())
-                        data["trades"] = [{**trade, "date": str(trade.get("date", ""))[:10]}
-                                          for trade in data.get("trades", [])]
-                        data["return_curves"] = _simulation_return_curves(
-                            data, initial_cash, start_date, end_date
-                        )
-                        items.append({"status": "success", "code": code, "name": name,
-                                      "stock_type": stock_type, "result": data})
+                        data["trades"] = [{**trade, "date": str(trade.get("date", ""))[:10]} for trade in data.get("trades", [])]
+                        data["return_curves"] = _simulation_return_curves(data, initial_cash, start_date, end_date)
+                        items.append({"status": "success", "code": code, "name": name, "stock_type": stock_type, "result": data})
                     except Exception as exc:
                         logger.exception("批量策略模拟失败: %s", code)
-                        items.append({"status": "error", "code": code, "name": name,
-                                      "stock_type": stock_type, "error": str(exc)})
+                        items.append({"status": "error", "code": code, "name": name, "stock_type": stock_type, "error": str(exc)})
                     finally:
                         import gc
                         gc.collect()
                 succeeded = sum(item["status"] == "success" for item in items)
-                update_status(result={"batch": True, "scheme_name": scheme_name,
-                                      "items": items, "succeeded": succeeded,
-                                      "failed": total - succeeded},
+                update_status(result={"batch": True, "scheme_name": scheme_name, "items": items,
+                                      "succeeded": succeeded, "failed": total - succeeded},
                               status="success", stage="完成", progress=100)
             except Exception as exc:
                 logger.exception("批量策略模拟任务失败")
@@ -228,6 +221,73 @@ def _run_batch_analysis(task_id: str, stocks: list[dict], start_date: str,
         _attach_memory(status, "batch_analysis", memory)
         _store_analysis_task(task_id, "batch_analysis", "batch", status)
 
+
+def _run_lowma_batch(task_id: str, stocks: list[dict], start_date: str,
+                     end_date: str, options: dict) -> None:
+    """Run LowMA and adapt its output to the regular batch simulation shape."""
+    from StockInvestmentTool.research.low_ma import LowMAConfig, run_low_ma_dataset
+    from StockInvestmentTool.warehouse import Warehouse
+
+    status = _analysis_status[task_id]
+    try:
+        status.update(stage="读取 Published 数据", progress=10)
+        result = run_low_ma_dataset(
+            Warehouse(), start_date=start_date, end_date=end_date,
+            symbols=[item["code"].replace(".", "") for item in stocks], config=LowMAConfig(**options),
+        )
+
+        def records(frame):
+            return _to_json_safe(frame.replace({np.nan: None}).to_dict(orient="records")) if not frame.empty else []
+
+        summary = {item["stock"]: item for item in records(result["summary"])}
+        trades, events, kline, curves = (records(result[key]) for key in ("trades", "events", "kline", "curves"))
+        items = []
+        for stock in stocks:
+            code = stock["code"]
+            dataset_code = code.replace(".", "")
+            symbol_trades = [item for item in trades if item.get("code") == dataset_code]
+            symbol_events = [item for item in events if item.get("code") == dataset_code]
+            symbol_kline = [item for item in kline if item.get("code") == dataset_code]
+            symbol_curves = [item for item in curves if item.get("stock") == dataset_code]
+            stat = summary.get(code, {})
+            buy_hold = (float(symbol_curves[-1]["buy_hold"]) - 1) * 100 if symbol_curves else 0.0
+            strategy = [(float(item["strategy"]) - 1) * 100 for item in symbol_curves]
+            peak, drawdown = float("-inf"), 0.0
+            for value in strategy:
+                peak = max(peak, value)
+                drawdown = min(drawdown, value - peak)
+            normalized_trades = []
+            for trade in symbol_trades:
+                normalized_trades.extend([
+                    {"date": trade.get("entry_date"), "type": "买入", "price": trade.get("entry_price"),
+                     "trigger_price": trade.get("limit_price"), "shares": 0, "pnl": None,
+                     "reason": "LowMA 次日盘中限价成交"},
+                    {"date": trade.get("exit_date"), "type": "卖出", "price": trade.get("exit_price"),
+                     "trigger_price": None, "shares": 0, "pnl": trade.get("return_pct"),
+                     "reason": trade.get("exit_reason") or ""},
+                ])
+            items.append({"status": "success", "code": code, "name": stock["name"],
+                          "stock_type": stock["stock_type"], "result": {
+                              "total_return": float(stat.get("cumulative_return_pct", 0.0)),
+                              "buy_hold_return": buy_hold, "max_drawdown": drawdown,
+                              "trade_count": int(stat.get("trades", len(symbol_trades))),
+                              "trades": normalized_trades, "events": symbol_events,
+                              "kline_dates": [item["date"] for item in symbol_kline],
+                              "kline_ohlc": [[item["open"], item["close"], item["low"], item["high"]] for item in symbol_kline],
+                              "kline_vol": [item["volume"] for item in symbol_kline],
+                              "kline_ma": {key: [item.get(key) for item in symbol_kline] for key in ("lowma5", "lowma10", "lowma20")},
+                              "return_curves": {"dates": [item["date"] for item in symbol_curves], "strategy": strategy,
+                                                "buy_hold": [(float(item["buy_hold"]) - 1) * 100 for item in symbol_curves], "market": []},
+                          }})
+        status.update(status="success", stage="完成", progress=100,
+                      result={"batch": True, "scheme_name": "LowMA 承接策略", "items": items,
+                              "succeeded": len(items), "failed": 0,
+                              "data_context": result.get("data_context", {})})
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("LowMA 批量模拟失败")
+        status.update(status="error", stage="失败", progress=-1, error=str(exc))
+    finally:
+        _store_analysis_task(task_id, "lowma_batch", "batch", status)
 
 def _run_analysis(task_id: str, code: str, name: str,
                   start_date: str, end_date: str,
@@ -336,9 +396,9 @@ def strategy_simulation_page():
                                  last_year=last_year,
                                  schemes=schemes,
                                  has_api_key=bool(Config.DEEPSEEK_API_KEY),
-                                 prefill_code=flask.request.args.get("code", ""),
-                                 prefill_name=flask.request.args.get("name", ""),
-                                  prefill_scheme=flask.request.args.get("scheme", ""),
+                                   prefill_code=flask.request.args.get("code", ""),
+                                   prefill_name=flask.request.args.get("name", ""),
+                                   prefill_scheme=flask.request.args.get("scheme", ""),
                                   prefill_stock_type=flask.request.args.get("stock_type", "B"))
 
 
@@ -2042,11 +2102,12 @@ def analyze_batch():
     stocks = payload.get("stocks") or []
     if not isinstance(stocks, list) or not stocks:
         return flask.jsonify({"status": "error", "error": "请至少添加一只股票"}), 400
-    if len(stocks) > 10:
-        return flask.jsonify({"status": "error", "error": "单次批量模拟最多10只股票"}), 400
     start_date = str(payload.get("start_date") or "")[:10]
     end_date = str(payload.get("end_date") or "")[:10]
     scheme_name = str(payload.get("scheme") or "default_value").strip()
+    max_stocks = 30 if scheme_name == "lowma_pullback" else 10
+    if len(stocks) > max_stocks:
+        return flask.jsonify({"status": "error", "error": f"单次批量模拟最多{max_stocks}只股票"}), 400
     draft_id = str(payload.get("draft_id") or "").strip()
     scheme_content = (_simulation_drafts.pop(draft_id, {}) or {}).get("content", "") if draft_id else ""
     if not start_date or not end_date:
@@ -2065,15 +2126,21 @@ def analyze_batch():
             if stock_type not in ("A", "B", "C", "D", "E"):
                 raise ValueError(f"{name} 的证券类型无效")
             checked.append({"code": code, "name": name, "stock_type": stock_type})
-        if not scheme_content and not SchemeRegistry().has(scheme_name):
+        if scheme_name != "lowma_pullback" and not scheme_content and not SchemeRegistry().has(scheme_name):
             raise ValueError(f"方案 '{scheme_name}' 不存在")
         task_id = f"batch_{datetime.now().strftime('%H%M%S_%f')}"
         _analysis_status[task_id] = {"status": "running", "stage": "初始化", "progress": 0,
                                      "result": None, "_created_at": datetime.now().isoformat(timespec="seconds")}
-        _store_analysis_task(task_id, "batch_analysis", "batch", _analysis_status[task_id])
-        threading.Thread(target=_run_batch_analysis,
-                         args=(task_id, checked, start_date, end_date, initial_cash,
-                               scheme_name, scheme_content), daemon=True).start()
+        if scheme_name == "lowma_pullback":
+            _store_analysis_task(task_id, "lowma_batch", "batch", _analysis_status[task_id])
+            threading.Thread(target=_run_lowma_batch,
+                             args=(task_id, checked, start_date, end_date,
+                                   payload.get("lowma_options") or {}), daemon=True).start()
+        else:
+            _store_analysis_task(task_id, "batch_analysis", "batch", _analysis_status[task_id])
+            threading.Thread(target=_run_batch_analysis,
+                             args=(task_id, checked, start_date, end_date, initial_cash,
+                                   scheme_name, scheme_content), daemon=True).start()
         return flask.jsonify({"status": "running", "task_id": task_id, "stage": "初始化",
                               "progress": 0, "_query_url": f"/api/analysis/tasks/{task_id}"}), 202
     except Exception as exc:
