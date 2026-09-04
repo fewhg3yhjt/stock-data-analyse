@@ -109,6 +109,21 @@ class TestEvaluate:
         assert len(dec.decision_trace["triggered_rules"]) >= 1
         assert dec.input_snapshot["symbol"] == "sh600908"
 
+    def test_buy_signal_can_publish_limit_price_reference(self):
+        strategy = compile_strategy(StrategySpec(
+            strategy_id="lowma", name="LowMA", version="1",
+            entry_rules=[{"rule_id": "buy", "action": "BUY", "price_ref": {"indicator": "lowma5"}, "when": {
+                "type": "comparison", "left": {"field": "close"},
+                "operator": ">", "right": {"value": 11}}}],
+            exit_rules=[], position_sizing={"initial_ratio": 0.2},
+        ), strategy_version_id="sv_lowma")
+        ctx = make_ctx(close_last=11.8)
+        from StockInvestmentTool.indicators.context import IndicatorContext
+        ctx.indicator_context = IndicatorContext(ctx.market_data)
+        dec = strategy.evaluate(ctx)
+        assert dec.action == "BUY"
+        assert dec.price == pytest.approx(float(ctx.market_data["low"].tail(5).mean()))
+
     def test_no_action_when_below(self):
         strategy = compile_strategy(make_spec(), strategy_version_id="sv_test")
         ctx = make_ctx(close_last=10.0)  # 不满足 > 11

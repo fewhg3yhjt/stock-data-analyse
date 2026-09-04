@@ -140,5 +140,47 @@ class TestSimulation:
         assert {fill.symbol for fill in fills} == {"sh600908", "sz000001"}
         assert len(result.equity_curve) == df["date"].nunique()
 
+    def test_limit_entry_requires_next_day_range_and_uses_open_improvement(self):
+        plan = make_plan()
+        plan.execution_rules = {"entry_mode": "next_day_limit_range"}
+        df = make_df().iloc[:4].copy()
+        df.loc[df.index[0], "close"] = 11.0
+        df.loc[df.index[1], "open"] = 9.5
+        df.loc[df.index[1], "high"] = 9.8
+        df.loc[df.index[1], "low"] = 9.4
+        strategy = make_strategy()
+        original = strategy.evaluate
+
+        def evaluate(context):
+            decision = original(context)
+            decision.price = 10.0
+            return decision
+
+        strategy.evaluate = evaluate
+        _, _, fills, events = execute_simulation(plan, df, strategy=strategy)
+        buy = next(fill for fill in fills if fill.side == "BUY")
+        assert buy.execution_price == pytest.approx(9.5 * 1.0005)
+        assert any(event.event_type == "FILLED" for event in events)
+
+    def test_limit_entry_is_not_filled_when_range_misses_limit(self):
+        plan = make_plan()
+        plan.execution_rules = {"entry_mode": "next_day_limit_range"}
+        df = make_df().iloc[:4].copy()
+        df.loc[df.index[1], "open"] = 11.0
+        df.loc[df.index[1], "high"] = 11.5
+        df.loc[df.index[1], "low"] = 10.5
+        strategy = make_strategy()
+        original = strategy.evaluate
+
+        def evaluate(context):
+            decision = original(context)
+            decision.price = 10.0
+            return decision
+
+        strategy.evaluate = evaluate
+        _, _, fills, events = execute_simulation(plan, df, strategy=strategy)
+        assert not any(fill.side == "BUY" for fill in fills)
+        assert any(event.event_type == "ORDER_NOT_FILLED" for event in events)
+
 
 import pytest  # noqa: E402

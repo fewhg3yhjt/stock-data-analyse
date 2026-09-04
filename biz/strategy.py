@@ -159,7 +159,7 @@ class StrategyEvaluator:
             data_as_of=context.data_as_of,
             action=final_action,
             quantity_ratio=self._quantity_ratio(final_action, context),
-            price=self._reference_price(context),
+            price=self._reference_price(context, used_trigger),
             input_dependencies=[r.get("rule_id") for r in evaluated if r.get("rule_id")],
             input_snapshot=self._snapshot(context),
             decision_trace=decision_trace,
@@ -183,6 +183,7 @@ class StrategyEvaluator:
             "explanation": res.explanation,
             "evaluation_status": res.evaluation_status,
             "position_ratio": rule.get("position_ratio"),
+            "price_ref": rule.get("price_ref"),
             "priority": int(rule.get("priority", 0)),
         }
 
@@ -234,7 +235,17 @@ class StrategyEvaluator:
             return float(self.spec.risk.get("partial_sell_ratio", 0.5))
         return None
 
-    def _reference_price(self, context: StrategyContext) -> float | None:
+    def _reference_price(self, context: StrategyContext, trigger: dict | None = None) -> float | None:
+        """Resolve an optional rule price reference, otherwise use close."""
+        price_ref = (trigger or {}).get("price_ref") if trigger else None
+        if isinstance(price_ref, dict) and context.indicator_context is not None:
+            try:
+                name = price_ref.get("indicator") or price_ref.get("field")
+                if name:
+                    value = context.indicator_context[name]
+                    return float(value) if value is not None else None
+            except (TypeError, ValueError, KeyError):
+                pass
         if context.market_data is not None and len(context.market_data):
             try:
                 import pandas as pd

@@ -154,6 +154,23 @@ def _low_20d(df, env=None) -> pd.Series:
     return df["low"].astype(float).rolling(20).min()
 
 
+def _low_ma(df, env=None, window: int = 5) -> pd.Series:
+    """Rolling mean of daily lows, used by the LowMA research strategy."""
+    return df["low"].astype(float).rolling(int(window)).mean()
+
+
+def _position_20(df, env=None) -> pd.Series:
+    """Close's position inside the current 20-day high/low range."""
+    high = df["high"].astype(float).rolling(20).max()
+    low = df["low"].astype(float).rolling(20).min()
+    return (df["close"].astype(float) - low) / (high - low).replace(0, pd.NA)
+
+
+def _prior_20_low(df, env=None) -> pd.Series:
+    """20-day low excluding the current bar."""
+    return df["low"].astype(float).shift(1).rolling(20).min()
+
+
 # 安全函数白名单（表达式可调用）
 SAFE_FUNCS: dict[str, Callable] = {
     "MA": _ma,
@@ -217,6 +234,11 @@ class IndicatorRegistry:
             "ret_20d": IndicatorDef("ret_20d", "code", fn=_ret_20d, description="20日动量"),
             "high_20d": IndicatorDef("high_20d", "code", fn=_high_20d, description="20日高点"),
             "low_20d": IndicatorDef("low_20d", "code", fn=_low_20d, description="20日低点"),
+            "lowma5": IndicatorDef("lowma5", "code", fn=lambda df, env: _low_ma(df, env, 5), description="5日最低价均线"),
+            "lowma10": IndicatorDef("lowma10", "code", fn=lambda df, env: _low_ma(df, env, 10), description="10日最低价均线"),
+            "lowma20": IndicatorDef("lowma20", "code", fn=lambda df, env: _low_ma(df, env, 20), description="20日最低价均线"),
+            "position20": IndicatorDef("position20", "code", fn=_position_20, description="收盘价在20日高低区间的位置"),
+            "prior20_low": IndicatorDef("prior20_low", "code", fn=_prior_20_low, description="不含当日的20日最低价"),
         })
 
         # 从 YAML 加载自定义指标

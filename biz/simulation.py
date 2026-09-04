@@ -109,7 +109,10 @@ class SimulationExecutor:
                 decision = self.strategy.evaluate(context)
                 row_index = self._row_index(symbol, date)
                 if decision.action in {"BUY", "BUY_MORE"} and row_index is not None:
-                    self._execute_next_open(symbol, row_index, "BUY", decision)
+                    if self._entry_uses_limit_range():
+                        self._execute_next_day_limit(symbol, row_index, "BUY", decision)
+                    else:
+                        self._execute_next_open(symbol, row_index, "BUY", decision)
                 elif decision.action == "SELL_ALL" and row_index is not None:
                     self._execute_next_open(symbol, row_index, "SELL", decision)
                 elif decision.action == "SELL_PARTIAL" and row_index is not None:
@@ -118,6 +121,12 @@ class SimulationExecutor:
 
         self._event("END_OF_PERIOD", payload={"end_date": pd.Timestamp(dates[-1]).strftime("%Y-%m-%d")})
         return self._result()
+
+    def _entry_uses_limit_range(self) -> bool:
+        """Whether buy signals are valid only when touched during T+1."""
+
+        rules = self.plan.execution_rules or {}
+        return rules.get("entry_mode", rules.get("mode", "next_open")) == "next_day_limit_range"
 
     def _row_index(self, symbol: str, date) -> int | None:
         rows = self.df[(self.df["code"].astype(str) == symbol) & (self.df["date"] == date)]
@@ -253,6 +262,87 @@ class SimulationExecutor:
         self.fills.append(fill)
         event = "STOP_TRIGGERED" if "止损" in decision.reason else "TAKE_PROFIT_TRIGGERED" if "止盈" in decision.reason else "FILLED"
         self._event(event, symbol, {"side": "SELL", "quantity": quantity, "price": effective, "pnl": pnl})
+
+    def _execute_next_day_limit(self, symbol: str, row_index: int, side: str, decision) -> None:
+        """Execute a next-day limit order using only the next bar's OHLC.
+
+        The signal is created after T closes.  If the next bar opens at or
+        below a buy limit, the order receives the better open price.  If it
+        opens above the limit, it fills only when the intraday range reaches
+        the limit.  No next-day close or volume is consulted.
+        """
+
+        if side != "BUY":
+            raise ValueError("next_day_limit_range currently supports BUY entries only")
+        limit_price = getattr(decision, "price", None)
+        if limit_price is None or float(limit_price) <= 0:
+            self._event("ORDER_REJECTED", symbol, {"reason": "限价策略缺少有效限价"})
+            return
+        rows = self.df[self.df["code"].astype(str) == symbol]
+        positions = rows.index.tolist()
+        try:
+            pos = positions.index(row_index)
+        except ValueError:
+            return
+        if pos + 1 >= len(rows):
+            return
+        signal_row = rows.iloc[pos]
+        next_row = rows.iloc[pos + 1]
+        limit = float(limit_price)
+        open_price = float(next_row["open"])
+        low = float(next_row["low"])
+        high = float(next_row["high"])
+        if low <= open_price <= limit:
+            execution_price = open_price
+            execution_type = "limit_open_improvement"
+        elif low <= limit <= high:
+            execution_price = limit
+            execution_type = "limit_range_touch"
+        else:
+            self._event("ORDER_NOT_FILLED", symbol, {
+                "side": "BUY", "limit_price": limit,
+                "order_date": pd.Timestamp(next_row["date"]).strftime("%Y-%m-%d"),
+                "open": open_price, "high": high, "low": low,
+                "reason": "次日盘中区间未触及限价",
+            })
+            return
+
+        costs = self.plan.cost_config or {}
+        slippage_rate = float(costs.get("slippage", 0.0) or 0.0)
+        fee_rate = float(costs.get("fee_rate", costs.get("commission_rate", 0.001)) or 0.0)
+        signal_date = pd.Timestamp(signal_row["date"]).strftime("%Y-%m-%d")
+        exec_date = pd.Timestamp(next_row["date"]).strftime("%Y-%m-%d")
+        signal_price = float(signal_row["close"])
+        qty = self._buy_quantity(symbol, signal_price, execution_price,
+                                 decision.quantity_ratio or 0.2,
+                                 slippage_rate, fee_rate)
+        if qty <= 0:
+            self._event("ORDER_REJECTED", symbol, {"reason": "现金或最大仓位不足"})
+            return
+        effective = execution_price * (1 + slippage_rate)
+        gross = qty * effective
+        fee = gross * fee_rate
+        self.account.cash -= gross + fee
+        self.account.total_fees += fee
+        slip = qty * execution_price * slippage_rate
+        self.account.total_slippage += slip
+        fill = SimulationFill(
+            fill_id=new_id("fill"), simulation_run_id=self.run_id, symbol=symbol,
+            side="BUY", signal_time=signal_date, execution_time=exec_date,
+            signal_price=signal_price, execution_price=effective, quantity=qty,
+            gross_amount=gross, fee=fee, tax=0.0, slippage=slip,
+            decision_id=decision.decision_id, reason=decision.reason,
+        )
+        self.fills.append(fill)
+        self.account.positions.setdefault(symbol, []).append(SimulationLotState(
+            lot_id=new_id("slot"), symbol=symbol, opened_at=exec_date,
+            quantity=qty, remaining_quantity=qty, entry_price=effective,
+            entry_fee=fee, source_fill_id=fill.fill_id,
+        ))
+        self._event("FILLED", symbol, {
+            "side": "BUY", "quantity": qty, "price": effective,
+            "limit_price": limit, "execution_type": execution_type,
+        })
 
     def _buy_quantity(self, symbol: str, signal_price: float, execution_price: float, ratio: float,
                       slippage: float, fee_rate: float) -> float:
