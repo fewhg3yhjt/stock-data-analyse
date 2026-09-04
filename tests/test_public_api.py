@@ -20,10 +20,17 @@ def test_public_routes_are_registered_and_allow_cross_origin(app):
     routes = {rule.rule for rule in app.url_map.iter_rules()}
     assert "/api/public/reports" in routes
     assert "/api/public/stock-sectors" in routes
+    assert "/public-api" in routes
     response = app.test_client().get("/api/public/openapi.json")
     assert response.status_code == 200
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert response.get_json()["openapi"] == "3.0.3"
+
+
+def test_public_api_portal_is_available_without_login(app):
+    response = app.test_client().get("/public-api")
+    assert response.status_code == 200
+    assert "在线构造并查询" in response.get_data(as_text=True)
 
 
 def test_daily_report_requires_explicit_dates(app):

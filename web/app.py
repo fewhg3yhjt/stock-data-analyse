@@ -3902,8 +3902,9 @@ def create_app():
     app.register_blueprint(biz_api, url_prefix="/api/biz")
     # Public data endpoints intentionally bypass the admin-only web Blueprint.
     # They expose only GET reads backed by published datasets.
-    from StockInvestmentTool.web.public_api import public_api
+    from StockInvestmentTool.web.public_api import public_api, public_api_page
     app.register_blueprint(public_api, url_prefix="/api/public")
+    app.add_url_rule("/public-api", endpoint="public_api_portal", view_func=public_api_page)
 
     # 基础安全响应头（S-03）：当前页面仍有内联脚本与 CDN 静态资源，
     # CSP 分阶段启用：允许内联脚本与已知 CDN，后续内联脚本治理完成后收紧。

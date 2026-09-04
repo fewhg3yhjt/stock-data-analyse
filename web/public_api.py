@@ -172,6 +172,12 @@ def reports():
     return flask.jsonify({"status": "ok", "report": "reports", "data": data})
 
 
+@public_api.route("/", methods=["GET"])
+def public_api_page():
+    """Human-facing API portal; data requests remain on the JSON endpoints."""
+    return flask.render_template("public_api.html")
+
+
 @public_api.route("/stocks", methods=["GET"])
 def stocks():
     try:
