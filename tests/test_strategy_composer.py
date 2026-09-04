@@ -140,6 +140,14 @@ def test_lowma_page_contains_explicit_simulation_fallback_link(client):
     assert "simulation_url" in page
 
 
+def test_strategy_simulation_has_unified_lowma_tabs(client):
+    page = client.get("/strategy-simulation?lowma_run_id=test").get_data(as_text=True)
+    assert "renderBatchResults" in page
+    assert "K线" in page
+    assert "交易记录" in page
+    assert "事件日志" in page
+
+
 def test_lowma_research_result_requires_existing_run(client):
     response = client.get("/api/low-ma/research/not-found")
     assert response.status_code == 404

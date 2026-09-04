@@ -321,7 +321,10 @@ def run_low_ma_experiment(frame: pd.DataFrame, config: LowMAConfig | None = None
         summary_df = pd.DataFrame(summaries)
     else:
         summary_df = pd.DataFrame()
-    kline_rows = data[["code", "date", "open", "high", "low", "close", "volume"]].copy()
+    kline_rows = data[[
+        "code", "date", "open", "high", "low", "close", "volume",
+        "lowma5", "lowma10", "lowma20", "high20", "low20", "position20",
+    ]].copy()
     kline_rows["date"] = kline_rows["date"].dt.strftime("%Y-%m-%d")
     curve_rows: list[dict[str, Any]] = []
     for stock, stock_kline in kline_rows.groupby("code", sort=True):
