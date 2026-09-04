@@ -14,7 +14,20 @@ import pandas as pd
 from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
 
 
-DEFAULT_PUBLIC_DAILY_CODES = ("000400", "000425", "000725", "601318", "603019", "300750")
+DEFAULT_PUBLIC_DAILY_CODES = (
+    "000400",  # 许继电气
+    "000425",  # 徐工机械
+    "000725",  # 京东方A
+    "603019",  # 中科曙光
+    "300750",  # 宁德时代
+    "601318",  # 中国平安
+    "600519",  # 贵州茅台
+    "600036",  # 招商银行
+    "002594",  # 比亚迪
+    "600031",  # 三一重工
+    "601899",  # 紫金矿业
+    "600941",  # 中国移动
+)
 
 
 def _canonical_code(value: str) -> tuple[str, str]:
