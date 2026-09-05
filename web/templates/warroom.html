@@ -321,6 +321,15 @@ function switchDetailTab(box, tab){
     panel.style.display = panel.classList.contains('detail-panel-' + tab) ? '' : 'none';
   });
 }
+function openPositionSimulation(btn){
+  const panel = btn.closest('.detail-panel-strategy');
+  const code = encodeURIComponent(btn.dataset.simulationCode);
+  const name = encodeURIComponent(btn.dataset.simulationName);
+  const stockType = encodeURIComponent(btn.dataset.simulationType || 'B');
+  const scheme = encodeURIComponent(panel.querySelector('.scheme-select').value || btn.dataset.simulationScheme);
+  if (!scheme) { showUiMessage('当前持仓没有可用方案', 'error'); return; }
+  window.location.href = `/strategy-simulation?code=${code}&name=${name}&stock_type=${stockType}&scheme=${scheme}`;
+}
 // ── 操作记录：新增录入行 ──────────────────────────────
 function addOperationRow(btn){
   const panel = btn.closest('.detail-panel-records');
@@ -466,14 +475,6 @@ document.addEventListener('click', function(e){
     const a = el.dataset.action;
     if (a === 'deletePos') deletePos(Number(el.dataset.id), el.dataset.name);
     return;
-  }
-  function openPositionSimulation(btn){
-    const panel = btn.closest('.detail-panel-strategy');
-    const code = encodeURIComponent(btn.dataset.simulationCode);
-    const name = encodeURIComponent(btn.dataset.simulationName);
-    const stockType = encodeURIComponent(btn.dataset.simulationType || 'B');
-    const scheme = encodeURIComponent(panel.querySelector('.scheme-select').value || btn.dataset.simulationScheme);
-    window.location.href = `/strategy-simulation?code=${code}&name=${name}&stock_type=${stockType}&scheme=${scheme}`;
   }
   const card = e.target.closest('[data-position-card]');
   if (!card || e.target.closest('a,button,input,select,textarea,.detail-box,.advice')) return;
