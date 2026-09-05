@@ -24,13 +24,14 @@ def test_load_triggers_default_when_missing(tmp_path):
     from StockInvestmentTool.biz.triggers import load_triggers
 
     loaded = load_triggers(tmp_path / "missing.yaml")
-    assert len(loaded) == 10
+    assert len(loaded) == 12
     ids = {r["id"] for r in loaded}
     assert {"actionable_intraday", "post_close_summary", "price_threshold"} <= ids
     assert {"notification_daily_report", "notification_task_failed",
             "notification_system_alert", "notification_position_signal",
             "notification_position_drawdown", "notification_position_price",
-            "notification_trade_signals"} <= ids
+            "notification_trade_signals", "notification_test",
+            "notification_trigger"} <= ids
 
 
 def test_sync_notification_triggers_preserves_existing_rules(tmp_path):
@@ -158,6 +159,14 @@ def test_run_trigger_rule_creates_event(tmp_path, monkeypatch):
             "conditions": [{"type": "action", "params": {"advice_types": ["sell_all"]}}],
             "logic": "AND", "schedule": {"mode": "post_close", "time": "15:35"},
             "channel": "email", "priority": "batch"}
+    from StockInvestmentTool.biz import triggers
+    rules_path = tmp_path / "notify_rules.yaml"
+    triggers.save_triggers([{
+        "id": "notification_trigger", "name": "自定义触发器消息", "enabled": True,
+        "kind": "notification_subscription", "event_type": "TRIGGER",
+        "conditions": [], "schedule": {}, "channel": "email", "priority": "instant",
+    }], rules_path)
+    monkeypatch.setattr(triggers, "RULES_PATH", rules_path)
     result = run_trigger_rule(rule, repo=repo)
     assert result["ok"] is True
     assert result["event_id"]

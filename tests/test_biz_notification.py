@@ -138,6 +138,9 @@ class TestNotificationService:
         triggers.save_triggers([{
             "id": "rule-risk", "name": "风险", "enabled": False,
             "kind": "notification_subscription", "event_type": "RISK_ALERT",
+        }, {
+            "id": "notification_trade_signals", "name": "买卖风险信号", "enabled": False,
+            "kind": "notification_subscription", "event_types": ["RISK_ALERT"],
         }], path)
         monkeypatch.setattr(triggers, "RULES_PATH", path)
         monkeypatch.setenv("EMAIL_TO", "alerts@example.com")

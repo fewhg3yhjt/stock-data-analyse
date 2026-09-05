@@ -79,6 +79,14 @@ def test_build_daily_digest_emits_event(tmp_path, monkeypatch):
 
     # 用桩替换数据获取，避免真实网络/旧持仓依赖
     import StockInvestmentTool.biz.daily_digest as mod
+    from StockInvestmentTool.biz import triggers
+    rules_path = tmp_path / "notify_rules.yaml"
+    triggers.save_triggers([{
+        "id": "notification_daily_report", "name": "每日盘后汇总", "enabled": True,
+        "kind": "notification_subscription", "event_type": "DAILY_REPORT",
+        "conditions": [], "schedule": {}, "channel": "email", "priority": "batch",
+    }], rules_path)
+    monkeypatch.setattr(triggers, "RULES_PATH", rules_path)
 
     monkeypatch.setattr(mod, "_gather_digest_data", lambda rules: [
         mod.DigestSection(mod.TOPIC_ORDERS, "今日持仓指令", ["- 长江电力(sh600908): 持有 现价11.0 盈亏5.0%"]),

@@ -304,6 +304,11 @@ def send_pending_deliveries(repo=None, *, limit: int = 50) -> dict:
             "SELECT * FROM notification_events WHERE event_id=?", (item["event_id"],)
         )
         if event is None:
+            service.repo.db.update(
+                "notification_deliveries",
+                {"status": "failed", "last_error": "event_not_found", "claimed_by": "", "lease_expires_at": ""},
+                "delivery_id=?", (delivery_id,),
+            )
             continue
         from StockInvestmentTool.biz.db import loads_json
         payload = loads_json(event["payload_json"])
@@ -311,6 +316,11 @@ def send_pending_deliveries(repo=None, *, limit: int = 50) -> dict:
         body = payload.get("text", payload.get("html", ""))
         recipient = item.get("recipient") or _email_recipients()
         if not recipient:
+            service.repo.db.update(
+                "notification_deliveries",
+                {"status": "suppressed", "last_error": "recipient_missing", "claimed_by": "", "lease_expires_at": ""},
+                "delivery_id=?", (delivery_id,),
+            )
             continue
         host = os.getenv("EMAIL_SMTP_HOST", "smtp.qq.com")
         port = int(os.getenv("EMAIL_SMTP_PORT", "465"))

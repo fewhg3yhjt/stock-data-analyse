@@ -24,6 +24,7 @@ def test_notify_outbox_api(client):
     data = response.get_json()
     assert data["status"] == "success"
     assert isinstance(data["items"], list)
+    assert "event_counts" in data
 
 
 def test_notify_outbox_filter_and_retry(client, tmp_path, monkeypatch):

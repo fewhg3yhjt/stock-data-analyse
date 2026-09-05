@@ -374,18 +374,37 @@ class NotificationService:
                 return rule
         return None
 
+    @classmethod
+    def _subscription_rules_for_event(cls, event: NotificationEvent) -> list[dict]:
+        """Return enabled subscription rules matching this event."""
+        matched = []
+        for rule in cls._notification_rules():
+            if not rule.get("enabled", True) or rule.get("kind") != "notification_subscription":
+                continue
+            if event.event_type == "TRIGGER" and rule.get("event_type") == "TRIGGER":
+                matched.append(rule)
+                continue
+            event_types = rule.get("event_types") or []
+            if rule.get("event_type") == event.event_type or event.event_type in event_types:
+                matched.append(rule)
+        return matched
+
     def create_rule_delivery(self, event: NotificationEvent, *, template: str = "",
                              recipient: str | None = None,
                              channel: str | None = None) -> NotificationDelivery | None:
-        """根据统一通知规则创建投递；未匹配/已关闭规则时只保留事件。"""
-        rule = self._rule_for_event(event)
+        """Create a delivery only when an enabled subscription matches."""
+        rules = self._subscription_rules_for_event(event)
+        rule = rules[0] if rules else None
         if rule is None:
             logger.info("通知规则未启用或未匹配，跳过投递: %s", event.event_type)
             return None
         target = recipient or rule.get("use_email_to") or os.getenv("EMAIL_TO", "")
         target_channel = channel or rule.get("channel", "email")
         if not target:
-            return None
+            return self.create_delivery(
+                event, target_channel, "", template=template,
+                status=DELIVERY_SUPPRESSED, last_error="recipient_missing",
+            )
         existing = self.repo.db.fetchone(
             "SELECT * FROM notification_deliveries "
             "WHERE event_id=? AND channel=? AND recipient=? LIMIT 1",
@@ -406,10 +425,11 @@ class NotificationService:
         return self.create_delivery(event, target_channel, target, template=template)
 
     def create_delivery(self, event: NotificationEvent, channel: str,
-                        recipient: str, template: str = "") -> NotificationDelivery:
+                        recipient: str, template: str = "", *,
+                        status: str = DELIVERY_PENDING, last_error: str = "") -> NotificationDelivery:
         delivery = NotificationDelivery(
             delivery_id=new_id("nd"), event_id=event.event_id, channel=channel,
-            recipient=recipient, template=template,
+            recipient=recipient, template=template, status=status, last_error=last_error,
         )
         self.repo.db.insert("notification_deliveries", {
             "delivery_id": delivery.delivery_id, "event_id": delivery.event_id,
@@ -460,7 +480,8 @@ class NotificationService:
         ok = channel.send(subject, body, recipient)
         if ok:
             self.repo.db.update("notification_deliveries", {
-                "status": DELIVERY_SENT, "sent_at": now_utc(),
+                "status": DELIVERY_SENT, "sent_at": now_utc(), "last_error": "",
+                "next_attempt_at": "", "claimed_by": "", "claimed_at": "", "lease_expires_at": "",
             }, "delivery_id=?", (delivery_id,))
             self.mark_delivery_result(delivery_id, True)
             return True

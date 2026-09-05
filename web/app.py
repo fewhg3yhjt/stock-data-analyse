@@ -3961,6 +3961,9 @@ def api_notify_outbox():
         from StockInvestmentTool.biz.db import loads_json
         service = NotificationService()
         deliveries = service.list_pending_deliveries()[:50]
+        event_counts = service.repo.db.fetchall(
+            "SELECT event_type, COUNT(*) AS n FROM notification_events GROUP BY event_type"
+        )
         # 合并最新 200 条，按状态归类
         all_rows = service.repo.db.fetchall(
             "SELECT * FROM notification_deliveries ORDER BY rowid DESC LIMIT 200")
@@ -3976,8 +3979,12 @@ def api_notify_outbox():
                          item.get("status") == value]
         counts = {"pending": sum(1 for i in items if i.get("status") == "pending"),
                   "sent": sum(1 for i in items if i.get("status") == "sent"),
-                  "dead": sum(1 for i in items if i.get("status") == "dead")}
-        return flask.jsonify({"status": "success", "counts": counts, "items": items[:50]})
+                  "dead": sum(1 for i in items if i.get("status") == "dead"),
+                  "failed": sum(1 for i in items if i.get("status") == "failed"),
+                  "processing": sum(1 for i in items if i.get("status") == "processing"),
+                  "suppressed": sum(1 for i in items if i.get("status") == "suppressed")}
+        return flask.jsonify({"status": "success", "counts": counts, "items": items[:50],
+                              "event_counts": {row["event_type"]: row["n"] for row in event_counts}})
     except Exception as e:
         logger.exception("通知投递台账读取失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
@@ -4000,34 +4007,39 @@ def api_notify_mail():
 
 @web_app.route("/api/notify/test", methods=["POST"])
 def api_notify_test():
-    """测试发送（I5）：按渠道 + 样例条件发一条测试通知。"""
+    """Create a TEST_NOTIFICATION event; delivery is handled by the outbox worker."""
     import os
     try:
         payload = flask.request.get_json(force=True, silent=True) or {}
         channel = payload.get("channel", "email")
         to = payload.get("to") or os.getenv("EMAIL_TO", "")
-        from StockInvestmentTool.biz.notification import EmailChannel
         from StockInvestmentTool.biz.notification import NotificationService
-        from StockInvestmentTool.biz.db import loads_json
-        subject = "📡 测试通知"
-        body = f"这是一条来自 StockInvestmentTool 的测试消息（渠道 {channel}）。"
-        if channel in ("email", "mail", "smtp"):
-            if not to:
-                return flask.jsonify({"status": "error",
-                                      "error": "邮件收件人未配置（EMAIL_TO 或 mail 页填写）"}), 400
-            host = os.getenv("EMAIL_SMTP_HOST", "smtp.qq.com")
-            port = int(os.getenv("EMAIL_SMTP_PORT", "465"))
-            user = os.getenv("EMAIL_USER", "")
-            password = os.getenv("EMAIL_PASSWORD", "")
-            sender = EmailChannel(host, port, user, username=user, password=password,
-                                  use_tls=str(os.getenv("EMAIL_USE_TLS", "1")) == "1")
-            ok = sender.send(subject, body, to)
-            result = {"ok": ok}
-            if not ok:
-                result["error"] = "邮件发送失败（检查 SMTP 配置）"
-            return flask.jsonify({"status": "success" if ok else "error",
-                                  "result": result}), 200 if ok else 400
-        return flask.jsonify({"status": "error", "error": f"测试发送暂仅支持 email（收到渠道 {channel}）"}), 400
+        if channel not in ("email", "mail", "smtp"):
+            return flask.jsonify({"status": "error", "error": f"测试发送暂仅支持 email（收到渠道 {channel}）"}), 400
+        service = NotificationService()
+        from StockInvestmentTool.biz.models import now_utc
+        stamp = now_utc()
+        event = service.create_event(
+            event_type="TEST_NOTIFICATION", subject_type="notification_test",
+            subject_id="manual", priority=0,
+            payload={"subject": "📡 测试通知", "text": f"这是一条来自 StockInvestmentTool 的测试消息（渠道 {channel}）。"},
+            data_as_of=stamp, action="TEST_NOTIFICATION",
+            trigger_fingerprint=f"manual-test|{stamp}",
+        )
+        delivery = service.create_rule_delivery(
+            event, template="test_notification", recipient=to, channel="email",
+        )
+        if delivery is None:
+            return flask.jsonify({"status": "success", "result": {
+                "ok": False, "event_id": event.event_id,
+                "delivery_id": None, "state": "suppressed",
+                "reason": "TEST_NOTIFICATION 订阅已关闭或未匹配",
+            }})
+        return flask.jsonify({"status": "success", "result": {
+            "ok": delivery.status == "pending", "event_id": event.event_id,
+            "delivery_id": delivery.delivery_id, "state": delivery.status,
+            "reason": delivery.last_error or "已进入 Outbox，等待 Worker 投递",
+        }})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400
 

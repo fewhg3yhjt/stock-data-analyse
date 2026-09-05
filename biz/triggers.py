@@ -42,9 +42,27 @@ def _notification_trigger_defaults() -> list[dict]:
     """返回所有通知事件的内置登记规则。"""
     return [
         {
+            "id": "notification_test",
+            "name": "测试通知",
+            "enabled": True,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_type": "TEST_NOTIFICATION",
+            "conditions": [], "logic": "AND",
+            "schedule": {}, "channel": "email", "priority": "instant",
+        },
+        {
+            "id": "notification_trigger",
+            "name": "自定义触发器消息",
+            "enabled": False,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_type": "TRIGGER",
+            "conditions": [], "logic": "AND",
+            "schedule": {}, "channel": "email", "priority": "instant",
+        },
+        {
             "id": "notification_daily_report",
             "name": "每日盘后汇总",
-            "enabled": True,
+            "enabled": False,
             "kind": NOTIFICATION_SUBSCRIPTION_KIND,
             "event_type": "DAILY_REPORT",
             "conditions": [], "logic": "AND",
@@ -72,7 +90,7 @@ def _notification_trigger_defaults() -> list[dict]:
         {
             "id": "notification_position_signal",
             "name": "持仓策略信号",
-            "enabled": True,
+            "enabled": False,
             "kind": NOTIFICATION_SUBSCRIPTION_KIND,
             "event_type": "POSITION_SIGNAL",
             "conditions": [], "logic": "AND",
@@ -81,7 +99,7 @@ def _notification_trigger_defaults() -> list[dict]:
         {
             "id": "notification_position_drawdown",
             "name": "持仓高点回撤",
-            "enabled": True,
+            "enabled": False,
             "kind": NOTIFICATION_SUBSCRIPTION_KIND,
             "event_type": "POSITION_DRAWDOWN",
             "conditions": [], "logic": "AND",
@@ -90,7 +108,7 @@ def _notification_trigger_defaults() -> list[dict]:
         {
             "id": "notification_position_price",
             "name": "持仓目标价提醒",
-            "enabled": True,
+            "enabled": False,
             "kind": NOTIFICATION_SUBSCRIPTION_KIND,
             "event_types": ["POSITION_PRICE_ABOVE", "POSITION_PRICE_BELOW"],
             "conditions": [], "logic": "AND",
@@ -99,7 +117,7 @@ def _notification_trigger_defaults() -> list[dict]:
         {
             "id": "notification_trade_signals",
             "name": "买卖风险信号",
-            "enabled": True,
+            "enabled": False,
             "kind": NOTIFICATION_SUBSCRIPTION_KIND,
             "event_types": ["BUY_SIGNAL", "SELL_SIGNAL", "RISK_ALERT"],
             "conditions": [], "logic": "AND",
