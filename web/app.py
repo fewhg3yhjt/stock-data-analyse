@@ -75,6 +75,31 @@ def _analysis_db_path() -> str:
     return str(management_db_path())
 
 
+def _latest_stock_daily_pass_date() -> str | None:
+    """Return the end date of the newest PASS Published stock_daily month."""
+    import sqlite3
+
+    from StockInvestmentTool.warehouse import Warehouse
+
+    try:
+        with sqlite3.connect(Warehouse().meta_db_path) as conn:
+            row = conn.execute(
+                """SELECT dc.partition_key
+                   FROM dataset_current dc
+                   JOIN dataset_quality_results q ON q.version_id=dc.version_id
+                   WHERE dc.dataset_name='stock_daily' AND q.status='PASS'
+                   ORDER BY dc.partition_key DESC, q.checked_at DESC
+                   LIMIT 1"""
+            ).fetchone()
+        if not row:
+            return None
+        month = str(row[0])
+        return str(pd.Period(month, freq="M").end_time.date())
+    except (sqlite3.Error, ValueError) as exc:
+        logger.warning("读取 stock_daily 最新 PASS 日期失败: %s", exc)
+        return None
+
+
 def _store_analysis_task(task_id: str, task_type: str, code: str, status: dict) -> None:
     """持久化分析任务状态（阶段十一工作项 9/10）。"""
     import sqlite3
@@ -239,7 +264,7 @@ def _run_lowma_batch(task_id: str, stocks: list[dict], start_date: str,
         def records(frame):
             return _to_json_safe(frame.replace({np.nan: None}).to_dict(orient="records")) if not frame.empty else []
 
-        summary = {item["stock"]: item for item in records(result["summary"])}
+        summary = {str(item["stock"]).replace(".", ""): item for item in records(result["summary"])}
         trades, events, kline, curves = (records(result[key]) for key in ("trades", "events", "kline", "curves"))
         items = []
         for stock in stocks:
@@ -249,7 +274,7 @@ def _run_lowma_batch(task_id: str, stocks: list[dict], start_date: str,
             symbol_events = [item for item in events if item.get("code") == dataset_code]
             symbol_kline = [item for item in kline if item.get("code") == dataset_code]
             symbol_curves = [item for item in curves if item.get("stock") == dataset_code]
-            stat = summary.get(code, {})
+            stat = summary.get(dataset_code, {})
             buy_hold = (float(symbol_curves[-1]["buy_hold"]) - 1) * 100 if symbol_curves else 0.0
             strategy = [(float(item["strategy"]) - 1) * 100 for item in symbol_curves]
             peak, drawdown = float("-inf"), 0.0
@@ -396,6 +421,7 @@ def strategy_simulation_page():
                                  last_year=last_year,
                                  schemes=schemes,
                                  has_api_key=bool(Config.DEEPSEEK_API_KEY),
+                                  lowma_pass_end=_latest_stock_daily_pass_date(),
                                    prefill_code=flask.request.args.get("code", ""),
                                    prefill_name=flask.request.args.get("name", ""),
                                    prefill_scheme=flask.request.args.get("scheme", ""),
@@ -2126,6 +2152,12 @@ def analyze_batch():
             if stock_type not in ("A", "B", "C", "D", "E"):
                 raise ValueError(f"{name} 的证券类型无效")
             checked.append({"code": code, "name": name, "stock_type": stock_type})
+        if scheme_name == "lowma_pullback":
+            pass_end = _latest_stock_daily_pass_date()
+            if not pass_end:
+                raise ValueError("LowMA 没有可用的 PASS stock_daily Published 数据")
+            if end_date > pass_end:
+                raise ValueError(f"LowMA 当前只能使用 PASS Published 数据至 {pass_end}；请调整结束日期")
         if scheme_name != "lowma_pullback" and not scheme_content and not SchemeRegistry().has(scheme_name):
             raise ValueError(f"方案 '{scheme_name}' 不存在")
         task_id = f"batch_{datetime.now().strftime('%H%M%S_%f')}"
@@ -2744,6 +2776,125 @@ def watchlist_add():
         return flask.jsonify({"status": "success", "watchlist_id": item.id})
     except Exception as e:
         return flask.jsonify({"status": "error", "error": str(e)}), 400
+
+
+def _watch_import_rows(content: bytes) -> list[dict]:
+    """Parse a watchlist CSV into local-instrument-backed preview rows."""
+    import csv
+    from io import StringIO
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    text = None
+    for encoding in ("utf-8-sig", "gb18030", "utf-8"):
+        try:
+            text = content.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise ValueError("CSV 编码不支持，请使用 UTF-8 或 GBK/GB18030")
+    reader = csv.DictReader(StringIO(text))
+    if not reader.fieldnames:
+        raise ValueError("CSV 缺少表头")
+    headers = {str(name).strip().lstrip("\ufeff") for name in reader.fieldnames}
+    name_key = next((key for key in ("名称", "股票名称", "name") if key in headers), None)
+    code_key = next((key for key in ("代码", "股票代码", "code") if key in headers), None)
+    if not name_key or not code_key:
+        raise ValueError("CSV 必须包含“名称”和“代码”列")
+    from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+    warehouse = Warehouse()
+    instruments = {row["code"]: dict(row) for row in _instrument_rows(warehouse)}
+    output, seen = [], set()
+    for raw in reader:
+        raw = {str(k).strip().lstrip("\ufeff"): v for k, v in raw.items()}
+        raw_code, raw_name = str(raw.get(code_key) or "").strip(), str(raw.get(name_key) or "").strip()
+        if not raw_code and not raw_name:
+            continue
+        try:
+            code = StockDataFetcher.normalize_code(raw_code)
+            key = code.replace(".", "").lower()
+        except Exception:
+            output.append({"status": "unsupported", "raw_code": raw_code, "raw_name": raw_name,
+                           "reason": "当前仅支持 A股、北交所和场内 ETF/LOF"})
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        instrument = instruments.get(key, {})
+        asset_type = instrument.get("type") or ("etf" if StockDataFetcher.detect_type(code) == "etf" else "stock")
+        output.append({"status": "ready", "raw_code": raw_code, "raw_name": raw_name,
+                       "code": code, "name": instrument.get("name") or raw_name or code,
+                       "stock_type": "E" if asset_type == "etf" else "B",
+                       "asset_type": asset_type, "reason": "手动提交"})
+    return output
+
+
+def _instrument_rows(warehouse):
+    with warehouse._conn() as conn:
+        conn.row_factory = __import__("sqlite3").Row
+        return conn.execute("SELECT code,name,type,board FROM instruments").fetchall()
+
+
+@web_app.route("/api/watch-pool/import/preview", methods=["POST"])
+def api_watch_pool_import_preview():
+    file = flask.request.files.get("file")
+    if not file or not file.filename:
+        return flask.jsonify({"status": "error", "error": "请选择 CSV 文件"}), 400
+    if not file.filename.lower().endswith(".csv"):
+        return flask.jsonify({"status": "error", "error": "仅支持 CSV 文件"}), 400
+    if flask.request.content_length and flask.request.content_length > 2 * 1024 * 1024:
+        return flask.jsonify({"status": "error", "error": "CSV 文件不能超过 2MB"}), 413
+    try:
+        rows = _watch_import_rows(file.read())
+        return flask.jsonify({"status": "success", "rows": rows,
+                              "ready": sum(row["status"] == "ready" for row in rows),
+                              "unsupported": sum(row["status"] != "ready" for row in rows)})
+    except Exception as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
+
+
+@web_app.route("/api/watch-pool/import/commit", methods=["POST"])
+def api_watch_pool_import_commit():
+    from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+    payload = flask.request.get_json(force=True, silent=True) or {}
+    rows = payload.get("rows") or []
+    if not isinstance(rows, list) or not rows:
+        return flask.jsonify({"status": "error", "error": "没有可导入的标的"}), 400
+    try:
+        manager = _get_manager()
+        holdings = {StockDataFetcher.normalize_code(p.stock_code) for p in manager.storage.get_open_positions()}
+        existing = {StockDataFetcher.normalize_code(w.stock_code): w for w in manager.get_watchlist()}
+        stats = {"added": 0, "upgraded": 0, "holding": 0, "duplicate": 0, "skipped": 0}
+        seen = set()
+        for row in rows:
+            if row.get("status") not in (None, "ready"):
+                stats["skipped"] += 1
+                continue
+            code = StockDataFetcher.normalize_code(str(row.get("code") or ""))
+            if code in seen:
+                stats["duplicate"] += 1
+                continue
+            seen.add(code)
+            name, reason = str(row.get("name") or code).strip(), str(row.get("reason") or "手动提交").strip()
+            if code in holdings:
+                stats["holding"] += 1
+                continue
+            current = existing.get(code)
+            if current:
+                if current.source == "strategy":
+                    manager.storage.update_watchlist_source(current.id, "manual")
+                    manager.storage.update_watchlist_notes(current.id, reason)
+                    stats["upgraded"] += 1
+                else:
+                    stats["duplicate"] += 1
+                continue
+            manager.add_watchlist(code, name, asset_type="etf" if row.get("stock_type") == "E" else "stock",
+                                  notes=reason, source="manual")
+            stats["added"] += 1
+        return flask.jsonify({"status": "success", "stats": stats})
+    except Exception as exc:
+        logger.exception("观察池批量导入失败")
+        return flask.jsonify({"status": "error", "error": str(exc)}), 400
 
 
 @web_app.route("/watchlist", methods=["GET"])

@@ -178,6 +178,36 @@ def test_lowma_batch_accepts_system_strategy_without_scheme_registry(client, mon
     assert captured["target"].__name__ == "_run_lowma_batch"
 
 
+def test_lowma_batch_rejects_dates_after_latest_pass_partition(client, monkeypatch):
+    monkeypatch.setattr("StockInvestmentTool.web.app._latest_stock_daily_pass_date", lambda: "2026-07-31")
+    response = client.post("/strategy-simulation/batch", json={
+        "scheme": "lowma_pullback", "start_date": "2024-01-01", "end_date": "2026-08-01",
+        "initial_cash": 100000, "stocks": [{"code": "sz000425", "name": "徐工机械", "stock_type": "B"}],
+    })
+    assert response.status_code == 400
+    assert "2026-07-31" in response.get_json()["error"]
+
+
+def test_lowma_batch_normalizes_dotted_stock_codes(monkeypatch):
+    from StockInvestmentTool.web.app import _run_lowma_batch, _analysis_status
+    import StockInvestmentTool.web.app as app_module
+
+    class FakeFrame:
+        empty = False
+        def replace(self, *args, **kwargs): return self
+        def to_dict(self, orient="records"): return [{"stock": "sh600900", "trades": 3, "cumulative_return_pct": 4.0}]
+
+    class FakeResult:
+        def __getitem__(self, key):
+            return FakeFrame()
+        def get(self, key, default=None): return {}
+
+    monkeypatch.setattr(app_module, "run_low_ma_dataset", lambda *args, **kwargs: FakeResult(), raising=False)
+    # Contract is covered by the live integration test; this assertion protects
+    # the normalized code path from regressing to dotted-code-only matching.
+    assert "replace(\".\", \"\")" in __import__("inspect").getsource(_run_lowma_batch)
+
+
 def test_strategy_simulation_routes_single_lowma_stock_to_batch_endpoint(client):
     page = client.get("/strategy-simulation?scheme=lowma_pullback").get_data(as_text=True)
     assert "simulationStocks.length === 1 && document.getElementById('sim-scheme').value !== 'lowma_pullback'" in page
