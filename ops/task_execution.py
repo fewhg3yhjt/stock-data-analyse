@@ -32,8 +32,10 @@ def _new_source_task(warehouse, request, task_key, run_id):
         return financial_reports.collect(warehouse, symbols=_symbols(request), start_date=request.get("period_start"),
                                          end_date=request.get("period_end"), timeout=float(request.get("request_timeout", 15)),
                                          deadline=float(request["task_timeout"]) if request.get("task_timeout") else None,
-                                         query_interval=request.get("query_interval"),
-                                         job_run_id=run_id)
+                                          query_interval=request.get("query_interval"),
+                                          checkpoint_batch_id=request.get("checkpoint_batch_id") or request.get("source_batch_id"),
+                                          failure_threshold=int(request.get("failure_threshold", 20)),
+                                          job_run_id=run_id)
     return valuation_snapshot.collect(warehouse, symbols=_symbols(request), start_date=request.get("period_start"),
                                       end_date=request.get("period_end"), timeout=float(request.get("request_timeout", 15)),
                                       deadline=float(request["task_timeout"]) if request.get("task_timeout") else None,
@@ -83,6 +85,9 @@ def _new_quality(warehouse, request, dataset_name):
     versions = request.get("input_versions") or {}
     if not versions:
         raise ValueError(f"{dataset_name}_quality requires explicit input_versions")
+    expected_symbols = request.get("expected_symbols")
+    if expected_symbols is None:
+        expected_symbols = len(_symbols(request)) or None
     reports = {}
     for partition, version in versions.items():
         with sqlite3.connect(warehouse.meta_db_path) as conn:
@@ -101,6 +106,13 @@ def _new_quality(warehouse, request, dataset_name):
                 "core_non_null_rate": float(frame[["trade_date", "code"]].notna().mean().min()) if all(c in frame for c in keys) and not frame.empty else 0.0,
             }
         else:
+            if dataset_name == "financial_reports":
+                from StockInvestmentTool.warehouse.financial_reports import financial_reports_quality
+                report = financial_reports_quality(frame, expected_symbols=expected_symbols)
+                PipelineState(warehouse.meta_db_path).quality(version, status=report["status"],
+                                                               checks=report["checks"], publish_allowed=report["publish_allowed"])
+                reports[partition] = report
+                continue
             checks = {"empty": not frame.empty, "required_columns": all(c in frame for c in keys),
                       "duplicate_keys": not frame.duplicated(keys).any() if all(c in frame for c in keys) else False,
                       "valid_dates": bool(pd.to_datetime(frame.get("report_date"), errors="coerce").notna().all()) if "report_date" in frame else False,

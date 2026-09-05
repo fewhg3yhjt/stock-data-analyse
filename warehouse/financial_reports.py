@@ -13,6 +13,7 @@ from typing import Callable
 import pandas as pd
 
 from StockInvestmentTool.warehouse.source_capture import capture_frames
+from StockInvestmentTool.warehouse.source_batches import SourceBatchStore
 
 SINA_URLS = {
     "profit": "https://money.finance.sina.com.cn/corp/go.php/vFD_ProfitStatement/stockid/{code}/ctrl/{year}/displaytype/4.phtml",
@@ -132,52 +133,155 @@ def normalize_reports(frame: pd.DataFrame) -> pd.DataFrame:
 def collect(warehouse, *, symbols: list[str], start_date: str, end_date: str,
             timeout: float = 15, deadline: float | None = None, run_date: str | None = None,
             fetcher: Callable | None = None, job_run_id: int | None = None,
-            query_interval: float | None = None) -> dict:
+            query_interval: float | None = None, checkpoint_batch_id: str | None = None,
+            failure_threshold: int = 20, sleep: Callable[[float], None] | None = None,
+            max_retries: int = 2) -> dict:
     if not start_date or not end_date:
         raise ValueError("financial_reports requires explicit start_date and end_date")
     started = time.monotonic()
     deadline_at = started + deadline if deadline is not None else None
     fetcher = fetcher or _request
+    sleep = sleep or time.sleep
     interval = max(0.0, float(query_interval if query_interval is not None
                               else os.getenv("SINA_FINANCIAL_QUERY_INTERVAL", "1.0")))
     request_count = 0
     frames, failed = [], []
+    store = SourceBatchStore(warehouse.meta_db_path)
     years = range(pd.Timestamp(start_date).year, pd.Timestamp(end_date).year + 1)
+    batch_id = checkpoint_batch_id
+    if batch_id is None:
+        batch_id = store.start(dataset_name="financial_reports", source_name="sina_financial_html",
+                               run_date=run_date or end_date, trade_date_start=start_date,
+                               trade_date_end=end_date, expected_symbols=len(symbols),
+                               universe_id="financial_reports", request_context={
+                                   "start_date": start_date, "end_date": end_date,
+                                   "query_interval": interval, "failure_threshold": failure_threshold},
+                               job_run_id=job_run_id, schema_version="financial_reports.v1")
     for code in symbols:
         for year in years:
             for statement_type in VALUATION_STATEMENTS:
-                template = SINA_URLS[statement_type]
-                if deadline_at is not None and time.monotonic() >= deadline_at:
-                    failed.append(f"{code}:{statement_type}:{year}:deadline")
-                    continue
-                digits = re.sub(r"^[a-z]+", "", str(code).lower().replace(".", ""))
-                url = template.format(code=quote(digits), year=year)
-                try:
-                    if request_count:
-                        time.sleep(interval)
-                    frame = parse_sina_html(fetcher(url, timeout), code=code, statement_type=statement_type, source_url=url)
-                    request_count += 1
-                    frame = frame[(frame["report_date"] >= start_date) & (frame["report_date"] <= end_date)] if not frame.empty else frame
-                    if frame.empty:
-                        failed.append(f"{code}:{statement_type}:{year}:empty")
-                    else:
-                        frames.append(frame)
-                except Exception as exc:  # noqa: BLE001
-                    failed.append(f"{code}:{statement_type}:{year}:{exc}")
+                key = f"{code}:{year}:{statement_type}"
+                existing = next((x for x in store.list_items(batch_id) if x["item_key"] == key), None)
+                if existing is None:
+                    store.upsert_item(batch_id, item_key=key, symbol=code, period=str(year),
+                                      statement_type=statement_type)
+    items = {(x["item_key"]): x for x in store.list_retryable(batch_id)}
+    paused = False
+    timed_out = False
+    consecutive_failures = 0
+    for item in items.values():
+        code, year, statement_type = item["symbol"], int(item["period"]), item["statement_type"]
+        key = item["item_key"]
+        template = SINA_URLS[statement_type]
+        if deadline_at is not None and time.monotonic() >= deadline_at:
+            timed_out = True
+            store.update_item(batch_id, key, status="timeout", last_error="whole-task deadline")
+            failed.append(f"{key}:deadline")
+            continue
+        digits = re.sub(r"^[a-z]+", "", str(code).lower().replace(".", ""))
+        url = template.format(code=quote(digits), year=year)
+        success = False
+        for attempt in range(max_retries + 1):
+            try:
+                store.update_item(batch_id, key, status="running", attempt_count=attempt + 1, last_error=None)
+                if request_count:
+                    sleep(interval)
+                frame = parse_sina_html(fetcher(url, timeout), code=code, statement_type=statement_type, source_url=url)
+                request_count += 1
+                frame = frame[(frame["report_date"] >= start_date) & (frame["report_date"] <= end_date)] if not frame.empty else frame
+                if frame.empty:
+                    raise ValueError("empty response")
+                frames.append(frame)
+                store.update_item(batch_id, key, status="success", attempt_count=attempt + 1)
+                consecutive_failures = 0
+                success = True
+                break
+            except Exception as exc:  # noqa: BLE001
+                wait = (5, 15)[min(attempt, 1)]
+                final_item_status = "empty" if "empty response" in str(exc) and attempt == max_retries else (
+                    "failed" if attempt == max_retries else "retrying")
+                store.update_item(batch_id, key, status=final_item_status,
+                                  attempt_count=attempt + 1, last_error=str(exc))
+                if attempt < max_retries:
+                    sleep(wait)
+                else:
+                    failed.append(f"{key}:{exc}")
+                    consecutive_failures += 1
+        if not success and consecutive_failures >= failure_threshold:
+            paused = True
+            break
+    if deadline_at is not None and time.monotonic() >= deadline_at:
+        timed_out = True
+        for item in store.list_retryable(batch_id):
+            store.update_item(batch_id, item["item_key"], status="timeout", last_error="whole-task deadline")
+            failed.append(f"{item['item_key']}:deadline")
+    success_items = store.list_success(batch_id)
+    success_codes = {item["symbol"] for item in success_items}
+    pending_count = len(store.list_pending(batch_id))
+    final_status = "paused" if paused else ("timeout" if timed_out else ("partial_success" if failed or pending_count else "success"))
+    # A resumed checkpoint may contain only already-successful items. Reuse its
+    # immutable raw capture so a retry does not turn a valid checkpoint into an
+    # empty capture.
+    batch = store.get(batch_id) or {}
+    historical = pd.DataFrame()
+    raw_path = batch.get("raw_path")
+    if raw_path and os.path.exists(raw_path):
+        historical = pd.read_parquet(raw_path)
+    if not historical.empty:
+        frames.insert(0, historical)
     if not frames:
-        capture_frames(warehouse, dataset_name="financial_reports", source_name="sina_financial_html", frames=[],
-                       trade_date_start=start_date, trade_date_end=end_date, expected_symbols=len(symbols),
-                       failed_symbols=len(failed), failure_details=failed, job_run_id=job_run_id,
-                       schema_version="financial_reports.v1")
+        store.finish_from_items(batch_id, row_count=0, raw_path=None, checksum=None, file_size=None,
+                                status="paused" if paused else ("timeout" if timed_out else "failed"),
+                                failure_details=failed)
         raise RuntimeError("financial_reports capture returned no rows")
     frames = [normalize_reports(frame) for frame in frames]
+    merged = pd.concat(frames, ignore_index=True)
+    merged = merged.drop_duplicates(["report_date", "code", "statement_type"], keep="last")
+    frames = [merged]
     successful_codes = {frame["code"].iloc[0] for frame in frames if not frame.empty}
     raw = capture_frames(warehouse, dataset_name="financial_reports", source_name="sina_financial_html", frames=frames,
                          trade_date_start=start_date, trade_date_end=end_date, expected_symbols=len(symbols),
                          success_symbols=len(successful_codes),
                          failed_symbols=len(failed), failure_details=failed, job_run_id=job_run_id,
-                         schema_version="financial_reports.v1")
-    return {"rows": sum(len(x) for x in frames), "source_batch_id": raw["batch_id"], "failed": failed}
+                          schema_version="financial_reports.v1", batch_id=batch_id, status=final_status)
+    stats = store.finish_from_items(batch_id, row_count=raw["raw"]["row_count"],
+                                    raw_path=str(raw["raw"]["path"]), checksum=raw["raw"]["checksum"],
+                                    file_size=raw["raw"]["file_size"], status=final_status,
+                                    failure_details=failed)
+    return {"rows": sum(len(x) for x in frames), "source_batch_id": raw["batch_id"], "failed": failed,
+            "checkpoint": {"batch_id": batch_id, "pending_count": stats["pending_count"]},
+            "pending_count": stats["pending_count"], "success_symbols": sorted(success_codes),
+            "failed_items": failed, "paused": paused}
+
+
+def financial_reports_quality(frame: pd.DataFrame, *, expected_symbols: int | None = None,
+                              expected_statement_types: tuple[str, ...] = VALUATION_STATEMENTS) -> dict:
+    """Full financial coverage gate: symbol and statement coverage, not just row shape."""
+    required = {"report_date", "code", "statement_type"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        return {"status": "FAIL", "publish_allowed": False, "checks": {"missing_columns": missing}}
+    symbols = set(frame["code"].dropna().astype(str))
+    expected = len(expected_symbols) if isinstance(expected_symbols, (list, tuple, set)) else (expected_symbols or 0)
+    checks = {"row_count": int(len(frame)), "symbol_count": len(symbols),
+              "expected_symbols": expected, "coverage": len(symbols) / expected if expected else None,
+              "statement_coverage": {}}
+    for statement in expected_statement_types:
+        count = frame.loc[frame["statement_type"].eq(statement), "code"].nunique()
+        checks["statement_coverage"][statement] = {"success_symbols": int(count),
+            "coverage": count / expected if expected else None}
+    checks["empty_financial_core_reasons"] = []
+    core_by_statement = {"profit": ("revenue", "net_profit_parent"),
+                         "balance": ("parent_equity",)}
+    for statement, columns in core_by_statement.items():
+        subset = frame[frame["statement_type"].eq(statement)]
+        present = [column for column in columns if column in subset]
+        if present and subset[present].isna().all(axis=1).any():
+            checks["empty_financial_core_reasons"].append(f"{statement}:core_fields_null")
+    ratios = [checks["coverage"]] + [v["coverage"] for v in checks["statement_coverage"].values()]
+    minimum = min((x for x in ratios if x is not None), default=0)
+    status = "FAIL" if minimum < .95 or checks["row_count"] == 0 else ("WARNING" if minimum < .98 else "PASS")
+    return {"status": status, "publish_allowed": status != "FAIL", "checks": checks}
 
 
 def _request(url: str, timeout: float):
