@@ -47,22 +47,26 @@ function openBatchSimulation(){
 function openImport(){document.getElementById('import-modal').style.display='flex';document.getElementById('import-preview').style.display='none';}
 function closeImport(){document.getElementById('import-modal').style.display='none';}
 async function previewImport(){
-  const file=document.getElementById('import-file').files[0];
-  if(!file) return showUiMessage('请选择 CSV 文件','error');
-  const form=new FormData(); form.append('file',file);
-  const data=await fetchJson('/api/watch-pool/import/preview',{method:'POST',body:form});
-  if(data.status!=='success') return showUiMessage(data.error||'解析失败','error');
-  importRows=data.rows||[]; renderImportRows(); document.getElementById('import-preview').style.display='block';
+  try{
+    const file=document.getElementById('import-file').files[0];
+    if(!file) return showUiMessage('请选择 CSV 文件','error');
+    const form=new FormData(); form.append('file',file);
+    const data=await fetchJson('/api/watch-pool/import/preview',{method:'POST',body:form});
+    if(data.status!=='success') return showUiMessage(data.error||'解析失败','error');
+    importRows=data.rows||[]; renderImportRows(); document.getElementById('import-preview').style.display='block';
+  }catch(error){showUiMessage('CSV解析失败：'+error.message,'error');}
 }
 function renderImportRows(){
   document.getElementById('import-summary').textContent=`可导入 ${importRows.filter(r=>r.status==='ready').length} 条；不支持 ${importRows.filter(r=>r.status!=='ready').length} 条。同批重复代码已自动合并。`;
   document.getElementById('import-rows').innerHTML=importRows.map((row,index)=>`<tr><td>${row.status==='ready'?'<span class="tag green">待导入</span>':'<span class="tag red">不支持</span>'}</td><td>${esc(row.code||row.raw_code||'—')}</td><td><input data-import-name="${index}" value="${esc(row.name||row.raw_name||'')}"></td><td>${row.status==='ready'?`<select data-import-type="${index}"><option value="B" ${row.stock_type==='B'?'selected':''}>B 价值白马</option><option value="A" ${row.stock_type==='A'?'selected':''}>A 高成长</option><option value="C" ${row.stock_type==='C'?'selected':''}>C 强周期</option><option value="D" ${row.stock_type==='D'?'selected':''}>D 深度价值</option><option value="E" ${row.stock_type==='E'?'selected':''}>E 场内 ETF/基金</option></select>`:'—'}</td><td>${row.status==='ready'?`<input data-import-reason="${index}" value="${esc(row.reason||'手动提交')}">`:esc(row.reason||'')}</td><td><button type="button" class="ui-button ui-button-danger ui-button-sm" data-action="remove-import" data-index="${index}">删除</button></td></tr>`).join('');
 }
 async function commitImport(){
-  const rows=importRows.map((row,index)=>({...row,name:document.querySelector(`[data-import-name="${index}"]`)?.value||row.name,stock_type:document.querySelector(`[data-import-type="${index}"]`)?.value||row.stock_type,reason:document.querySelector(`[data-import-reason="${index}"]`)?.value||row.reason}));
-  const data=await fetchJson('/api/watch-pool/import/commit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows})});
-  if(data.status!=='success') return showUiMessage(data.error||'导入失败','error');
-  const s=data.stats||{}; showUiMessage(`导入完成：新增${s.added||0}，来源升级${s.upgraded||0}，持仓${s.holding||0}，重复${s.duplicate||0}`,'success'); closeImport(); loadPool();
+  try{
+    const rows=importRows.map((row,index)=>({...row,name:document.querySelector(`[data-import-name="${index}"]`)?.value||row.name,stock_type:document.querySelector(`[data-import-type="${index}"]`)?.value||row.stock_type,reason:document.querySelector(`[data-import-reason="${index}"]`)?.value||row.reason}));
+    const data=await fetchJson('/api/watch-pool/import/commit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows})});
+    if(data.status!=='success') return showUiMessage(data.error||'导入失败','error');
+    const s=data.stats||{}; showUiMessage(`导入完成：新增${s.added||0}，来源升级${s.upgraded||0}，持仓${s.holding||0}，重复${s.duplicate||0}`,'success'); closeImport(); loadPool();
+  }catch(error){showUiMessage('导入失败：'+error.message,'error');}
 }
 
 function toggleDetail(code) {

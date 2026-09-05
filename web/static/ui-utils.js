@@ -23,8 +23,12 @@
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetch(url, {...options, signal: controller.signal});
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || `请求失败（${response.status}）`);
+        const text = await response.text();
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; }
+        catch (parseError) { throw new Error(`接口返回了非 JSON 响应（HTTP ${response.status}）${text ? `：${text.slice(0,120)}` : ''}`); }
+        if (!response.ok) throw new Error(data?.error || `请求失败（${response.status}）`);
+        if (!data) throw new Error(`接口返回空响应（HTTP ${response.status}）`);
         return data;
       } catch (error) {
         if (error.name === 'AbortError') {
