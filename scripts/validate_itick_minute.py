@@ -11,7 +11,10 @@ import pandas as pd
 
 INPUT_DIR = Path("output/itick_minute")
 REPORT_PATH = INPUT_DIR / "quality_report.json"
-SYMBOLS = ("000400", "000425", "000725")
+SYMBOLS = (
+    "000400", "000425", "000725", "601318", "600036", "600519", "000333",
+    "300750", "002594", "002230", "603501", "601899", "600031", "600941", "300308",
+)
 START = pd.Timestamp("2026-06-15 09:30:00")
 END = pd.Timestamp("2026-09-04 15:00:00")
 
@@ -21,8 +24,9 @@ def _factor_events(instrument: str) -> pd.DataFrame:
     if login.error_code != "0":
         raise RuntimeError(f"baostock login failed: {login.error_msg}")
     try:
+        exchange = "sh" if instrument.startswith(("5", "6", "9")) else "sz"
         rs = bs.query_adjust_factor(
-            code=f"sz.{instrument}", start_date="2026-06-15", end_date="2026-09-04"
+            code=f"{exchange}.{instrument}", start_date="2026-06-15", end_date="2026-09-04"
         )
         rows = []
         while rs.error_code == "0" and rs.next():
@@ -84,7 +88,7 @@ def validate_one(instrument: str) -> dict:
     ]
     regular[final_columns].sort_values("date").to_parquet(INPUT_DIR / f"{instrument}_1m.parquet", index=False)
     return {
-        "instrument": f"{instrument}.SZ",
+        "instrument": f"{instrument}.{'SH' if instrument.startswith(('5', '6', '9')) else 'SZ'}",
         "rows_raw": int(len(frame)),
         "rows_regular": int(len(regular)),
         "trade_days": len(daily),

@@ -21,7 +21,10 @@ import requests
 
 API_URL = "https://api-free.itick.org/stock/kline"
 SHANGHAI = timezone(timedelta(hours=8))
-SYMBOLS = ("000400", "000425", "000725")
+SYMBOLS = (
+    "000400", "000425", "000725", "601318", "600036", "600519", "000333",
+    "300750", "002594", "002230", "603501", "601899", "600031", "600941", "300308",
+)
 START = datetime(2026, 6, 15, 9, 30, tzinfo=SHANGHAI)
 END = datetime(2026, 9, 4, 15, 0, tzinfo=SHANGHAI)
 PAGE_SIZE = 500
@@ -48,7 +51,7 @@ def _parse_page(rows: list[dict], instrument: str) -> pd.DataFrame:
             continue
         parsed.append({
             "date": pd.to_datetime(row["t"], unit="ms", utc=True).tz_convert(SHANGHAI).tz_localize(None),
-            "instrument": f"{instrument}.SZ",
+            "instrument": f"{instrument}.{'SH' if instrument.startswith(('5', '6', '9')) else 'SZ'}",
             "open": float(row["o"]),
             "high": float(row["h"]),
             "low": float(row["l"]),
@@ -61,7 +64,7 @@ def _parse_page(rows: list[dict], instrument: str) -> pd.DataFrame:
 
 def _request(session: requests.Session, key: str, instrument: str, et: int) -> tuple[pd.DataFrame, int | None]:
     params = {
-        "region": "SZ",
+        "region": "SH" if instrument.startswith(("5", "6", "9")) else "SZ",
         "code": instrument,
         "kType": "1",
         "limit": str(PAGE_SIZE),
