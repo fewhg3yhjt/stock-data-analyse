@@ -12,7 +12,7 @@
   <div class="ui-card" style="background:#eef6ff;border-color:#c9def7;"><div class="ui-card-header"><span><i class="fas fa-filter-circle-dollar"></i> 个股发现</span><a class="ui-button" href="/market-discovery">打开筛选工作台</a></div><div class="note">基于本地日线数据筛选近 N 日涨跌、成交量变化和价量信号；结果可进入观察池、策略模拟和持仓流程。</div></div>
 
   <div class="ui-card official-rotation-card">
-    <div class="rotation-workbench-header"><div><h2><i class="fas fa-arrows-rotate"></i> 板块轮动</h2><div class="sub">跟踪价格、相对强度与横截面变化，识别板块阶段，发现下一个机会</div></div><div class="rotation-workbench-actions"><span class="note">正式数据日期 {{ official_rotation.actual_data_as_of or '暂无' }}</span><button id="live-rotation-refresh" class="ui-button">刷新盘中观察</button></div></div>
+    <div class="rotation-workbench-header"><div><h2><i class="fas fa-arrows-rotate"></i> 板块轮动</h2><div class="sub">跟踪价格、相对强度与横截面变化，识别板块阶段，发现下一个机会</div></div><div class="rotation-workbench-actions"><span class="note">正式数据日期 {{ official_rotation.actual_data_as_of or '暂无' }}</span></div></div>
     <div class="rotation-workbench-tabs"><button class="rotation-workbench-tab active" data-workbench-tab="overview">市场总览</button><button class="rotation-workbench-tab" data-workbench-tab="analysis">轮动分析</button><button class="rotation-workbench-tab" data-workbench-tab="list">板块列表</button><button class="rotation-workbench-tab" data-workbench-tab="history">历史回测</button><span class="rotation-workbench-select">同花顺行业 · 正式收盘状态</span></div>
     <div id="rotation-official-workbench" data-payload='{{ official_rotation | tojson | e }}'></div>
   </div>

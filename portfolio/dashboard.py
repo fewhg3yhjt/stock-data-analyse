@@ -1779,6 +1779,12 @@ class DashboardService:
         previous_dates = sorted(set(frame.loc[frame["date"] < actual, "date"]))
         previous = frame[frame["date"] == previous_dates[-1]] if previous_dates else pd.DataFrame()
         previous_counts = previous["stage"].value_counts().to_dict() if not previous.empty else {}
+        leader_by_id = {}
+        try:
+            legacy = self._ths_industry_rotation(actual.strftime("%Y-%m-%d"), membership_as_of=actual.strftime("%Y-%m-%d"))
+            leader_by_id = {str(item.get("industry_id")): item for item in legacy.get("items") or []}
+        except Exception as exc:
+            logger.debug("正式轮动工作台读取龙头信息失败: %s", exc)
 
         def num(row, key, digits=4):
             value = row.get(key)
@@ -1786,6 +1792,7 @@ class DashboardService:
 
         items = []
         for _, row in current.iterrows():
+            leader = leader_by_id.get(str(row.get("industry_id")), {})
             items.append({
                 "industry_id": str(row.get("industry_id") or ""),
                 "industry_name": str(row.get("industry_name") or ""),
@@ -1801,6 +1808,8 @@ class DashboardService:
                 "strength_score": num(row, "strength_score", 2),
                 "rotation_score": num(row, "rotation_score", 2),
                 "strength_change": num(row, "strength_change", 2),
+                "leader_code": str(leader.get("leader_code") or ""),
+                "leader_name": str(leader.get("leader_name") or ""),
                 "reason": str(row.get("reason") or ""), "advice": str(row.get("advice") or ""),
             })
         labels = {"DORMANT": "潜伏", "STARTING": "启动", "RISING": "主升", "CLIMAX": "高潮", "FADING": "退潮", "COLD": "冰点"}
