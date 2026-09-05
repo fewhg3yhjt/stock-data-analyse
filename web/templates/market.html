@@ -47,6 +47,6 @@
   <div class="ui-card"><div class="ui-card-header"><span><i class="fas fa-layer-group"></i> 关注板块走势</span><div class="controls"><select id="board-category"><option value="ths_industry">同花顺行业</option><option value="csrc">证监会行业</option><option value="ths_concept">同花顺概念</option></select><select id="board-select"><option value="">加载板块列表…</option></select><button class="ui-button" onclick="loadBoard()">加载板块</button></div></div><div class="chart" id="chart-board"></div></div>
   <div class="ui-card"><div class="ui-card-header"><span><i class="fas fa-briefcase"></i> 持仓股票走势 + 止盈止损线</span><div class="controls"><select id="stock-select"></select><button class="ui-button" onclick="loadStock()">加载</button><span id="stock-state" style="font-size:13px;"></span></div></div><div class="chart" id="chart-stock"></div><div id="stock-legend" style="margin-top:6px;"></div></div>
 </div>
-<script>window.MARKET_INDICES={{ indices | tojson }};window.MARKET_POSITIONS={{ positions_codes | tojson }};window.MARKET_ROTATIONS={csrc:{{ industry_rotation | tojson }},ths_industry:{{ ths_industry_rotation | tojson }},ths_concept:{{ ths_concept_rotation | tojson }}}};window.OFFICIAL_ROTATION={{ official_rotation | tojson }};</script>
+<script>window.MARKET_INDICES={{ indices | tojson }};window.MARKET_POSITIONS={{ positions_codes | tojson }};window.MARKET_ROTATIONS={};window.OFFICIAL_ROTATION={{ official_rotation | tojson }};</script>
 <script src="{{ static_asset('market.js') }}"></script>
 {% endblock %}

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pandas as pd
 
 from StockInvestmentTool.portfolio.dashboard import DashboardService
@@ -57,3 +60,14 @@ def test_official_rotation_workbench_reads_latest_available_partition(monkeypatc
     result = DashboardService(object()).official_rotation_workbench("2026-09-04")
     assert result["status"] == "success"
     assert result["actual_data_as_of"] == "2026-09-04"
+
+
+def test_market_inline_script_is_balanced_and_keeps_official_rotation():
+    template = Path("web/templates/market.html").read_text(encoding="utf-8")
+    inline = re.search(r"<script>(window\.MARKET_INDICES.*?)</script>", template, re.S).group(1)
+    # Substitute each tojson placeholder with an empty object to test the literal
+    # wrapper braces, independent of daily data values.
+    script = re.sub(r"\{\{[^}]*\| *tojson *\}\}", "{}", inline)
+    compile(script, "<market-inline>", "exec")
+    assert "window.OFFICIAL_ROTATION" in inline
+    assert "window.MARKET_ROTATIONS={};" in inline
