@@ -2811,6 +2811,10 @@ def _watch_import_rows(content: bytes) -> list[dict]:
         if not raw_code and not raw_name:
             continue
         try:
+            import re
+            code_candidate = raw_code.lower().replace(".", "")
+            if not re.fullmatch(r"(?:sh|sz|bj)?\d{6}", code_candidate):
+                raise ValueError("证券代码必须是6位数字或带 sh/sz/bj 前缀")
             code = StockDataFetcher.normalize_code(raw_code)
             key = code.replace(".", "").lower()
         except Exception:

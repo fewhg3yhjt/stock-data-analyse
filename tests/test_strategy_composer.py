@@ -118,6 +118,32 @@ def test_stock_search_and_classification_support_sample_security(client):
     assert "validate-stock-type" in client.get("/strategy-composer").get_data(as_text=True)
 
 
+def test_watch_pool_csv_preview_rejects_non_a_share_codes(client):
+    from io import BytesIO
+
+    csv = "\ufeff名称,代码\n长江电力,600900\n黄金9999,AU9999\n"
+    response = client.post(
+        "/api/watch-pool/import/preview",
+        data={"file": (BytesIO(csv.encode("utf-8-sig")), "watch.csv")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["ready"] == 1
+    assert data["unsupported"] == 1
+    assert any(row["status"] == "unsupported" for row in data["rows"])
+
+
+def test_batch_simulation_rejects_more_than_ten_stocks(client):
+    response = client.post("/strategy-simulation/batch", json={
+        "stocks":[{"code":"sh.600900","name":"长江电力","stock_type":"B"}]*11,
+        "scheme":"right_aggressive_growth",
+        "start_date":"2025-01-01", "end_date":"2025-06-30",
+        "initial_cash":100000,
+    })
+    assert response.status_code == 400
+
+
 def test_strategy_composer_contains_lowma_research(client):
     page = client.get("/strategy-composer").get_data(as_text=True)
     assert "LowMA 承接策略配置" in page

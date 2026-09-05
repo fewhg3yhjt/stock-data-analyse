@@ -168,6 +168,8 @@ class DashboardService:
         for watch in watchlist:
             item = entry(watch.stock_code, watch.stock_name)
             item["watch"] = watch.to_dict()
+            if watch.asset_type == "etf":
+                item["stock_type"] = "E"
             if watch.source not in item["sources"]:
                 item["sources"].append(watch.source)
         for observation in observations:
