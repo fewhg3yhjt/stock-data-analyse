@@ -3988,6 +3988,7 @@ def market_page():
                    "深证成指": "sz.399001", "创业板指": "sz.399006"}
         board_names = svc.board_names()
         board_overview = svc.board_overview()
+        official_rotation = svc.official_rotation_workbench()
         industry_rotation = svc.industry_rotation_overview(category="csrc")
         ths_industry_rotation = svc.industry_rotation_overview(category="ths_industry")
         ths_concept_rotation = svc.industry_rotation_overview(category="ths_concept")
@@ -3997,6 +3998,7 @@ def market_page():
         return flask.render_template("market.html", indices=indices,
                                       board_names=board_names,
                                       board_overview=board_overview,
+                                      official_rotation=official_rotation,
                                       industry_rotation=industry_rotation,
                                       ths_industry_rotation=ths_industry_rotation,
                                       ths_concept_rotation=ths_concept_rotation,
@@ -4006,6 +4008,7 @@ def market_page():
         logger.exception("大盘页加载失败")
         return flask.render_template("market.html", indices={}, board_names=[],
                                       board_overview=[],
+                                      official_rotation={"status": "no_data", "items": [], "watchlists": {}, "summary": {}, "reason": "正式板块轮动数据读取失败"},
                                        industry_rotation={"status": "no_data", "items": [],
                                                           "actual_data_as_of": None,
                                                            "reason": "行业轮动数据读取失败"},

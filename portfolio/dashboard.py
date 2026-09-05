@@ -1747,6 +1747,87 @@ class DashboardService:
             })
         return result
 
+    def official_rotation_workbench(self, as_of: str | None = None) -> dict:
+        """Return the close-based THS industry rotation workbench snapshot."""
+        from datetime import date
+        from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        requested = as_of or date.today().isoformat()
+        empty = {
+            "status": "no_data", "requested_as_of": requested, "actual_data_as_of": None,
+            "classification": "ths_industry", "items": [], "watchlists": {}, "summary": {},
+            "reason": "暂无已发布正式板块轮动状态，请先运行收盘后轮动计算任务",
+        }
+        try:
+            result = DatasetAccess(Warehouse()).load_dataset(
+                "industry_rotation_daily",
+                start_date=(pd.Timestamp(requested) - pd.Timedelta(days=45)).strftime("%Y-%m-%d"),
+                end_date=requested, required_quality="PASS",
+            )
+        except DatasetAccessError:
+            return empty
+        frame = result.data.copy()
+        if frame.empty:
+            return empty
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        frame = frame[frame["classification"].astype(str) == "ths_industry"].dropna(subset=["date"])
+        if frame.empty:
+            return empty
+        actual = frame["date"].max()
+        current = frame[frame["date"] == actual].copy()
+        previous_dates = sorted(set(frame.loc[frame["date"] < actual, "date"]))
+        previous = frame[frame["date"] == previous_dates[-1]] if previous_dates else pd.DataFrame()
+        previous_counts = previous["stage"].value_counts().to_dict() if not previous.empty else {}
+
+        def num(row, key, digits=4):
+            value = row.get(key)
+            return None if value is None or pd.isna(value) else round(float(value), digits)
+
+        items = []
+        for _, row in current.iterrows():
+            items.append({
+                "industry_id": str(row.get("industry_id") or ""),
+                "industry_name": str(row.get("industry_name") or ""),
+                "stage": str(row.get("stage") or "DORMANT"),
+                "previous_stage": str(row.get("previous_stage") or ""),
+                "stage_days": int(row.get("stage_days") or 1),
+                "transition": str(row.get("transition") or ""),
+                "return_1d": num(row, "return_1d"), "return_5d": num(row, "return_5d"),
+                "return_20d": num(row, "return_20d"), "rs_5": num(row, "rs_5"),
+                "position_60": num(row, "position_60"), "amount_ratio": num(row, "amount_ratio"),
+                "rank_3d": num(row, "rank_3d", 0), "rank_5d": num(row, "rank_5d", 0),
+                "rank_20d": num(row, "rank_20d", 0), "rank_3d_change": num(row, "rank_3d_change", 0),
+                "strength_score": num(row, "strength_score", 2),
+                "rotation_score": num(row, "rotation_score", 2),
+                "strength_change": num(row, "strength_change", 2),
+                "reason": str(row.get("reason") or ""), "advice": str(row.get("advice") or ""),
+            })
+        labels = {"DORMANT": "潜伏", "STARTING": "启动", "RISING": "主升", "CLIMAX": "高潮", "FADING": "退潮", "COLD": "冰点"}
+        stage_order = {"DORMANT": 0, "STARTING": 1, "RISING": 2, "CLIMAX": 3, "FADING": 4, "COLD": 5}
+        for item in items:
+            item["stage_label"] = labels.get(item["stage"], item["stage"])
+        groups = {
+            "mainline": sorted([x for x in items if x["stage"] in {"RISING", "STARTING"}], key=lambda x: (-(x["strength_score"] or 0), x["industry_name"]))[:5],
+            "starting": sorted([x for x in items if x["stage"] == "STARTING"], key=lambda x: (-(x["rotation_score"] or 0), x["industry_name"]))[:5],
+            "climax": sorted([x for x in items if x["stage"] == "CLIMAX"], key=lambda x: (-(x["strength_score"] or 0), x["industry_name"]))[:5],
+            "fading": sorted([x for x in items if x["stage"] == "FADING"], key=lambda x: ((x["rotation_score"] or 0), x["industry_name"]))[:5],
+        }
+        counts = {stage: sum(item["stage"] == stage for item in items) for stage in labels}
+        summary = {
+            "mainline": counts["RISING"] + counts["STARTING"], "starting": counts["STARTING"],
+            "climax": counts["CLIMAX"], "fading": counts["FADING"],
+            "mainline_delta": counts["RISING"] + counts["STARTING"] - previous_counts.get("RISING", 0) - previous_counts.get("STARTING", 0),
+            "starting_delta": counts["STARTING"] - previous_counts.get("STARTING", 0),
+            "climax_delta": counts["CLIMAX"] - previous_counts.get("CLIMAX", 0),
+            "fading_delta": counts["FADING"] - previous_counts.get("FADING", 0),
+            "market_state": "高低切换" if counts["STARTING"] > counts["CLIMAX"] else "主线延续" if counts["RISING"] >= counts["FADING"] else "风险释放",
+            "market_reason": "启动板块数量高于过热板块，优先观察低位轮动" if counts["STARTING"] > counts["CLIMAX"] else "根据正式收盘阶段分布判断，不含盘中资金流",
+        }
+        return {"status": "success", "requested_as_of": requested, "actual_data_as_of": actual.strftime("%Y-%m-%d"),
+                "classification": "ths_industry", "items": items, "watchlists": groups, "summary": summary,
+                "data_context": result.context}
+
     def _ths_industry_rotation(self, as_of: str, *, membership_as_of: str | None = None) -> dict:
         from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
         from StockInvestmentTool.warehouse.storage import Warehouse
