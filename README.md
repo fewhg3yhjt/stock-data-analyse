@@ -160,7 +160,7 @@ python -m StockInvestmentTool.warehouse reset [--kinds daily,factor,online]
 
 数据落盘位置：`output/data/warehouse/`（`daily/` 与 `factors/` 按月分区 parquet，`raw/<源>/` 贴源层独立存放，`online/` 按日快照，`meta.db` 存标的清单与分区清单）。
 
-**每日自动增量**：`run_warehouse_daily`（收盘后）按「标的自有最后日期」只补缺失区间（方案B），不会全量重跑；新股/缺失标的自动补 PE/PB。盘中实时快照由 `WAREHOUSE_ONLINE_SNAPSHOT=1` 开启，每 10 分钟一次。
+**每日自动增量**：任务中心按交易日触发 `stock_daily_capture → stock_daily_build → stock_daily_quality → stock_daily_publish → indicators_build`，失败日期会在盘后重试时自动补漏；盘中实时快照由 `WAREHOUSE_ONLINE_SNAPSHOT=1` 开启，每 10 分钟一次。
 
 ## Web 界面
 

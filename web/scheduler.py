@@ -155,54 +155,6 @@ def run_daily_digest(mgr=None) -> dict:
     return build_daily_digest()
 
 
-def run_warehouse_daily() -> dict:
-    """数据仓库每日离线采集：仅采集当前明确日期。"""
-    logger.info("=== 数据仓库离线采集开始 ===")
-    from StockInvestmentTool.warehouse.collector import MarketCollector
-
-    result = {}
-    c = MarketCollector()
-    start_date = datetime.now().strftime("%Y-%m-%d")
-    end_date = start_date
-    sync_res = c.sync_daily(
-        start_date=start_date, end_date=end_date,
-        include_etf=True,
-        include_index=False,
-        source="tencent",
-    )
-    result["sync"] = sync_res
-
-    # 指标批量生成（采集后自动重建 indicators/ 分区，下游消费最新指标）
-    try:
-        from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
-        ind_res = IndicatorsBuilder().build_all()
-        result["indicators"] = ind_res
-    except Exception as e:
-        logger.error("指标批量生成失败: %s", e)
-        result["indicators"] = f"error: {e}"
-
-    # 新股 PE/PB 回补（仅补刚新增/缺失的股票估值）
-    try:
-        from StockInvestmentTool.warehouse.backfill import ValuationBackfill
-        from StockInvestmentTool.warehouse.storage import Warehouse
-
-        w = Warehouse()
-        df = w.read_daily(w.available_months("daily")[-1])
-        if df is not None and not df.empty:
-            codes = sorted([c for c in df["code"].unique()
-                            if c.startswith(("sh6", "sz0", "sz3"))])
-            vb = ValuationBackfill(w)
-            bf = vb.backfill_many(codes, start_date, datetime.now().strftime("%Y-%m-%d"),
-                                  reprocess=True)
-            result["backfill"] = bf
-    except Exception as e:
-        logger.error("PE/PB回补失败: %s", e)
-        result["backfill"] = f"error: {e}"
-
-    logger.info("=== 数据仓库离线采集完成: %s ===", result)
-    return result
-
-
 DAILY_DATA_CHAIN = [
     "stock_daily_capture", "stock_daily_build", "stock_daily_quality",
     "stock_daily_publish", "indicators_build",
@@ -268,17 +220,39 @@ def daily_data_gap_dates(*, target: date | None = None, lookback_days: int = 10)
     if pd.isna(latest):
         return [target.isoformat()]
 
-    # Scan a small recent window as well as everything after the published
-    # watermark, catching an internal hole in an otherwise newer partition.
-    start = min(target - timedelta(days=lookback_days), latest.date() + timedelta(days=1))
+    # Scan a small recent window, catching both a trailing gap and an internal
+    # hole without turning this check into an open-ended historical backfill.
+    start = target - timedelta(days=lookback_days)
     return _published_daily_dates(start=start, end=target)
+
+
+def _dataset_released(dataset_name: str, target_date: str) -> bool:
+    """Return whether a published dataset contains the requested date."""
+    from StockInvestmentTool.warehouse.datasets import DatasetAccess
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    try:
+        result = DatasetAccess(Warehouse()).load_dataset(
+            dataset_name, start_date=target_date, end_date=target_date,
+            required_quality="WARNING",
+        )
+        if result.data is None or result.data.empty:
+            return False
+        date_col = "date" if "date" in result.data.columns else "trading_date"
+        return pd.to_datetime(result.data[date_col], errors="coerce").max().strftime("%Y-%m-%d") >= target_date
+    except Exception:
+        return False
 
 
 def run_daily_data_chain(*, dates: list[str] | None = None) -> dict:
     """Run the sole task-center daily data chain for identified trade dates."""
     from StockInvestmentTool.ops.task_execution import execute_pipeline
-    from StockInvestmentTool.ops.task_center import management_db_path
+    from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
 
+    configured = TaskCenter(management_db_path()).active_configs()
+    missing = [key for key in DAILY_DATA_CHAIN if key not in configured]
+    if missing:
+        raise RuntimeError(f"日线正式链路配置不完整，缺少阶段: {', '.join(missing)}")
     target_dates = dates or daily_data_gap_dates()
     runs = []
     for trade_date in target_dates:
@@ -648,7 +622,9 @@ def run_post_close_retry_job() -> dict:
         return bool((configured.get(key) or {}).get("enabled"))
 
     # 日线采集链：按缺口最早日期逐个补齐，避免失败日期被自然日滚动遗忘。
-    daily_chain = [key for key in DAILY_DATA_CHAIN if enabled(key)]
+    # ``manual`` downstream stages are intentionally not scheduled on their
+    # own, but they remain mandatory members of the capture pipeline.
+    daily_chain = [key for key in DAILY_DATA_CHAIN if key in configured]
     if daily_chain and gap_dates:
         try:
             result["daily"] = run_daily_data_chain(dates=gap_dates)

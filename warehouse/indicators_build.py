@@ -8,8 +8,8 @@
   - 按月累积落盘到 warehouse/indicators/YYYY-MM.parquet
   - 内存峰值 = 单批标的全史一份（batch_size=500 约 40MB，1GiB 容器可承受）
 
-衔接: 由 run_warehouse_daily（收盘后采集）自动触发，
-      源头 daily 更新后，下游 indicators 自动重建。
+衔接: 由任务中心的 stock_daily 正式链路在日线发布后触发，
+       只消费 Published stock_daily 版本。
 """
 
 from __future__ import annotations

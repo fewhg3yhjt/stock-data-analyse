@@ -75,6 +75,19 @@ def _date_value(value) -> Optional[date]:
 
 
 def _latest_parquet(warehouse, kind: str, date_column: str = "date") -> tuple[Optional[str], int, int]:
+    if kind == "daily":
+        try:
+            from StockInvestmentTool.warehouse.datasets import DatasetAccess
+            result = DatasetAccess(warehouse).load_dataset(
+                "stock_daily", required_quality="WARNING")
+            frame = result.data
+            if frame is not None and not frame.empty:
+                values = pd.to_datetime(frame.get(date_column), errors="coerce").dropna()
+                symbols = set(frame["code"].dropna().astype(str)) if "code" in frame else set()
+                return (values.max().strftime("%Y-%m-%d") if not values.empty else None,
+                        len(frame), len(symbols))
+        except Exception:
+            pass
     months = warehouse.available_months(kind)
     latest = None
     rows = 0

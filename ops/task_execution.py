@@ -375,9 +375,34 @@ def worker(task_key: str, warehouse: Warehouse, request: dict, run_id: int) -> d
     if task_key == "stock_daily_publish":
         return _publish(warehouse, request)
     if task_key == "indicators_build":
-        return IndicatorsBuilder(warehouse, allow_legacy=False).build_all(
+        result = IndicatorsBuilder(warehouse, allow_legacy=False).build_all(
             symbols=_symbols(request), asset_types=["stock", "etf"], months=_months(request.get("period_start"), request.get("period_end")),
             partition_versions=request.get("input_versions") or None)
+        # Indicators are formal derivatives of the Published daily dataset.
+        # Record alignment explicitly so a stale derived partition is visible
+        # instead of being mistaken for a current successful rebuild.
+        alignment = []
+        with sqlite3.connect(warehouse.meta_db_path) as conn:
+            for partition, version_id in (result.get("output_versions") or {}).items():
+                daily = conn.execute(
+                    "SELECT max_date FROM dataset_versions v "
+                    "JOIN dataset_current c ON c.version_id=v.version_id "
+                    "WHERE c.dataset_name='stock_daily' AND c.partition_key=?",
+                    (partition,),
+                ).fetchone()
+                derived = conn.execute(
+                    "SELECT max_date FROM dataset_versions WHERE version_id=?",
+                    (version_id,),
+                ).fetchone()
+                if daily and derived:
+                    alignment.append({"partition": partition,
+                                      "daily_max_date": daily[0],
+                                      "indicators_max_date": derived[0],
+                                      "matches": daily[0] == derived[0]})
+        result["date_alignment"] = alignment
+        if any(not item["matches"] for item in alignment):
+            result["status"] = "partial_success"
+        return result
     if task_key == "industry_features_build":
         from StockInvestmentTool.warehouse.industry_features import IndustryFeaturesBuilder
         end = request.get("period_end") or request.get("as_of")

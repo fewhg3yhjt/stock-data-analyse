@@ -84,17 +84,17 @@ def _latest_stock_daily_pass_date() -> str | None:
     try:
         with sqlite3.connect(Warehouse().meta_db_path) as conn:
             row = conn.execute(
-                """SELECT dc.partition_key
+                """SELECT v.max_date
                    FROM dataset_current dc
-                   JOIN dataset_quality_results q ON q.version_id=dc.version_id
+                   JOIN dataset_versions v ON v.version_id=dc.version_id
+                   JOIN dataset_quality_results q ON q.version_id=v.version_id
                    WHERE dc.dataset_name='stock_daily' AND q.status='PASS'
-                   ORDER BY dc.partition_key DESC, q.checked_at DESC
+                   ORDER BY v.max_date DESC, q.checked_at DESC
                    LIMIT 1"""
             ).fetchone()
         if not row:
             return None
-        month = str(row[0])
-        return str(pd.Period(month, freq="M").end_time.date())
+        return str(row[0])[:10]
     except (sqlite3.Error, ValueError) as exc:
         logger.warning("读取 stock_daily 最新 PASS 日期失败: %s", exc)
         return None
@@ -1354,8 +1354,8 @@ def _start_data_job(job_name, worker):
 
 @web_app.route("/api/data/jobs/daily-sync", methods=["POST"])
 def api_data_daily_sync():
-    from StockInvestmentTool.web.scheduler import run_daily_data_pipeline
-    return _start_data_job("daily_sync", lambda run_id: run_daily_data_pipeline(run_id))
+    from StockInvestmentTool.web.scheduler import run_daily_data_chain
+    return _start_data_job("daily_sync", lambda _run_id: run_daily_data_chain())
 
 
 @web_app.route("/api/data/jobs/minute-snapshot", methods=["POST"])
