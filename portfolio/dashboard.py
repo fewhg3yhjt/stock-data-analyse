@@ -1762,7 +1762,6 @@ class DashboardService:
         try:
             result = DatasetAccess(Warehouse()).load_dataset(
                 "industry_rotation_daily",
-                start_date=(pd.Timestamp(requested) - pd.Timedelta(days=45)).strftime("%Y-%m-%d"),
                 end_date=requested, required_quality="PASS",
             )
         except DatasetAccessError:

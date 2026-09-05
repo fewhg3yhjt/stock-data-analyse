@@ -29,3 +29,31 @@ def test_official_rotation_workbench_builds_summary_and_watchlists(monkeypatch):
     assert result["summary"]["mainline"] == 1
     assert result["summary"]["fading"] == 1
     assert result["watchlists"]["mainline"][0]["industry_name"] == "半导体"
+
+
+def test_official_rotation_workbench_reads_latest_available_partition(monkeypatch):
+    frame = pd.DataFrame([{
+        "date": pd.Timestamp("2026-09-04"), "industry_id": "881121",
+        "industry_name": "半导体", "classification": "ths_industry", "stage": "STARTING",
+        "previous_stage": "DORMANT", "stage_days": 1, "transition": "DORMANT->STARTING",
+        "return_1d": .01, "return_5d": .05, "return_20d": .1, "rs_5": .02,
+        "position_60": .5, "amount_ratio": 1.2, "rank_3d": 3, "rank_5d": 2,
+        "rank_20d": 4, "rank_3d_change": 5, "strength_score": 70,
+        "rotation_score": 90, "strength_change": 4, "reason": "排名改善", "advice": "重点关注",
+    }])
+
+    class Result:
+        data = frame
+        context = {"source": "published_dataset", "fallback_used": False, "partition_versions": {}}
+
+    class Access:
+        def __init__(self, warehouse): pass
+        def load_dataset(self, *args, **kwargs):
+            assert kwargs.get("end_date") == "2026-09-04"
+            assert kwargs.get("start_date") is None
+            return Result()
+
+    monkeypatch.setattr("StockInvestmentTool.warehouse.datasets.DatasetAccess", Access)
+    result = DashboardService(object()).official_rotation_workbench("2026-09-04")
+    assert result["status"] == "success"
+    assert result["actual_data_as_of"] == "2026-09-04"
