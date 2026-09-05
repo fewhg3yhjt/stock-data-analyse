@@ -19,9 +19,10 @@ SINA_URLS = {
     "balance": "https://money.finance.sina.com.cn/corp/go.php/vFD_BalanceSheet/stockid/{code}/ctrl/{year}/displaytype/4.phtml",
     "cash": "https://money.finance.sina.com.cn/corp/go.php/vFD_CashFlow/stockid/{code}/ctrl/{year}/displaytype/4.phtml",
 }
+VALUATION_STATEMENTS = ("profit", "balance")
 KEY_ROWS = {
-    "profit": {"revenue": ("营业收入", "营业总收入"), "net_profit_parent": ("归属于母公司股东的净利润", "归属于母公司所有者的净利润")},
-    "balance": {"parent_equity": ("归属于母公司所有者权益合计", "归属于母公司股东权益合计")},
+    "profit": {"revenue": ("营业收入", "营业总收入", "一、营业收入"), "net_profit_parent": ("归属于母公司股东的净利润", "归属于母公司所有者的净利润", "归属于母公司的净利润")},
+    "balance": {"parent_equity": ("归属于母公司所有者权益合计", "归属于母公司股东权益合计", "归属于母公司股东的权益")},
 }
 
 ALL_FIELDS = ["report_date", "code", "statement_type", "revenue", "net_profit_parent", "parent_equity",
@@ -121,6 +122,10 @@ def normalize_reports(frame: pd.DataFrame) -> pd.DataFrame:
             result[col] = pd.NA
     result["report_date"] = pd.to_datetime(result["report_date"], errors="coerce").dt.strftime("%Y-%m-%d")
     result["code"] = result["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+    for column in ("revenue", "net_profit_parent", "parent_equity"):
+        result[column] = pd.to_numeric(result[column], errors="coerce").astype("float64")
+    for column in ("financial_publish_date", "source", "source_url", "unit", "captured_at"):
+        result[column] = result[column].astype("string")
     return result[required].dropna(subset=["report_date", "code", "statement_type"])
 
 
@@ -137,32 +142,35 @@ def collect(warehouse, *, symbols: list[str], start_date: str, end_date: str,
                               else os.getenv("SINA_FINANCIAL_QUERY_INTERVAL", "1.0")))
     request_count = 0
     frames, failed = [], []
+    years = range(pd.Timestamp(start_date).year, pd.Timestamp(end_date).year + 1)
     for code in symbols:
-        for statement_type, template in SINA_URLS.items():
-            if deadline_at is not None and time.monotonic() >= deadline_at:
-                failed.append(f"{code}:{statement_type}:deadline")
-                continue
-            digits = re.sub(r"^[a-z]+", "", str(code).lower().replace(".", ""))
-            year = pd.Timestamp(end_date).year
-            url = template.format(code=quote(digits), year=year)
-            try:
-                if request_count:
-                    time.sleep(interval)
-                frame = parse_sina_html(fetcher(url, timeout), code=code, statement_type=statement_type, source_url=url)
-                request_count += 1
-                frame = frame[(frame["report_date"] >= start_date) & (frame["report_date"] <= end_date)] if not frame.empty else frame
-                if frame.empty:
-                    failed.append(f"{code}:{statement_type}:empty")
-                else:
-                    frames.append(frame)
-            except Exception as exc:  # noqa: BLE001
-                failed.append(f"{code}:{statement_type}:{exc}")
+        for year in years:
+            for statement_type in VALUATION_STATEMENTS:
+                template = SINA_URLS[statement_type]
+                if deadline_at is not None and time.monotonic() >= deadline_at:
+                    failed.append(f"{code}:{statement_type}:{year}:deadline")
+                    continue
+                digits = re.sub(r"^[a-z]+", "", str(code).lower().replace(".", ""))
+                url = template.format(code=quote(digits), year=year)
+                try:
+                    if request_count:
+                        time.sleep(interval)
+                    frame = parse_sina_html(fetcher(url, timeout), code=code, statement_type=statement_type, source_url=url)
+                    request_count += 1
+                    frame = frame[(frame["report_date"] >= start_date) & (frame["report_date"] <= end_date)] if not frame.empty else frame
+                    if frame.empty:
+                        failed.append(f"{code}:{statement_type}:{year}:empty")
+                    else:
+                        frames.append(frame)
+                except Exception as exc:  # noqa: BLE001
+                    failed.append(f"{code}:{statement_type}:{year}:{exc}")
     if not frames:
         capture_frames(warehouse, dataset_name="financial_reports", source_name="sina_financial_html", frames=[],
                        trade_date_start=start_date, trade_date_end=end_date, expected_symbols=len(symbols),
                        failed_symbols=len(failed), failure_details=failed, job_run_id=job_run_id,
                        schema_version="financial_reports.v1")
         raise RuntimeError("financial_reports capture returned no rows")
+    frames = [normalize_reports(frame) for frame in frames]
     successful_codes = {frame["code"].iloc[0] for frame in frames if not frame.empty}
     raw = capture_frames(warehouse, dataset_name="financial_reports", source_name="sina_financial_html", frames=frames,
                          trade_date_start=start_date, trade_date_end=end_date, expected_symbols=len(symbols),

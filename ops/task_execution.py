@@ -63,7 +63,8 @@ def _source_build(warehouse, request, dataset_name):
     versions = {}
     for partition in sorted(partitions):
         partition_value = partition if dataset_name == "valuation_snapshot" else partition[:7]
-        part_frame = frame[frame[keys[0]].astype(str).str[:10].eq(partition_value)].drop_duplicates(keys).sort_values(keys).reset_index(drop=True)
+        date_prefix_length = 10 if dataset_name == "valuation_snapshot" else 7
+        part_frame = frame[frame[keys[0]].astype(str).str[:date_prefix_length].eq(partition_value)].drop_duplicates(keys).sort_values(keys).reset_index(drop=True)
         candidate = warehouse.base_dir / "candidates" / dataset_name / partition
         candidate.mkdir(parents=True, exist_ok=True)
         fingerprint = hashlib.sha256(part_frame.to_json(orient="records", date_format="iso").encode()).hexdigest()
@@ -315,8 +316,16 @@ def worker(task_key: str, warehouse: Warehouse, request: dict, run_id: int) -> d
             raise ValueError("valuation_daily_build requires explicit financial and snapshot input_versions")
         from StockInvestmentTool.warehouse.datasets import DatasetAccess
         start, end = request.get("period_start"), request.get("period_end")
-        financial = DatasetAccess(warehouse).load_dataset("financial_reports", start, end,
-            partition_versions=input_versions["financial_reports"]).data
+        # 财报只在实际报告期分区存在；不要按交易日窗口强制要求每个月都有财报。
+        financial = DatasetAccess(warehouse).load_dataset(
+            "financial_reports", partition_versions=input_versions["financial_reports"]
+        ).data
+        if start or end:
+            dates = pd.to_datetime(financial["report_date"], errors="coerce")
+            if start:
+                financial = financial[dates >= pd.Timestamp(start)]
+            if end:
+                financial = financial[dates <= pd.Timestamp(end)]
         snapshots = DatasetAccess(warehouse).load_dataset("valuation_snapshot", start, end,
             partition_versions=input_versions["valuation_snapshot"]).data
         frame = build_valuation_daily(financial, snapshots)
