@@ -3750,7 +3750,7 @@ def dashboard_warroom():
         data = DashboardService(mgr).war_room()
         from StockInvestmentTool.core.registry import SchemeRegistry
         schemes = [{"name": s.name, "description": s.description}
-                   for s in SchemeRegistry().list_all()]
+                   for s in SchemeRegistry().list()]
         return flask.render_template("warroom.html", data=data, schemes=schemes, error=None)
     except Exception as e:
         logger.exception("持仓页加载失败")

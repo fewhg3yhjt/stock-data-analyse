@@ -128,19 +128,6 @@ class SchemeRegistry:
             if scheme_store.is_enabled(s.name)
         ]
 
-    def list_all(self) -> list[SchemeSummary]:
-        """列出全部已加载方案，包含已停用方案。"""
-        return [
-            SchemeSummary(
-                name=s.name,
-                version=s.version,
-                description=s.description,
-                applicable_types=list(s.applicable_types),
-                source=str(self._sources.get(s.name, "")),
-            )
-            for s in self._schemes.values()
-        ]
-
     def get(self, name: str) -> SchemeConfig:
         """按名称获取方案配置
 
