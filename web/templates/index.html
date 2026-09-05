@@ -156,7 +156,7 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
       <div class="form-row three">
         <div class="ui-field">
           <label>开始日期</label>
-          <input type="date" name="start_date" value="{{ last_year }}">
+          <input type="date" name="start_date" value="{% if prefill_scheme == 'lowma_pullback' %}2024-01-01{% else %}{{ last_year }}{% endif %}">
         </div>
         <div class="ui-field">
           <label>结束日期</label>
@@ -411,7 +411,8 @@ function renderBatchResults(payload){
   card.style.display='block';
   card.innerHTML='<div class="ui-card-header"><span>批量模拟汇总</span><span class="hint">方案 '+(batch.scheme_name||'—')+' · 成功 '+successes.length+' / 失败 '+failures.length+' · 点击“展开”查看K线、操作说明和收益曲线</span></div><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>股票</th><th>类型</th><th>策略收益</th><th>买入持有</th><th>超额收益</th><th>最大回撤</th><th>交易数</th><th>操作</th></tr></thead><tbody>'+successes.map((item,index)=>{
     const r=item.result||{}; const excess=(Number(r.total_return||0)-Number(r.buy_hold_return||0)); const id=batchDetailId(item.code);
-    return '<tr><td><b>'+item.name+'</b><br><small>'+item.code+'</small></td><td>'+typeLabels[item.stock_type]+'</td><td>'+(Number(r.total_return||0)>=0?'+':'')+Number(r.total_return||0).toFixed(2)+'%</td><td>'+(Number(r.buy_hold_return||0)>=0?'+':'')+Number(r.buy_hold_return||0).toFixed(2)+'%</td><td>'+(excess>=0?'+':'')+excess.toFixed(2)+'%</td><td>'+Number(r.max_drawdown||0).toFixed(2)+'%</td><td>'+(r.trade_count||r.trades?.length||0)+'</td><td><button type="button" class="ui-button ui-button-secondary ui-button-sm" onclick="toggleBatchDetail(\''+id+'\')">展开</button></td></tr><tr id="'+id+'" class="batch-detail"><td colspan="8" class="batch-detail-cell"><div class="batch-detail-content"></div></td></tr>';
+     const tradeCount=Number(r.trade_count||r.trades?.length||0); const tradeLabel=tradeCount?'交易 '+tradeCount+' 笔':'当前区间无成交';
+     return '<tr><td><b>'+item.name+'</b><br><small>'+item.code+'</small></td><td>'+typeLabels[item.stock_type]+'</td><td>'+(Number(r.total_return||0)>=0?'+':'')+Number(r.total_return||0).toFixed(2)+'%</td><td>'+(Number(r.buy_hold_return||0)>=0?'+':'')+Number(r.buy_hold_return||0).toFixed(2)+'%</td><td>'+(excess>=0?'+':'')+excess.toFixed(2)+'%</td><td>'+Number(r.max_drawdown||0).toFixed(2)+'%</td><td>'+tradeLabel+'</td><td><button type="button" class="ui-button ui-button-secondary ui-button-sm" onclick="toggleBatchDetail(\''+id+'\')">展开</button></td></tr><tr id="'+id+'" class="batch-detail"><td colspan="8" class="batch-detail-cell"><div class="batch-detail-content"></div></td></tr>';
   }).join('')+failures.map(item=>'<tr><td><b>'+item.name+'</b><br><small>'+item.code+'</small></td><td>'+typeLabels[item.stock_type]+'</td><td colspan="6" class="error">模拟失败：'+(item.error||'未知错误')+'</td></tr>').join('')+'</tbody></table></div>';
   successes.forEach(item=>renderBatchDetail(batchDetailId(item.code),item));
   resultSection.style.display='block';
