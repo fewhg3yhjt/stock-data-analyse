@@ -231,6 +231,15 @@ def worker(task_key: str, warehouse: Warehouse, request: dict, run_id: int) -> d
         return IndustryFeaturesBuilder(warehouse, allow_legacy=False).build(
             start_date=start, end_date=end, as_of=request.get("as_of") or end,
             partition_versions=request.get("input_versions") or None)
+    if task_key == "industry_rotation_build":
+        from StockInvestmentTool.warehouse.industry_rotation import IndustryRotationBuilder
+        end = request.get("period_end") or request.get("as_of")
+        start = request.get("period_start") or end
+        if not end:
+            raise ValueError("industry_rotation_build requires period_end/as_of")
+        return IndustryRotationBuilder(warehouse, allow_legacy=False).build(
+            start_date=start, end_date=end, as_of=request.get("as_of") or end,
+            partition_versions=request.get("input_versions") or None)
     if task_key in {"industry_capture", "industry_membership_capture", "industry_daily_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture"}:
         return _auxiliary(warehouse, request, task_key)
     raise ValueError(f"未注册的任务: {task_key}")

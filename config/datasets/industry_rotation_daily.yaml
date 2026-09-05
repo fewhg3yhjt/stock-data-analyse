@@ -1,0 +1,46 @@
+dataset:
+  name: industry_rotation_daily
+  display_name: 行业轮动正式日状态
+  description: 基于同花顺行业指数日线与股票日线市场基准计算的正式收盘轮动状态
+  grain: 一个同花顺行业的一个交易日一条轮动状态
+  primary_keys: [date, industry_id, classification]
+  partition: {type: month, path: 'warehouse/industry_rotation_daily/{partition}.parquet'}
+  update_frequency: industry_daily 和 stock_daily 发布后
+  schema_version: industry_rotation_daily.v1
+fields:
+  - {name: date, display_name: 交易日期, data_type: date, nullable: false, primary_key: true}
+  - {name: industry_id, display_name: 行业代码, data_type: string, nullable: false, primary_key: true}
+  - {name: industry_name, display_name: 行业名称, data_type: string, nullable: false}
+  - {name: classification, display_name: 分类体系, data_type: string, nullable: false, primary_key: true}
+  - {name: close, display_name: 收盘, data_type: float, nullable: false}
+  - {name: return_1d, display_name: 1日收益, data_type: float, nullable: true}
+  - {name: return_3d, display_name: 3日收益, data_type: float, nullable: true}
+  - {name: return_5d, display_name: 5日收益, data_type: float, nullable: true}
+  - {name: return_20d, display_name: 20日收益, data_type: float, nullable: true}
+  - {name: market_return_5d, display_name: 市场5日收益, data_type: float, nullable: true}
+  - {name: rs_5, display_name: 5日相对强度, data_type: float, nullable: true}
+  - {name: rs_5_change, display_name: 相对强度改善, data_type: float, nullable: true}
+  - {name: position_60, display_name: 60日位置, data_type: float, nullable: true}
+  - {name: amount_ratio, display_name: 量比, data_type: float, nullable: true}
+  - {name: amount_ratio_change, display_name: 量比变化, data_type: float, nullable: true}
+  - {name: ma5_slope, display_name: MA5斜率, data_type: float, nullable: true}
+  - {name: ma5_slope_change, display_name: MA5斜率改善, data_type: float, nullable: true}
+  - {name: rank_3d, display_name: 3日排名, data_type: integer, nullable: true}
+  - {name: rank_5d, display_name: 5日排名, data_type: integer, nullable: true}
+  - {name: rank_20d, display_name: 20日排名, data_type: integer, nullable: true}
+  - {name: rank_3d_change, display_name: 3日排名变化, data_type: float, nullable: true}
+  - {name: strength_score, display_name: 强度评分, data_type: float, nullable: true}
+  - {name: strength_change, display_name: 强度变化, data_type: float, nullable: true}
+  - {name: rotation_score, display_name: 轮动评分, data_type: float, nullable: true}
+  - {name: stage, display_name: 阶段, data_type: string, nullable: false}
+  - {name: previous_stage, display_name: 上一阶段, data_type: string, nullable: true}
+  - {name: stage_days, display_name: 阶段持续天数, data_type: integer, nullable: false}
+  - {name: transition, display_name: 阶段迁移, data_type: string, nullable: true}
+  - {name: reason, display_name: 判断原因, data_type: string, nullable: false}
+  - {name: advice, display_name: 操作建议, data_type: string, nullable: false}
+sources:
+  - {name: industry_daily, role: input, priority: 1, field_mapping: {}, unit_conversions: {}}
+  - {name: stock_daily, role: input, priority: 2, field_mapping: {}, unit_conversions: {}}
+consumers:
+  - {name: industry_rotation_workbench, type: business, purpose: 正式收盘轮动状态和阶段有效性验证, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式决策}
+quality: {publish_warning: false, coverage: {pass_min: 0.90, warning_min: 0.90}}

@@ -31,7 +31,7 @@ class DataCenterService:
             elif status == "critical": counts["critical"] += 1
             else: counts["unknown"] += 1
         task_items = self.tasks.tasks()
-        pipeline_keys = ("stock_daily_capture", "stock_daily_build", "stock_daily_quality", "stock_daily_publish", "indicators_build", "industry_features_build", "industry_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture")
+        pipeline_keys = ("stock_daily_capture", "stock_daily_build", "stock_daily_quality", "stock_daily_publish", "indicators_build", "industry_features_build", "industry_rotation_build", "industry_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture")
         task_summary = self.tasks.overview()
         return {"counts": counts, "core_assets": core, "attention": attention,
                 "task_summary": task_summary,

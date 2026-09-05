@@ -298,3 +298,26 @@ def check_industry_features_daily(path, *, expected_industries: int | None = Non
     fail |= int(invalid_state.sum()) > 0
     return {"status": "FAIL" if fail else ("WARNING" if coverage is not None and coverage < 0.98 else "PASS"),
             "publish_allowed": not fail, "checks": checks}
+
+
+def check_industry_rotation_daily(path, *, expected_as_of: str | None = None) -> dict:
+    frame = pd.read_parquet(path) if Path(path).exists() else pd.DataFrame()
+    required = {"date", "industry_id", "industry_name", "classification", "strength_score",
+                "rotation_score", "rank_3d", "rank_5d", "rank_20d", "rank_3d_change",
+                "stage", "previous_stage", "stage_days", "transition", "reason", "advice"}
+    missing = sorted(required - set(frame.columns))
+    checks = {"missing_columns": missing, "row_count": int(len(frame))}
+    if missing or frame.empty:
+        return {"status": "FAIL", "publish_allowed": False, "checks": checks}
+    keys = ["date", "industry_id", "classification"]
+    duplicate = int(frame.duplicated(keys).sum())
+    dates = pd.to_datetime(frame["date"], errors="coerce")
+    max_date = str(dates.max())[:10] if dates.notna().any() else None
+    stages = {"DORMANT", "STARTING", "RISING", "CLIMAX", "FADING", "COLD"}
+    invalid_stage = int((~frame["stage"].astype(str).isin(stages)).sum())
+    bad_days = int((pd.to_numeric(frame["stage_days"], errors="coerce") < 1).sum())
+    as_of_bad = expected_as_of is not None and (max_date is None or pd.Timestamp(max_date) > pd.Timestamp(expected_as_of))
+    checks.update({"duplicate_primary_keys": duplicate, "invalid_stage": invalid_stage,
+                   "invalid_stage_days": bad_days, "max_date": max_date, "expected_as_of": expected_as_of})
+    fail = duplicate > 0 or invalid_stage > 0 or bad_days > 0 or as_of_bad
+    return {"status": "FAIL" if fail else "PASS", "publish_allowed": not fail, "checks": checks}

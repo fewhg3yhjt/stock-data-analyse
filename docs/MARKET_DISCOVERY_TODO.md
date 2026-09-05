@@ -30,3 +30,9 @@
 已接入 `/market/live_rotation` 和市场页“实时板块趋势判断”卡片：串行读取同花顺行业即时资金流与 3 日排行，展示价格方向、即时/多日净额、资金趋势、趋势判断和观察建议。
 
 该能力明确属于临时在线研究数据：不写入 Published Dataset，不作为正式策略输入，不触发自动买卖。正式 `money_flow_industry_daily`、历史归档、轮动方案版本和板块候选追溯仍属于后续阶段。
+
+## 板块轮动 V1 骨架
+
+V1 正式轮动状态不等待行业资金流历史。主分类固定为 `ths_industry`，正式状态只使用 Published `industry_daily` 和 Published `stock_daily` 市场基准，在收盘后生成 `industry_rotation_daily`。当前产物包含收益、5 日相对强度、60 日位置、量比、横截面排名与排名变化、`strength_score`、不依赖资金流的 `rotation_score`、阶段、上一阶段、阶段持续天数、迁移、原因和建议。
+
+`officialRotation` 与现有在线资金流观察严格分离：盘中观察不得修改正式阶段。阶段有效性验证、板块指数策略回测、资金流增强和板块到个股候选分别属于后续阶段。

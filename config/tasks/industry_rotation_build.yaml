@@ -1,0 +1,12 @@
+task:
+  key: industry_rotation_build
+  display_name: 正式行业轮动状态计算
+  stage: DERIVED
+  type: DERIVED_BUILD
+  input_datasets: [industry_daily, stock_daily]
+  output_datasets: [industry_rotation_daily]
+  producer_metrics: [strength_score, rotation_score, industry_stage]
+  scope: {asset_types: [industry], universe: ths_industry}
+schedule: {enabled: true, timezone: Asia/Shanghai, frequency: after_upstream, time: null, period_type: day, period_start: null, period_end: null}
+execution: {manual_enabled: true, retry_limit: 2}
+policy: {on_partial_success: block_downstream, on_failure: block_downstream}

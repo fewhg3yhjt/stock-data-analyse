@@ -1,8 +1,10 @@
 industry_rotation:
   classification: csrc
+  official_classification: ths_industry
   weights: {return_1d: 0.15, return_5d: 0.30, return_20d: 0.35, up_ratio: 0.10, amount_ratio: 0.10}
   state_thresholds: {strong: 0.70, weak: 0.35}
   minimum_valid_count: 3
+  stage_thresholds: {climax_strength: 85, climax_position: 0.80, climax_rotation: 45, rising_strength: 70, rising_rotation: 55, starting_rotation: 60, starting_rank_change: 3, fading_strength: 35, fading_rotation: 40, dormant_strength: 45, dormant_rotation: 55, cold_strength: 25, cold_position: 0.20}
   stock_screen:
     condition_spec: {type: comparison, left: {field: close}, operator: '>', right: {value: 0}}
     sort_spec: {field: symbol, direction: asc}

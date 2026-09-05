@@ -593,7 +593,7 @@ def _recover_stale_task_state(*, before: datetime | None = None) -> int:
             "daily_tasks", "daily_sync", "stock_daily_capture", "stock_daily_build",
             "stock_daily_quality", "stock_daily_publish", "indicators_build",
             "rebuild_indicators", "rebuild_factors", "valuation_capture",
-            "industry_daily_capture", "industry_features_build",
+            "industry_daily_capture", "industry_features_build", "industry_rotation_build",
         ],
         before=(before or (datetime.now() - timedelta(minutes=60))).isoformat(timespec="seconds"))
     recovered += orphan["jobs"] + orphan["plans"]
@@ -708,6 +708,16 @@ def run_post_close_retry_job() -> dict:
                 result["retried"].append("industry_features_build")
         except Exception as exc:  # noqa: BLE001
             result["industry_daily_error"] = str(exc)
+    if (enabled("industry_rotation_build") and _dataset_released("industry_daily", trading_date)
+            and not _dataset_released("industry_rotation_daily", trading_date)):
+        try:
+            result["industry_rotation"] = execute_task(
+                management_db_path(), "industry_rotation_build",
+                {"trigger_type": "retry", "requested_by": "scheduler",
+                 "period_start": trading_date, "period_end": trading_date, "as_of": trading_date})
+            result["retried"].append("industry_rotation_build")
+        except Exception as exc:  # noqa: BLE001
+            result["industry_rotation_error"] = str(exc)
     return result
 
 
