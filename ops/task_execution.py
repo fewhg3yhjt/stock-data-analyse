@@ -32,9 +32,10 @@ def _new_source_task(warehouse, request, task_key, run_id):
         return financial_reports.collect(warehouse, symbols=_symbols(request), start_date=request.get("period_start"),
                                          end_date=request.get("period_end"), timeout=float(request.get("request_timeout", 15)),
                                          deadline=float(request["task_timeout"]) if request.get("task_timeout") else None,
-                                          query_interval=request.get("query_interval"),
-                                          checkpoint_batch_id=request.get("checkpoint_batch_id") or request.get("source_batch_id"),
-                                          failure_threshold=int(request.get("failure_threshold", 20)),
+                                           query_interval=request.get("query_interval"),
+                                           checkpoint_batch_id=request.get("checkpoint_batch_id") or request.get("source_batch_id"),
+                                           batch_size=int(request.get("financial_batch_size", 100)),
+                                           failure_threshold=int(request.get("failure_threshold", 20)),
                                           job_run_id=run_id)
     return valuation_snapshot.collect(warehouse, symbols=_symbols(request), start_date=request.get("period_start"),
                                       end_date=request.get("period_end"), timeout=float(request.get("request_timeout", 15)),

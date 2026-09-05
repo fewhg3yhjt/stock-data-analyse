@@ -58,7 +58,7 @@ def test_financial_checkpoint_success_items_are_skipped(tmp_path):
     assert len(calls) == count
 
 
-def test_financial_deadline_marks_remaining_items_timeout(tmp_path):
+def test_financial_deadline_leaves_unprocessed_items_pending(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     with pytest.raises(RuntimeError, match="no rows"):
         collect(warehouse, symbols=["sh600000"], start_date="2024-01-01", end_date="2024-12-31",
@@ -67,7 +67,42 @@ def test_financial_deadline_marks_remaining_items_timeout(tmp_path):
     with sqlite3.connect(warehouse.meta_db_path) as conn:
         batch_id = conn.execute("SELECT batch_id FROM source_batches ORDER BY started_at DESC LIMIT 1").fetchone()[0]
     items = SourceBatchStore(warehouse.meta_db_path).list_items(batch_id)
-    assert all(item["status"] == "timeout" for item in items)
+    assert all(item["status"] == "pending" for item in items)
+
+
+def test_financial_symbol_batches_resume_and_finish(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    symbols = [f"sh{600000 + index}" for index in range(100)]
+    calls = []
+
+    def fetch(url, timeout):
+        calls.append(url)
+        return HTML
+
+    first = collect(warehouse, symbols=symbols, start_date="2024-01-01", end_date="2024-12-31",
+                    batch_size=10, fetcher=fetch, max_retries=0, query_interval=0, sleep=lambda _: None)
+    assert {"sh" + url.split("/stockid/")[1].split("/")[0] for url in calls} == set(symbols[:10])
+    assert len(first["success_symbols"]) == 10
+    assert first["batch_complete"] is False
+    assert first["next_batch_symbols"][:2] == symbols[10:12]
+    assert SourceBatchStore(warehouse.meta_db_path).get(first["source_batch_id"])["pending_count"] == 180
+
+    before = len(calls)
+    second = collect(warehouse, symbols=symbols, start_date="2024-01-01", end_date="2024-12-31",
+                     batch_size=10, checkpoint_batch_id=first["source_batch_id"], fetcher=fetch,
+                     max_retries=0, query_interval=0, sleep=lambda _: None)
+    second_codes = {"sh" + url.split("/stockid/")[1].split("/")[0] for url in calls[before:]}
+    assert second_codes == set(symbols[10:20])
+    assert second["batch_complete"] is False
+
+    checkpoint = second["source_batch_id"]
+    while not second["batch_complete"]:
+        second = collect(warehouse, symbols=symbols, start_date="2024-01-01", end_date="2024-12-31",
+                         batch_size=10, checkpoint_batch_id=checkpoint, fetcher=fetch,
+                         max_retries=0, query_interval=0, sleep=lambda _: None)
+    assert second["pending_count"] == 0
+    assert second["batch_complete"] is True
+    assert SourceBatchStore(warehouse.meta_db_path).get(checkpoint)["status"] == "success"
 
 
 def test_financial_consecutive_failures_pause(tmp_path):
