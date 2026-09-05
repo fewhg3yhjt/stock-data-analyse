@@ -181,13 +181,15 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
             <div class="detail-panel detail-panel-strategy" style="display:none;" data-position="{{ p.id }}">
               <div class="strategy-summary">
                 <div class="strategy-meta"><b>{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}</b> · 版本 {{ p.strategy.version if p.strategy else '1.0' }}</div>
-                <div class="scheme-switch">
-                  <select class="scheme-select"><option value="">当前方案：{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}</option>
-                    {% for s in schemes %}<option value="{{ s.name }}">{{ s.name }} — {{ s.description }}</option>{% endfor %}
-                   </select>
-                   <button type="button" class="ui-button ui-button-secondary ui-button-sm" data-simulation-code="{{ p.stock_code }}" data-simulation-name="{{ p.stock_name }}" data-simulation-type="{{ p.stock_type }}" data-simulation-scheme="{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}" onclick="openPositionSimulation(this)">策略模拟</button>
-                   <button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="switchScheme(this)">保存切换</button>
-                </div>
+                 <div class="scheme-switch">
+                   <select class="scheme-select"><option value="">当前方案：{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}</option>
+                     {% for s in schemes %}<option value="{{ s.name }}">{{ s.name }} — {{ s.description }}</option>{% endfor %}
+                    </select>
+                    <button type="button" class="ui-button ui-button-secondary ui-button-sm" data-simulation-code="{{ p.stock_code }}" data-simulation-name="{{ p.stock_name }}" data-simulation-type="{{ p.stock_type }}" data-simulation-scheme="{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}" onclick="openPositionSimulation(this)">策略模拟</button>
+                    <a class="ui-button ui-button-secondary ui-button-sm" href="/indicator-center?code={{ p.stock_code|urlencode }}" onclick="event.stopPropagation();" title="查看该持仓的指标值">指标查看</a>
+                    <button type="button" class="ui-button ui-button-primary ui-button-sm" onclick="switchScheme(this)">保存切换</button>
+                  </div>
+                  <div class="note">当天“通过”是观察池排雷状态，不是策略或指标的通过结果。指标查看用于独立核对该股票的指标值，策略建议仍按上方持仓方案生成。</div>
                 <div class="strategy-spec">
                  {% if p.strategy and p.strategy.strategy_spec %}
                    {% for k, v in p.strategy.strategy_spec.items() %}<div class="spec-line"><b>{{ k }}：</b>{{ v if v is not string else v }}</div>{% endfor %}

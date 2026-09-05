@@ -49,6 +49,8 @@
 <script>
  let indicators = {base:[], composite:[], code:[]};
  let selectedIndicator = null;
+ const indicatorCode = new URLSearchParams(window.location.search).get('code');
+ if(indicatorCode) document.getElementById('preview-code').value=indicatorCode;
 const groupMeta = {base:['基础指标','green'], composite:['组合指标','orange'], code:['代码指标','blue'], valuation:['估值指标','orange'], business:['业务指标','gray'], decision:['持仓决策规则','red']};
 function escapeHtml(value){const div=document.createElement('div');div.textContent=value || '';return div.innerHTML;}
 async function loadIndicators(){
