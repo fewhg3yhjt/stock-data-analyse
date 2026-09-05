@@ -31,3 +31,10 @@
 
 - Web pages must use the shared `StockChart` component. Prefer `StockChart.drawLine` or `StockChart.drawKLine`; do not duplicate chart options, tooltip, dataZoom, or resize configuration in page scripts.
 - Chart data must come from a Published Dataset and include an explicit `as_of` date in the response or data contract.
+
+## Original-scenario verification
+
+- A bug fix is not complete when a unit test or backend endpoint passes alone. Reproduce the user's original page, route, inputs, and visible outcome after the fix.
+- For frontend or workflow fixes, verify the full path from the original entry page through the user action to the final result page and rendered result; do not stop at API-level success.
+- If the original scenario has multiple plausible causes, test the complete scenario after each fix so a partial fix is not reported as resolved.
+- Record the original-scenario verification in the final response, including the exact route, input/action, expected visible outcome, and observed outcome.

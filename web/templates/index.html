@@ -160,7 +160,7 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
         </div>
         <div class="ui-field">
           <label>结束日期</label>
-          <input type="date" name="end_date" value="{{ yesterday }}">
+          <input type="date" name="end_date" id="sim-end-date" value="{{ yesterday }}">
         </div>
         <div class="ui-field">
           <label>初始本金（元）</label>
@@ -176,6 +176,11 @@ pre { background: var(--color-surface-subtle); border-radius: 6px; padding: 18px
           {% endfor %}
         </select>
         <span class="hint">同一批次内所有标的使用同一策略方案；LowMA 使用次日盘中限价成交。</span>
+      </div>
+      <div class="ui-card" style="margin-top:12px;padding:10px 12px;background:var(--color-surface-subtle);border-left:3px solid var(--color-info);">
+        <b>系统策略：</b> LowMA 承接策略
+        <button type="button" class="ui-button ui-button-secondary ui-button-sm" style="margin-left:8px;" onclick="selectLowMASimulation()">选择 LowMA</button>
+        <span class="hint" style="margin-left:8px;">低位承接 + T+1 盘中限价触价，不按开盘价无条件买入。</span>
       </div>
 
       <div class="ui-card" id="lowma-sim-options" style="display:none;margin-top:14px;">
@@ -312,6 +317,7 @@ const errorArea = document.getElementById('error-area');
 const resultSection = document.getElementById('result-section');
 const autoRun = new URLSearchParams(location.search).get('auto_run') === '1';
 const lowmaRunId = new URLSearchParams(location.search).get('lowma_run_id');
+const lowmaPassEnd = {{ lowma_pass_end|tojson }};
 let analysisPollTimer = null;
 let analysisPollStartedAt = 0;
 let simulationStocks = [];
@@ -322,6 +328,14 @@ function onSimulationSchemeChange(){
   const lowma=document.getElementById('sim-scheme').value==='lowma_pullback';
   document.getElementById('lowma-sim-options').style.display=lowma?'block':'none';
   document.getElementById('simulation-stock-count').textContent=lowma?'（0/30）':'（0/10）';
+  const end=document.getElementById('sim-end-date');
+  if(lowma && lowmaPassEnd && end.value>lowmaPassEnd){end.value=lowmaPassEnd;showUiMessage('LowMA 仅使用 PASS Published 数据，结束日期已调整至 '+lowmaPassEnd,'info');}
+}
+function selectLowMASimulation(){
+  const select=document.getElementById('sim-scheme');
+  select.value='lowma_pullback';
+  onSimulationSchemeChange();
+  document.getElementById('lowma-sim-options').scrollIntoView({behavior:'smooth',block:'center'});
 }
 function lowmaOption(id){const value=document.getElementById(id).value;return value===''?null:Number(value);}
 
@@ -449,7 +463,16 @@ bindSimulationAutocomplete('sim-code','sim-code-suggestions');
 bindSimulationAutocomplete('sim-name','sim-name-suggestions');
 document.getElementById('sim-draft-id').value=new URLSearchParams(location.search).get('draft_id')||'';
 onSimulationSchemeChange();
-if(document.getElementById('sim-code').value && document.getElementById('sim-name').value) addSimulationStock();
+const queuedStocks = new URLSearchParams(location.search).get('batch') === '1' ? JSON.parse(sessionStorage.getItem('strategy-simulation-stocks')||'[]') : [];
+if(queuedStocks.length){
+  simulationStocks=queuedStocks.slice(0,10);
+  sessionStorage.removeItem('strategy-simulation-stocks');
+  const first=simulationStocks[0];
+  document.getElementById('sim-code').value=first.code;
+  document.getElementById('sim-name').value=first.name;
+  document.getElementById('sim-stock-type').value=first.stock_type||'B';
+  renderSimulationStocks();
+}else if(document.getElementById('sim-code').value && document.getElementById('sim-name').value) addSimulationStock();
 if(lowmaRunId){fetch('/api/low-ma/research/'+encodeURIComponent(lowmaRunId)).then(r=>r.json()).then(data=>{if(data.status==='success')renderLowMAResults(data);else showError(data.error||'LowMA 结果读取失败');}).catch(error=>showError('LowMA 结果读取失败: '+error.message));}
 
 if (autoRun && form.querySelector('[name="code"]').value) {

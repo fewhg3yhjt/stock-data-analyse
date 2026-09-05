@@ -153,6 +153,8 @@ def test_strategy_simulation_lists_lowma_system_strategy(client):
     assert 'value="lowma_pullback"' in page
     assert "LowMA 承接参数" in page
     assert "next_day_limit_range" not in page  # execution detail remains backend-owned
+    assert "选择 LowMA" in page
+    assert "selectLowMASimulation" in page
 
 
 def test_composer_lowma_card_links_to_selected_simulator(client):
