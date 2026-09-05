@@ -399,6 +399,7 @@ function batchDetailId(code){ return 'batch-detail-'+String(code).replace(/[^a-z
 
 function renderBatchResults(payload){
   const batch=payload.result||payload;
+  const taskId=payload.task_id||'';
   const card=document.getElementById('batch-results-card');
   const successes=(batch.items||[]).filter(x=>x.status==='success');
   const failures=(batch.items||[]).filter(x=>x.status!=='success');
@@ -409,7 +410,8 @@ function renderBatchResults(payload){
   document.getElementById('chart-gallery').innerHTML='';
   document.getElementById('report-content').textContent='批量模拟请在下方展开单只查看操作说明。';
   card.style.display='block';
-  card.innerHTML='<div class="ui-card-header"><span>批量模拟汇总</span><span class="hint">方案 '+(batch.scheme_name||'—')+' · 成功 '+successes.length+' / 失败 '+failures.length+' · 点击“展开”查看K线、操作说明和收益曲线</span></div><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>股票</th><th>类型</th><th>策略收益</th><th>买入持有</th><th>超额收益</th><th>最大回撤</th><th>交易数</th><th>操作</th></tr></thead><tbody>'+successes.map((item,index)=>{
+  const downloads=taskId?`<span style="margin-left:12px"><a class="hint" href="/api/simulation/batch/${encodeURIComponent(taskId)}/csv?kind=summary">汇总CSV</a> · <a class="hint" href="/api/simulation/batch/${encodeURIComponent(taskId)}/csv?kind=trades">交易CSV</a> · <a class="hint" href="/api/simulation/batch/${encodeURIComponent(taskId)}/csv?kind=events">事件CSV</a> · <a class="hint" href="/api/simulation/batch/${encodeURIComponent(taskId)}/csv?kind=kline">K线CSV</a></span>`:'';
+  card.innerHTML='<div class="ui-card-header"><span>批量模拟汇总</span><span class="hint">方案 '+(batch.scheme_name||'—')+' · 成功 '+successes.length+' / 失败 '+failures.length+' · 点击“展开”查看K线、操作说明和收益曲线'+downloads+'</span></div><div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>股票</th><th>类型</th><th>策略收益</th><th>买入持有</th><th>超额收益</th><th>最大回撤</th><th>交易数</th><th>操作</th></tr></thead><tbody>'+successes.map((item,index)=>{
     const r=item.result||{}; const excess=(Number(r.total_return||0)-Number(r.buy_hold_return||0)); const id=batchDetailId(item.code);
      const tradeCount=Number(r.trade_count||r.trades?.length||0); const tradeLabel=tradeCount?'交易 '+tradeCount+' 笔':'当前区间无成交';
      return '<tr><td><b>'+item.name+'</b><br><small>'+item.code+'</small></td><td>'+typeLabels[item.stock_type]+'</td><td>'+(Number(r.total_return||0)>=0?'+':'')+Number(r.total_return||0).toFixed(2)+'%</td><td>'+(Number(r.buy_hold_return||0)>=0?'+':'')+Number(r.buy_hold_return||0).toFixed(2)+'%</td><td>'+(excess>=0?'+':'')+excess.toFixed(2)+'%</td><td>'+Number(r.max_drawdown||0).toFixed(2)+'%</td><td>'+tradeLabel+'</td><td><button type="button" class="ui-button ui-button-secondary ui-button-sm" onclick="toggleBatchDetail(\''+id+'\')">展开</button></td></tr><tr id="'+id+'" class="batch-detail"><td colspan="8" class="batch-detail-cell"><div class="batch-detail-content"></div></td></tr>';
@@ -552,7 +554,7 @@ function pollAnalysisTask(url) {
       loadingFill.style.width = `${Math.max(0, Math.min(100, Number(task.progress) || 0))}%`;
       if (task.status === 'success') {
         loading.style.display = 'none';
-        if (task.result && task.result.batch) renderBatchResults({result: task.result});
+        if (task.result && task.result.batch) renderBatchResults({result: task.result, task_id: task.task_id});
         else renderResults({result: task.result});
         return;
       }

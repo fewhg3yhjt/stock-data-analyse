@@ -4,8 +4,10 @@
 """
 
 import json
+import io
 import logging
 import os
+import sqlite3
 from urllib.parse import urlparse
 import sys
 import threading
@@ -77,8 +79,6 @@ def _analysis_db_path() -> str:
 
 def _latest_stock_daily_pass_date() -> str | None:
     """Return the end date of the newest PASS Published stock_daily month."""
-    import sqlite3
-
     from StockInvestmentTool.warehouse import Warehouse
 
     try:
@@ -158,6 +158,59 @@ def _get_analysis_task(task_id: str) -> dict | None:
             return d
     except Exception:
         return None
+
+
+@web_app.route("/api/simulation/batch/<task_id>/csv", methods=["GET"])
+def api_simulation_batch_csv(task_id):
+    """Download a completed batch simulation result as UTF-8 CSV."""
+    kind = (flask.request.args.get("kind") or "summary").strip().lower()
+    if kind not in {"summary", "trades", "events", "kline"}:
+        return flask.jsonify({"status": "error", "error": "CSV 类型仅支持 summary、trades、events、kline"}), 400
+    task = _get_analysis_task(task_id)
+    if not task or task.get("status") != "success" or not task.get("result"):
+        return flask.jsonify({"status": "error", "error": "模拟任务尚未成功完成或结果不存在"}), 404
+    batch = task["result"]
+    rows = []
+    for item in batch.get("items", []):
+        result = item.get("result") or {}
+        if kind == "summary":
+            row = {"股票": item.get("name"), "代码": item.get("code"), "证券类型": item.get("stock_type"),
+                   "策略收益": result.get("total_return"), "买入持有": result.get("buy_hold_return"),
+                   "最大回撤": result.get("max_drawdown"), "交易数": result.get("trade_count"),
+                   "胜率": result.get("win_rate"), "平均MAE": result.get("avg_mae_pct"),
+                   "平均MFE": result.get("avg_mfe_pct")}
+            rows.append(row)
+        elif kind == "trades":
+            for trade in result.get("trades", []):
+                rows.append({"股票": item.get("name"), "代码": item.get("code"), **trade})
+        elif kind == "events":
+            for event in result.get("events", []):
+                rows.append({"股票": item.get("name"), "代码": item.get("code"), **event})
+        else:
+            dates = result.get("kline_dates", [])
+            ohlc = result.get("kline_ohlc", [])
+            volumes = result.get("kline_vol", [])
+            mas = result.get("kline_ma", {})
+            for index, date in enumerate(dates):
+                candle = ohlc[index] if index < len(ohlc) else []
+                rows.append({"股票": item.get("name"), "代码": item.get("code"), "日期": date,
+                             "开盘": candle[0] if len(candle) > 0 else None,
+                             "收盘": candle[1] if len(candle) > 1 else None,
+                             "最低": candle[2] if len(candle) > 2 else None,
+                             "最高": candle[3] if len(candle) > 3 else None,
+                             "成交量": volumes[index] if index < len(volumes) else None,
+                             "LowMA5": mas.get("lowma5", [None] * len(dates))[index] if index < len(mas.get("lowma5", [])) else None,
+                             "LowMA10": mas.get("lowma10", [None] * len(dates))[index] if index < len(mas.get("lowma10", [])) else None,
+                             "LowMA20": mas.get("lowma20", [None] * len(dates))[index] if index < len(mas.get("lowma20", [])) else None})
+    output = io.StringIO()
+    if rows:
+        import csv
+        writer = csv.DictWriter(output, fieldnames=list(rows[0]), extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    response = flask.Response("\ufeff" + output.getvalue(), mimetype="text/csv; charset=utf-8")
+    response.headers["Content-Disposition"] = f'attachment; filename="simulation_{task_id}_{kind}.csv"'
+    return response
 
 
 def _attach_memory(status: dict, label: str, memory_result: dict) -> None:
