@@ -173,6 +173,8 @@ def test_strategy_simulation_has_unified_lowma_tabs(client):
     assert "交易记录" in page
     assert "事件日志" in page
     assert "/api/simulation/batch/" in page
+    assert "/api/simulation/" in page
+    assert "收益CSV" in page
 
 
 def test_strategy_simulation_lists_lowma_system_strategy(client):

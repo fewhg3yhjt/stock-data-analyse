@@ -555,7 +555,7 @@ function pollAnalysisTask(url) {
       if (task.status === 'success') {
         loading.style.display = 'none';
         if (task.result && task.result.batch) renderBatchResults({result: task.result, task_id: task.task_id});
-        else renderResults({result: task.result});
+        else renderResults({result: task.result, task_id: task.task_id});
         return;
       }
       if (task.status === 'error' || task.status === 'failed') {
@@ -604,6 +604,7 @@ function resetForm() {
 
 function renderResults(data) {
   const d = data.result || data;
+  const taskId = data.task_id || '';
   const fmt = v => v != null ? v : '-';
 
   // 统计卡片
@@ -689,6 +690,12 @@ function renderResults(data) {
   // 图表
   const gallery = document.getElementById('chart-gallery');
   gallery.innerHTML = '';
+  if (taskId) {
+    const exportBox = document.createElement('div');
+    exportBox.className = 'chart-item';
+    exportBox.innerHTML = '<div class="label">数据导出</div><div style="padding:12px;text-align:center"><a class="ui-button ui-button-secondary ui-button-sm" href="/api/simulation/' + encodeURIComponent(taskId) + '/csv?kind=summary">汇总CSV</a> <a class="ui-button ui-button-secondary ui-button-sm" href="/api/simulation/' + encodeURIComponent(taskId) + '/csv?kind=trades">交易CSV</a> <a class="ui-button ui-button-secondary ui-button-sm" href="/api/simulation/' + encodeURIComponent(taskId) + '/csv?kind=kline">K线CSV</a> <a class="ui-button ui-button-secondary ui-button-sm" href="/api/simulation/' + encodeURIComponent(taskId) + '/csv?kind=equity">收益CSV</a></div>';
+    gallery.appendChild(exportBox);
+  }
 
   // 交互式蜡烛图 + 均线 + 成交量 + 买卖点（与持仓页样式一致）
   if (d.kline_dates && d.kline_dates.length && d.kline_ohlc && d.kline_ohlc.length) {

@@ -161,17 +161,24 @@ def _get_analysis_task(task_id: str) -> dict | None:
 
 
 @web_app.route("/api/simulation/batch/<task_id>/csv", methods=["GET"])
+@web_app.route("/api/simulation/<task_id>/csv", methods=["GET"])
 def api_simulation_batch_csv(task_id):
-    """Download a completed batch simulation result as UTF-8 CSV."""
+    """Download a completed single or batch simulation result as UTF-8 CSV."""
     kind = (flask.request.args.get("kind") or "summary").strip().lower()
-    if kind not in {"summary", "trades", "events", "kline"}:
-        return flask.jsonify({"status": "error", "error": "CSV 类型仅支持 summary、trades、events、kline"}), 400
+    if kind not in {"summary", "trades", "events", "kline", "equity"}:
+        return flask.jsonify({"status": "error", "error": "CSV 类型仅支持 summary、trades、events、kline、equity"}), 400
     task = _get_analysis_task(task_id)
     if not task or task.get("status") != "success" or not task.get("result"):
         return flask.jsonify({"status": "error", "error": "模拟任务尚未成功完成或结果不存在"}), 404
     batch = task["result"]
     rows = []
-    for item in batch.get("items", []):
+    items = batch.get("items", []) if batch.get("batch") else [{
+        "name": batch.get("name") or batch.get("stock_name") or batch.get("code") or task.get("code"),
+        "code": batch.get("code") or task.get("code"),
+        "stock_type": batch.get("stock_type"),
+        "result": batch,
+    }]
+    for item in items:
         result = item.get("result") or {}
         if kind == "summary":
             row = {"股票": item.get("name"), "代码": item.get("code"), "证券类型": item.get("stock_type"),
@@ -186,7 +193,7 @@ def api_simulation_batch_csv(task_id):
         elif kind == "events":
             for event in result.get("events", []):
                 rows.append({"股票": item.get("name"), "代码": item.get("code"), **event})
-        else:
+        elif kind == "kline":
             dates = result.get("kline_dates", [])
             ohlc = result.get("kline_ohlc", [])
             volumes = result.get("kline_vol", [])
@@ -202,6 +209,18 @@ def api_simulation_batch_csv(task_id):
                              "LowMA5": mas.get("lowma5", [None] * len(dates))[index] if index < len(mas.get("lowma5", [])) else None,
                              "LowMA10": mas.get("lowma10", [None] * len(dates))[index] if index < len(mas.get("lowma10", [])) else None,
                              "LowMA20": mas.get("lowma20", [None] * len(dates))[index] if index < len(mas.get("lowma20", [])) else None})
+        elif kind == "equity":
+            dates = result.get("equity_dates", [])
+            values = result.get("equity_values", [])
+            curves = result.get("return_curves", {})
+            curve_dates = curves.get("dates", dates)
+            strategy = curves.get("strategy", [])
+            buy_hold = curves.get("buy_hold", [])
+            for index, date in enumerate(curve_dates):
+                rows.append({"股票": item.get("name"), "代码": item.get("code"), "日期": date,
+                             "策略权益": values[index] if index < len(values) else None,
+                             "策略收益率": strategy[index] if index < len(strategy) else None,
+                             "买入持有收益率": buy_hold[index] if index < len(buy_hold) else None})
     output = io.StringIO()
     if rows:
         import csv
@@ -211,6 +230,38 @@ def api_simulation_batch_csv(task_id):
     response = flask.Response("\ufeff" + output.getvalue(), mimetype="text/csv; charset=utf-8")
     response.headers["Content-Disposition"] = f'attachment; filename="simulation_{task_id}_{kind}.csv"'
     return response
+
+
+@web_app.route("/api/portfolio/position/<int:position_id>/returns.csv", methods=["GET"])
+def api_position_returns_csv(position_id):
+    """Download the exact returns series shown in the position returns chart."""
+    try:
+        from StockInvestmentTool.portfolio.dashboard import DashboardService
+        data = DashboardService(_get_manager()).position_returns(position_id)
+        dates = data.get("dates", [])
+        rows = []
+        for index, date in enumerate(dates):
+            rows.append({
+                "日期": date,
+                "实际持仓收益率": data.get("actual", [])[index] if index < len(data.get("actual", [])) else None,
+                "模拟方案收益率": data.get("simulation", [])[index] if index < len(data.get("simulation", [])) else None,
+                "大盘基准收益率": data.get("market", [])[index] if index < len(data.get("market", [])) else None,
+                "买入持有收益率": data.get("buy_hold", [])[index] if index < len(data.get("buy_hold", [])) else None,
+            })
+        output = io.StringIO()
+        if rows:
+            import csv
+            writer = csv.DictWriter(output, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        response = flask.Response("\ufeff" + output.getvalue(), mimetype="text/csv; charset=utf-8")
+        response.headers["Content-Disposition"] = f'attachment; filename="position_{position_id}_returns.csv"'
+        return response
+    except ValueError as exc:
+        return flask.jsonify({"status": "error", "error": str(exc)}), 404
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("持仓收益 CSV 导出失败")
+        return flask.jsonify({"status": "error", "error": str(exc)}), 500
 
 
 def _attach_memory(status: dict, label: str, memory_result: dict) -> None:
