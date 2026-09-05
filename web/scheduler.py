@@ -18,7 +18,7 @@
 import logging
 import os
 import threading
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import pandas as pd
@@ -203,74 +203,93 @@ def run_warehouse_daily() -> dict:
     return result
 
 
-def run_daily_data_pipeline(run_id: int | None = None) -> dict:
-    """Run the warehouse chain independently from portfolio reporting."""
-    from StockInvestmentTool.ops.job_runs import JobRunStore
+DAILY_DATA_CHAIN = [
+    "stock_daily_capture", "stock_daily_build", "stock_daily_quality",
+    "stock_daily_publish", "indicators_build",
+]
 
-    store = JobRunStore()
-    run_date = datetime.now().strftime("%Y-%m-%d")
-    owns_run = run_id is None
-    run_id = run_id or store.start("daily_sync", display_name="日线增量同步",
-                                   scheduled_at=os.getenv("DAILY_RUN_TIME", DEFAULT_RUN_TIME),
-                                    input_dataset="source", output_dataset="daily")
-    store.link_plan_run(run_date, "daily_sync", run_id)
-    result = {}
+
+def _latest_closed_trade_date() -> date:
+    from StockInvestmentTool.ops.trade_calendar import expected_trade_day_for_job, now_shanghai
+
+    return expected_trade_day_for_job(now_shanghai())
+
+
+def _published_daily_dates(*, start: date, end: date) -> list[str]:
+    """Find missing dates in a bounded recent published window.
+
+    This only reads Published Dataset files. It never starts collection and is
+    deliberately bounded so a first-time installation cannot become a history
+    backfill by accident.
+    """
+    from StockInvestmentTool.warehouse.datasets import DatasetAccess
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    dates = []
+    cursor = start
+    access = DatasetAccess(Warehouse())
+    while cursor <= end:
+        day = cursor.isoformat()
+        if _is_trade_day(cursor):
+            try:
+                result = access.load_dataset("stock_daily", start_date=day,
+                                            end_date=day, required_quality="WARNING")
+                if result.data is None or result.data.empty:
+                    dates.append(day)
+            except Exception:
+                dates.append(day)
+        cursor += timedelta(days=1)
+    return dates
+
+
+def _is_trade_day(day: date) -> bool:
+    from StockInvestmentTool.ops.trade_calendar import is_trade_day
+
+    return is_trade_day(day)
+
+
+def daily_data_gap_dates(*, target: date | None = None, lookback_days: int = 10) -> list[str]:
+    """Return recent missing published trading dates, oldest first."""
+    target = target or _latest_closed_trade_date()
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    warehouse = Warehouse()
     try:
-        from StockInvestmentTool.warehouse.collector import MarketCollector
-        from StockInvestmentTool.warehouse.indicators_build import IndicatorsBuilder
+        with warehouse._conn() as conn:
+            row = conn.execute(
+                "SELECT MAX(v.max_date) FROM dataset_current c "
+                "JOIN dataset_versions v ON v.version_id=c.version_id "
+                "WHERE c.dataset_name='stock_daily'"
+            ).fetchone()
+        latest = pd.to_datetime(row[0], errors="coerce") if row and row[0] else pd.NaT
+    except Exception:
+        latest = pd.NaT
 
-        def progress(processed, total, current, phase):
-            store.update_progress(run_id, phase=phase,
-                                  progress=round(processed / total * 100) if total else 0,
-                                  processed=processed, total=total, current_item=current)
+    if pd.isna(latest):
+        return [target.isoformat()]
 
-        # Scheduled collection is an incremental daily job. Historical
-        # backfills must use an explicit, operator-supplied date range.
-        start_date = run_date
-        end_date = run_date
-        child_statuses = []
-        store.update_progress(run_id, phase="获取股票清单", progress=1)
-        result["daily"] = MarketCollector().sync_daily(
-            start_date=start_date, end_date=end_date, include_etf=True,
-            include_index=False, source="tencent", progress_callback=progress,
-            job_run_id=run_id,
-            timeout=_daily_timeout(),
-        )
-        if os.getenv("WAREHOUSE_PIPELINE_BUILD") == "1" and result["daily"].get("source_batch_id"):
-            result["published_daily"] = publish_daily_batch(result["daily"]["source_batch_id"], run_id)
-        if _has_enabled_auxiliary_tasks():
-            result["auxiliary"] = run_auxiliary_data_pipeline(parent_run_id=run_id)
-        daily_status = store.result_status(result["daily"])
-        child_statuses.append(daily_status)
-        if daily_status in {"failed", "timeout"}:
-            raise RuntimeError("日线同步未产生有效产出")
-        store.update_progress(run_id, phase="日线完成，开始重建指标", progress=33,
-                              processed=1, total=2)
-        indicator_id = store.start("rebuild_indicators", display_name="指标重建",
-                                   input_dataset="daily", output_dataset="indicators",
-                                   parent_run_id=run_id)
-        store.link_plan_run(run_date, "rebuild_indicators", indicator_id)
-        try:
-            result["indicators"] = IndicatorsBuilder(allow_legacy=False).build_all(progress_callback=lambda p, t, c, s: (store.update_progress(indicator_id, phase=s, progress=round(p / t * 100) if t else 0, processed=p, total=t, current_item=c), store.update_progress(run_id, phase="重建指标", progress=33 + round((p / t * 100) * 0.67) if t else 33, processed=p, total=t, current_item=c)))
-            indicator_status = store.result_status(result["indicators"])
-            child_statuses.append(indicator_status)
-            store.finish(indicator_id, indicator_status, result["indicators"])
-        except Exception as exc:
-            if store.get(indicator_id).get("status") == "running":
-                store.finish(indicator_id, "failed", error=str(exc))
-            child_statuses.append("failed")
-            raise
-        parent_status = ("failed" if "failed" in child_statuses else
-                         "partial_success" if "partial_success" in child_statuses else
-                         "skipped" if all(s == "skipped" for s in child_statuses) else "success")
-        store.update_progress(run_id, phase="完成", progress=100)
-        if store.get(run_id).get("status") == "running":
-            store.finish(run_id, parent_status, result)
-        return result
-    except Exception as exc:
-        if store.get(run_id) and store.get(run_id).get("status") == "running":
-            store.finish(run_id, "failed", result=result, error=str(exc))
-        raise
+    # Scan a small recent window as well as everything after the published
+    # watermark, catching an internal hole in an otherwise newer partition.
+    start = min(target - timedelta(days=lookback_days), latest.date() + timedelta(days=1))
+    return _published_daily_dates(start=start, end=target)
+
+
+def run_daily_data_chain(*, dates: list[str] | None = None) -> dict:
+    """Run the sole task-center daily data chain for identified trade dates."""
+    from StockInvestmentTool.ops.task_execution import execute_pipeline
+    from StockInvestmentTool.ops.task_center import management_db_path
+
+    target_dates = dates or daily_data_gap_dates()
+    runs = []
+    for trade_date in target_dates:
+        runs.append(execute_pipeline(
+            management_db_path(), DAILY_DATA_CHAIN,
+            {"trigger_type": "scheduled", "requested_by": "scheduler",
+             "period_start": trade_date, "period_end": trade_date,
+             "task_timeout": _daily_timeout()},
+        ))
+    return {"dates": target_dates, "runs": runs,
+            "status": runs[-1]["status"] if runs else "skipped"}
 
 
 def run_auxiliary_data_pipeline(parent_run_id: int | None = None) -> dict:
@@ -351,31 +370,6 @@ def _task_schedule_enabled(configured: dict[str, dict], task_key: str) -> bool:
     return bool((item.get("schedule") or {}).get("enabled", False))
 
 
-def publish_daily_batch(batch_id: str, job_run_id: int | None = None) -> dict:
-    """Build, validate and publish one Tencent Raw Batch behind an opt-in flag."""
-    from StockInvestmentTool.warehouse.daily_build import DailyBuilder
-    from StockInvestmentTool.warehouse.pipeline_state import PipelineState
-    from StockInvestmentTool.warehouse.publish import Publisher
-    from StockInvestmentTool.warehouse.quality import check_stock_daily
-    from StockInvestmentTool.warehouse.storage import Warehouse
-    warehouse = Warehouse()
-    with warehouse._conn() as conn:
-        row = conn.execute("SELECT raw_path FROM source_batches WHERE batch_id=?", (batch_id,)).fetchone()
-    if not row or not row[0]:
-        raise RuntimeError(f"Raw Batch 文件不存在: {batch_id}")
-    raw_path = Path(row[0])
-    partition = str(pd.Timestamp(pd.read_parquet(raw_path, columns=["date"])["date"].max()).strftime("%Y-%m"))
-    build = DailyBuilder(warehouse).build_partition(partition, [("tencent", raw_path)])
-    state = PipelineState(warehouse.meta_db_path)
-    version = state.create_version(build, source_batches=[batch_id], input_versions={})
-    quality = check_stock_daily(build["path"], expected_symbols=None)
-    state.quality(version, status=quality["status"], checks=quality["checks"], publish_allowed=quality["publish_allowed"])
-    if not quality["publish_allowed"]:
-        return {"version_id": version, "quality": quality, "published": False, "job_run_id": job_run_id}
-    published = Publisher(warehouse).publish(version)
-    return {"version_id": version, "quality": quality, "published": published, "job_run_id": job_run_id}
-
-
 def init_scheduler(app) -> None:
     """创建并启动 APScheduler（单容器方案：web 进程内定时任务）。"""
     startup_boundary = datetime.now()
@@ -446,6 +440,15 @@ def init_scheduler(app) -> None:
         logger.info("盘中分钟数据已启动: 每 1 分钟，观察池范围")
     elif os.getenv("WAREHOUSE_ONLINE_SNAPSHOT") == "1":
         logger.info("在线快照已忽略：分钟采集优先")
+
+    if os.getenv("ITICK_WATCHPOOL_ENABLED") == "1":
+        for index, trigger in enumerate(_market_session_minute_trigger()):
+            scheduler.add_job(
+                run_itick_watchpool_job, trigger,
+                id=f"itick_watchpool_{index}", misfire_grace_time=600,
+                coalesce=True, max_instances=1,
+            )
+        logger.info("iTick 独立观察池分钟捞取已启动: 每轮最多 4 只，串行限速")
 
     # 通知触发器（FR-3.4 免重启：按触发器配置挂载，保存后重挂即可）
     _schedule_from_triggers(scheduler)
@@ -533,18 +536,19 @@ def _schedule_configured_data_tasks(scheduler) -> None:
     from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
 
     def run_task(task_key):
-        from StockInvestmentTool.ops.task_execution import execute_task, execute_pipeline
-        trading_date = _today_text()
+        from StockInvestmentTool.ops.task_execution import execute_pipeline, execute_task
+        trading_date = _latest_closed_trade_date().isoformat()
         payload = {
             "trigger_type": "scheduled", "requested_by": "scheduler",
             "period_start": trading_date, "period_end": trading_date,
         }
         if task_key == "stock_daily_capture":
             payload["task_timeout"] = _daily_timeout()
-            configured_keys = TaskCenter(management_db_path()).active_configs()
+            return run_daily_data_chain()
         elif task_key == "valuation_capture":
             # 估值是全市场逐只串行，设置批次超时，避免阻塞 web worker。
             payload["task_timeout"] = _daily_timeout()
+            configured_keys = TaskCenter(management_db_path()).active_configs()
             chain = [key for key in ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
                                      "stock_daily_publish", "indicators_build")
                      if (configured_keys.get(key) or {}).get("enabled")]
@@ -626,32 +630,6 @@ def _recover_stale_task_state(*, before: datetime | None = None) -> int:
     return recovered
 
 
-def _dataset_released(dataset_name: str, target_date: str) -> bool:
-    """Return whether the dataset already has a published row for target_date.
-
-    Only the current published version matters; candidate/failed versions are
-    ignored so a retry is idempotent.
-    """
-    from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
-    from StockInvestmentTool.warehouse.storage import Warehouse
-    try:
-        access = DatasetAccess(Warehouse())
-        current = access.get_current_version(dataset_name)
-        if not current:
-            return False
-        frame = access.load_dataset(dataset_name, start_date=target_date,
-                                    end_date=target_date, required_quality="WARNING").data
-        if frame is None or frame.empty:
-            return False
-        date_col = "date" if "date" in frame.columns else ("trading_date" if "trading_date" in frame.columns else None)
-        if not date_col:
-            return True
-        import pandas as pd
-        return pd.to_datetime(frame[date_col], errors="coerce").max().strftime("%Y-%m-%d") >= target_date
-    except (DatasetAccessError, Exception):  # noqa: BLE001
-        return False
-
-
 def run_post_close_retry_job() -> dict:
     """封盘后按小时重试未完成的采集链，直到发布成功或当天下线。
 
@@ -659,31 +637,29 @@ def run_post_close_retry_job() -> dict:
     一次失败不抛异常，保持调度器存活，交由下一轮小时触发再试。
     """
     from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
-    from StockInvestmentTool.ops.task_execution import execute_task, execute_pipeline
-    trading_date = _today_text()
+    from StockInvestmentTool.ops.task_execution import execute_task
+    trading_date = _latest_closed_trade_date()
+    trading_date_text = trading_date.isoformat()
     configured = TaskCenter(management_db_path()).active_configs()
-    result = {"date": trading_date, "retried": []}
+    gap_dates = daily_data_gap_dates(target=trading_date)
+    result = {"date": trading_date_text, "gap_dates": gap_dates, "retried": []}
 
     def enabled(key):
         return bool((configured.get(key) or {}).get("enabled"))
 
-    # 日线采集链：st 日线未发布则重试整条链。
-    daily_chain = [k for k in ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
-                               "stock_daily_publish", "indicators_build") if enabled(k)]
-    if daily_chain and not _dataset_released("stock_daily", trading_date):
-        payload = {"trigger_type": "retry", "requested_by": "scheduler",
-                   "period_start": trading_date, "period_end": trading_date,
-                   "task_timeout": _daily_timeout()}
+    # 日线采集链：按缺口最早日期逐个补齐，避免失败日期被自然日滚动遗忘。
+    daily_chain = [key for key in DAILY_DATA_CHAIN if enabled(key)]
+    if daily_chain and gap_dates:
         try:
-            result["daily"] = execute_pipeline(management_db_path(), daily_chain, payload)
-            result["retried"].append("stock_daily_chain")
+            result["daily"] = run_daily_data_chain(dates=gap_dates)
+            result["retried"].extend(gap_dates)
         except Exception as exc:  # noqa: BLE001
             result["daily_error"] = str(exc)
 
     # 同花顺行业指数：当日指数未发布则采集并发布，成功后触发行业特征重建。
-    if enabled("industry_daily_capture") and not _dataset_released("industry_daily", trading_date):
+    if enabled("industry_daily_capture") and not _dataset_released("industry_daily", trading_date_text):
         payload = {"trigger_type": "retry", "requested_by": "scheduler",
-                   "period_start": trading_date, "period_end": trading_date,
+                   "period_start": trading_date_text, "period_end": trading_date_text,
                    "task_timeout": _daily_timeout()}
         try:
             captured = execute_task(management_db_path(), "industry_daily_capture", payload)
@@ -698,23 +674,23 @@ def run_post_close_retry_job() -> dict:
                     Warehouse(meta_db_path=management_db_path()),
                     dataset_name="industry_daily", batch_id=full_result["raw_batch_id"],
                     expected_symbols=full_result.get("expected_symbols"),
-                    partition=trading_date[:7])
+                     partition=trading_date_text[:7])
                 result["industry_daily_publish"] = published
-            if enabled("industry_features_build") and _dataset_released("industry_daily", trading_date):
+            if enabled("industry_features_build") and _dataset_released("industry_daily", trading_date_text):
                 result["industry_features"] = execute_task(
                     management_db_path(), "industry_features_build",
                     {"trigger_type": "retry", "requested_by": "scheduler",
-                     "period_start": trading_date, "period_end": trading_date, "as_of": trading_date})
+                     "period_start": trading_date_text, "period_end": trading_date_text, "as_of": trading_date_text})
                 result["retried"].append("industry_features_build")
         except Exception as exc:  # noqa: BLE001
             result["industry_daily_error"] = str(exc)
-    if (enabled("industry_rotation_build") and _dataset_released("industry_daily", trading_date)
-            and not _dataset_released("industry_rotation_daily", trading_date)):
+    if (enabled("industry_rotation_build") and _dataset_released("industry_daily", trading_date_text)
+            and not _dataset_released("industry_rotation_daily", trading_date_text)):
         try:
             result["industry_rotation"] = execute_task(
                 management_db_path(), "industry_rotation_build",
-                {"trigger_type": "retry", "requested_by": "scheduler",
-                 "period_start": trading_date, "period_end": trading_date, "as_of": trading_date})
+                 {"trigger_type": "retry", "requested_by": "scheduler",
+                  "period_start": trading_date_text, "period_end": trading_date_text, "as_of": trading_date_text})
             result["retried"].append("industry_rotation_build")
         except Exception as exc:  # noqa: BLE001
             result["industry_rotation_error"] = str(exc)
@@ -864,6 +840,19 @@ def run_minute_snapshot_job():
     except Exception as e:
         logger.error("分钟数据任务异常: %s", e)
         JobRunStore().finish(run_id, "failed", error=str(e))
+
+
+def run_itick_watchpool_job():
+    """Standalone iTick watch-pool fetch; bypasses the warehouse minute flow."""
+    try:
+        from StockInvestmentTool.itick_watchpool import collect_watchpool_once
+        result = collect_watchpool_once(
+            batch_size=int(os.getenv("ITICK_WATCHPOOL_BATCH_SIZE", "4")),
+            interval_seconds=float(os.getenv("ITICK_WATCHPOOL_INTERVAL_SECONDS", "15")),
+        )
+        logger.info("iTick 独立观察池分钟捞取: %s", result)
+    except Exception as exc:  # noqa: BLE001 - scheduled collector must not kill scheduler
+        logger.error("iTick 独立观察池分钟捞取异常: %s", exc)
 
 
 def _evaluate_position_runtime() -> dict:

@@ -28,6 +28,7 @@ services:
     volumes:
       - ${STOCK_OUTPUT_DIR:-./output}:/app/StockInvestmentTool/output
       - ./:/app/StockInvestmentTool
+      - /home/ubuntu/.config/itick/api_key:/home/ubuntu/.config/itick/api_key:ro
     restart: unless-stopped
     # Keep a runaway pandas/backtest request from consuming the host memory.
     # The host has 2 GiB and other services run alongside this container.
