@@ -1,0 +1,12 @@
+task:
+  key: valuation_snapshot_capture
+  display_name: 腾讯估值快照采集
+  stage: CAPTURE
+  type: SOURCE_CAPTURE
+  input_datasets: []
+  output_datasets: [valuation_snapshot]
+  producer_metrics: [price, total_mv, pe_ttm_source, pb_source]
+scope: {asset_types: [stock], universe: active}
+schedule: {enabled: false, timezone: Asia/Shanghai, frequency: manual, time: null, period_type: explicit, period_start: null, period_end: null}
+execution: {manual_enabled: true, retry_limit: 2}
+policy: {on_partial_success: continue, on_failure: block_downstream}

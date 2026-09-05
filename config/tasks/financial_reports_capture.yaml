@@ -1,0 +1,12 @@
+task:
+  key: financial_reports_capture
+  display_name: 财务报告采集
+  stage: CAPTURE
+  type: SOURCE_CAPTURE
+  input_datasets: []
+  output_datasets: [financial_reports]
+  producer_metrics: [revenue, net_profit_parent, parent_equity]
+scope: {asset_types: [stock], universe: active}
+schedule: {enabled: false, timezone: Asia/Shanghai, frequency: manual, time: null, period_type: explicit, period_start: null, period_end: null}
+execution: {manual_enabled: true, retry_limit: 2}
+policy: {on_partial_success: continue, on_failure: block_downstream}

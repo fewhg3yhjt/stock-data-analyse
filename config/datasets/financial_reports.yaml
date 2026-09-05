@@ -1,0 +1,26 @@
+dataset:
+  name: financial_reports
+  display_name: 财务报告
+  description: 新浪旧版三表关键字段及披露信息
+  grain: 一个证券一个报告期一个报表类型
+  primary_keys: [report_date, code, statement_type]
+  partition: {type: month, path: "warehouse/raw/financial_reports/{partition}.parquet"}
+  update_frequency: 财报披露后更新
+  schema_version: financial_reports.v1
+fields:
+  - {name: report_date, display_name: 报告期, data_type: date, nullable: false, primary_key: true}
+  - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
+  - {name: statement_type, display_name: 报表类型, data_type: string, nullable: false, primary_key: true}
+  - {name: revenue, display_name: 营业收入, data_type: float, nullable: true}
+  - {name: net_profit_parent, display_name: 归母净利润, data_type: float, nullable: true}
+  - {name: parent_equity, display_name: 归母权益, data_type: float, nullable: true}
+  - {name: financial_publish_date, display_name: 披露日期, data_type: date, nullable: true}
+  - {name: source, display_name: 来源, data_type: string, nullable: false}
+  - {name: source_url, display_name: 来源地址, data_type: string, nullable: true}
+  - {name: unit, display_name: 单位, data_type: string, nullable: false}
+  - {name: captured_at, display_name: 采集时间, data_type: datetime, nullable: false}
+sources:
+  - {name: sina_financial_html, role: primary, priority: 1, field_mapping: {}, unit_conversions: {万元: 元}}
+consumers:
+  - {name: valuation_builder, type: research, purpose: 估值计算, required_quality: WARNING, fallback_policy: no_fallback, blocked_actions: 正式决策}
+quality: {publish_warning: true, coverage: {pass_min: 0.98, warning_min: 0.95}}

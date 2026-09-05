@@ -1,0 +1,12 @@
+task:
+  key: financial_reports_publish
+  display_name: 财务报告发布
+  stage: PUBLISH
+  type: DATA_PUBLISH
+  input_datasets: [financial_reports]
+  output_datasets: [financial_reports]
+  producer_metrics: []
+scope: {asset_types: [stock], universe: active}
+schedule: {enabled: false, timezone: Asia/Shanghai, frequency: after_upstream, time: null, period_type: explicit, period_start: null, period_end: null}
+execution: {manual_enabled: true, retry_limit: 1}
+policy: {on_partial_success: block_downstream, on_failure: block_downstream}

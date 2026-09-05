@@ -1,21 +1,41 @@
 dataset:
   name: valuation_daily
   display_name: 日度估值
-  description: 证券每日 PE/PB 估值数据
+  description: 证券每日估值快照与财务派生估值数据
   grain: 一个证券的一个交易日
   primary_keys: [date, code]
   partition:
     type: month
     path: "warehouse/raw/valuation/{partition}.parquet"
   update_frequency: 交易日收盘后
-  schema_version: valuation_daily.v1
+  schema_version: valuation_daily.v2
 fields:
   - {name: date, display_name: 交易日期, data_type: date, nullable: false, primary_key: true}
   - {name: code, display_name: 证券代码, data_type: string, nullable: false, primary_key: true}
-  - {name: pe_ttm, display_name: 市盈率TTM, data_type: float, nullable: true}
-  - {name: pb_mrq, display_name: 市净率MRQ, data_type: float, nullable: true}
+  - {name: price, display_name: 收盘价, data_type: float, nullable: true}
+  - {name: total_mv, display_name: 总市值, data_type: float, nullable: true}
+  - {name: circ_mv, display_name: 流通市值, data_type: float, nullable: true}
+  - {name: pe_ttm_source, display_name: 源市盈率TTM, data_type: float, nullable: true}
+  - {name: pb_source, display_name: 源市净率, data_type: float, nullable: true}
+  - {name: pe_ttm_calc, display_name: 自算市盈率TTM, data_type: float, nullable: true}
+  - {name: pb_calc, display_name: 自算市净率, data_type: float, nullable: true}
+  - {name: ps_ttm_calc, display_name: 自算市销率TTM, data_type: float, nullable: true}
+  - {name: revenue_ttm, display_name: 营业收入TTM, data_type: float, nullable: true}
+  - {name: net_profit_ttm, display_name: 归母净利润TTM, data_type: float, nullable: true}
+  - {name: parent_equity, display_name: 归母权益, data_type: float, nullable: true}
+  - {name: profit_growth_yoy, display_name: 净利润同比, data_type: float, nullable: true}
+  - {name: profit_cagr_3y, display_name: 净利润三年复合增长, data_type: float, nullable: true}
+  - {name: peg_yoy, display_name: PEG同比, data_type: float, nullable: true}
+  - {name: peg_cagr_3y, display_name: PEG三年复合增长, data_type: float, nullable: true}
+  - {name: financial_report_date, display_name: 财务报告期, data_type: date, nullable: true}
+  - {name: financial_publish_date, display_name: 财务披露日, data_type: date, nullable: true}
+  - {name: price_source, display_name: 价格来源, data_type: string, nullable: true}
+  - {name: financial_source, display_name: 财务来源, data_type: string, nullable: true}
+  - {name: calculated_at, display_name: 计算时间, data_type: datetime, nullable: true}
+  - {name: quality_status, display_name: 质量状态, data_type: string, nullable: true}
+  - {name: quality_reason, display_name: 质量原因, data_type: string, nullable: true}
 sources:
-  - {name: eastmoney, role: primary, priority: 1, field_mapping: {date: date, code: code, pe_ttm: PE(TTM), pb_mrq: 市净率}, unit_conversions: {}}
+  - {name: valuation_builder, role: primary, priority: 1, field_mapping: {}, unit_conversions: {}}
 consumers:
   - {name: stock_research, type: research, purpose: 估值分析, required_quality: WARNING, fallback_policy: explicit_online_only, blocked_actions: 正式决策}
 quality: {publish_warning: true, coverage: {pass_min: 0.98, warning_min: 0.95}}

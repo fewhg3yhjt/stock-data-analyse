@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,6 +22,93 @@ from StockInvestmentTool.warehouse.publish import Publisher
 from StockInvestmentTool.warehouse.quality import check_stock_daily
 from StockInvestmentTool.warehouse.source_capture import capture_frames
 from StockInvestmentTool.warehouse.storage import Warehouse
+
+logger = logging.getLogger(__name__)
+
+
+def _new_source_task(warehouse, request, task_key, run_id):
+    from StockInvestmentTool.warehouse import financial_reports, valuation_snapshot
+    if task_key == "financial_reports_capture":
+        return financial_reports.collect(warehouse, symbols=_symbols(request), start_date=request.get("period_start"),
+                                         end_date=request.get("period_end"), timeout=float(request.get("request_timeout", 15)),
+                                         deadline=float(request["task_timeout"]) if request.get("task_timeout") else None,
+                                         job_run_id=run_id)
+    return valuation_snapshot.collect(warehouse, symbols=_symbols(request), start_date=request.get("period_start"),
+                                      end_date=request.get("period_end"), timeout=float(request.get("request_timeout", 15)),
+                                      deadline=float(request["task_timeout"]) if request.get("task_timeout") else None,
+                                      job_run_id=run_id)
+
+
+def _source_build(warehouse, request, dataset_name):
+    if not request.get("input_batch_id"):
+        raise ValueError(f"{dataset_name}_build requires explicit input_batch_id")
+    path = _batch(warehouse, request["input_batch_id"])
+    default_partition = request.get("period_end") or request.get("period_start")
+    frame = pd.read_parquet(path)
+    if dataset_name == "financial_reports":
+        from StockInvestmentTool.warehouse.financial_reports import normalize_reports
+        frame = normalize_reports(frame)
+        frame["report_date"] = pd.to_datetime(frame["report_date"]).dt.strftime("%Y-%m-%d")
+        partitions = {str(value)[:7] for value in frame["report_date"].dropna()}
+    else:
+        from StockInvestmentTool.warehouse.valuation_snapshot import normalize_quotes
+        frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.strftime("%Y-%m-%d")
+        partitions = {str(value)[:10] for value in frame["trade_date"].dropna()}
+    if not partitions:
+        partitions = {default_partition if dataset_name == "valuation_snapshot" else default_partition[:7]}
+    import hashlib
+    keys = {"financial_reports": ["report_date", "code", "statement_type"], "valuation_snapshot": ["trade_date", "code"]}[dataset_name]
+    versions = {}
+    for partition in sorted(partitions):
+        partition_value = partition if dataset_name == "valuation_snapshot" else partition[:7]
+        part_frame = frame[frame[keys[0]].astype(str).str[:10].eq(partition_value)].drop_duplicates(keys).sort_values(keys).reset_index(drop=True)
+        candidate = warehouse.base_dir / "candidates" / dataset_name / partition
+        candidate.mkdir(parents=True, exist_ok=True)
+        fingerprint = hashlib.sha256(part_frame.to_json(orient="records", date_format="iso").encode()).hexdigest()
+        output = candidate / f"{dataset_name}_{partition}_{fingerprint[:12]}.parquet"
+        if not output.exists(): part_frame.to_parquet(output, index=False)
+        build = {"version_id": f"{dataset_name}_{partition.replace('-', '')}_{fingerprint[:12]}", "dataset_name": dataset_name,
+                 "partition": partition, "path": output, "row_count": len(part_frame),
+                 "symbol_count": part_frame["code"].nunique(), "checksum": hashlib.sha256(output.read_bytes()).hexdigest()}
+        versions[partition] = PipelineState(warehouse.meta_db_path).create_version(
+            build, source_batches=[request["input_batch_id"]], dataset_name=dataset_name,
+            schema_version=f"{dataset_name}.v1", builder_version=f"{dataset_name}_builder.v1")
+    return {"rows": len(frame), "output_versions": versions, "versions": versions}
+
+
+def _new_quality(warehouse, request, dataset_name):
+    versions = request.get("input_versions") or {}
+    if not versions:
+        raise ValueError(f"{dataset_name}_quality requires explicit input_versions")
+    reports = {}
+    for partition, version in versions.items():
+        with sqlite3.connect(warehouse.meta_db_path) as conn:
+            row = conn.execute("SELECT candidate_path FROM dataset_versions WHERE version_id=? AND dataset_name=?", (version, dataset_name)).fetchone()
+        if not row:
+            raise ValueError(f"版本不存在: {dataset_name}/{version}")
+        frame = pd.read_parquet(row[0])
+        keys = {"financial_reports": ["report_date", "code", "statement_type"], "valuation_snapshot": ["trade_date", "code"]}[dataset_name]
+        if dataset_name == "valuation_snapshot":
+            checks = {
+                "empty": not frame.empty,
+                "required_columns": all(c in frame for c in keys),
+                "duplicate_keys": not frame.duplicated(keys).any() if all(c in frame for c in keys) else False,
+                "valid_dates": bool(pd.to_datetime(frame.get("trade_date"), errors="coerce").notna().all()) if "trade_date" in frame else False,
+                "valid_prices": bool((pd.to_numeric(frame.get("price"), errors="coerce") > 0).all()) if "price" in frame and not frame.empty else False,
+                "core_non_null_rate": float(frame[["trade_date", "code"]].notna().mean().min()) if all(c in frame for c in keys) and not frame.empty else 0.0,
+            }
+        else:
+            checks = {"empty": not frame.empty, "required_columns": all(c in frame for c in keys),
+                      "duplicate_keys": not frame.duplicated(keys).any() if all(c in frame for c in keys) else False,
+                      "valid_dates": bool(pd.to_datetime(frame.get("report_date"), errors="coerce").notna().all()) if "report_date" in frame else False,
+                      "core_non_null_rate": float(frame[["report_date", "code", "statement_type"]].notna().mean().min()) if all(c in frame for c in keys) and not frame.empty else 0.0,
+                      "financial_value_present": bool(frame[["revenue", "net_profit_parent", "parent_equity"]].notna().any(axis=1).all()) if all(c in frame for c in ("revenue", "net_profit_parent", "parent_equity")) and not frame.empty else True}
+        status = "PASS" if all(checks.values()) else "FAIL"
+        PipelineState(warehouse.meta_db_path).quality(version, status=status, checks=checks, publish_allowed=status == "PASS")
+        reports[partition] = {"status": status, "checks": checks, "publish_allowed": status == "PASS"}
+    return {"status": "PASS" if all(x["status"] == "PASS" for x in reports.values()) else "FAIL", "reports": reports,
+            "publish_allowed": all(x["publish_allowed"] for x in reports.values()), "input_versions": versions,
+            "output_versions": versions}
 
 
 def _months(start: str | None, end: str | None) -> list[str]:
@@ -210,6 +298,50 @@ def _auxiliary(warehouse: Warehouse, request: dict, task_key: str) -> dict:
 
 
 def worker(task_key: str, warehouse: Warehouse, request: dict, run_id: int) -> dict:
+    if task_key in {"financial_reports_capture", "valuation_snapshot_capture"}:
+        return _new_source_task(warehouse, request, task_key, run_id)
+    if task_key in {"financial_reports_build", "valuation_snapshot_build"}:
+        return _source_build(warehouse, request, task_key.removesuffix("_build"))
+    if task_key in {"financial_reports_quality", "valuation_snapshot_quality"}:
+        return _new_quality(warehouse, request, task_key.removesuffix("_quality"))
+    if task_key in {"financial_reports_publish", "valuation_snapshot_publish"}:
+        return _publish(warehouse, request)
+    if task_key == "valuation_daily_build":
+        from StockInvestmentTool.warehouse.valuation_build import build_valuation_daily
+        input_versions = request.get("input_versions") or {}
+        if not input_versions.get("financial_reports") or not input_versions.get("valuation_snapshot"):
+            raise ValueError("valuation_daily_build requires explicit financial and snapshot input_versions")
+        from StockInvestmentTool.warehouse.datasets import DatasetAccess
+        start, end = request.get("period_start"), request.get("period_end")
+        financial = DatasetAccess(warehouse).load_dataset("financial_reports", start, end,
+            partition_versions=input_versions["financial_reports"]).data
+        snapshots = DatasetAccess(warehouse).load_dataset("valuation_snapshot", start, end,
+            partition_versions=input_versions["valuation_snapshot"]).data
+        frame = build_valuation_daily(financial, snapshots)
+        if frame.empty:
+            raise ValueError("valuation_daily_build produced no rows")
+        partition = (end or start)[:7]
+        path = warehouse.base_dir / "candidates" / "valuation_daily" / partition / f"valuation_daily_{partition}.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(path, index=False)
+        versions = PipelineState(warehouse.meta_db_path).record_output_versions(
+            dataset_name="valuation_daily", paths={partition: path}, input_dataset="financial_reports",
+            input_versions=input_versions, builder_version="valuation_daily_builder.v1", schema_version="valuation_daily.v2")
+        return {"rows": len(frame), "output_versions": versions, "versions": versions}
+    if task_key == "valuation_daily_quality":
+        from StockInvestmentTool.warehouse.valuation_build import quality_report
+        versions = request.get("input_versions") or {}
+        reports = {}
+        for partition, version in versions.items():
+            with sqlite3.connect(warehouse.meta_db_path) as conn:
+                row = conn.execute("SELECT candidate_path FROM dataset_versions WHERE version_id=?", (version,)).fetchone()
+            if not row: raise ValueError(f"版本不存在: {version}")
+            report = quality_report(pd.read_parquet(row[0]), expected_symbols=request.get("expected_symbols"))
+            PipelineState(warehouse.meta_db_path).quality(version, status=report["status"], checks=report["checks"], publish_allowed=report["publish_allowed"])
+            reports[partition] = report
+        return {"status": "PASS" if all(x["status"] == "PASS" for x in reports.values()) else "WARNING", "reports": reports, "input_versions": versions, "output_versions": versions}
+    if task_key == "valuation_daily_publish":
+        return _publish(warehouse, request)
     if task_key == "stock_daily_capture":
         return _capture(warehouse, request, run_id)
     if task_key == "stock_daily_build":
