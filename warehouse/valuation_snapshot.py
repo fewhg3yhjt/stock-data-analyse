@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import os
 from datetime import datetime
 
 import pandas as pd
@@ -27,22 +28,29 @@ def normalize_quotes(rows, *, trade_date: str, captured_at: str | None = None) -
 
 def collect(warehouse, *, symbols: list[str], start_date: str, end_date: str,
             timeout: float = 15, deadline: float | None = None, batch: int = 60,
-            fetcher=None, job_run_id: int | None = None) -> dict:
+            fetcher=None, job_run_id: int | None = None,
+            query_interval: float | None = None) -> dict:
     if not start_date or not end_date:
         raise ValueError("valuation_snapshot requires explicit start_date and end_date")
     if batch > 60:
         raise ValueError("Tencent batch must be <= 60")
     import requests
     fetcher = fetcher or (lambda url, timeout: requests.get(url, timeout=timeout).text)
+    interval = max(0.0, float(query_interval if query_interval is not None
+                              else os.getenv("TENCENT_QUOTE_QUERY_INTERVAL", "0.5")))
     deadline_at = time.monotonic() + deadline if deadline is not None else None
     rows = []
     failed = []
+    request_count = 0
     for i in range(0, len(symbols), batch):
         if deadline_at is not None and time.monotonic() >= deadline_at:
             failed.extend(symbols[i:]); break
         chunk = symbols[i:i + batch]
         try:
+            if request_count:
+                time.sleep(interval)
             text = fetcher("https://qt.gtimg.cn/q=" + ",".join(chunk), timeout)
+            request_count += 1
             rows.extend(parsed for line in text.splitlines() if (parsed := _parse_tencent_line(line)))
         except Exception as exc:  # noqa: BLE001
             failed.extend(chunk)

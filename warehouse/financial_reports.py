@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+import os
 from datetime import datetime
 from html.parser import HTMLParser
 from urllib.parse import quote
@@ -125,12 +126,16 @@ def normalize_reports(frame: pd.DataFrame) -> pd.DataFrame:
 
 def collect(warehouse, *, symbols: list[str], start_date: str, end_date: str,
             timeout: float = 15, deadline: float | None = None, run_date: str | None = None,
-            fetcher: Callable | None = None, job_run_id: int | None = None) -> dict:
+            fetcher: Callable | None = None, job_run_id: int | None = None,
+            query_interval: float | None = None) -> dict:
     if not start_date or not end_date:
         raise ValueError("financial_reports requires explicit start_date and end_date")
     started = time.monotonic()
     deadline_at = started + deadline if deadline is not None else None
     fetcher = fetcher or _request
+    interval = max(0.0, float(query_interval if query_interval is not None
+                              else os.getenv("SINA_FINANCIAL_QUERY_INTERVAL", "1.0")))
+    request_count = 0
     frames, failed = [], []
     for code in symbols:
         for statement_type, template in SINA_URLS.items():
@@ -141,7 +146,10 @@ def collect(warehouse, *, symbols: list[str], start_date: str, end_date: str,
             year = pd.Timestamp(end_date).year
             url = template.format(code=quote(digits), year=year)
             try:
+                if request_count:
+                    time.sleep(interval)
                 frame = parse_sina_html(fetcher(url, timeout), code=code, statement_type=statement_type, source_url=url)
+                request_count += 1
                 frame = frame[(frame["report_date"] >= start_date) & (frame["report_date"] <= end_date)] if not frame.empty else frame
                 if frame.empty:
                     failed.append(f"{code}:{statement_type}:empty")
