@@ -40,7 +40,13 @@ class DataCenterService:
 
     def assets(self, category=None, status=None, date=None) -> list[dict]:
         records = self.center.data_assets(category=category, status=status, date=date)
-        return [self._asset_dto(record) for record in records]
+        items = [self._asset_dto(record) for record in records]
+        status_rank = {"critical": 0, "failed": 0, "stale": 1, "partial": 1, "unknown": 2, "healthy": 3}
+        return sorted(items, key=lambda item: (
+            status_rank.get(item["health"]["status"], 2),
+            item.get("latest_actual_date") or "0000-00-00",
+            item.get("display_name") or "",
+        ))
 
     def asset(self, asset_key: str) -> dict | None:
         item = next((record for record in self.assets() if record["asset_key"] == asset_key), None)
@@ -112,6 +118,7 @@ class DataCenterService:
         health_status = record.get("health_status")
         if not health_status and record.get("metric_key"):
             health_status = "healthy" if record.get("latest_period") else "unknown"
+        period = "交易日" if record.get("producer_task") in {"stock_daily_capture", "indicators_build"} or record["metric_key"] in {"stock_daily", "indicators"} else "按来源更新"
         return {"asset_key": record["metric_key"], "display_name": record["display_name"],
                 "kind": "dataset" if record.get("category") == "数据集" else "metric",
                 "category": record.get("category") or "数据集", "definition": record.get("definition"),
@@ -120,8 +127,9 @@ class DataCenterService:
                 "latest_actual_date": record.get("latest_period"), "expected_date": record.get("expected_period"),
                  "health": {"status": health_status or "unknown", "message": record.get("message") or "",
                            "last_success_at": record.get("last_success_at")},
-                "coverage": {"covered": record.get("covered_objects"), "expected": record.get("expected_objects"),
-                             "ratio": record.get("coverage"), "by_asset_type": by_type},
+                 "coverage": {"covered": record.get("covered_objects"), "expected": record.get("expected_objects"),
+                              "ratio": record.get("coverage"), "by_asset_type": by_type},
+                 "period": period,
                 "updated_at": record.get("updated_at"),
                 "latest_actual_date": record.get("latest_period"),
                 "expected_date": record.get("expected_period")}

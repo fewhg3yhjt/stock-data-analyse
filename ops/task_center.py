@@ -611,21 +611,53 @@ class TaskCenter:
                     asset["health_status"] = "healthy" if current[1] in ("PASS", "WARNING") else "critical"
                     asset["message"] = f"当前版本 {current[3]} 行"
             metric_dataset = {
+                "close": "stock_daily", "volume": "stock_daily", "amount": "stock_daily",
                 "pe_ttm": "valuation_daily", "pb_mrq": "valuation_daily",
                 "roe": "fundamentals", "money_flow_net": "money_flow_daily",
             }
+            metric_dataset.update({key: "indicators" for key in {
+                "ma5", "ma10", "ma20", "ma60", "ma120", "ma240", "ma17", "ma63", "rsi14", "macd",
+                "volatility20", "volatility_20", "atr14", "change_amount", "amplitude", "vol_ma5", "low_3m",
+                "year_low", "pct_chg", "vol_ratio", "ret_5d", "ret_20d", "high_20d", "low_20d", "bias_ratio",
+                "take_profit_reference", "dual_ma_low", "amplitude_abs", "custom_example",
+            }})
             dataset_health = {item["metric_key"]: item for item in assets[-len(datasets):]} if datasets else {}
+            published_facts = {}
+            for dataset_name in {item["metric_key"] for item in assets[-len(datasets):]} if datasets else set():
+                rows = conn.execute(
+                    """SELECT v.max_date, v.quality_status, v.published_at, v.row_count, v.symbol_count
+                       FROM dataset_current c JOIN dataset_versions v ON v.version_id=c.version_id
+                       WHERE c.dataset_name=? AND v.publish_status='published'
+                       ORDER BY v.max_date DESC, c.partition_key DESC""", (dataset_name,)
+                ).fetchall()
+                if rows:
+                    latest = rows[0]
+                    published_facts[dataset_name] = {
+                        "latest_period": latest[0], "quality_status": latest[1],
+                        "published_at": latest[2], "covered_objects": latest[4],
+                    }
             for asset in assets:
                 dataset_name = metric_dataset.get(asset.get("metric_key"))
-                dataset = dataset_health.get(dataset_name)
-                if dataset and not asset.get("health_status") and dataset.get("health_status"):
-                    asset["health_status"] = dataset["health_status"]
-                    asset["latest_period"] = dataset.get("latest_period")
-                    asset["last_success_at"] = dataset.get("last_success_at")
-                    asset["covered_objects"] = dataset.get("covered_objects")
-                    asset["expected_objects"] = dataset.get("expected_objects")
-                    asset["coverage"] = dataset.get("coverage")
-                    asset["message"] = f"关联数据集 {dataset_name}"
+                fact = published_facts.get(dataset_name)
+                if fact:
+                    asset["latest_period"] = fact["latest_period"]
+                    asset["last_success_at"] = fact["published_at"]
+                    asset["covered_objects"] = fact["covered_objects"]
+                    asset["expected_objects"] = fact["covered_objects"]
+                    asset["coverage"] = 1.0
+                    asset["health_status"] = "healthy" if fact["quality_status"] in ("PASS", "WARNING") else "critical"
+                    asset["message"] = f"Published {dataset_name} · {fact['quality_status']}"
+                elif dataset_name:
+                    dataset = dataset_health.get(dataset_name)
+                    if dataset and not asset.get("health_status") and dataset.get("health_status"):
+                        asset["health_status"] = dataset["health_status"]
+                        asset["latest_period"] = dataset.get("latest_period")
+                        asset["last_success_at"] = dataset.get("last_success_at")
+                        asset["covered_objects"] = dataset.get("covered_objects")
+                        asset["expected_objects"] = dataset.get("expected_objects")
+                        asset["coverage"] = dataset.get("coverage")
+                        asset["message"] = f"关联数据集 {dataset_name}"
+            assets = [item for item in assets if item.get("metric_key") != "volatility20"]
         if category:
             assets = [item for item in assets if item.get("category") == category]
         if status:
