@@ -39,7 +39,7 @@ def _pct_rank(series: pd.Series, ascending: bool = False) -> pd.Series:
     return series.rank(method="average", ascending=ascending, pct=True).mul(100)
 
 
-def _cross_sectional_rank(frame: pd.DataFrame, field: str, *, ascending: bool = False) -> pd.Series:
+def _cross_sectional_rank(frame: pd.DataFrame, field: str, *, ascending: bool = True) -> pd.Series:
     """Rank a metric within each close date, never across future dates."""
     return frame.groupby("date")[field].transform(
         lambda values: _pct_rank(values, ascending=ascending)
@@ -171,7 +171,10 @@ class IndustryRotationBuilder:
         boards["outperform_1d"] = boards["return_1d"] > boards["market_return_1d"]
         boards["outperform_days_3d"] = boards.groupby("industry_id")["outperform_1d"].transform(lambda s: s.rolling(3, min_periods=3).sum())
         boards["outperform_days_5d"] = boards.groupby("industry_id")["outperform_1d"].transform(lambda s: s.rolling(5, min_periods=5).sum())
-        boards["rank_strength_pct"] = 100 - _cross_sectional_rank(boards, "rank_5d", ascending=False)
+        # ``rank_5d`` is already a rank where 1 is best. Ascending percentile
+        # therefore makes rank 1 the lowest percentile, which we invert to a
+        # strength percentile near 100.
+        boards["rank_strength_pct"] = 100 - _cross_sectional_rank(boards, "rotation_rank", ascending=True)
         boards["relative_return_5d_pct"] = _cross_sectional_rank(boards, "rs_5")
         boards["relative_return_10d"] = boards["return_10d"] - boards["market_return_10d"]
         boards["relative_return_10d_pct"] = _cross_sectional_rank(boards, "relative_return_10d")
