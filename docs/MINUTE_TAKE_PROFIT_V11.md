@@ -39,3 +39,5 @@ POSITION_V11_VOLUME_SURGE_RATIO=1.8
 腾讯分钟任务成功落盘后，现有 `PositionRuntimeService.evaluate_all()` 被调用。V11 在同一次持仓评估中读取当天分钟文件，更新 `position_runtime_states.data_context_json`，并在状态首次进入 `TAKE_PROFIT_PENDING`、`TAKE_PROFIT` 或 `STOP_LOSS` 时通过通知 outbox 生成通知。
 
 V11 不读取 iTick 文件，不写 MinuteStore 以外的数据，不接入 Published Dataset，不改变真实持仓。
+
+邮件订阅规则 `notification_minute_take_profit_v11` 已开启，使用 `.env` 的 `EMAIL_TO`，事件进入现有 notification outbox 后由 outbox worker 异步投递。

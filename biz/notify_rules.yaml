@@ -99,6 +99,16 @@ rules:
   schedule: {}
   channel: email
   priority: instant
+- id: notification_minute_take_profit_v11
+  name: 分钟级止盈 V11
+  enabled: true
+  kind: notification_subscription
+  event_type: MINUTE_TAKE_PROFIT_V11
+  conditions: []
+  logic: AND
+  schedule: {}
+  channel: email
+  priority: instant
 - id: notification_position_price
   name: 持仓目标价提醒
   enabled: false
