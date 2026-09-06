@@ -14,26 +14,9 @@ async function loadAssets(){const category=document.getElementById('asset-catego
 async function openAsset(key){const d=await (await fetch('/api/data-center/assets/'+encodeURIComponent(key))).json();if(d.status!=='success')return;const x=d.asset||{},c=x.coverage||{};document.getElementById('drawer-title').textContent=x.display_name||key;document.getElementById('drawer-sub').textContent=(x.category||'数据项')+' · '+key;document.getElementById('asset-detail').innerHTML=`<div class="dm-detail"><section class="dm-detail-section"><h3>定义与统一口径</h3><dl class="dm-kv"><dt>定义</dt><dd>${esc(x.definition||'暂无')}</dd><dt>单位</dt><dd>${esc(x.unit||'—')}</dd><dt>关联任务</dt><dd>${esc(x.producer_task||'—')}</dd></dl></section><section class="dm-detail-section"><h3>健康情况</h3><dl class="dm-kv"><dt>状态</dt><dd>${health(x.health?.status)}</dd><dt>最新实际日期</dt><dd>${esc(x.latest_actual_date||'暂无')}</dd><dt>覆盖</dt><dd>${c.covered==null?'暂无覆盖数据':`${c.covered} / ${c.expected??'—'} (${(c.ratio*100).toFixed(1)}%)`}</dd><dt>说明</dt><dd>${esc(x.health?.message||'—')}</dd></dl></section><section class="dm-detail-section"><h3>证券类型适用性</h3><div class="dm-type-grid">${Object.entries(x.applicability||{}).map(([k,v])=>`<div class="dm-type ${v==='not_applicable'?'na':''}"><span>${esc(k==='stock'?'股票':k==='etf'?'ETF':'指数')}</span><b>${esc(v==='required'?'必须':v==='optional'?'可选':'不适用')}</b></div>`).join('')||'<div class="dm-muted">暂无类型信息</div>'}</div></section></div>`;document.getElementById('asset-mask').classList.add('open')}
 function closeAsset(){document.getElementById('asset-mask').classList.remove('open')}loadAssets();
 </script><script>
-  const _assetRender = renderAssets;
   const head = document.querySelector('#asset-list')?.closest('table')?.querySelector('thead tr');
   if (head && !head.querySelector('[data-period-col]')) {
     const th = document.createElement('th'); th.dataset.periodCol = '1'; th.textContent = '数据周期';
     head.insertBefore(th, head.children[2]);
   }
-  renderAssets = function(){
-    _assetRender();
-    document.querySelectorAll('#asset-list tr[data-key]').forEach(row => {
-      const item = assets.find(x => x.asset_key === row.dataset.key);
-      if (!item) return;
-      const cells = row.querySelectorAll('td');
-      if (cells.length >= 6) {
-        const period = document.createElement('td');
-        period.textContent = item.period || '按来源更新';
-        row.insertBefore(period, cells[2]);
-      }
-    });
-  };
-  const _assetLoad = loadAssets;
-  loadAssets = async function(){ await _assetLoad(); renderAssets(); };
-  renderAssets();
 </script><script src="{{ static_asset('data-assets-admin.js') }}"></script>{% endblock %}
