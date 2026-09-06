@@ -6,6 +6,7 @@
 import json
 import io
 import logging
+import math
 import os
 import sqlite3
 from urllib.parse import urlparse
@@ -39,7 +40,8 @@ def _to_json_safe(obj):
     if isinstance(obj, (np.integer,)):
         return int(obj)
     if isinstance(obj, (np.floating,)):
-        return float(obj)
+        value = float(obj)
+        return value if math.isfinite(value) else None
     if isinstance(obj, (np.bool_,)):
         return bool(obj)
     if isinstance(obj, np.ndarray):
@@ -48,6 +50,8 @@ def _to_json_safe(obj):
         return {k: _to_json_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_to_json_safe(v) for v in obj]
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
     return obj
 
 
@@ -1392,9 +1396,9 @@ def api_watch_pool():
         from StockInvestmentTool.portfolio.dashboard import DashboardService
         from StockInvestmentTool.ops.freshness import quick_daily_status
         refresh = flask.request.args.get("refresh") == "1"
-        return flask.jsonify({"status": "success",
+        return flask.jsonify(_to_json_safe({"status": "success",
                               "data_health": quick_daily_status(),
-                              "items": DashboardService(_get_manager()).watch_pool(refresh=refresh)})
+                              "items": DashboardService(_get_manager()).watch_pool(refresh=refresh)}))
     except Exception as e:
         logger.exception("观察池读取失败")
         return flask.jsonify({"status": "error", "error": str(e)}), 500
