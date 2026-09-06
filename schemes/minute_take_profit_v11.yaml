@@ -1,7 +1,7 @@
 name: "minute_take_profit_v11"
 version: "11.0"
 description: "分钟级趋势止盈 V11：有效回撤与结构反转确认后通知，当前仅 shadow/notify，不自动卖出"
-applicable_types: ["A", "B", "C", "D"]
+applicable_types: ["A", "B", "C", "D", "E"]
 
 strategy_spec:
   状态机: "HOLD → REVERSAL_CANDIDATE → TAKE_PROFIT_PENDING → TAKE_PROFIT；亏损路径进入 STOP_LOSS"

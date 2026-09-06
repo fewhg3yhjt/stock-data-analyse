@@ -176,6 +176,7 @@ const RULE_GUIDE = {
   technical_stop:['技术止损','用途：识别“放量跌破关键支撑”的风险。触发：当日最低价 < 所选支撑线，且当天成交量 ÷ 前5个交易日平均成交量 >= 放量倍数，两个条件必须同时满足。动作：建议清仓；默认启动。'],
   left_side_fixed:['左侧固定止盈','用途：价格接近历史前高但尚未突破时分批落袋。触发：当前价 ÷ 滚动前高落入配置区间。动作：按区间比例减仓。默认前高窗口252个交易日，取日最高价。'],
   right_side_trailing:['右侧移动止盈','用途：达到盈利启动条件后保护已经获得的利润。触发：当前价从持仓峰值回撤达到对应类型阈值；不要求突破前高。动作：建议清仓。'],
+  minute_take_profit_v11:['分钟级止盈 V11','用途：盈利持仓的盘中回撤与结构反转预警。触发：盈利且回撤达到候选 ATR 阈值后，结合 Lower High、Lower Low、跌破开盘或放量走弱判断。动作：进入候选/待确认/止盈状态并发送通知；当前仅 shadow/notify，不自动卖出。'],
   logic_stop:['逻辑止损','用途：投资逻辑被证伪时退出。触发：逻辑状态被标记为不成立。动作：建议退出。'],
   price_stop:['价格止损与贝塔保护','用途：结合个股跌幅、市场跌幅和股债收益差判断是否执行价格止损。触发：配置的宏观与价格条件组合满足。动作：止损或转入逻辑审视。'],
   time_stop:['时间止损','用途：持仓长期没有进展时释放资金。触发：持有天数超过上限且未出现豁免条件。动作：按配置减仓或退出。']
@@ -205,7 +206,8 @@ function ruleSummaryHtml(rules, kind){
   return (rules||[]).map(rule=>{
     const guide=RULE_GUIDE[rule.type]||[rule.type,'运行时按该规则配置判断。'];
     const refs=(rule.indicator_refs||[]).map(ref=>`<span class="tag tag-indicator" title="${escText(ref.role)}">${escText(ref.name)} <code>${escText(ref.key)}</code></span>`).join('');
-    return `<div class="rule-guide"><b>${kind==='buy'?'买点':'卖点'}：${escText(guide[0])}</b><br>${escText(guide[1])}${refs?`<div class="indicator-binding"><b>关联指标/输入：</b>${refs}</div>`:''}</div>`;
+    const params=rule.type==='minute_take_profit_v11' && rule.params ? `<div class="indicator-binding"><b>当前参数：</b>候选回撤 ${escText(rule.params.candidate_atr ?? 0.75)} ATR · 有效波段 ${escText(rule.params.swing_atr ?? 0.75)} ATR · 结构确认 ${escText(rule.params.confirmation_bars ?? 3)} 根 · 放量倍数 ${escText(rule.params.volume_surge_ratio ?? 1.8)} · 模式 ${escText(rule.params.mode || 'notify')} · 自动卖出 ${rule.params.auto_sell ? '是' : '否'}</div>` : '';
+    return `<div class="rule-guide"><b>${kind==='buy'?'买点':'卖点'}：${escText(guide[0])}</b><br>${escText(guide[1])}${params}${refs?`<div class="indicator-binding"><b>关联指标/输入：</b>${refs}</div>`:''}</div>`;
   }).join('');
 }
 async function loadSchemeOverview(){
@@ -215,7 +217,7 @@ async function loadSchemeOverview(){
     SCHEMES=data.schemes||[];
     const el=document.getElementById('scheme-overview-list');
     const lowmaCard='<article class="scheme-card"><h3>LowMA 承接策略 <span class="tag tag-buy">系统策略</span></h3><p>低位承接、次日盘中限价成交、结构止损、保本保护和右侧跟随。</p><div class="help">Published 日线 · 策略模拟页统一批量运行和展示</div><div class="scheme-actions"><a class="ui-button ui-button-primary ui-button-sm" href="/strategy-simulation?scheme=lowma_pullback">去策略模拟</a><button class="ui-button ui-button-ghost ui-button-sm" onclick="showLowMAGuide()">查看运行逻辑</button></div></article>';
-    el.innerHTML=lowmaCard+SCHEMES.map(s=>`<article class="scheme-card"><h3>${escText(s.name)} <span class="tag ${s.is_builtin?'tag-buy':'tag-sell'}">${s.is_builtin?'内置':'自定义'}</span></h3><p>${escText(s.description||'暂无描述')}</p><div class="help">版本 ${escText(s.version)} · 适用：${escText((s.applicable_types||[]).join('、')||'未限定')}</div><div class="scheme-actions"><button class="ui-button ui-button-primary ui-button-sm" onclick="showSchemeGuide('${escText(s.name)}')">查看运行逻辑</button><button class="ui-button ui-button-ghost ui-button-sm" onclick="editScheme('${escText(s.name)}')">编辑配置</button></div></article>`).join('')||'<div class="help">暂无可用方案</div>';
+     el.innerHTML=lowmaCard+SCHEMES.map(s=>`<article class="scheme-card"><h3>${escText(s.name)} <span class="tag ${s.is_builtin?'tag-buy':'tag-sell'}">${s.is_builtin?'内置':'自定义'}</span></h3><p>${escText(s.description||'暂无描述')}</p><div class="help">版本 ${escText(s.version)} · 适用：${escText((s.applicable_types||[]).join('、')||'未限定')}${s.name==='minute_take_profit_v11'?' · 仅通知，不自动卖出':''}</div><div class="scheme-actions"><button class="ui-button ui-button-primary ui-button-sm" onclick="showSchemeGuide('${escText(s.name)}')">查看运行逻辑</button><button class="ui-button ui-button-ghost ui-button-sm" onclick="editScheme('${escText(s.name)}')">编辑配置</button></div></article>`).join('')||'<div class="help">暂无可用方案</div>';
   }catch(error){document.getElementById('scheme-overview-list').innerHTML=`<div class="error">${escText(error.message)}</div>`;}
 }
 function openLowMAConfig(){const panel=document.getElementById('lowma-panel');panel.style.display='block';panel.scrollIntoView({behavior:'smooth',block:'start'});}
