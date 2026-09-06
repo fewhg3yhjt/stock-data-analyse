@@ -643,6 +643,24 @@ class PostPurchaseAdvisor:
         if ctx.current_price > position.peak_price:
             position.peak_price = ctx.current_price  # 更新峰值
 
+        check_results: dict = {}
+        # V11 owns intraday take-profit decisions. Do not let the legacy
+        # daily year-high/peak rules emit a contradictory sell suggestion.
+        if position.scheme_name == "minute_take_profit_v11":
+            check_results["v11"] = {
+                "mode": "notify",
+                "status": "WAIT_MINUTE_RUNTIME",
+                "reason": "等待腾讯分钟链路的 V11 有效回撤与结构确认，不执行旧日线左侧/右侧止盈",
+            }
+            return ActionAdvice(
+                position_id=position.id, stock_code=position.stock_code,
+                stock_name=position.stock_name, advice_type=ADVICE_HOLD,
+                urgency="normal",
+                reason="分钟级止盈 V11：等待盘中有效回撤与结构反转确认，当前不按年线前高减仓。",
+                suggested_price=position.stop_loss_price,
+                check_results=check_results,
+            )
+
         # v4.8 动态弱支撑（基金/ETF 专用）: 牛市初/中期 + 现价>静态弱支撑 + MA20有值
         # → 弱支撑动态切换为 MA20（趋势跟随），强支撑保持静态（极限防守线）
         if position.stock_type == "E" and ctx.ma20 > 0 and ctx.weak_support > 0 \
@@ -651,7 +669,6 @@ class PostPurchaseAdvisor:
             ctx.weak_support = ctx.ma20
             ctx._dynamic_weak_support = True  # 标记供前端/日志展示
 
-        check_results: dict = {}
         # 保存"当时计算的指标"快照，供每日操作日志追溯（当前价/支撑位/均线/趋势等）
         check_results["context"] = ctx.to_dict()
 

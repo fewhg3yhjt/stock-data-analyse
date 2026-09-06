@@ -1318,11 +1318,13 @@ class DashboardService:
                 row["advice_label"] = ADVICE_LABELS.get(ad.get("advice_type"), ad.get("advice_type", ""))
                 row["advice"] = ad
                 cr = ad.get("check_results") or {}
-                row["left_side"] = cr.get("left_side")       # 左侧止盈: year_high/pct_of_year_high
-                row["right_side"] = cr.get("right_side")     # 右侧回撤: peak_price/drawdown_pct
+                if base.scheme_name != "minute_take_profit_v11":
+                    row["left_side"] = cr.get("left_side")       # 左侧止盈: year_high/pct_of_year_high
+                    row["right_side"] = cr.get("right_side")     # 右侧回撤: peak_price/drawdown_pct
                 row["buy_more"] = cr.get("buy_more")         # 补仓: trigger_price/label
-                yh = (cr.get("left_side") or {}).get("year_high")
-                row["hard_cap"] = round(yh * 1.05, 2) if yh else None  # 止盈硬上限
+                if base.scheme_name != "minute_take_profit_v11":
+                    yh = (cr.get("left_side") or {}).get("year_high")
+                    row["hard_cap"] = round(yh * 1.05, 2) if yh else None  # 止盈硬上限
             else:
                 row["advice_label"] = "—"
                 row["advice"] = None
