@@ -34,6 +34,7 @@ from StockInvestmentTool.portfolio.models import (
     TXN_SELL_ALL,
     TXN_DIVIDEND,
     TXN_CORRECTION,
+    ADVICE_HOLD,
     snapshot_scheme,
     _now,
 )
@@ -490,6 +491,10 @@ class PortfolioManager:
 
     def _save_advice(self, position: Position, kline, dividend_anchor) -> ActionAdvice:
         """生成并保存建议"""
+        if position.scheme_name == "minute_take_profit_v11":
+            advice = self._v11_advice(position, kline)
+            self.storage.save_advice(advice)
+            return advice
         advice = self.advisor.analyze_position(position, kline, dividend_anchor)
         self.storage.save_advice(advice)
         # 持久化 phase 变化（advisor 可能更新了 position.position_phase）
@@ -499,6 +504,70 @@ class PortfolioManager:
         except Exception as e:
             logger.warning("持仓信号通知失败 %s: %s", position.stock_code, e)
         return advice
+
+    def _v11_advice(self, position: Position, kline) -> ActionAdvice:
+        """Project the minute V11 result into the legacy ActionAdvice table."""
+        from StockInvestmentTool.biz.minute_take_profit_v11 import evaluate
+
+        price = None
+        try:
+            from StockInvestmentTool.biz.position_runtime import _MinuteFirstPriceLoader
+            price, _, _ = _MinuteFirstPriceLoader().latest_price(position.stock_code)
+        except Exception:
+            pass
+        if price is None and kline is not None and not kline.empty:
+            price = float(kline.iloc[-1]["close"])
+        result = evaluate({
+            "symbol": position.stock_code,
+            "position_cycle_id": f"legacy_position_{position.id}",
+            "average_cost": position.avg_cost,
+        }, current_price=price)
+        context = dict(result.get("context") or {})
+        status = result.get("state", "DATA_UNAVAILABLE")
+        context["source"] = "minute_take_profit_v11"
+        context["mode"] = "notify"
+        if result.get("notify"):
+            try:
+                from StockInvestmentTool.biz.notification import NotificationService
+                service = NotificationService()
+                service.create_rule_delivery(service.create_event(
+                    event_type="MINUTE_TAKE_PROFIT_V11", symbol=position.stock_code,
+                    subject_type="legacy_position", subject_id=str(position.id), priority=2,
+                    payload={
+                        "subject": f"[V11 {status}] {position.stock_name}",
+                        "text": f"分钟级止盈 V11 状态：{status}\n" +
+                                "\n".join(f"{k}: {v}" for k, v in context.items()) +
+                                "\n动作: NOTIFY（仅通知，不自动卖出）",
+                        "action": "NOTIFY", "context": context,
+                    },
+                    data_as_of=str(context.get("v11_as_of") or ""), action="NOTIFY",
+                    trigger_fingerprint=status,
+                ), template="v11_take_profit")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("旧持仓 V11 通知生成失败 %s: %s", position.stock_code, exc)
+        return ActionAdvice(
+            position_id=position.id, stock_code=position.stock_code,
+            stock_name=position.stock_name, advice_type=ADVICE_HOLD,
+            urgency="normal" if status in {"HOLD", "DATA_UNAVAILABLE"} else "attention",
+            reason=("分钟级止盈 V11：等待盘中有效回撤与结构反转确认，当前不自动卖出。"
+                    if status == "HOLD" else
+                    f"分钟级止盈 V11 状态：{status}，仅通知，不自动卖出。"),
+            suggested_price=position.stop_loss_price,
+            check_results={"v11": context},
+        )
+
+    def refresh_v11_minute_positions(self) -> list[dict]:
+        """Refresh all legacy open positions from the current minute V11 path."""
+        results = []
+        for position in self.storage.get_open_positions():
+            if position.scheme_name != "minute_take_profit_v11":
+                continue
+            before = self.storage.get_latest_advice(position.id)
+            advice = self._v11_advice(position, None)
+            self.storage.save_advice(advice)
+            results.append({"position_id": position.id, "status":
+                            (advice.check_results.get("v11") or {}).get("v11_status")})
+        return results
 
     def _emit_signal_notifications(self, position: Position, advice: ActionAdvice) -> None:
         """按勾选的策略信号发送邮件通知（去重：同持仓同信号同日一次）。"""
