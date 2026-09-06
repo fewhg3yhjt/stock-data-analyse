@@ -29,7 +29,35 @@ class FakePriceLoader:
 
 
 @pytest.fixture
-def setup(tmp_path):
+def isolate_market_inputs(monkeypatch):
+    """Keep runtime-state tests independent of production market files/network."""
+    peak = {"value": None}
+    monkeypatch.setattr(
+        "StockInvestmentTool.portfolio.monitor.PriceMonitor.fetch_kline",
+        lambda self, *args, **kwargs: __import__("pandas").DataFrame(),
+    )
+    monkeypatch.setattr(
+        "StockInvestmentTool.biz.minute_take_profit_v11._minute_frame",
+        lambda *args, **kwargs: __import__("pandas").DataFrame(),
+    )
+    monkeypatch.setattr(
+        "StockInvestmentTool.biz.position_runtime._MinuteFirstPriceLoader.latest_price",
+        lambda self, symbol: (10.0, "2026-09-01", "minute"),
+    )
+    monkeypatch.setattr(
+        "StockInvestmentTool.portfolio.trade_metrics.load_local_minute",
+        lambda *args, **kwargs: __import__("pandas").DataFrame(),
+    )
+    monkeypatch.setattr(
+        "StockInvestmentTool.portfolio.position_levels.calculate_position_peak",
+        lambda *args, **kwargs: {
+            "value": peak.__setitem__("value", max(peak["value"] or 0, kwargs.get("current_price") or 0)) or peak["value"]
+        },
+    )
+
+
+@pytest.fixture
+def setup(tmp_path, isolate_market_inputs):
     repo = BusinessRepository(BusinessDB(tmp_path / "runtime.db"))
     svc = PortfolioService(repo)
     _, pf = svc.ensure_default_account_portfolio()
@@ -108,7 +136,7 @@ def test_daily_fallback_price_source(setup):
 
 def test_highest_since_entry_incremental(setup):
     repo, _, cycle_id = setup
-    svc = PositionRuntimeService(repo)
+    svc = PositionRuntimeService(repo, price_loader=FakePriceLoader(minute=10.0))
     # 第一轮：高价
     svc.evaluate_cycle(cycle_id, threshold=0.02)
     loader = FakePriceLoader(minute=11.0)
