@@ -21,11 +21,12 @@ from StockInvestmentTool.warehouse.storage import Warehouse, _atomic_parquet_wri
 
 ROTATION_COLUMNS = [
     "date", "industry_id", "industry_name", "classification", "close",
-    "return_1d", "return_3d", "return_5d", "return_20d", "market_return_5d",
-    "rs_5", "rs_5_change", "position_60", "amount_ratio", "amount_ratio_change",
+    "return_1d", "return_3d", "return_5d", "return_10d", "return_20d",
+    "market_return_1d", "market_return_3d", "market_return_5d", "market_return_10d",
+    "relative_return_3d", "relative_return_5d", "relative_return_10d", "rs_5", "rs_5_change", "position_60", "amount_ratio", "amount_ratio_change",
     "ma5_slope", "ma5_slope_change", "rank_3d", "rank_5d", "rank_20d",
-    "rank_3d_change", "strength_score", "strength_change", "rotation_score",
-    "stage", "previous_stage", "stage_days", "transition", "reason", "advice",
+    "rank_1d", "rotation_rank", "rotation_rank_1d_ago", "rotation_rank_3d_ago", "rotation_rank_5d_ago", "rank_3d_change", "rank_5d_change", "strength_score", "strength_change", "rotation_score",
+    "strength_level", "rotation_heat", "rotation_acceleration", "deterioration", "opportunity_score", "transition_type", "stage", "previous_stage", "stage_days", "transition", "reason", "advice",
 ]
 
 
@@ -71,6 +72,29 @@ def _stage(row: pd.Series, cfg: dict) -> tuple[str, str, str]:
     return "DORMANT", "价格强度或轮动方向尚未形成一致信号", "观望，等待确认"
 
 
+def _v2_stage(row: pd.Series, previous_stage: str, history: pd.DataFrame) -> tuple[str, str, str]:
+    """V2 data-driven stage detection; history explains transitions only."""
+    def value(key, default=0.0):
+        raw = row.get(key)
+        return default if raw is None or pd.isna(raw) else float(raw)
+    heat = value("rotation_heat")
+    acceleration = value("rotation_acceleration")
+    deterioration = value("deterioration")
+    rank = value("rank_3d", 999)
+    was_hot = bool(value("max_heat_10d") >= 75 or value("rank_best_10d", 999) <= 18 or value("max_relative_return_5d_pct_10d") >= 80)
+    if was_hot and deterioration >= 70 and (value("rank_3d_change") < 0 or value("rs_5") < 0):
+        return "FADING", "过去曾处于高热区域，当前排名或相对强度明显恶化", "注意风险，暂不参与"
+    if heat >= 80 and (value("strength_level") >= 80 or rank <= 18 or value("position_60") >= .8):
+        return "CLIMAX", "当前热度进入高位区域，边际改善开始需要谨慎观察", "谨慎追高"
+    confirmation = value("rs_5") > 0 or value("outperform_days_3d") >= 2 or value("rank_3d_change") > 0
+    if acceleration >= 70 and heat < 80 and rank <= 50 and value("rank_3d_change") > 0 and confirmation:
+        return "STARTING", "改善速度明显且尚未过热，排名和短期相对表现同步改善", "重点关注，等待确认"
+    improving = int(value("rank_3d_change") > 0) + int(value("rank_5d_change") > 0) + int(value("rs_5") >= 0) + int(40 <= rank <= 70)
+    if acceleration >= 55 and acceleration < 70 and heat < 75 and improving >= 2:
+        return "WARMING", "排名、相对强度或活跃度开始改善，但尚未确认启动", "提前观察"
+    return "DORMANT", "当前没有形成明确的改善或退潮组合", "观望，等待确认"
+
+
 class IndustryRotationBuilder:
     """Build official close-based same-classification rotation snapshots."""
 
@@ -84,7 +108,10 @@ class IndustryRotationBuilder:
         history_start = (pd.Timestamp(start_date) - pd.Timedelta(days=100)).strftime("%Y-%m-%d")
         access = DatasetAccess(self.warehouse)
         versions = partition_versions or {}
-        industry = access.load_dataset("industry_daily", history_start, as_of, required_quality="PASS",
+        # Industry coverage can be WARNING while remaining a published,
+        # date-valid input. Keep the quality in the output context instead of
+        # blocking the V1 observation model entirely.
+        industry = access.load_dataset("industry_daily", history_start, as_of, required_quality="WARNING",
                                        partition_versions=versions.get("industry_daily"))
         daily = access.load_dataset("stock_daily", history_start, as_of, required_quality="WARNING",
                                     allow_legacy=self.allow_legacy, partition_versions=versions.get("stock_daily"))
@@ -102,7 +129,7 @@ class IndustryRotationBuilder:
         boards["amount"] = pd.to_numeric(boards["amount"], errors="coerce").fillna(0)
         boards = boards.dropna(subset=["date", "close"]).drop_duplicates(["date", "industry_id"])
         boards = boards.sort_values(["industry_id", "date"])
-        for n in (1, 3, 5, 20):
+        for n in (1, 3, 5, 10, 20):
             boards[f"return_{n}d"] = boards.groupby("industry_id")["close"].pct_change(n)
         boards["ma5"] = boards.groupby("industry_id")["close"].transform(lambda s: s.rolling(5, min_periods=5).mean())
         boards["ma5_slope"] = boards.groupby("industry_id")["ma5"].pct_change()
@@ -120,17 +147,46 @@ class IndustryRotationBuilder:
         stocks = stocks.dropna(subset=["date", "close"]).sort_values(["code", "date"])
         stock_returns = stocks.assign(ret=stocks.groupby("code")["close"].pct_change())
         market = stock_returns.groupby("date")["ret"].mean().rename("market_return_1d").to_frame()
-        market["market_return_5d"] = (1 + market["market_return_1d"].fillna(0)).rolling(5).apply(lambda x: x.prod() - 1)
-        boards = boards.merge(market[["market_return_5d"]], left_on="date", right_index=True, how="left")
-        boards["rs_5"] = boards["return_5d"] - boards["market_return_5d"]
+        for n in (3, 5, 10):
+            market[f"market_return_{n}d"] = (1 + market["market_return_1d"].fillna(0)).rolling(n).apply(lambda x: x.prod() - 1)
+        boards = boards.merge(market[["market_return_1d", "market_return_3d", "market_return_5d", "market_return_10d"]], left_on="date", right_index=True, how="left")
+        boards["relative_return_3d"] = boards["return_3d"] - boards["market_return_3d"]
+        boards["relative_return_5d"] = boards["return_5d"] - boards["market_return_5d"]
+        boards["relative_return_10d"] = boards["return_10d"] - boards["market_return_10d"]
+        boards["rs_5"] = boards["relative_return_5d"]
         boards["rs_5_change"] = boards.groupby("industry_id")["rs_5"].diff()
         boards = boards.sort_values(["date", "industry_id"])
-        for field, ascending in (("return_3d", False), ("return_5d", False), ("return_20d", False)):
+        for field, ascending in (("return_1d", False), ("return_3d", False), ("return_5d", False), ("return_20d", False)):
             boards[f"rank_{field.removeprefix('return_')}"] = boards.groupby("date")[field].rank(method="min", ascending=ascending)
-        boards["rank_3d_change"] = boards.groupby("industry_id")["rank_3d"].diff().mul(-1)
+        boards["rotation_rank"] = boards.groupby("date")["rs_5"].rank(method="min", ascending=False)
+        for n in (1, 3, 5):
+            boards[f"rotation_rank_{n}d_ago"] = boards.groupby("industry_id")["rotation_rank"].shift(n)
+        boards["rank_3d_change"] = boards["rotation_rank_3d_ago"] - boards["rotation_rank"]
+        boards["rank_5d_change"] = boards["rotation_rank_5d_ago"] - boards["rotation_rank"]
         boards["amount_ratio_change"] = boards.groupby("industry_id")["amount_ratio"].diff()
         boards["ma5_slope_change"] = boards.groupby("industry_id")["ma5_slope"].diff()
 
+        boards["rank_1d_change"] = boards.groupby("industry_id")["rank_1d"].diff().mul(-1) if "rank_1d" in boards else 0
+        boards["rank_5d_change"] = boards.groupby("industry_id")["rank_5d"].diff().mul(-1)
+        boards["outperform_1d"] = boards["return_1d"] > boards["market_return_1d"]
+        boards["outperform_days_3d"] = boards.groupby("industry_id")["outperform_1d"].transform(lambda s: s.rolling(3, min_periods=3).sum())
+        boards["outperform_days_5d"] = boards.groupby("industry_id")["outperform_1d"].transform(lambda s: s.rolling(5, min_periods=5).sum())
+        boards["rank_strength_pct"] = 100 - _cross_sectional_rank(boards, "rank_5d", ascending=False)
+        boards["relative_return_5d_pct"] = _cross_sectional_rank(boards, "rs_5")
+        boards["relative_return_10d"] = boards["return_10d"] - boards["market_return_10d"]
+        boards["relative_return_10d_pct"] = _cross_sectional_rank(boards, "relative_return_10d")
+        boards["relative_return_3d"] = boards["return_3d"] - boards["market_return_3d"]
+        boards["relative_return_3d_pct"] = _cross_sectional_rank(boards, "relative_return_3d")
+        boards["volume_pct"] = _cross_sectional_rank(boards, "amount_ratio")
+        boards["persistence_pct"] = _cross_sectional_rank(boards, "outperform_days_5d")
+        boards["strength_level"] = boards["rank_strength_pct"] * .45 + boards["relative_return_5d_pct"] * .30 + boards["relative_return_10d_pct"] * .25
+        boards["rotation_heat"] = boards["rank_strength_pct"] * .35 + boards["relative_return_5d_pct"] * .30 + boards["position_60"].clip(0, 1).fillna(.5) * 100 * .20 + boards["volume_pct"] * .15
+        boards["rotation_acceleration"] = (_cross_sectional_rank(boards, "rank_3d_change") * .35 + _cross_sectional_rank(boards, "rank_5d_change") * .25 + _cross_sectional_rank(boards, "rs_5_change") * .20 + boards["persistence_pct"] * .10 + boards["volume_pct"] * .10)
+        boards["deterioration"] = (100 - _cross_sectional_rank(boards, "rank_3d_change")) * .45 + (100 - _cross_sectional_rank(boards, "rank_1d_change")) * .20 + (100 - _cross_sectional_rank(boards, "rs_5_change")) * .35
+        boards["opportunity_score"] = ((100 - boards["rotation_heat"]) * .35 + boards["rotation_acceleration"] * .45 + boards["persistence_pct"] * .20).clip(0, 100)
+        boards["max_heat_10d"] = boards.groupby("industry_id")["rotation_heat"].transform(lambda s: s.shift(1).rolling(10, min_periods=1).max())
+        boards["rank_best_10d"] = boards.groupby("industry_id")["rank_5d"].transform(lambda s: s.shift(1).rolling(10, min_periods=1).min())
+        boards["max_relative_return_5d_pct_10d"] = boards.groupby("industry_id")["relative_return_5d_pct"].transform(lambda s: s.shift(1).rolling(10, min_periods=1).max())
         boards["strength_score"] = (
             _cross_sectional_rank(boards, "return_5d") * .35 +
             _cross_sectional_rank(boards, "return_20d") * .25 +
@@ -147,12 +203,19 @@ class IndustryRotationBuilder:
         )
         boards = boards[boards["date"] <= pd.Timestamp(as_of)].copy()
         cfg = _config()
-        boards[["stage", "reason", "advice"]] = boards.apply(lambda row: pd.Series(_stage(row, cfg)), axis=1)
+        boards = boards.sort_values(["industry_id", "date"])
+        stages = []
+        for _, row in boards.iterrows():
+            history = boards[(boards["industry_id"] == row["industry_id"]) & (boards["date"] < row["date"])].tail(10)
+            stage, reason, advice = _v2_stage(row, "", history)
+            stages.append((stage, reason, advice))
+        boards[["stage", "reason", "advice"]] = pd.DataFrame(stages, index=boards.index)
         boards["previous_stage"] = boards.groupby("industry_id")["stage"].shift(1).fillna("")
         stage_change = boards["stage"].ne(boards.groupby("industry_id")["stage"].shift())
         stage_group = stage_change.groupby(boards["industry_id"]).cumsum()
         boards["stage_days"] = boards.groupby(["industry_id", stage_group]).cumcount() + 1
         boards["transition"] = boards.apply(lambda row: f"{row['previous_stage']}->{row['stage']}" if row["previous_stage"] and row["previous_stage"] != row["stage"] else "", axis=1)
+        boards["transition_type"] = boards.apply(lambda row: "JUMP" if row["previous_stage"] == "DORMANT" and row["stage"] in {"STARTING", "CLIMAX"} else "NORMAL", axis=1)
         boards["classification"] = str(cfg.get("official_classification", "ths_industry"))
         out = boards.rename(columns={"industry_id": "industry_id"})[ROTATION_COLUMNS].copy()
         out = out[out["date"] >= pd.Timestamp(start_date)].sort_values(["date", "industry_id"])

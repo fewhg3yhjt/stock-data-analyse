@@ -303,8 +303,9 @@ def check_industry_features_daily(path, *, expected_industries: int | None = Non
 def check_industry_rotation_daily(path, *, expected_as_of: str | None = None) -> dict:
     frame = pd.read_parquet(path) if Path(path).exists() else pd.DataFrame()
     required = {"date", "industry_id", "industry_name", "classification", "strength_score",
-                "rotation_score", "rank_3d", "rank_5d", "rank_20d", "rank_3d_change",
-                "stage", "previous_stage", "stage_days", "transition", "reason", "advice"}
+                "rotation_score", "rank_3d", "rank_5d", "rank_20d", "rotation_rank", "rotation_rank_1d_ago", "rotation_rank_3d_ago", "rotation_rank_5d_ago", "rank_3d_change",
+                "relative_return_3d", "relative_return_5d", "relative_return_10d", "strength_level", "rotation_heat", "rotation_acceleration", "deterioration",
+                "opportunity_score", "transition_type", "stage", "previous_stage", "stage_days", "transition", "reason", "advice"}
     missing = sorted(required - set(frame.columns))
     checks = {"missing_columns": missing, "row_count": int(len(frame))}
     if missing or frame.empty:
@@ -313,7 +314,7 @@ def check_industry_rotation_daily(path, *, expected_as_of: str | None = None) ->
     duplicate = int(frame.duplicated(keys).sum())
     dates = pd.to_datetime(frame["date"], errors="coerce")
     max_date = str(dates.max())[:10] if dates.notna().any() else None
-    stages = {"DORMANT", "STARTING", "RISING", "CLIMAX", "FADING", "COLD"}
+    stages = {"DORMANT", "WARMING", "STARTING", "RISING", "CLIMAX", "FADING", "COLD"}
     invalid_stage = int((~frame["stage"].astype(str).isin(stages)).sum())
     bad_days = int((pd.to_numeric(frame["stage_days"], errors="coerce") < 1).sum())
     as_of_bad = expected_as_of is not None and (max_date is None or pd.Timestamp(max_date) > pd.Timestamp(expected_as_of))

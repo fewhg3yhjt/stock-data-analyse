@@ -18,6 +18,9 @@ fields:
   - {name: return_5d, display_name: 5日收益, data_type: float, nullable: true}
   - {name: return_20d, display_name: 20日收益, data_type: float, nullable: true}
   - {name: market_return_5d, display_name: 市场5日收益, data_type: float, nullable: true}
+  - {name: relative_return_3d, display_name: 3日超额收益, data_type: float, nullable: true}
+  - {name: relative_return_5d, display_name: 5日超额收益, data_type: float, nullable: true}
+  - {name: relative_return_10d, display_name: 10日超额收益, data_type: float, nullable: true}
   - {name: rs_5, display_name: 5日相对强度, data_type: float, nullable: true}
   - {name: rs_5_change, display_name: 相对强度改善, data_type: float, nullable: true}
   - {name: position_60, display_name: 60日位置, data_type: float, nullable: true}
@@ -29,9 +32,19 @@ fields:
   - {name: rank_5d, display_name: 5日排名, data_type: integer, nullable: true}
   - {name: rank_20d, display_name: 20日排名, data_type: integer, nullable: true}
   - {name: rank_3d_change, display_name: 3日排名变化, data_type: float, nullable: true}
+  - {name: rotation_rank, display_name: 轮动排名, data_type: integer, nullable: true}
+  - {name: rotation_rank_1d_ago, display_name: 昨日轮动排名, data_type: integer, nullable: true}
+  - {name: rotation_rank_3d_ago, display_name: 三日前轮动排名, data_type: integer, nullable: true}
+  - {name: rotation_rank_5d_ago, display_name: 五日前轮动排名, data_type: integer, nullable: true}
   - {name: strength_score, display_name: 强度评分, data_type: float, nullable: true}
   - {name: strength_change, display_name: 强度变化, data_type: float, nullable: true}
   - {name: rotation_score, display_name: 轮动评分, data_type: float, nullable: true}
+  - {name: strength_level, display_name: 当前强度, data_type: float, nullable: true}
+  - {name: rotation_heat, display_name: 当前热度, data_type: float, nullable: true}
+  - {name: rotation_acceleration, display_name: 改善速度, data_type: float, nullable: true}
+  - {name: deterioration, display_name: 恶化程度, data_type: float, nullable: true}
+  - {name: opportunity_score, display_name: 机会评分, data_type: float, nullable: true}
+  - {name: transition_type, display_name: 状态形成方式, data_type: string, nullable: false}
   - {name: stage, display_name: 阶段, data_type: string, nullable: false}
   - {name: previous_stage, display_name: 上一阶段, data_type: string, nullable: true}
   - {name: stage_days, display_name: 阶段持续天数, data_type: integer, nullable: false}
@@ -42,5 +55,5 @@ sources:
   - {name: industry_daily, role: input, priority: 1, field_mapping: {}, unit_conversions: {}}
   - {name: stock_daily, role: input, priority: 2, field_mapping: {}, unit_conversions: {}}
 consumers:
-  - {name: industry_rotation_workbench, type: business, purpose: 正式收盘轮动状态和阶段有效性验证, required_quality: PASS, fallback_policy: published_only, blocked_actions: 正式决策}
+  - {name: industry_rotation_workbench, type: business, purpose: 正式收盘轮动状态和阶段有效性验证, required_quality: WARNING, fallback_policy: published_only, blocked_actions: 正式决策}
 quality: {publish_warning: false, coverage: {pass_min: 0.90, warning_min: 0.90}}
