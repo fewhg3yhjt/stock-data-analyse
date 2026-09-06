@@ -1,0 +1,34 @@
+name: "minute_take_profit_v11"
+version: "11.0"
+description: "分钟级趋势止盈 V11：有效回撤与结构反转确认后通知，当前仅 shadow/notify，不自动卖出"
+applicable_types: ["A", "B", "C", "D"]
+
+strategy_spec:
+  状态机: "HOLD → REVERSAL_CANDIDATE → TAKE_PROFIT_PENDING → TAKE_PROFIT；亏损路径进入 STOP_LOSS"
+  分钟数据: "腾讯分钟 close、volume、amount；day_open 取当日首条分钟 close，running_high/low 取当日分钟路径极值"
+  有效回撤: "默认 0.75 ATR，仅作为反转候选，不直接卖出"
+  结构确认: "Lower High、Lower Low、跌破开盘、放量走弱"
+  执行动作: "当前仅 shadow/notify，生成通知，不自动卖出"
+
+buy_rules: []
+
+sell_rules:
+  - type: "minute_take_profit_v11"
+    params:
+      mode: "notify"
+      candidate_atr: 0.75
+      swing_atr: 0.75
+      confirmation_bars: 3
+      volume_surge_ratio: 1.8
+      auto_sell: false
+
+risk:
+  stop_loss_by_type: {A: 0.18, B: 0.18, C: 0.18, D: 0.12}
+  volume_surge_threshold: 1.8
+  technical_stop_enabled: true
+  drawdown_stop: 0.10
+  min_profit_for_dd: 0.06
+
+backtest:
+  initial_cash: 100000
+  optimize: false

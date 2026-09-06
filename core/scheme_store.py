@@ -34,7 +34,7 @@ _STATE_FILE = ".state.json"
 _VERSIONS_DIR = ".versions"
 
 # 内置方案名单（保护这些不可删除/启停）
-BUILTIN_SCHEMES = ("default_value", "aggressive_growth", "v6_si_wei")
+BUILTIN_SCHEMES = ("default_value", "aggressive_growth", "v6_si_wei", "minute_take_profit_v11")
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,63}$")
 
 
