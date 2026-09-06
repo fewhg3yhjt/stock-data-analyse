@@ -166,7 +166,7 @@ class IndustryRotationBuilder:
         boards["amount_ratio_change"] = boards.groupby("industry_id")["amount_ratio"].diff()
         boards["ma5_slope_change"] = boards.groupby("industry_id")["ma5_slope"].diff()
 
-        boards["rank_1d_change"] = boards.groupby("industry_id")["rank_1d"].diff().mul(-1) if "rank_1d" in boards else 0
+        boards["rank_1d_change"] = boards.groupby("industry_id")["rotation_rank"].diff().mul(-1)
         boards["rank_5d_change"] = boards.groupby("industry_id")["rank_5d"].diff().mul(-1)
         boards["outperform_1d"] = boards["return_1d"] > boards["market_return_1d"]
         boards["outperform_days_3d"] = boards.groupby("industry_id")["outperform_1d"].transform(lambda s: s.rolling(3, min_periods=3).sum())
