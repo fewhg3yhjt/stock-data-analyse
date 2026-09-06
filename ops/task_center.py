@@ -12,6 +12,7 @@ from typing import Optional
 
 import pandas as pd
 import yaml
+from StockInvestmentTool.warehouse.dataset_config import load_dataset_config
 
 from StockInvestmentTool.ops.terminology import artifact_labels, task_labels
 
@@ -625,19 +626,42 @@ class TaskCenter:
             published_facts = {}
             for dataset_name in {item["metric_key"] for item in assets[-len(datasets):]} if datasets else set():
                 rows = conn.execute(
-                    """SELECT v.max_date, v.quality_status, v.published_at, v.row_count, v.symbol_count
+                    """SELECT v.max_date, v.quality_status, v.published_at, v.row_count, v.symbol_count,
+                              v.published_path
                        FROM dataset_current c JOIN dataset_versions v ON v.version_id=c.version_id
                        WHERE c.dataset_name=? AND v.publish_status='published'
                        ORDER BY v.max_date DESC, c.partition_key DESC""", (dataset_name,)
                 ).fetchall()
                 if rows:
                     latest = rows[0]
+                    latest_date = latest[0]
+                    if not latest_date and latest[5]:
+                        try:
+                            frame = pd.read_parquet(latest[5])
+                            date_columns = {
+                                "date", "trade_date", "trading_date", "snapshot_date",
+                                "report_date", "stat_date", "period",
+                            }
+                            candidates = [column for column in frame.columns if column in date_columns]
+                            if candidates:
+                                values = pd.concat([pd.to_datetime(frame[column], errors="coerce") for column in candidates])
+                                if values.notna().any():
+                                    latest_date = values.max().strftime("%Y-%m-%d")
+                        except Exception:
+                            pass
+                    try:
+                        partition_type = load_dataset_config(dataset_name)["dataset"]["partition"]["type"]
+                    except Exception:
+                        partition_type = "month"
+                    covered = (sum(int(row[4] or 0) for row in rows)
+                               if partition_type == "symbol" else max(int(row[4] or 0) for row in rows))
                     published_facts[dataset_name] = {
-                        "latest_period": latest[0], "quality_status": latest[1],
-                        "published_at": latest[2], "covered_objects": latest[4],
+                        "latest_period": latest_date, "quality_status": latest[1],
+                        "published_at": latest[2], "covered_objects": covered,
                     }
             for asset in assets:
-                dataset_name = metric_dataset.get(asset.get("metric_key"))
+                dataset_name = (asset.get("metric_key") if asset.get("metric_key") in dataset_health
+                                else metric_dataset.get(asset.get("metric_key")))
                 fact = published_facts.get(dataset_name)
                 if fact:
                     asset["latest_period"] = fact["latest_period"]

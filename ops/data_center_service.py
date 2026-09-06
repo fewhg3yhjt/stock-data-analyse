@@ -118,7 +118,18 @@ class DataCenterService:
         health_status = record.get("health_status")
         if not health_status and record.get("metric_key"):
             health_status = "healthy" if record.get("latest_period") else "unknown"
-        period = "交易日" if record.get("producer_task") in {"stock_daily_capture", "indicators_build"} or record["metric_key"] in {"stock_daily", "indicators"} else "按来源更新"
+        period = "交易日" if record.get("producer_task") in {"stock_daily_capture", "indicators_build"} or record["metric_key"] in {
+            "stock_daily", "indicators", "valuation_daily", "valuation_snapshot", "industry_daily",
+            "industry_features_daily", "industry_rotation_daily",
+        } else "按来源更新"
+        if record.get("metric_key") in {"fundamentals", "roe"}:
+            period = "报告期"
+        elif record.get("metric_key") in {"industry", "industry_membership", "ths_industry_membership"}:
+            period = "快照日"
+        elif record.get("metric_key") in {"money_flow_daily", "money_flow_net"}:
+            period = "来源周期"
+        elif record.get("producer_task") == "position_metrics_build" or record.get("producer_task") == "simulation_run":
+            period = "业务运行时"
         return {"asset_key": record["metric_key"], "display_name": record["display_name"],
                 "kind": "dataset" if record.get("category") == "数据集" else "metric",
                 "category": record.get("category") or "数据集", "definition": record.get("definition"),
