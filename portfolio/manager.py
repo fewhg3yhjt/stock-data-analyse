@@ -528,7 +528,9 @@ class PortfolioManager:
                 continue
             if field is not None and not block.get(field):
                 continue
-            if field is None and not block:
+            # left_side is a calculation block even before its first sell tier
+            # is reached; only a positive tier/sell ratio is a notification.
+            if field is None and not (block.get("tier", 0) > 0 or block.get("sell_ratio", 0) > 0):
                 continue
             finger = f"signal:{position.id}:{signal_code(signal)}:{today}"
             service = NotificationService()
