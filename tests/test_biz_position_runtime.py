@@ -120,3 +120,12 @@ def test_highest_since_entry_incremental(setup):
     result2 = PositionRuntimeService(repo, price_loader=loader2).evaluate_cycle(cycle_id)
     assert result2["state"]["highest_since_entry"] == 11.0
     assert result2["state"]["drawdown_from_high"] == pytest.approx(-0.04545, rel=1e-3)
+
+
+def test_v11_is_notify_only_and_keeps_context(setup, monkeypatch):
+    repo, _, cycle_id = setup
+    monkeypatch.setenv("POSITION_V11_MODE", "notify")
+    result = PositionRuntimeService(repo, price_loader=FakePriceLoader(minute=10.0)).evaluate_cycle(cycle_id)
+    assert result["v11"]["context"].get("v11_mode", "notify") == "notify"
+    assert result["v11"]["context"]["v11_status"] in {"HOLD", "DATA_UNAVAILABLE"}
+    assert result["v11"]["context"].get("action") is None

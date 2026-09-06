@@ -120,6 +120,10 @@ class PositionRuntimeService:
         price, price_date, price_source = self.price_loader.latest_price(cycle["symbol"])
         prior = self._prior_state(position_cycle_id)
         state = self._compute_state(cycle, price, price_date, price_source, prior)
+        from StockInvestmentTool.biz.minute_take_profit_v11 import evaluate as evaluate_v11
+        prior_context = self._decode_context(prior)
+        v11 = evaluate_v11(cycle, current_price=price, prior_context=prior_context)
+        state.data_context.update(v11["context"])
         self._save_state(state)
 
         triggered = state.drawdown_from_high <= -threshold
@@ -128,7 +132,33 @@ class PositionRuntimeService:
         # 用户可配置的目标价规则（后高/成本 × M%）评估
         from StockInvestmentTool.biz.position_alert import evaluate_position_alerts
         alert_hits = evaluate_position_alerts(self.repo, state.__dict__)
-        return {"state": state.__dict__, "triggered": triggered, "alert_hits": alert_hits}
+        if v11.get("notify"):
+            self._emit_v11_event(cycle, v11, state)
+        return {"state": state.__dict__, "triggered": triggered, "alert_hits": alert_hits,
+                "v11": v11}
+
+    @staticmethod
+    def _decode_context(prior: dict | None) -> dict:
+        if not prior:
+            return {}
+        try:
+            import json
+            raw = prior["data_context_json"]
+            return json.loads(raw) if raw else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+
+    def _emit_v11_event(self, cycle: dict, result: dict, state: PositionRuntimeState) -> None:
+        from StockInvestmentTool.biz.minute_take_profit_v11 import V11_EVENT_TYPE, notification_payload
+        from StockInvestmentTool.biz.notification import NotificationService
+        payload = notification_payload(cycle, result)
+        event = NotificationService(self.repo).create_event(
+            event_type=V11_EVENT_TYPE, symbol=state.symbol, subject_type="position_cycle",
+            subject_id=state.position_cycle_id, priority=2, payload=payload,
+            data_as_of=str(state.data_context.get("v11_as_of") or state.price_as_of or ""),
+            action="NOTIFY", trigger_fingerprint=result["state"],
+        )
+        NotificationService(self.repo).create_rule_delivery(event, template="position_drawdown")
 
     # ── 数据读取 ──────────────────────────────────────────
 
