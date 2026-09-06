@@ -212,6 +212,21 @@ def _execute_right_side_trailing(ctx: RuleContext, params: dict) -> RuleResult:
     profit_ready = not activation_enabled or (
         ctx.avg_cost > 0 and activation_value >= ctx.avg_cost * (1 + min_profit)
     )
+
+
+def _execute_minute_take_profit_v11(ctx: RuleContext, params: dict) -> RuleResult:
+    """minute_take_profit_v11: runtime-owned minute shadow/notify rule.
+
+    Legacy position evaluation owns the actual minute state machine. The
+    registry entry exists so the composer can expose the same persisted
+    parameters without pretending this daily RuleContext executes V11.
+    """
+    return RuleResult(
+        triggered=False,
+        action="notify",
+        reason="V11 由分钟运行链路评估；当前规则编排仅保存参数，不在日线规则引擎中执行。",
+        detail={"rule": "minute_take_profit_v11", "runtime_owned": True},
+    )
     if not profit_ready:
         return RuleResult(triggered=False, action="hold", reason="尚未达到右侧止盈最低盈利条件",
                           detail={"peak_price": ctx.peak_price, "current": ctx.current_price,
@@ -407,6 +422,27 @@ def _build_schemas() -> dict[str, list[ParamField]]:
                    default={"A": 0.05, "B": 0.03, "C": 0.05, "D": 0.03}),
     ]
 
+    s["minute_take_profit_v11"] = [
+        ParamField("mode", "运行模式", "select", default="notify",
+                   options=["notify", "shadow"],
+                   help="notify 和 shadow 都只记录/发送信号，不会自动卖出；当前生产建议使用 notify。"),
+        ParamField("candidate_atr", "候选回撤阈值（ATR 倍数）", "number", default=0.75,
+                   min=0.1, max=5.0,
+                   help="盈利持仓从盘中最高收盘价回撤达到前一交易日 ATR 的多少倍后，进入反转候选。默认 0.75。"),
+        ParamField("swing_atr", "有效波段阈值（ATR 倍数）", "number", default=0.75,
+                   min=0.1, max=5.0,
+                   help="用分钟收盘路径压缩有效高点/低点的价格步长。默认 0.75。"),
+        ParamField("confirmation_bars", "结构确认根数", "number", default=3,
+                   min=1, max=20,
+                   help="结构确认参数。当前 V11 保留该配置入口，但状态机主要按 Lower High/Lower Low 等路径结构判断，不保证连续 N 根硬门槛。"),
+        ParamField("volume_surge_ratio", "放量倍数", "number", default=1.8,
+                   min=1.0, max=10.0,
+                   help="最近 3 根分钟成交额相对近 20 根均值的倍数；同时要求价格低于盘中最高价。默认 1.8。"),
+        ParamField("auto_sell", "自动卖出", "select", default=False,
+                   options=[False],
+                   help="当前实现锁定为关闭：V11 只能通知，不会自动下单或卖出。"),
+    ]
+
     s["logic_stop"] = [
         ParamField("thesis_ok", "逻辑是否成立", "select", default=True,
                    options=[True, False]),
@@ -444,7 +480,9 @@ def build_builtin_executors() -> list[RuleExecutor]:
         RuleExecutor(KIND_SELL, "left_side_fixed", _execute_left_side_fixed,
                      schemas["left_side_fixed"], "左侧固定止盈"),
         RuleExecutor(KIND_SELL, "right_side_trailing", _execute_right_side_trailing,
-                     schemas["right_side_trailing"], "右侧移动止盈"),
+                      schemas["right_side_trailing"], "右侧移动止盈"),
+        RuleExecutor(KIND_SELL, "minute_take_profit_v11", _execute_minute_take_profit_v11,
+                     schemas["minute_take_profit_v11"], "分钟级止盈 V11（仅通知）"),
         RuleExecutor(KIND_SELL, "logic_stop", _execute_logic_stop,
                      schemas["logic_stop"], "V6.0逻辑止损"),
         RuleExecutor(KIND_SELL, "price_stop", _execute_price_stop,

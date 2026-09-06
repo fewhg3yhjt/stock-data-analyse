@@ -4,11 +4,15 @@ description: "分钟级趋势止盈 V11：有效回撤与结构反转确认后�
 applicable_types: ["A", "B", "C", "D", "E"]
 
 strategy_spec:
-  状态机: "HOLD → REVERSAL_CANDIDATE → TAKE_PROFIT_PENDING → TAKE_PROFIT；亏损路径进入 STOP_LOSS"
-  分钟数据: "腾讯分钟 close、volume、amount；day_open 取当日首条分钟 close，running_high/low 取当日分钟路径极值"
-  有效回撤: "默认 0.75 ATR，仅作为反转候选，不直接卖出"
-  结构确认: "Lower High、Lower Low、跌破开盘、放量走弱"
-  执行动作: "当前仅 shadow/notify，生成通知，不自动卖出"
+  输入数据: "当天腾讯分钟 close、volume、amount；前一交易日 Published 日线 close 与 ATR14；持仓均价"
+  盘中基准: "day_open=当天第一根分钟 close；running_high/low=当天分钟 close 路径极值；current_price=当天最后一根分钟 close"
+  第一关_盈利: "只有 current_price > 持仓均价时才进入止盈路径；亏损时不触发止盈"
+  第二关_回撤候选: "(running_high-current_price) ÷ 前一交易日 ATR14 >= candidate_atr（默认0.75）"
+  第三关_结构确认: "有效分钟路径出现 Lower High + Lower Low 才进入 TAKE_PROFIT；仅跌破开盘、Lower High、Lower Low 或放量走弱时进入 TAKE_PROFIT_PENDING"
+  亏损路径: "未盈利且出现 Lower Low 或跌破开盘时标记 STOP_LOSS；仍然只通知，不自动卖出"
+  放量走弱: "最近3根分钟成交额 > 最近20根均值 × volume_surge_ratio（默认1.8），且当前价低于盘中高点"
+  执行动作: "状态首次进入 TAKE_PROFIT_PENDING、TAKE_PROFIT 或 STOP_LOSS 时生成一次通知；不自动下单"
+  当前限制: "confirmation_bars 是可配置入口，当前实现以有效路径结构为主，不保证连续N根分钟线硬确认；无当天分钟数据时为 DATA_UNAVAILABLE"
 
 buy_rules: []
 

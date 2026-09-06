@@ -176,7 +176,7 @@ const RULE_GUIDE = {
   technical_stop:['技术止损','用途：识别“放量跌破关键支撑”的风险。触发：当日最低价 < 所选支撑线，且当天成交量 ÷ 前5个交易日平均成交量 >= 放量倍数，两个条件必须同时满足。动作：建议清仓；默认启动。'],
   left_side_fixed:['左侧固定止盈','用途：价格接近历史前高但尚未突破时分批落袋。触发：当前价 ÷ 滚动前高落入配置区间。动作：按区间比例减仓。默认前高窗口252个交易日，取日最高价。'],
   right_side_trailing:['右侧移动止盈','用途：达到盈利启动条件后保护已经获得的利润。触发：当前价从持仓峰值回撤达到对应类型阈值；不要求突破前高。动作：建议清仓。'],
-  minute_take_profit_v11:['分钟级止盈 V11','用途：盈利持仓的盘中回撤与结构反转预警。触发：盈利且回撤达到候选 ATR 阈值后，结合 Lower High、Lower Low、跌破开盘或放量走弱判断。动作：进入候选/待确认/止盈状态并发送通知；当前仅 shadow/notify，不自动卖出。'],
+  minute_take_profit_v11:['分钟级止盈 V11（分钟运行链路）','输入：当天腾讯分钟 close/volume/amount、前一交易日 Published 日线 close/ATR14、持仓均价。先判断是否盈利，再判断回撤是否达到 ATR 倍数，最后判断分钟路径结构。状态：HOLD → REVERSAL_CANDIDATE → TAKE_PROFIT_PENDING → TAKE_PROFIT；未盈利且结构走弱为 STOP_LOSS。动作：状态首次变化时发通知，不自动下单。限制：没有当天分钟数据时为 DATA_UNAVAILABLE；confirmation_bars 当前只是参数入口，实际以有效路径结构为主。'],
   logic_stop:['逻辑止损','用途：投资逻辑被证伪时退出。触发：逻辑状态被标记为不成立。动作：建议退出。'],
   price_stop:['价格止损与贝塔保护','用途：结合个股跌幅、市场跌幅和股债收益差判断是否执行价格止损。触发：配置的宏观与价格条件组合满足。动作：止损或转入逻辑审视。'],
   time_stop:['时间止损','用途：持仓长期没有进展时释放资金。触发：持有天数超过上限且未出现豁免条件。动作：按配置减仓或退出。']
@@ -206,7 +206,7 @@ function ruleSummaryHtml(rules, kind){
   return (rules||[]).map(rule=>{
     const guide=RULE_GUIDE[rule.type]||[rule.type,'运行时按该规则配置判断。'];
     const refs=(rule.indicator_refs||[]).map(ref=>`<span class="tag tag-indicator" title="${escText(ref.role)}">${escText(ref.name)} <code>${escText(ref.key)}</code></span>`).join('');
-    const params=rule.type==='minute_take_profit_v11' && rule.params ? `<div class="indicator-binding"><b>当前参数：</b>候选回撤 ${escText(rule.params.candidate_atr ?? 0.75)} ATR · 有效波段 ${escText(rule.params.swing_atr ?? 0.75)} ATR · 结构确认 ${escText(rule.params.confirmation_bars ?? 3)} 根 · 放量倍数 ${escText(rule.params.volume_surge_ratio ?? 1.8)} · 模式 ${escText(rule.params.mode || 'notify')} · 自动卖出 ${rule.params.auto_sell ? '是' : '否'}</div>` : '';
+    const params=rule.type==='minute_take_profit_v11' && rule.params ? `<div class="indicator-binding"><b>当前参数：</b><br>候选回撤：${escText(rule.params.candidate_atr ?? 0.75)} ATR（盈利后回撤达到此值进入候选）<br>有效波段：${escText(rule.params.swing_atr ?? 0.75)} ATR（压缩分钟路径高低点）<br>结构确认根数：${escText(rule.params.confirmation_bars ?? 3)}（当前为配置入口，不等于连续N根硬确认）<br>放量倍数：${escText(rule.params.volume_surge_ratio ?? 1.8)}（近3根成交额 / 近20根均值）<br>运行模式：${escText(rule.params.mode || 'notify')} · 自动卖出：${rule.params.auto_sell ? '是' : '否（固定关闭）'}</div>` : '';
     return `<div class="rule-guide"><b>${kind==='buy'?'买点':'卖点'}：${escText(guide[0])}</b><br>${escText(guide[1])}${params}${refs?`<div class="indicator-binding"><b>关联指标/输入：</b>${refs}</div>`:''}</div>`;
   }).join('');
 }
@@ -312,12 +312,12 @@ let ruleCount=0;
   let fields=rule.schema.map(f=>renderField(f, rule)).join('');
   const box=document.createElement('div');
   box.className='rule-box';box.id=id;
-   const guide=RULE_GUIDE[rule.type]||[rule.description||rule.type,'运行时按该规则配置判断。'];
+    const guide=RULE_GUIDE[rule.type]||[rule.description||rule.type,'运行时按该规则配置判断。'];
    box.innerHTML=`<div class="rule-head">
        <h4><span class="tag ${kindColor}">${kind==='buy'?'买点':'卖点'}</span> ${guide[0]}</h4>
        <button class="ui-button ui-button-danger ui-button-sm" onclick="this.parentElement.parentElement.remove()"><i class="fas fa-trash"></i></button>
      </div>
-     <div class="rule-guide"><b>触发与动作：</b>${guide[1]}</div>
+      <div class="rule-guide"><b>触发与动作：</b>${guide[1]}${rule.type==='minute_take_profit_v11'?'<br><b>注意：</b>该规则由盘中分钟运行链路执行；这里修改的是持仓 V11 参数，日线规则引擎不会直接执行卖出。':''}</div>
     <input type="hidden" data-kind="${kind}" data-type="${rule.type}" data-rule='${JSON.stringify(rule)}'>
     <div class="rule-fields">${fields}</div>`;
    wrap.appendChild(box);
