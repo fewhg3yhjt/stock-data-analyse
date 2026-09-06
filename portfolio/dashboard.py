@@ -1826,25 +1826,25 @@ class DashboardService:
                 "leader_name": str(leader.get("leader_name") or ""),
                 "reason": str(row.get("reason") or ""), "advice": str(row.get("advice") or ""),
             })
-        labels = {"DORMANT": "潜伏", "STARTING": "启动", "RISING": "主升", "CLIMAX": "高潮", "FADING": "退潮", "COLD": "冰点"}
+        labels = {"DORMANT": "潜伏", "WARMING": "预热", "STARTING": "启动", "RISING": "主升", "CLIMAX": "高潮", "FADING": "退潮", "COLD": "冰点"}
         stage_order = {"DORMANT": 0, "STARTING": 1, "RISING": 2, "CLIMAX": 3, "FADING": 4, "COLD": 5}
         for item in items:
             item["stage_label"] = labels.get(item["stage"], item["stage"])
         groups = {
-            "mainline": sorted([x for x in items if x["stage"] in {"RISING", "STARTING"}], key=lambda x: (-(x["strength_score"] or 0), x["industry_name"]))[:5],
+            "mainline": sorted([x for x in items if x["stage"] in {"WARMING", "STARTING"}], key=lambda x: (-(x.get("opportunity_score") or 0), -(x.get("rotation_acceleration") or 0), x["industry_name"]))[:5],
             "starting": sorted([x for x in items if x["stage"] == "STARTING"], key=lambda x: (-(x["rotation_score"] or 0), x["industry_name"]))[:5],
             "climax": sorted([x for x in items if x["stage"] == "CLIMAX"], key=lambda x: (-(x["strength_score"] or 0), x["industry_name"]))[:5],
             "fading": sorted([x for x in items if x["stage"] == "FADING"], key=lambda x: ((x["rotation_score"] or 0), x["industry_name"]))[:5],
         }
         counts = {stage: sum(item["stage"] == stage for item in items) for stage in labels}
         summary = {
-            "mainline": counts["RISING"] + counts["STARTING"], "starting": counts["STARTING"],
+            "mainline": counts["WARMING"] + counts["STARTING"], "starting": counts["STARTING"],
             "climax": counts["CLIMAX"], "fading": counts["FADING"],
-            "mainline_delta": counts["RISING"] + counts["STARTING"] - previous_counts.get("RISING", 0) - previous_counts.get("STARTING", 0),
+            "mainline_delta": counts["WARMING"] + counts["STARTING"] - previous_counts.get("WARMING", 0) - previous_counts.get("STARTING", 0),
             "starting_delta": counts["STARTING"] - previous_counts.get("STARTING", 0),
             "climax_delta": counts["CLIMAX"] - previous_counts.get("CLIMAX", 0),
             "fading_delta": counts["FADING"] - previous_counts.get("FADING", 0),
-            "market_state": "高低切换" if counts["STARTING"] > counts["CLIMAX"] else "主线延续" if counts["RISING"] >= counts["FADING"] else "风险释放",
+            "market_state": "高低切换" if counts["STARTING"] > counts["CLIMAX"] else "主线改善" if counts["WARMING"] + counts["STARTING"] >= counts["FADING"] else "风险释放",
             "market_reason": "启动板块数量高于过热板块，优先观察低位轮动" if counts["STARTING"] > counts["CLIMAX"] else "根据正式收盘阶段分布判断，不含盘中资金流",
         }
         return {"status": "success", "requested_as_of": requested, "actual_data_as_of": actual.strftime("%Y-%m-%d"),
