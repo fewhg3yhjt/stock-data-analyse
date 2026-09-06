@@ -38,3 +38,10 @@
 - For frontend or workflow fixes, verify the full path from the original entry page through the user action to the final result page and rendered result; do not stop at API-level success.
 - If the original scenario has multiple plausible causes, test the complete scenario after each fix so a partial fix is not reported as resolved.
 - Record the original-scenario verification in the final response, including the exact route, input/action, expected visible outcome, and observed outcome.
+
+## Non-production Validation Artifacts
+
+- Validation, experiment, shadow, and other non-formal results generated inside a Docker container must be copied to the host `/tmp/opencode/` before reporting completion.
+- Use versioned filenames that identify the experiment and revision, for example `rotation_stage_validation_v2_1_signals.parquet`, `rotation_stage_validation_v2_1_summary.json`, and `rotation_stage_validation_v2_1_events.parquet`.
+- Do not leave the only copy of a user-requested validation result inside the container filesystem; container `/tmp` is not the user-facing artifact location.
+- Report the exact host paths and whether the artifact is raw facts, derived signals, or a summary. Do not copy validation artifacts into `output/` or production Published Dataset paths unless explicitly requested.
