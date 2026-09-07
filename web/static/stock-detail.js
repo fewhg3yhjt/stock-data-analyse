@@ -415,7 +415,7 @@ window.StockDetail = (function(){
       const chart = window.StockChart?.mount(trendEl) || echarts.init(trendEl);
       charts.push(chart);
       chart.setOption({
-        title:{ text:'盘中走势（' + (it.day || '当日') + ' 快照源）', left:0, top:0, textStyle:{fontSize:12, color:'#6b7280', fontWeight:'normal'} },
+        title:{ text:'分时走势（' + (it.day || '未知日期') + ' · ' + (it.source || '未知来源') + '）', left:0, top:0, textStyle:{fontSize:12, color:'#6b7280', fontWeight:'normal'} },
         animation:false,
         tooltip:{trigger:'axis'},
         grid:{left:55, right:30, top:30, bottom:24},

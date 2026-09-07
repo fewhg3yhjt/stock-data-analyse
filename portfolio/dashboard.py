@@ -519,16 +519,28 @@ class DashboardService:
             w = Warehouse()
             from StockInvestmentTool.datasource.base import WarehouseSource
 
-            minute = WarehouseSource(warehouse=w).fetch_minute_series(code_nodot, today)
+            source = WarehouseSource(warehouse=w)
+            minute_day = today
+            minute = source.fetch_minute_series(code_nodot, minute_day)
+            if minute.empty:
+                # Before today's first minute arrives, use the newest stored
+                # minute trading day rather than an older online snapshot.
+                minute_days = [day for day in w.minute_store().days() if day <= today]
+                for candidate in reversed(minute_days):
+                    minute = source.fetch_minute_series(code_nodot, candidate)
+                    if not minute.empty:
+                        minute_day = candidate
+                        break
             if not minute.empty:
                 last = minute.iloc[-1]
                 result["intraday"] = {
                     "price": round(float(last["close"]), 2),
                     "snapshot_time": str(last["time"])[:19],
                     "source": "tencent_minute",
+                    "as_of": minute_day,
                 }
                 result["intraday_trend"] = {
-                    "day": today,
+                    "day": minute_day,
                     "times": [str(v)[:16] for v in minute["time"]],
                     "prices": [round(float(v), 2) for v in minute["close"]],
                     "source": "tencent_minute",
@@ -579,7 +591,8 @@ class DashboardService:
                         times.append(t)
                         prices.append(round(float(p), 2))
                 if times:
-                    result["intraday_trend"] = {"day": snap_day, "times": times, "prices": prices}
+                    result["intraday_trend"] = {"day": snap_day, "times": times, "prices": prices,
+                                                 "source": "online_snapshot", "as_of": snap_day}
         except Exception as e:
             logger.warning("盘中快照读取失败 %s: %s", code, e)
 
