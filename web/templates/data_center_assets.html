@@ -37,4 +37,5 @@ async function openAsset(key){const d=await (await fetch('/api/data-center/asset
 function closeAsset(){document.getElementById('asset-mask').classList.remove('open');}
 loadAssets();
 </script>
+<script src="{{ static_asset('data-assets-admin.js') }}"></script>
 {% endblock %}

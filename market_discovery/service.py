@@ -293,8 +293,11 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
                       "price_up_volume_up": price_up_volume_up}
         if c["signal"] and not signal_map[c["signal"]]:
             continue
+        day_return = ((close / _float(latest.get("prev_close")) - 1) * 100
+                      if close is not None and _float(latest.get("prev_close")) else None)
         results.append({"code": code, "date": str(row["date"])[:10],
                         "price": _round(close), "return_pct": _round(ret),
+                        "day_return_pct": _round(day_return),
                         "up_days": up_days, "down_days": down_days,
                         "consecutive_up": consecutive_up, "consecutive_down": consecutive_down,
                         "amplitude_pct": _round(amplitude), "amount_avg": _round(sum(valid_amounts) / len(valid_amounts) if valid_amounts else None),
@@ -321,7 +324,8 @@ def discover_stocks(conditions: Optional[dict] = None, *, top_n: int = 50,
         results = results[:top_n]
     start = (page - 1) * page_size
     page_items = results[start:start + page_size]
-    return {"conditions": c, "as_of": as_of or (results[0]["date"] if results else None),
+    actual_as_of = max((item["date"] for item in results), default=None)
+    return {"conditions": c, "as_of": actual_as_of,
             "source": {"stock_daily": daily_result.context,
                           "industry_membership": "published" if industry_lookup is not None else None,
                           "category": category,
