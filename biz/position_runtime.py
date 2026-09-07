@@ -155,7 +155,9 @@ class PositionRuntimeService:
         event = NotificationService(self.repo).create_event(
             event_type=V11_EVENT_TYPE, symbol=state.symbol, subject_type="position_cycle",
             subject_id=state.position_cycle_id, priority=2, payload=payload,
-            data_as_of=str(state.data_context.get("v11_as_of") or state.price_as_of or ""),
+            # Deduplicate the same V11 state once per symbol/day; a minute
+            # timestamp here would create a new email every minute.
+            data_as_of=str(state.data_context.get("v11_as_of") or state.price_as_of or "")[:10],
             action="NOTIFY", trigger_fingerprint=result["state"],
         )
         NotificationService(self.repo).create_rule_delivery(event, template="position_drawdown")

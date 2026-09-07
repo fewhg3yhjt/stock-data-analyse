@@ -168,8 +168,53 @@ def evaluate(cycle: dict, *, current_price: float | None, prior_context: dict | 
 
 def notification_payload(cycle: dict, result: dict) -> dict:
     context = result["context"]
+    symbol = str(cycle["symbol"] if "symbol" in cycle.keys() else "")
+    display_name = symbol
+    try:
+        from StockInvestmentTool.warehouse.storage import Warehouse
+        instrument = Warehouse().get_instrument(symbol)
+        display_name = (instrument or {}).get("name") or symbol
+    except Exception:
+        pass
+    status_labels = {
+        "STOP_LOSS": "风险提醒",
+        "TAKE_PROFIT_PENDING": "止盈待确认",
+        "TAKE_PROFIT": "止盈提醒",
+    }
+    status = result["state"]
+    reasons = []
+    if context.get("profit_pct") is not None and context["profit_pct"] <= 0:
+        reasons.append(f"当前价未高于持仓均价（收益率 {context['profit_pct']:.2%}）")
+    if context.get("break_open"):
+        reasons.append(f"当前价 {context['current_price']:.4f} 跌破当日开盘 {context['day_open']:.4f}")
+    if context.get("lower_high"):
+        reasons.append("分钟走势形成更低的高点（Lower High）")
+    if context.get("lower_low"):
+        reasons.append("分钟走势形成更低的低点（Lower Low）")
+    if context.get("volume_weak"):
+        reasons.append("最近分钟成交额放大且价格低于盘中高点")
+    reason = "；".join(reasons) or "达到 V11 状态判断条件"
+    atr = (context.get("prev_close") or 0) * (context.get("atr_pct") or 0)
+    drawdown = (context.get("running_high") or 0) - (context.get("current_price") or 0)
+    threshold = atr * (context.get("candidate_atr") or 0)
     return {
-        "subject": f"[V11 {result['state']}] {cycle['symbol']}",
-        "text": "分钟级 V11 shadow/notify 信号，仅通知，不自动卖出。\n" + "\n".join(f"{k}: {v}" for k, v in context.items()),
+        "subject": f"[分钟止盈V11·{status_labels.get(status, status)}] {display_name}（{symbol}）",
+        "text": (
+            f"分钟级止盈 V11：{status_labels.get(status, status)}\n"
+            f"证券：{display_name}\n"
+            f"代码：{symbol}\n"
+            f"数据时间：{context.get('v11_as_of', '暂无')}\n"
+            f"当前价：{context.get('current_price', '暂无')}\n"
+            f"持仓均价：{context.get('entry_price', '暂无')}\n"
+            f"当日开盘：{context.get('day_open', '暂无')}\n"
+            f"盘中最高：{context.get('running_high', '暂无')}\n"
+            f"前一日收盘：{context.get('prev_close', '暂无')}\n"
+            f"前一日 ATR14：{atr:.4f}\n"
+            f"实际回撤：{drawdown:.4f} = 盘中最高 {context.get('running_high', '暂无')} - 当前价 {context.get('current_price', '暂无')}\n"
+            f"回撤 ATR 倍数：{context.get('drawdown_atr', '暂无')} = 实际回撤 ÷ ATR14\n"
+            f"候选门槛：{context.get('candidate_atr', 0.75)} ATR = {threshold:.4f}\n"
+            f"触发依据：{reason}\n"
+            "处理方式：仅发送提醒，不自动下单、不自动卖出。"
+        ),
         "action": "NOTIFY", "context": context,
     }
