@@ -159,7 +159,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
                  data-action="deletePos" data-id="{{ p.id }}" data-name="{{ p.stock_name }}" title="删除持仓(危险)"><i class="fas fa-trash"></i> 删除</button>
             </span>
         </div>
-        <div class="pos-grid">
+         <div class="pos-grid">
           <div class="pos-metric"><div class="v">{{ "%.0f"|format(p.total_shares or 0) }}</div><div class="l">持仓股数{% if p.batch_count and p.batch_count>1 %}（{{ p.batch_count }}批）{% endif %}</div></div>
           <div class="pos-metric"><div class="v">{{ p.avg_cost }}</div><div class="l">持仓均价</div></div>
            <div class="pos-metric"><div class="v">{{ p.current_price }}</div><div class="l">当前价</div></div>
@@ -168,7 +168,8 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
            <div class="pos-metric"><div class="v {{ 'gain' if (p.realized_pnl or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.realized_pnl or 0) }}</div><div class="l">已实现收益(元)</div></div>
            <div class="pos-metric"><div class="v {{ 'gain' if (p.total_pnl or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.total_pnl or 0) }}</div><div class="l">累计总收益(元)</div></div>
            <div class="pos-metric"><div class="v {{ 'gain' if (p.total_pnl_pct or 0) >= 0 else 'stop' }}">{{ "%+.2f"|format(p.total_pnl_pct or 0) }}%</div><div class="l">累计收益率</div></div>
-        </div>
+         </div>
+          <div class="detail" style="margin-bottom:8px;">当前价来源：{{ '腾讯实时' if p.current_price_source=='tencent_realtime' else '持仓缓存' }}{% if p.current_price_as_of %} · {{ p.current_price_as_of }}{% endif %}；技术指标：最近收盘日线</div>
          <div class="detail-box" style="display:none;margin-top:10px;padding:12px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;">
            <div class="detail-tabs" onclick="event.stopPropagation();">
              <button type="button" class="detail-tab active" data-detail-tab="trend" onclick="switchDetailTab(this.closest('.detail-box'),'trend');event.stopPropagation();">趋势</button>
@@ -254,7 +255,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
           <strong>{{ p.advice_label }}</strong>
           {% if p.advice.urgency=='urgent' %}<span class="tag red">紧急</span>{% endif %}
           — {{ p.advice.reason }}
-          {% if p.advice.suggested_price %}｜建议价 {{ p.advice.suggested_price }}{% endif %}
+           {% if p.advice.suggested_price and p.scheme_name != 'minute_take_profit_v11' %}｜建议价 {{ p.advice.suggested_price }}{% endif %}
           {% if p.advice.suggested_shares %}｜{{ "%.0f"|format(p.advice.suggested_shares) }}股{% endif %}
         </div>
         {% endif %}

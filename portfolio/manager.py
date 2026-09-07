@@ -552,7 +552,10 @@ class PortfolioManager:
             reason=("分钟级止盈 V11：等待盘中有效回撤与结构反转确认，当前不自动卖出。"
                     if status == "HOLD" else
                     f"分钟级止盈 V11 状态：{status}，仅通知，不自动卖出。"),
-            suggested_price=position.stop_loss_price,
+            # V11 owns minute-state decisions; never show the legacy fixed
+            # stop-loss price as a V11 suggestion, especially when today's
+            # minute file is unavailable.
+            suggested_price=None,
             check_results={"v11": context},
         )
 

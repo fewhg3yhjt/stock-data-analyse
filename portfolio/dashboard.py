@@ -1307,6 +1307,8 @@ class DashboardService:
                     )
             if live_price not in (None, 0):
                 row["current_price"] = round(float(live_price), 4)
+                row["current_price_source"] = "tencent_realtime"
+                row["current_price_as_of"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             row.update(self._position_profit_summary(ps, live_price))
             live_total_market_value += float(row.get("market_value") or 0)
             live_total_pnl += float(row.get("unrealized_pnl") or 0)
@@ -1378,7 +1380,7 @@ class DashboardService:
             "risk_status": _risk_status(pnl_pct),
             "positions": positions,
             "data_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "data_note": "技术指标截至最近收盘(T-1)，现价盘中实时",
+            "data_note": "现价优先腾讯实时；无当日分钟时显示最近可用收盘价；技术指标截至最近收盘(T-1)",
             # 账户历史操作记录（按时间倒序，含所有股票/已平仓）
             "history_txns": self._history_transactions(),
         }
