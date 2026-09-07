@@ -96,6 +96,10 @@ sources:
     unit_conversions:
       volume: hand_to_share
       amount: wan_yuan_to_yuan
+    raw_units:
+      volume: hand
+      amount: wan_yuan
+      resolution: source_contract_v1
     request_defaults:
       adjust: qfq
   - name: baostock
@@ -103,6 +107,10 @@ sources:
     priority: 2
     field_mapping: {date: date, code: code, open: open, high: high, low: low, close: close, pre_close: preclose, volume: volume, amount: amount, turn: turn, tradestatus: tradestatus, pe_ttm: "peTTM", pb_mrq: "pbMRQ"}
     unit_conversions: {}
+    raw_units:
+      volume: share
+      amount: yuan
+      resolution: source_contract_v1
 
 consumers:
   - name: market_discovery
@@ -132,6 +140,9 @@ consumers:
 
 quality:
   publish_warning: true
+  unit_consistency:
+    implied_amount_volume_close_min: 0.2
+    implied_amount_volume_close_max: 5.0
   coverage:
     pass_min: 0.995
     warning_min: 0.98

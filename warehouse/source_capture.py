@@ -25,11 +25,17 @@ def capture_frames(warehouse, *, dataset_name: str, source_name: str,
     run_date = run_date or datetime.now().strftime("%Y-%m-%d")
     batch_store = SourceBatchStore(warehouse.meta_db_path)
     if batch_id is None:
+        context = dict(request_context or {})
+        if dataset_name == "stock_daily" and source_name == "tencent":
+            context.setdefault("units", {
+                "volume": "hand", "amount": "wan_yuan",
+                "resolution": "tencent_newfqkline_contract_v1",
+            })
         batch_id = batch_store.start(
             dataset_name=dataset_name, source_name=source_name, run_date=run_date,
             trade_date_start=trade_date_start or run_date, trade_date_end=trade_date_end or run_date,
             expected_symbols=expected_symbols, universe_id=universe_id,
-            request_context=request_context or {}, job_run_id=job_run_id, schema_version=schema_version,
+            request_context=context, job_run_id=job_run_id, schema_version=schema_version,
         )
     writer = warehouse.raw.begin_batch(source_name, dataset_name, run_date)
     try:

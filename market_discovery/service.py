@@ -380,14 +380,32 @@ def stock_series(code: str, *, days: int = 120, as_of: str = "",
     if as_of:
         frame = frame[frame["date"] <= pd.Timestamp(as_of)]
     frame = frame.sort_values("date").tail(days)
+    close = pd.to_numeric(frame["close"], errors="coerce")
+    volume = pd.to_numeric(frame["volume"], errors="coerce")
+    for window in (5, 10, 20, 60):
+        frame[f"ma{window}"] = close.rolling(window, min_periods=window).mean()
+    volume_ma5 = volume.shift(1).rolling(5, min_periods=5).mean()
+    volume_ma20 = volume.shift(1).rolling(20, min_periods=20).mean()
+    day_range = pd.to_numeric(frame["high"], errors="coerce") - pd.to_numeric(frame["low"], errors="coerce")
+    close_location = (close - pd.to_numeric(frame["low"], errors="coerce")) / day_range.replace(0, pd.NA)
     return {"code": code, "dates": [str(x)[:10] for x in frame["date"]],
             "open": [_round(x) for x in frame.get("open", [])],
             "close": [_round(x) for x in frame.get("close", [])],
             "high": [_round(x) for x in frame.get("high", [])],
             "low": [_round(x) for x in frame.get("low", [])],
-            "volume": [_round(x) for x in frame.get("volume", [])],
-             "amount": [_round(x) for x in frame.get("amount", [])],
-            "context": {"stock_daily": result.context}}
+             "volume": [_round(x) for x in frame.get("volume", [])],
+              "amount": [_round(x) for x in frame.get("amount", [])],
+             "ma": {f"ma{window}": [_round(x) for x in frame[f"ma{window}"]]
+                    for window in (5, 10, 20, 60)},
+             "volume_facts": {
+                 "volume": _round(volume.iloc[-1]) if len(volume) else None,
+                 "volume_ma5": _round(volume_ma5.iloc[-1]) if len(volume_ma5) else None,
+                 "volume_ma20": _round(volume_ma20.iloc[-1]) if len(volume_ma20) else None,
+                 "volume_ratio_5": _round(volume.iloc[-1] / volume_ma5.iloc[-1]) if len(volume) and pd.notna(volume_ma5.iloc[-1]) and volume_ma5.iloc[-1] else None,
+                 "day_return_pct": _round((close.iloc[-1] / close.iloc[-2] - 1) * 100) if len(close) > 1 and close.iloc[-2] else None,
+                 "close_location": _round(close_location.iloc[-1]) if len(close_location) else None,
+             },
+             "context": {"stock_daily": result.context}}
 
 
 def stock_frame_with_indicators(code: str, *, days: int = 750,

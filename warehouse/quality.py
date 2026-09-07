@@ -60,6 +60,20 @@ def check_stock_daily(path, expected_symbols: int | None = None,
     else:
         freshness["status"] = "PASS"
     conflict_count = len(source_conflicts or [])
+    implied = pd.Series(dtype=float)
+    unit_anomalies = []
+    unit_config = config.get("unit_consistency", {})
+    implied_min = float(unit_config.get("implied_amount_volume_close_min", 0.2))
+    implied_max = float(unit_config.get("implied_amount_volume_close_max", 5.0))
+    if {"amount", "volume", "close"}.issubset(numeric):
+        denominator = numeric["volume"] * numeric["close"]
+        implied = numeric["amount"] / denominator.replace(0, pd.NA)
+        abnormal = implied.notna() & ((implied < implied_min) | (implied > implied_max))
+        for index in frame.index[abnormal][:100]:
+            unit_anomalies.append({
+                "date": str(frame.at[index, "date"])[:10], "code": str(frame.at[index, "code"]),
+                "implied_amount_volume_close": round(float(implied.at[index]), 6),
+            })
 
     checks = {
         "duplicate_primary_keys": duplicate,
@@ -70,6 +84,8 @@ def check_stock_daily(path, expected_symbols: int | None = None,
         "coverage": coverage,
         "freshness": freshness,
         "source_conflict": {"count": conflict_count, "details": source_conflicts or []},
+        "unit_consistency": {"abnormal_count": int(len(unit_anomalies)), "details": unit_anomalies,
+                             "min": implied_min, "max": implied_max},
     }
     fail = duplicate > config.get("duplicates", {}).get("fail_if_gt", 0)
     fail |= int(invalid_mask.sum()) > config.get("ohlc", {}).get("fail_if_invalid_gt", 0)
@@ -78,6 +94,7 @@ def check_stock_daily(path, expected_symbols: int | None = None,
     conflict_config = config.get("source_conflict", {})
     conflict_ratio = conflict_count / max(1, len(frame))
     fail |= conflict_ratio > conflict_config.get("fail_ratio", 1.0)
+    fail |= bool(unit_anomalies)
     status = "FAIL" if fail else (
         "PASS" if coverage is not None and coverage >= config["coverage"]["pass_min"]
         else "WARNING")

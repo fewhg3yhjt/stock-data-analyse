@@ -221,6 +221,20 @@ def _quality(warehouse: Warehouse, request: dict) -> dict:
                                    source_conflicts=[])
         PipelineState(warehouse.meta_db_path).quality(version, status=report["status"],
                                                        checks=report["checks"], publish_allowed=report["publish_allowed"])
+        if report["checks"].get("unit_consistency", {}).get("abnormal_count", 0):
+            from StockInvestmentTool.biz.notification import NT_DATA_QUALITY_ALERT, NotificationService
+            service = NotificationService()
+            fingerprint = f"stock_daily|{partition}|{version}|unit_consistency"
+            event = service.create_event(
+                event_type=NT_DATA_QUALITY_ALERT, subject_type="dataset_version",
+                subject_id=version, priority=3,
+                payload={"subject": f"数据质量异常：stock_daily/{partition}",
+                         "text": f"单位一致性检查发现 {report['checks']['unit_consistency']['abnormal_count']} 条异常记录。",
+                         "dataset": "stock_daily", "partition": partition,
+                         "version_id": version, "checks": report["checks"]["unit_consistency"]},
+                data_as_of=partition, action="unit_consistency", trigger_fingerprint=fingerprint,
+            )
+            service.create_rule_delivery(event, template="data_quality")
         reports[partition] = report
         allowed = allowed and report["publish_allowed"]
         statuses.append(report["status"])

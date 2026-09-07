@@ -202,6 +202,71 @@ def test_builder_applies_yaml_units_once_and_tencent_wins(tmp_path):
     assert result.iloc[0]["amount"] == 1000.0
 
 
+def test_builder_respects_batch_share_yuan_units_without_second_conversion(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
+                              "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+                              "volume": [100.0], "amount": [1020.0], "turn": [1.0]})],
+        expected_symbols=1, success_symbols=1, universe_id="u",
+        request_context={"units": {"volume": "share", "amount": "yuan", "resolution": "fixture"}},
+    )
+    build = DailyBuilder(warehouse).build_partition(
+        "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
+    )
+    result = pd.read_parquet(build["path"])
+    assert result.iloc[0]["volume"] == 100.0
+    assert result.iloc[0]["amount"] == 1020.0
+
+
+def test_builder_rejects_unknown_raw_units(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
+                              "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+                              "volume": [1.0], "amount": [0.1]})],
+        expected_symbols=1, success_symbols=1, universe_id="u",
+        request_context={"units": {"volume": "unknown", "amount": "yuan"}},
+    )
+    with pytest.raises(ValueError, match="单位未识别"):
+        DailyBuilder(warehouse).build_partition(
+            "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
+        )
+
+
+def test_builder_rejects_historical_tencent_batch_without_units(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
+                              "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+                              "volume": [1.0], "amount": [0.1]})],
+        expected_symbols=1, success_symbols=1, universe_id="u", request_context={"fixture": True},
+    )
+    with warehouse._conn() as conn:
+        conn.execute("UPDATE source_batches SET request_context='{}' WHERE batch_id=?", (source["batch_id"],))
+    with pytest.raises(ValueError, match="缺少单位元数据"):
+        DailyBuilder(warehouse).build_partition(
+            "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
+        )
+
+
+def test_quality_fails_amount_volume_unit_mismatch(tmp_path):
+    path = tmp_path / "unit_bad.parquet"
+    pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
+                  "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+                  "volume": [100.0], "amount": [102000.0]}).to_parquet(path, index=False)
+    result = check_stock_daily(path, expected_symbols=1)
+    assert result["status"] == "FAIL"
+    assert result["checks"]["unit_consistency"]["abnormal_count"] == 1
+    assert result["checks"]["unit_consistency"]["max"] == 5.0
+
+
 # ── 阶段三：真实覆盖率与派生数据质量 ─────────────────────────
 
 def test_derived_empty_partition_is_failed(tmp_path):

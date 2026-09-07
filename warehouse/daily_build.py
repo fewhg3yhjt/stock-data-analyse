@@ -44,7 +44,7 @@ class DailyBuilder:
             raise ValueError(f"没有找到 {partition} 可用的 stock_daily Raw Batch")
         return selected
 
-    def _normalize(self, frame: pd.DataFrame, source: str) -> pd.DataFrame:
+    def _normalize(self, frame: pd.DataFrame, source: str, *, units: dict | None = None) -> pd.DataFrame:
         if source not in self._sources:
             raise ValueError(f"未注册的数据源: {source}")
         source_config = self._sources[source]
@@ -55,10 +55,14 @@ class DailyBuilder:
             raise ValueError(f"{source} Raw 缺少主键字段: {sorted(required - set(out.columns))}")
         out["date"] = pd.to_datetime(out["date"], errors="coerce")
         out["code"] = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
-        conversions = source_config.get("unit_conversions", {})
-        if conversions.get("volume") == "hand_to_share" and "volume" in out:
+        units = units or {}
+        volume_unit = units.get("volume")
+        amount_unit = units.get("amount")
+        if volume_unit not in {"hand", "share"} or amount_unit not in {"wan_yuan", "yuan"}:
+            raise ValueError(f"{source} Raw Batch 单位未识别: volume={volume_unit!r}, amount={amount_unit!r}")
+        if volume_unit == "hand" and "volume" in out:
             out["volume"] = pd.to_numeric(out["volume"], errors="coerce") * 100
-        if conversions.get("amount") == "wan_yuan_to_yuan" and "amount" in out:
+        if amount_unit == "wan_yuan" and "amount" in out:
             out["amount"] = pd.to_numeric(out["amount"], errors="coerce") * 10000
         for field in self.config["fields"]:
             if field["name"] not in out:
@@ -74,7 +78,7 @@ class DailyBuilder:
         out["code"] = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
         return out[[field["name"] for field in self.config["fields"]]]
 
-    def _read_raw_partition(self, path: Path, source: str, partition: str) -> pd.DataFrame:
+    def _read_raw_partition(self, path: Path, source: str, partition: str, *, units: dict) -> pd.DataFrame:
         """Read only one month from a raw batch without materializing the batch.
 
         Raw batches may contain several years of data.  Reading the complete
@@ -88,7 +92,7 @@ class DailyBuilder:
         chunks = []
         parquet = pq.ParquetFile(path)
         for record_batch in parquet.iter_batches(batch_size=50_000):
-            frame = self._normalize(record_batch.to_pandas(), source)
+            frame = self._normalize(record_batch.to_pandas(), source, units=units)
             dates = pd.to_datetime(frame["date"], errors="coerce")
             frame = frame[(dates >= month_start) & (dates <= month_end)]
             if not frame.empty:
@@ -103,10 +107,32 @@ class DailyBuilder:
         frames = []
         source_frames: dict[str, pd.DataFrame] = {}
         batch_ids = []
+        with self.warehouse._conn() as conn:
+            batch_contexts = {
+                row[0]: json.loads(row[1] or "{}")
+                for row in conn.execute("SELECT batch_id, request_context FROM source_batches").fetchall()
+            }
+            path_batch_ids = {
+                str(row[1]): row[0]
+                for row in conn.execute("SELECT batch_id, raw_path FROM source_batches WHERE raw_path IS NOT NULL").fetchall()
+            }
         for item in selected_batches:
             source, path = item[:2]
-            batch_ids.append(item[2] if len(item) > 2 else str(path))
-            frame = self._read_raw_partition(path, source, partition)
+            batch_id = item[2] if len(item) > 2 else path_batch_ids.get(str(path), "")
+            batch_ids.append(batch_id or str(path))
+            context = batch_contexts.get(batch_id, {})
+            units = context.get("units")
+            if units is None:
+                # Tencent historical batches cannot be safely reconstructed by
+                # source name alone: 2026-09 proved mixed transport/final units.
+                if source == "tencent" and batch_id:
+                    raise ValueError(f"tencent Raw Batch {batch_id or path} 缺少单位元数据，禁止构建")
+                # Other sources may use an explicit source-contract default.
+                fallback = self._sources.get(source, {}).get("raw_units")
+                if fallback is None:
+                    raise ValueError(f"{source} Raw Batch {batch_id or path} 缺少单位元数据")
+                units = {**fallback, "resolution": "source_config_default"}
+            frame = self._read_raw_partition(path, source, partition, units=units)
             if frame is not None and not frame.empty:
                 previous = source_frames.get(source)
                 source_frames[source] = (pd.concat([previous, frame], ignore_index=True)

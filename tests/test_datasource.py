@@ -138,7 +138,9 @@ def _publish_stock_daily(warehouse) -> str:
     frame = pd.DataFrame({
         "date": pd.to_datetime(["2026-08-03", "2026-08-04"]), "code": ["sh600900", "sh600900"],
         "open": [20.0, 20.5], "high": [21.0, 21.2], "low": [19.8, 20.0], "close": [20.5, 20.8],
-        "volume": [1000, 1100], "amount": [1e6, 1.1e6], "turn": [0.5, 0.6],
+        # Tencent Raw transport units: hand / wan yuan, chosen to yield a
+        # plausible amount / (share volume * close) near 1 after conversion.
+        "volume": [10, 11], "amount": [2.05, 2.288], "turn": [0.5, 0.6],
         "pe_ttm": [11, 11], "pb_mrq": [1.1, 1.1],
     })
     source = capture_frames(

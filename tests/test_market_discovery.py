@@ -92,6 +92,8 @@ def test_stock_series_uses_local_daily_data(tmp_path):
     assert result["close"][-1] == 99
     assert result["open"][-1] == 99
     assert result["volume"][-1] == 911
+    assert set(result["ma"]) == {"ma5", "ma10", "ma20", "ma60"}
+    assert result["volume_facts"]["volume"] == 911
 
 
 def test_discovery_run_store_records_conditions(tmp_path):

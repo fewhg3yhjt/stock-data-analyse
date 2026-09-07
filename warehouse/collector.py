@@ -334,7 +334,11 @@ class MarketCollector:
                 run_date=run_date, trade_date_start=start_date, trade_date_end=end_date,
                 expected_symbols=len(symbols), universe_id=universe_id,
                 request_context={"source": source, "symbols_limited": max_symbols is not None,
-                                  "include_etf": include_etf, "include_index": include_index},
+                                  "include_etf": include_etf, "include_index": include_index,
+                                  # Raw keeps Tencent transport values. Build converts once.
+                                   "units": ({"volume": "hand", "amount": "wan_yuan",
+                                              "resolution": "tencent_newfqkline_contract_v1"}
+                                             if source == "tencent" else {})},
                 job_run_id=job_run_id, source_name=source,
             )
             raw_writer = self.warehouse.raw.begin_batch(
