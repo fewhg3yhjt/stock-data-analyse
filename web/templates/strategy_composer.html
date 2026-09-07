@@ -176,7 +176,7 @@ const RULE_GUIDE = {
   technical_stop:['技术止损','用途：识别“放量跌破关键支撑”的风险。触发：当日最低价 < 所选支撑线，且当天成交量 ÷ 前5个交易日平均成交量 >= 放量倍数，两个条件必须同时满足。动作：建议清仓；默认启动。'],
   left_side_fixed:['左侧固定止盈','用途：价格接近历史前高但尚未突破时分批落袋。触发：当前价 ÷ 滚动前高落入配置区间。动作：按区间比例减仓。默认前高窗口252个交易日，取日最高价。'],
   right_side_trailing:['右侧移动止盈','用途：达到盈利启动条件后保护已经获得的利润。触发：当前价从持仓峰值回撤达到对应类型阈值；不要求突破前高。动作：建议清仓。'],
-  minute_take_profit_v11:['分钟级止盈 V11（分钟运行链路）','输入：当天腾讯分钟 close/volume/amount、前一交易日 Published 日线 close/ATR14、持仓均价。先判断是否盈利，再判断回撤是否达到 ATR 倍数，最后判断分钟路径结构。状态：HOLD → REVERSAL_CANDIDATE → TAKE_PROFIT_PENDING → TAKE_PROFIT；未盈利且结构走弱为 STOP_LOSS。动作：状态首次变化时发通知，不自动下单。限制：没有当天分钟数据时为 DATA_UNAVAILABLE；confirmation_bars 当前只是参数入口，实际以有效路径结构为主。'],
+  minute_take_profit_v11:['分钟级止盈 V11（分钟运行链路）','它只负责盘中提醒，不会自动卖出。只有当前价高于持仓均价时才判断止盈；先看上涨后的回撤是否达到门槛，再看分钟走势是否出现高点降低、低点降低等转弱结构。部分转弱进入“止盈待确认”，完整结构确认后进入“止盈提醒”。没有当天分钟数据时显示“等待分钟数据”，不会使用旧数据冒充实时结果。'],
   logic_stop:['逻辑止损','用途：投资逻辑被证伪时退出。触发：逻辑状态被标记为不成立。动作：建议退出。'],
   price_stop:['价格止损与贝塔保护','用途：结合个股跌幅、市场跌幅和股债收益差判断是否执行价格止损。触发：配置的宏观与价格条件组合满足。动作：止损或转入逻辑审视。'],
   time_stop:['时间止损','用途：持仓长期没有进展时释放资金。触发：持有天数超过上限且未出现豁免条件。动作：按配置减仓或退出。']
@@ -200,13 +200,23 @@ async function init(){
 function escText(value){const div=document.createElement('div');div.textContent=value==null?'':String(value);return div.innerHTML;}
 function schemeSpecHtml(spec){
   if(!spec || typeof spec!=='object') return '<div class="help">暂无详细运行说明</div>';
+  if(spec['一句话']){
+    return `<div class="scheme-guide"><b>先说结论：</b>${escText(spec['一句话'])}</div>
+      <div class="rule-guide"><b>它按这几步判断：</b><br>
+      1. <b>先看是否盈利：</b>${escText(spec['什么时候开始判断']||'只有盈利持仓进入止盈判断。')}<br>
+      2. <b>再看回撤：</b>${escText(spec['先看回撤']||'回撤达到门槛才进入候选。')}<br>
+      3. <b>最后看走势：</b>${escText(spec['再看走势']||'观察分钟走势是否转弱。')}<br>
+      4. <b>通知动作：</b>${escText(spec['通知与卖出']||'只通知，不自动卖出。')}</div>
+      <div class="rule-guide"><b>这些词是什么意思：</b><br>${escText(spec['ATR解释']||'ATR是波动幅度。')}<br>${escText(spec['放量解释']||'放量走弱是辅助条件。')}<br>${escText(spec['状态说明']||'状态表示当前处于哪个观察阶段。')}</div>
+      <div class="rule-guide"><b>数据和限制：</b><br>${escText(spec['分钟数据']||'使用当天分钟数据。')}<br>${escText(spec['当前限制']||spec['参数提示']||'以实际运行链路为准。')}</div>`;
+  }
   return Object.entries(spec).map(([key,value])=>`<div><b>${escText(key)}：</b>${escText(Array.isArray(value)?value.join('；'):value)}</div>`).join('');
 }
 function ruleSummaryHtml(rules, kind){
   return (rules||[]).map(rule=>{
     const guide=RULE_GUIDE[rule.type]||[rule.type,'运行时按该规则配置判断。'];
     const refs=(rule.indicator_refs||[]).map(ref=>`<span class="tag tag-indicator" title="${escText(ref.role)}">${escText(ref.name)} <code>${escText(ref.key)}</code></span>`).join('');
-    const params=rule.type==='minute_take_profit_v11' && rule.params ? `<div class="indicator-binding"><b>当前参数：</b><br>候选回撤：${escText(rule.params.candidate_atr ?? 0.75)} ATR（盈利后回撤达到此值进入候选）<br>有效波段：${escText(rule.params.swing_atr ?? 0.75)} ATR（压缩分钟路径高低点）<br>结构确认根数：${escText(rule.params.confirmation_bars ?? 3)}（当前为配置入口，不等于连续N根硬确认）<br>放量倍数：${escText(rule.params.volume_surge_ratio ?? 1.8)}（近3根成交额 / 近20根均值）<br>运行模式：${escText(rule.params.mode || 'notify')} · 自动卖出：${rule.params.auto_sell ? '是' : '否（固定关闭）'}</div>` : '';
+    const params=rule.type==='minute_take_profit_v11' && rule.params ? `<div class="indicator-binding"><b>当前参数：</b><br>盈利后回撤门槛：${escText(rule.params.candidate_atr ?? 0.75)} ATR（达到后进入候选观察）<br>有效高低点波动门槛：${escText(rule.params.swing_atr ?? 0.75)} ATR（过滤分钟噪声）<br>结构确认参考根数：${escText(rule.params.confirmation_bars ?? 3)}（当前是预留入口，不等于连续N根硬确认）<br>放量走弱倍数：${escText(rule.params.volume_surge_ratio ?? 1.8)}（近3根成交额 / 近20根均值）<br>通知模式：${escText(rule.params.mode || 'notify')} · 自动卖出：${rule.params.auto_sell ? '是' : '否（固定关闭）'}</div>` : '';
     return `<div class="rule-guide"><b>${kind==='buy'?'买点':'卖点'}：${escText(guide[0])}</b><br>${escText(guide[1])}${params}${refs?`<div class="indicator-binding"><b>关联指标/输入：</b>${refs}</div>`:''}</div>`;
   }).join('');
 }
