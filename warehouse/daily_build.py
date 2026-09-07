@@ -56,14 +56,36 @@ class DailyBuilder:
         out["date"] = pd.to_datetime(out["date"], errors="coerce")
         out["code"] = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
         units = units or {}
+        row_volume_units = out.get("raw_volume_unit")
+        row_amount_units = out.get("raw_amount_unit")
         volume_unit = units.get("volume")
         amount_unit = units.get("amount")
-        if volume_unit not in {"hand", "share"} or amount_unit not in {"wan_yuan", "yuan"}:
+        if row_volume_units is not None:
+            invalid = ~row_volume_units.astype(str).isin({"hand", "share"})
+            if invalid.any():
+                raise ValueError(f"{source} Raw Batch 存在未知 volume 单位行数: {int(invalid.sum())}")
+            volume_unit = None
+        if row_amount_units is not None:
+            invalid = ~row_amount_units.astype(str).isin({"wan_yuan", "yuan"})
+            if invalid.any():
+                raise ValueError(f"{source} Raw Batch 存在未知 amount 单位行数: {int(invalid.sum())}")
+            amount_unit = None
+        if row_volume_units is None and volume_unit not in {"hand", "share"}:
+            raise ValueError(f"{source} Raw Batch volume 单位未识别: {volume_unit!r}")
+        if row_amount_units is None and amount_unit not in {"wan_yuan", "yuan"}:
             raise ValueError(f"{source} Raw Batch 单位未识别: volume={volume_unit!r}, amount={amount_unit!r}")
-        if volume_unit == "hand" and "volume" in out:
-            out["volume"] = pd.to_numeric(out["volume"], errors="coerce") * 100
-        if amount_unit == "wan_yuan" and "amount" in out:
-            out["amount"] = pd.to_numeric(out["amount"], errors="coerce") * 10000
+        if "volume" in out:
+            values = pd.to_numeric(out["volume"], errors="coerce")
+            if row_volume_units is None:
+                out["volume"] = values if volume_unit == "share" else values * 100
+            else:
+                out["volume"] = values.where(row_volume_units.astype(str).eq("share"), values * 100)
+        if "amount" in out:
+            values = pd.to_numeric(out["amount"], errors="coerce")
+            if row_amount_units is None:
+                out["amount"] = values if amount_unit == "yuan" else values * 10000
+            else:
+                out["amount"] = values.where(row_amount_units.astype(str).eq("yuan"), values * 10000)
         for field in self.config["fields"]:
             if field["name"] not in out:
                 out[field["name"]] = pd.NA

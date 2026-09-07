@@ -88,6 +88,15 @@ def _notification_trigger_defaults() -> list[dict]:
             "schedule": {}, "channel": "email", "priority": "instant",
         },
         {
+            "id": "notification_data_quality",
+            "name": "数据质量异常",
+            "enabled": False,
+            "kind": NOTIFICATION_SUBSCRIPTION_KIND,
+            "event_type": "DATA_QUALITY_ALERT",
+            "conditions": [], "logic": "AND",
+            "schedule": {}, "channel": "email", "priority": "instant",
+        },
+        {
             "id": "notification_position_signal",
             "name": "持仓策略信号",
             "enabled": False,

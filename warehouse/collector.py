@@ -658,11 +658,15 @@ class MarketCollector:
                 # Tencent returns volume in shares for STAR-board 688xxx and
                 # in lots for other stocks/ETFs; amount remains wan yuan.
                 code_series = raw["code"].astype(str).str.lower().str.replace(".", "", regex=False)
-                hand_mask = ~code_series.str.startswith("sh688")
+                hand_mask = ~code_series.str.startswith("sh68")
                 raw["raw_volume_unit"] = "hand"
                 raw.loc[~hand_mask, "raw_volume_unit"] = "share"
                 raw["raw_amount_unit"] = "wan_yuan"
-                raw.loc[hand_mask, "volume"] = pd.to_numeric(raw.loc[hand_mask, "volume"], errors="coerce") / 100
+                # _fetch_symbol_tencent returns the canonical in-memory
+                # share/yuan form. Raw repair must first restore Tencent's
+                # transport magnitude for every symbol; the row unit then
+                # tells DailyBuilder whether to multiply it back.
+                raw["volume"] = pd.to_numeric(raw["volume"], errors="coerce") / 100
                 raw["amount"] = pd.to_numeric(raw["amount"], errors="coerce") / 10000
                 writer.append(raw)
                 rows += len(raw)
