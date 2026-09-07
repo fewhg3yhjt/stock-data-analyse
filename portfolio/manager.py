@@ -555,7 +555,9 @@ class PortfolioManager:
             # V11 owns minute-state decisions; never show the legacy fixed
             # stop-loss price as a V11 suggestion, especially when today's
             # minute file is unavailable.
-            suggested_price=None,
+            # Storage keeps this legacy numeric field NOT NULL; zero means
+            # "no suggested price" and the template omits it.
+            suggested_price=0.0,
             check_results={"v11": context},
         )
 

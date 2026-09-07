@@ -255,7 +255,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
           <strong>{{ p.advice_label }}</strong>
           {% if p.advice.urgency=='urgent' %}<span class="tag red">紧急</span>{% endif %}
           — {{ p.advice.reason }}
-           {% if p.advice.suggested_price and p.scheme_name != 'minute_take_profit_v11' %}｜建议价 {{ p.advice.suggested_price }}{% endif %}
+           {% if p.advice.suggested_price and p.advice.suggested_price > 0 and p.scheme_name != 'minute_take_profit_v11' %}｜建议价 {{ p.advice.suggested_price }}{% endif %}
           {% if p.advice.suggested_shares %}｜{{ "%.0f"|format(p.advice.suggested_shares) }}股{% endif %}
         </div>
         {% endif %}
