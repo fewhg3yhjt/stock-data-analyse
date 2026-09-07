@@ -317,8 +317,16 @@ class MarketCollector:
         symbols, asset_type_counts = select_symbols(
             symbols, asset_types=asset_types, known_types=self.warehouse.instrument_types()
         )
+        selected_symbols = list(symbols)
+        from StockInvestmentTool.screener.board import detect_board
+        symbol_types = {code: (self.warehouse.instrument_types().get(code) or
+                               StockDataFetcher.detect_type(code)) for code in selected_symbols}
+        symbol_boards = {code: (detect_board(code) or "unknown") for code in selected_symbols}
         if max_symbols:
             symbols = symbols[:max_symbols]
+            selected_symbols = list(symbols)
+            symbol_types = {code: symbol_types.get(code, "unknown") for code in selected_symbols}
+            symbol_boards = {code: symbol_boards.get(code, "unknown") for code in selected_symbols}
 
         capture_raw = (source == "tencent" and target == "daily") if capture_raw is None else capture_raw
         batch_store = None
@@ -351,6 +359,7 @@ class MarketCollector:
 
         added = 0
         failed: list[str] = []
+        skipped_codes: list[str] = []
         timed_out = False
         skipped = 0
         t0 = time.time()
@@ -437,6 +446,7 @@ class MarketCollector:
             last = last_dates.get(code)
             if not force_refresh and last is not None and last >= end_ts:
                 skipped += 1
+                skipped_codes.append(code)
                 if progress_callback:
                     progress_callback(i, len(symbols), code, "已是最新")
                 continue
@@ -448,6 +458,7 @@ class MarketCollector:
                 fetch_start = start_date
             if fetch_start > end_date:
                 skipped += 1
+                skipped_codes.append(code)
                 if progress_callback:
                     progress_callback(i, len(symbols), code, "已是最新")
                 continue
@@ -485,6 +496,7 @@ class MarketCollector:
                 continue
             if df.empty:
                 skipped += 1
+                skipped_codes.append(code)
                 if progress_callback:
                     progress_callback(i, len(symbols), code, "无新增数据")
                 continue
@@ -550,15 +562,131 @@ class MarketCollector:
         if raw_writer is not None:
             raw_writer.abort()
         status = "timeout" if timed_out else ("partial_success" if failed and added else None)
+        failed_set = set(failed)
+        skipped_set = set(skipped_codes)
+        coverage_by_type = {}
+        coverage_by_board = {}
+        for code in selected_symbols:
+            kind = symbol_types.get(code, "unknown")
+            board = symbol_boards.get(code, "unknown")
+            for bucket, key in ((coverage_by_type, kind), (coverage_by_board, board)):
+                item = bucket.setdefault(key, {"expected": 0, "success": 0, "failed": 0, "skipped": 0})
+                item["expected"] += 1
+                if code in failed_set:
+                    item["failed"] += 1
+                elif code in skipped_set:
+                    item["skipped"] += 1
+                else:
+                    item["success"] += 1
+        if batch_store and batch_id:
+            batch_store.update_request_context(batch_id, {
+                "asset_type_counts": asset_type_counts,
+                "coverage_by_type": coverage_by_type,
+                "coverage_by_board": coverage_by_board,
+                "failed_symbols": sorted(failed_set),
+                "skipped_symbols": sorted(skipped_set),
+            })
         return {"added_rows": added, "symbols": len(symbols),
                 "failed": failed, "up_to_date": not failed and added == 0,
                 "status": status, "timed_out": timed_out,
                 "rows": added, "elapsed_sec": round(elapsed, 1),
                 "source_batch_id": batch_id, "source_batch_ids": [batch_id] if batch_id else [],
                 "raw_capture_failed": raw_capture_failed,
-                "skipped_symbols": skipped,
-                "asset_type_counts": asset_type_counts,
-                "raw_batch": raw_result}
+                 "skipped_symbols": skipped,
+                 "asset_type_counts": asset_type_counts,
+                 "coverage_by_type": coverage_by_type,
+                 "coverage_by_board": coverage_by_board,
+                 "raw_batch": raw_result}
+
+    def capture_tencent_raw_units(self, *, start_date: str, end_date: str,
+                                  symbols: Optional[list[str]] = None,
+                                  include_etf: bool = True,
+                                  include_index: bool = False,
+                                  job_run_id: Optional[int] = None,
+                                  progress_callback=None) -> dict:
+        """Capture a unit-declared Tencent Raw Batch without touching daily.
+
+        This repair-only path is deliberately separate from ``sync_daily``:
+        it writes Tencent transport units (hand / wan_yuan) to one immutable
+        Raw Batch and records that contract in SourceBatch metadata.  It never
+        writes the processed ``daily`` partition.
+        """
+        if not start_date or not end_date:
+            raise ValueError("capture_tencent_raw_units requires explicit start_date and end_date")
+        if symbols is None:
+            catalog = self.warehouse.list_instruments(
+                asset_types=["stock", "etf"] if include_etf else ["stock"]
+            )
+            symbols = [item["code"] for item in catalog
+                       if include_index or item.get("type") != "index"]
+        from StockInvestmentTool.warehouse.asset_profiles import select_symbols
+        symbols, asset_type_counts = select_symbols(
+            symbols, known_types=self.warehouse.instrument_types(),
+        )
+        from StockInvestmentTool.warehouse.source_batches import SourceBatchStore
+        run_date = datetime.now().strftime("%Y-%m-%d")
+        store = SourceBatchStore(self.warehouse.meta_db_path)
+        batch_id = store.start(
+            dataset_name="stock_daily", source_name="tencent", run_date=run_date,
+            trade_date_start=start_date, trade_date_end=end_date,
+            expected_symbols=len(symbols), universe_id=f"unit_repair_{run_date.replace('-', '')}",
+            request_context={
+                "source": "tencent", "repair": "unit_metadata_v1",
+                "units": {"volume": "hand", "amount": "wan_yuan",
+                          "resolution": "tencent_newfqkline_contract_v1"},
+                "include_etf": include_etf, "include_index": include_index,
+            },
+            job_run_id=job_run_id,
+        )
+        writer = self.warehouse.raw.begin_batch("tencent", "stock_daily", run_date)
+        failed, skipped, rows = [], 0, 0
+        started = time.time()
+        try:
+            for index, code in enumerate(symbols, 1):
+                try:
+                    frame = self._fetch_symbol_tencent(code, start_date, end_date)
+                except Exception as exc:  # noqa: BLE001
+                    failed.append(code)
+                    logger.warning("单位修复 Raw Capture 失败 %s: %s", code, exc)
+                    continue
+                if frame.empty:
+                    skipped += 1
+                    continue
+                # _fetch_symbol_tencent normalizes to share/yuan for callers;
+                # immutable Raw must retain the declared transport units.
+                raw = frame.copy()
+                # Tencent returns volume in shares for STAR-board 688xxx and
+                # in lots for other stocks/ETFs; amount remains wan yuan.
+                code_series = raw["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+                hand_mask = ~code_series.str.startswith("sh688")
+                raw["raw_volume_unit"] = "hand"
+                raw.loc[~hand_mask, "raw_volume_unit"] = "share"
+                raw["raw_amount_unit"] = "wan_yuan"
+                raw.loc[hand_mask, "volume"] = pd.to_numeric(raw.loc[hand_mask, "volume"], errors="coerce") / 100
+                raw["amount"] = pd.to_numeric(raw["amount"], errors="coerce") / 10000
+                writer.append(raw)
+                rows += len(raw)
+                if progress_callback:
+                    progress_callback(index, len(symbols), code, "captured")
+            result = writer.finish()
+            status = "partial_success" if failed else "success"
+            store.finish(
+                batch_id, success_symbols=len(symbols) - len(failed) - skipped,
+                failed_symbols=len(failed), skipped_symbols=skipped, row_count=result["row_count"],
+                raw_path=str(result["path"]), checksum=result["checksum"],
+                file_size=result["file_size"], status=status, failure_details=failed,
+            )
+            return {"batch_id": batch_id, "raw": result, "rows": rows,
+                    "symbols": len(symbols), "failed": failed, "skipped": skipped,
+                    "asset_type_counts": asset_type_counts,
+                    "elapsed_sec": round(time.time() - started, 1)}
+        except Exception as exc:
+            writer.abort()
+            store.finish(batch_id, success_symbols=0, failed_symbols=len(symbols),
+                         skipped_symbols=skipped, row_count=0, raw_path=None,
+                         checksum=None, file_size=None, status="failed",
+                         error_summary=str(exc), failure_details=failed)
+            raise
 
 
 # ── baostock 包装（供 _bs_query 使用，统一走连接自愈）──

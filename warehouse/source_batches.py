@@ -77,6 +77,22 @@ class SourceBatchStore:
                  checksum, file_size, status, _now(), error_summary[:2000],
                  json.dumps(failure_details or [], ensure_ascii=False), batch_id))
 
+    def update_request_context(self, batch_id: str, updates: dict) -> None:
+        """Merge execution diagnostics into the existing batch context."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT request_context FROM source_batches WHERE batch_id=?", (batch_id,)).fetchone()
+            context = {}
+            if row and row[0]:
+                try:
+                    context = json.loads(row[0])
+                except (TypeError, ValueError):
+                    context = {}
+            context.update(updates or {})
+            conn.execute(
+                "UPDATE source_batches SET request_context=? WHERE batch_id=?",
+                (json.dumps(context, ensure_ascii=False, default=str), batch_id),
+            )
+
     def item_stats(self, batch_id: str) -> dict:
         items = self.list_items(batch_id)
         success = {item["symbol"] for item in items if item["status"] == "success"}

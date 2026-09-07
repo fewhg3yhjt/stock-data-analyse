@@ -26,6 +26,18 @@ from StockInvestmentTool.warehouse.storage import Warehouse
 logger = logging.getLogger(__name__)
 
 
+def _task_config(task: dict) -> dict:
+    """Read the active task config from the TaskCenter DTO."""
+    active_version = task.get("active_config_version")
+    for item in task.get("config_versions") or []:
+        if active_version is None or item.get("version") == active_version:
+            try:
+                return json.loads(item.get("config") or "{}")
+            except (TypeError, ValueError):
+                return {}
+    return {}
+
+
 def _new_source_task(warehouse, request, task_key, run_id):
     from StockInvestmentTool.warehouse import financial_reports, valuation_snapshot
     if task_key == "financial_reports_capture":
@@ -456,13 +468,16 @@ def execute_task(db_path: Path, task_key: str, payload: dict,
     # type=industry in the management catalog.
     requires_security_scope = task_key != "industry_daily_capture"
     if not symbols and requires_security_scope:
-        config = json.loads(task["config_versions"][0]["config"]) if task.get("config_versions") else {}
+        config = _task_config(task)
         asset_types = set((config.get("scope") or {}).get("asset_types") or [])
         catalog = Warehouse(meta_db_path=db_path).list_instruments(asset_types=asset_types)
         symbols = [item["code"] for item in catalog]
     if not symbols and requires_security_scope:
         raise ValueError(f"任务 {task_key} 没有可执行的证券范围")
     payload = {**payload, "symbols": symbols}
+    if requires_security_scope and "asset_types" not in payload:
+        config = _task_config(task)
+        payload["asset_types"] = (config.get("scope") or {}).get("asset_types") or ["stock", "etf"]
     if request_id is None:
         request_id = center.create_request(task_key, payload.get("trigger_type", "manual"),
                                            period_start=payload.get("period_start"), period_end=payload.get("period_end"),

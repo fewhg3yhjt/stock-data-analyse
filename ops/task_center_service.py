@@ -73,8 +73,10 @@ class TaskCenterService:
                 "running": bool(running),
                 "has_history": bool(latest),
                 "latest_success": latest if latest and latest.get("status") in ("success", "partial_success") else None,
-                 "latest_failure": latest if latest and latest.get("status") in ("failed", "timeout") else None,
+                "latest_failure": latest if latest and latest.get("status") in ("failed", "timeout") else None,
             }
+            dto["coverage_by_type"] = (latest or {}).get("coverage_by_type", {})
+            dto["coverage_by_board"] = (latest or {}).get("coverage_by_board", {})
             if stage and dto["stage"] != stage:
                 continue
             if status and dto["current_status"] != status:
@@ -157,4 +159,7 @@ class TaskCenterService:
             item["result"] = {}
         item["failed_items"] = item["result"].get("failed", []) if isinstance(item["result"], dict) else []
         item["failed_count"] = len(item["failed_items"]) if isinstance(item["failed_items"], list) else int(item["result"].get("failed_count", 0) or 0) if isinstance(item["result"], dict) else 0
+        if isinstance(item.get("result"), dict):
+            item["coverage_by_type"] = item["result"].get("coverage_by_type", {})
+            item["coverage_by_board"] = item["result"].get("coverage_by_board", {})
         return item
