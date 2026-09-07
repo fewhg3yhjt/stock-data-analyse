@@ -120,6 +120,13 @@ class IndustryRotationBuilder:
         for name, result in (("industry_daily", industry), ("stock_daily", daily)):
             if result.context.get("fallback_used") or result.context.get("source") != "published_dataset":
                 raise DatasetAccessError(f"{name} 不是 Published 数据，禁止生成正式轮动状态")
+        industry_as_of = industry.context.get("data_as_of")
+        stock_as_of = daily.context.get("data_as_of")
+        if industry_as_of != as_of or stock_as_of != as_of:
+            raise DatasetAccessError(
+                f"正式轮动输入日期未对齐: target={as_of}, "
+                f"industry_daily={industry_as_of}, stock_daily={stock_as_of}"
+            )
 
         boards = industry.data.copy()
         boards["date"] = pd.to_datetime(boards["trading_date"], errors="coerce").dt.normalize()

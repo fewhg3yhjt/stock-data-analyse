@@ -244,6 +244,11 @@ def _dataset_released(dataset_name: str, target_date: str) -> bool:
         return False
 
 
+def _rotation_inputs_aligned(target_date: str) -> bool:
+    """Formal rotation requires both independent Published inputs on T."""
+    return _dataset_released("industry_daily", target_date) and _dataset_released("stock_daily", target_date)
+
+
 def run_daily_data_chain(*, dates: list[str] | None = None) -> dict:
     """Run the sole task-center daily data chain for identified trade dates."""
     from StockInvestmentTool.ops.task_execution import execute_pipeline
@@ -660,7 +665,7 @@ def run_post_close_retry_job() -> dict:
                 result["retried"].append("industry_features_build")
         except Exception as exc:  # noqa: BLE001
             result["industry_daily_error"] = str(exc)
-    if (enabled("industry_rotation_build") and _dataset_released("industry_daily", trading_date_text)
+    if (enabled("industry_rotation_build") and _rotation_inputs_aligned(trading_date_text)
             and not _dataset_released("industry_rotation_daily", trading_date_text)):
         try:
             result["industry_rotation"] = execute_task(

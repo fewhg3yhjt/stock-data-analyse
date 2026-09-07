@@ -5,6 +5,12 @@ task:
   type: DERIVED_BUILD
   input_datasets: [industry_daily, stock_daily]
   output_datasets: [industry_rotation_daily]
+  dependencies:
+    mode: all
+    date_alignment: exact
+    required_quality: WARNING
+    block_on_missing_input: true
+    block_on_date_mismatch: true
   producer_metrics: [strength_score, rotation_score, industry_stage]
   scope: {asset_types: [industry], universe: ths_industry}
 schedule: {enabled: true, timezone: Asia/Shanghai, frequency: after_upstream, time: null, period_type: day, period_start: null, period_end: null}
