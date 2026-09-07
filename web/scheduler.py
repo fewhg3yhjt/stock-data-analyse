@@ -839,12 +839,6 @@ def _evaluate_position_runtime() -> dict:
     try:
         from StockInvestmentTool.biz.position_runtime import PositionRuntimeService
         summary = PositionRuntimeService().evaluate_all()
-        try:
-            from StockInvestmentTool.portfolio.manager import PortfolioManager
-            legacy = PortfolioManager().refresh_v11_minute_positions()
-            summary["legacy_v11"] = legacy
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("旧持仓 V11 兼容建议刷新失败: %s", exc)
         logger.info("持仓运行状态评估完成: 评估 %d 只, 触发回撤通知 %d 只",
                     summary["evaluated"], summary["triggered"])
         return summary
