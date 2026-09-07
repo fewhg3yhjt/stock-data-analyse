@@ -164,13 +164,17 @@ def _build(warehouse: Warehouse, request: dict) -> dict:
     rows = 0
     batch_ids = []
     for partition in _months(request.get("period_start"), request.get("period_end")):
+        # Always merge every completed Raw Batch overlapping the partition.
+        # The capture stage passes its newest batch as input_batch_id, but that
+        # batch may only contain the symbols completed in the latest retry.
+        # Building from it alone would replace a full month with a partial
+        # snapshot and silently drop older successful symbols/dates.
+        selected = DailyBuilder(warehouse).select_raw_batches(partition)
         if request.get("input_batch_id"):
             path = _batch(warehouse, request["input_batch_id"])
-            selected = [("tencent", path, request["input_batch_id"])]
-        else:
-            # 自动合并所有重叠该月的 Raw Batch（含补漏 batch），避免只取最新
-            # 单个 batch 导致 coverage 骤降。
-            selected = DailyBuilder(warehouse).select_raw_batches(partition)
+            item = ("tencent", path, request["input_batch_id"])
+            if item[2] not in {entry[2] for entry in selected}:
+                selected.append(item)
         build = DailyBuilder(warehouse).build_partition(partition, selected, include_current=True)
         ids = [item[2] for item in selected]
         version = PipelineState(warehouse.meta_db_path).create_version(build, source_batches=ids)
