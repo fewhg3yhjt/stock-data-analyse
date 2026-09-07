@@ -1,5 +1,17 @@
 /* Shared escaping and small formatting helpers for page adapters. */
 (() => {
+  // All pages load this file before page scripts. Patch the native helper once
+  // so legacy direct response.json() calls cannot expose an opaque parse error.
+  if (window.Response && !window.Response.prototype.__stockSafeJson) {
+    const nativeJson = window.Response.prototype.json;
+    window.Response.prototype.json = async function safeJson() {
+      const text = await this.text();
+      if (!text.trim()) throw new Error(`接口返回空响应（HTTP ${this.status}）`);
+      try { return JSON.parse(text); }
+      catch (_) { throw new Error(`接口返回非 JSON 响应（HTTP ${this.status}）`); }
+    };
+    window.Response.prototype.__stockSafeJson = nativeJson;
+  }
   window.UI_UTILS = {
     _busy: new Set(),
     async once(key, task) {

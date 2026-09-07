@@ -32,6 +32,12 @@
 - Web pages must use the shared `StockChart` component. Prefer `StockChart.drawLine` or `StockChart.drawKLine`; do not duplicate chart options, tooltip, dataZoom, or resize configuration in page scripts.
 - Chart data must come from a Published Dataset and include an explicit `as_of` date in the response or data contract.
 
+## Frontend API responses
+
+- Page scripts must use `window.UI_UTILS.fetchJson()` for API requests. Do not call `response.json()` directly in new code.
+- `web/static/ui-utils.js` provides the project-wide fallback for legacy direct JSON calls and converts empty/non-JSON responses into actionable Chinese errors. Keep it loaded before page scripts through `base.html`.
+- API error handling must preserve HTTP status and response context; never expose raw `Unexpected end of JSON input` to users.
+
 ## Original-scenario verification
 
 - A bug fix is not complete when a unit test or backend endpoint passes alone. Reproduce the user's original page, route, inputs, and visible outcome after the fix.
