@@ -322,7 +322,7 @@ class DashboardService:
                     continue
                 row = out.setdefault(key, {})
                 if q.get("price") not in (None, 0):
-                    row["price"] = round(float(q["price"]), 2)
+                    row["price"] = round(float(q["price"]), 4)
                 if q.get("change_pct") is not None:
                     row["change_pct"] = round(float(q["change_pct"]), 2)
                 for f in ("amount_wan", "turnover", "vol_ratio", "pe_ttm", "pb",
@@ -353,7 +353,7 @@ class DashboardService:
                             try:
                                 v = float(r[f])
                                 if v == v:
-                                    row[f] = round(v, 2)
+                                 row[f] = round(v, 4 if f == "price" else 2)
                             except (TypeError, ValueError):
                                 pass
                     if r.get("snapshot_time"):

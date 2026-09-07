@@ -128,7 +128,7 @@ window.StockDetail = (function(){
     const quotePanel = `
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:4px 16px;padding:10px 14px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:6px;margin-bottom:10px;font-size:13px;">
         <div style="grid-column:1/-1;display:flex;align-items:baseline;gap:12px;margin-bottom:4px;">
-          <span style="font-size:24px;font-weight:700;color:${chgColor};">${fmt(b.price)}</span>
+          <span style="font-size:24px;font-weight:700;color:${chgColor};">${fmt(b.price, 4)}</span>
           <span style="font-size:15px;font-weight:600;color:${chgColor};">${chg>=0?'+':''}${fmt(chg)}%</span>
           <span style="font-size:11px;color:var(--color-text-subtle);"><i class="fas fa-clock"></i> ${b.snapshot_time || iv.snapshot_time || '—'}</span>
         </div>
