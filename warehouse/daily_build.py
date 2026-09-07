@@ -58,6 +58,15 @@ class DailyBuilder:
         units = units or {}
         row_volume_units = out.get("raw_volume_unit")
         row_amount_units = out.get("raw_amount_unit")
+        if row_volume_units is not None:
+            # Tencent's 68xxxx STAR/BEI? market response is share-based.
+            # Enforce the adapter contract even for legacy repair batches that
+            # carried an incorrect row label.
+            code_series = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+            row_volume_units = row_volume_units.astype(str).where(
+                ~code_series.str.startswith("sh68"), "share"
+            )
+            out["raw_volume_unit"] = row_volume_units
         volume_unit = units.get("volume")
         amount_unit = units.get("amount")
         if row_volume_units is not None:

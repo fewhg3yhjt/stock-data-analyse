@@ -256,6 +256,25 @@ def test_builder_rejects_historical_tencent_batch_without_units(tmp_path):
         )
 
 
+def test_builder_enforces_tencent_68_market_share_contract(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh689009"],
+                              "open": [40.0], "high": [41.0], "low": [39.0], "close": [40.0],
+                              "volume": [1000000.0], "amount": [40000.0],
+                              "raw_volume_unit": ["hand"], "raw_amount_unit": ["wan_yuan"]})],
+        expected_symbols=1, success_symbols=1, universe_id="u",
+        request_context={"units": {"volume": "share", "amount": "wan_yuan"}},
+    )
+    build = DailyBuilder(warehouse).build_partition(
+        "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
+    )
+    result = pd.read_parquet(build["path"])
+    assert result.iloc[0]["volume"] == 1000000.0
+
+
 def test_quality_fails_amount_volume_unit_mismatch(tmp_path):
     path = tmp_path / "unit_bad.parquet"
     pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
