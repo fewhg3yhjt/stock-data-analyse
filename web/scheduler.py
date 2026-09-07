@@ -465,8 +465,8 @@ def _schedule_business_tasks(scheduler, app=None) -> None:
         minutes = max(1, int(os.getenv("BUSINESS_EXPIRY_RECONCILE_MINUTES", "30")))
         business = BusinessScheduler(scheduler)
         business.register_interval("observation.expiry_reconcile", minutes=minutes)
-        # 通知投递：领取并发送 pending 投递（与旧 outbox 每 5 分钟节奏一致）
-        outbox_minutes = max(1, int(os.getenv("NOTIFICATION_OUTBOX_MINUTES", "5")))
+        # 通知投递：领取并发送 pending 投递，默认每分钟检查一次。
+        outbox_minutes = max(1, int(os.getenv("NOTIFICATION_OUTBOX_MINUTES", "1")))
         business.register_interval("notification.outbox_delivery", minutes=outbox_minutes)
         # 每日盘后汇总：收盘后生成日报 + 通知事件
         digest_time = os.getenv("BUSINESS_DIGEST_TIME", "15:35")
