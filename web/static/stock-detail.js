@@ -30,6 +30,16 @@ window.StockDetail = (function(){
     return fmt(n, 0);
   }
 
+  async function readJson(response){
+    const body = await response.text();
+    if (!body.trim()) throw new Error(`持仓详情接口返回空响应（HTTP ${response.status}）`);
+    let data;
+    try { data = JSON.parse(body); }
+    catch (_) { throw new Error(`持仓详情接口返回非 JSON（HTTP ${response.status}）`); }
+    if (!response.ok) throw new Error(data.error || `持仓详情接口失败（HTTP ${response.status}）`);
+    return data;
+  }
+
   function load(code, kind, container, opts){
     opts = opts || {};
     if (opts.onStart) opts.onStart(code);
@@ -39,7 +49,7 @@ window.StockDetail = (function(){
     if (opts.entryDate) fd.append('entry_date', opts.entryDate);
     if (opts.entryPrice) fd.append('entry_price', opts.entryPrice);
     return fetch('/api/stock/detail', {method:'POST', body: fd})
-      .then(r => r.json())
+      .then(readJson)
       .then(d => {
         if (d.status !== 'success') throw new Error(d.error || '加载失败');
         render(container, d, kind, opts);

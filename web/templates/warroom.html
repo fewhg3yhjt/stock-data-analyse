@@ -390,7 +390,7 @@ async function submitOperationRow(panel, tr){
   if (!data.price || !data.shares){ return showUiMessage('请填写成交价和数量', 'error'); }
   try{
     const res = await fetch('/portfolio/' + posId + '/transaction', {method:'POST', body:new URLSearchParams(data)});
-    const d = await res.json();
+    const d = await readWarroomJson(res, '录入交易');
     if (d.status === 'success'){ showUiMessage('已录入交易', 'success'); setTimeout(()=>location.reload(), 500); }
     else showUiMessage(d.error || '录入失败', 'error');
   }catch(e){ showUiMessage('录入失败：' + e.message, 'error'); }
@@ -402,7 +402,7 @@ async function saveNotifyConfig(btn){
   const enabled = Array.from(form.querySelectorAll('.notify-signal:checked')).map(cb => cb.dataset.signal);
   try{
     const res = await fetch('/api/position/' + positionId + '/notify-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({signals:enabled})});
-    const d = await res.json();
+    const d = await readWarroomJson(res, '保存通知配置');
     if (d.status === 'success') showUiMessage('通知配置已保存', 'success');
     else showUiMessage(d.error || '保存失败', 'error');
   }catch(e){ showUiMessage('保存失败：' + e.message, 'error'); }
@@ -417,7 +417,7 @@ async function loadReturnsTab(box){
   const chartEl = panel.querySelector('.returns-chart');
   try{
     const res = await fetch('/api/portfolio/position/' + positionId + '/returns');
-    const d = await res.json();
+    const d = await readWarroomJson(res, '读取收益');
     if (d.status !== 'success'){ chartEl.innerHTML = '<span style="color:#c62828;font-size:13px;">' + d.error + '</span>'; return; }
     panel.querySelector('.ret-actual').textContent = d.actual_latest != null ? (d.actual_latest>0?'+':'') + d.actual_latest + '%' : '—';
     panel.querySelector('.ret-sim').textContent = d.simulation_latest != null ? (d.simulation_latest>0?'+':'') + d.simulation_latest + '%' : '—';
@@ -453,16 +453,25 @@ async function loadReturnsTab(box){
    if (!scheme){ showUiMessage('请选择方案', 'error'); return; }
    try{
      const res = await fetch('/portfolio/' + positionId + '/scheme', {method:'POST', body:new URLSearchParams({scheme})});
-     const d = await res.json();
+     const d = await readWarroomJson(res, '刷新持仓');
      if (d.status === 'success'){ showUiMessage('方案已切换并重算点位', 'success'); setTimeout(()=>location.reload(), 600); }
      else showUiMessage(d.error || '切换失败', 'error');
    }catch(e){ showUiMessage('切换失败：' + e.message, 'error'); }
- }
+}
+async function readWarroomJson(response, action){
+  const body = await response.text();
+  if (!body.trim()) throw new Error(`${action}接口返回空响应（HTTP ${response.status}）`);
+  let data;
+  try { data = JSON.parse(body); }
+  catch (_) { throw new Error(`${action}接口返回非 JSON（HTTP ${response.status}）`); }
+  if (!response.ok) throw new Error(data.error || `${action}失败（HTTP ${response.status}）`);
+  return data;
+}
  async function deletePos(id, name){
    if (!await showUiConfirm('将还原占用资金，并删除该持仓全部交易与建议记录。此操作不可恢复！', '删除持仓「' + name + '」')) return;
    try {
      const res = await fetch('/portfolio/' + id + '/delete', { method: 'POST' });
-     const d = await res.json();
+      const d = await readWarroomJson(res, '删除持仓');
      if (d.status === 'success'){
        showUiMessage('已删除「' + name + '」，还原资金 ' + (d.restored_cash||0).toFixed(2) + ' 元', 'success');
        setTimeout(() => location.reload(), 700);
