@@ -763,12 +763,18 @@ def api_health_details():
             item = dict(r)
             item["id"] = r["delivery_id"]
             recent_items.append(item)
+        from StockInvestmentTool.biz.config import business_db_path
+        business_runs = service.repo.db.fetchall(
+            "SELECT * FROM business_job_runs WHERE task_key='notification.outbox_delivery' "
+            "ORDER BY started_at DESC LIMIT 10")
         response = {
             "status": "success",
             "scheduler": {"enabled": bool(scheduler), "jobs": len(jobs)},
             "warehouse": {"daily_partitions": len(daily_months), "minute_days": len(minute_days)},
             "notifications": {"outbox": _delivery_counts(), "recent": recent_items},
-            "jobs": {"recent": JobRunStore().recent(10)},
+            "jobs": {"recent": JobRunStore().recent(10),
+                     "active_notification_outbox": [dict(row) for row in business_runs],
+                     "notification_database": str(business_db_path())},
             "features": {
                 "minute_snapshot": os.getenv("WAREHOUSE_MINUTE_SNAPSHOT") == "1",
                 "daily_sync": os.getenv("WAREHOUSE_DAILY_SYNC") == "1",
