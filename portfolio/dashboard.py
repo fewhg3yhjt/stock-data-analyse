@@ -419,7 +419,8 @@ class DashboardService:
         return out
 
     def stock_dual_view(self, code: str, days: int = 750,
-                        transaction_points: Optional[list[dict]] = None) -> dict:
+                        transaction_points: Optional[list[dict]] = None,
+                        daily_frame=None) -> dict:
         """单只股票的「天周期历史 + 盘中快照」双视图数据（后端打通）。
 
         框1 天周期历史: OHLCV 取自 warehouse daily 分区；均线 MA5/10/20/60 直接
@@ -451,9 +452,10 @@ class DashboardService:
             from StockInvestmentTool.datasource.base import WarehouseSource
             import pandas as _pd
 
-            hdf = WarehouseSource().fetch_daily_series(code_nodot, days)
+            hdf = daily_frame.copy() if daily_frame is not None else WarehouseSource().fetch_daily_series(code_nodot, days)
             if hdf is not None and not hdf.empty:
                 hdf = hdf.tail(days).reset_index(drop=True)
+            if hdf is not None and not hdf.empty:
                 closes_s = _pd.to_numeric(hdf["close"], errors="coerce")
 
                 def _number_list(values, decimals=2):
@@ -534,7 +536,7 @@ class DashboardService:
             if not minute.empty:
                 last = minute.iloc[-1]
                 result["intraday"] = {
-                    "price": round(float(last["close"]), 2),
+                    "price": round(float(last["close"]), 4),
                     "snapshot_time": str(last["time"])[:19],
                     "source": "tencent_minute",
                     "as_of": minute_day,
@@ -542,7 +544,7 @@ class DashboardService:
                 result["intraday_trend"] = {
                     "day": minute_day,
                     "times": [str(v)[:16] for v in minute["time"]],
-                    "prices": [round(float(v), 2) for v in minute["close"]],
+                    "prices": [round(float(v), 4) for v in minute["close"]],
                     "source": "tencent_minute",
                 }
                 return result
@@ -589,7 +591,7 @@ class DashboardService:
                     t = str(r.get("snapshot_time", ""))[:16]
                     if p == p and t:  # 非 NaN 且有时间
                         times.append(t)
-                        prices.append(round(float(p), 2))
+                        prices.append(round(float(p), 4))
                 if times:
                     result["intraday_trend"] = {"day": snap_day, "times": times, "prices": prices,
                                                  "source": "online_snapshot", "as_of": snap_day}
@@ -822,7 +824,7 @@ class DashboardService:
                     detail_transactions.extend(
                         txn.to_dict() for txn in self.manager.storage.get_transactions(candidate.id)
                     )
-        dual = self.stock_dual_view(norm, transaction_points=detail_transactions)
+        dual = self.stock_dual_view(norm, transaction_points=detail_transactions, daily_frame=kline)
 
         lines = []
         if ctx.weak_support:

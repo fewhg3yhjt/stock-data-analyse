@@ -316,9 +316,9 @@ window.StockDetail = (function(){
                 else { o = v[0]; c = v[1]; l = v[2]; h = v[3]; }
                 out += '<span>开 <b>' + o + '</b>　高 <b>' + h + '</b>　低 <b>' + l + '</b>　收 <b>' + c + '</b></span><br/>';
               } else if (p.seriesName === '成交量'){
-                out += '成交量：<b>' + volHandFmt(p.value) + '</b><br/>';
+             out += '成交量：<b>' + volHandFmt(p.value) + '</b><br/>';
               } else if (p.seriesName && p.value !== null && p.value !== undefined){
-                out += (p.marker || '') + ' ' + p.seriesName + '：' + p.value + '<br/>';
+                 out += (p.marker || '') + ' ' + p.seriesName + '：<b>' + fmt(p.value, 4) + '</b><br/>';
               }
             });
             if (kLines && kLines.length){
