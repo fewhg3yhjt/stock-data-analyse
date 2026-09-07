@@ -2736,6 +2736,9 @@ def portfolio_refresh():
     mgr = _get_manager()
     try:
         results = mgr.refresh_all()
+        v11_results = mgr.refresh_v11_minute_positions()
+        results.extend({"position_id": item["position_id"], "v11_status": item["status"]}
+                       for item in v11_results)
         return flask.jsonify({"status": "success", "results": results})
     except Exception as e:
         logger.exception("刷新失败")

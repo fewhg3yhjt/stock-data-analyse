@@ -147,7 +147,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
   <div class="ui-card">
     <div class="ui-card-header">
       <span><i class="fas fa-list-check"></i> 个股今日指令</span>
-      <a class="ui-button ui-button-secondary" href="#" onclick="refreshAll();return false;"><i class="fas fa-rotate"></i> 刷新行情+建议</a>
+       <a class="ui-button ui-button-secondary" href="#" onclick="refreshAll();return false;"><i class="fas fa-rotate"></i> 刷新行情+建议</a>
     </div>
     {% if data.positions %}
       {% for p in data.positions %}
@@ -178,7 +178,7 @@ body{font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',
              <button type="button" class="detail-tab" data-detail-tab="notify" onclick="switchDetailTab(this.closest('.detail-box'),'notify');event.stopPropagation();">消息通知</button>
              <button type="button" class="detail-tab" data-detail-tab="returns" onclick="switchDetailTab(this.closest('.detail-box'),'returns');event.stopPropagation();loadReturnsTab(this.closest('.detail-box'));">收益</button>
            </div>
-           <div class="detail-panel detail-panel-trend"></div>
+            <div class="detail-panel detail-panel-trend"><div class="trend-refresh-row"><button type="button" class="ui-button ui-button-secondary ui-button-sm" onclick="refreshPositionTrend(this);event.stopPropagation();"><i class="fas fa-rotate"></i> 刷新分时</button><span class="note trend-refresh-status">自动刷新：每60秒</span></div></div>
             <div class="detail-panel detail-panel-strategy" style="display:none;" data-position="{{ p.id }}">
               <div class="strategy-summary">
                 <div class="strategy-meta"><b>{{ p.strategy.scheme_name if p.strategy else p.scheme_name }}</b> · 版本 {{ p.strategy.version if p.strategy else '1.0' }}</div>
@@ -311,10 +311,24 @@ async function toggleDetail(card, code){
   if (trendPanel && !trendPanel.dataset.loaded){
     trendPanel.dataset.loaded = '1';
     trendPanel.innerHTML = '<div style="color:var(--color-text-subtle);font-size:13px;">加载中…</div>';
-    window.StockDetail.load(code, 'position', trendPanel)
+   window.StockDetail.load(code, 'position', trendPanel)
       .catch(err => { trendPanel.innerHTML = '<span style="color:#c62828;font-size:13px;">' + err.message + '</span>'; });
+    trendPanel.dataset.refreshTimer = String(setInterval(() => refreshPositionTrend(trendPanel), 60000));
   }
   switchDetailTab(box, 'trend');
+}
+async function refreshPositionTrend(source){
+  const panel = source.closest ? source.closest('.detail-panel-trend') : source;
+  const card = panel.closest('[data-position-card]');
+  if (!card) return;
+  const status = panel.querySelector('.trend-refresh-status');
+  if (status) status.textContent = '刷新中…';
+  try {
+    await window.StockDetail.load(card.dataset.code, 'position', panel);
+    if (status) status.textContent = '已刷新：' + new Date().toLocaleTimeString('zh-CN');
+  } catch (error) {
+    if (status) status.textContent = '刷新失败：' + error.message;
+  }
 }
 function switchDetailTab(box, tab){
   box.querySelectorAll('.detail-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.detailTab === tab));
