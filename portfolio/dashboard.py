@@ -330,7 +330,13 @@ class DashboardService:
                           "amplitude", "float_mcap", "total_mcap"):
                     v = q.get(f)
                     if v is not None:
-                        row[f] = round(float(v), 2) if f != "volume" else round(float(v), 0)
+                        numeric = float(v)
+                        if f in {"pe_ttm", "pb"} and numeric <= 0:
+                            continue
+                        if f in {"high", "low", "open", "prev_close"}:
+                            row[f] = round(numeric, 4)
+                        else:
+                            row[f] = round(numeric, 2) if f != "volume" else round(numeric, 0)
         except Exception as e:
             logger.warning("腾讯实时增强拉取失败: %s", e)
 
@@ -353,7 +359,9 @@ class DashboardService:
                             try:
                                 v = float(r[f])
                                 if v == v:
-                                 row[f] = round(v, 4 if f == "price" else 2)
+                                    if f in {"pe_ttm", "pb"} and v <= 0:
+                                        continue
+                                    row[f] = round(v, 4 if f in {"price", "high", "low", "open"} else 2)
                             except (TypeError, ValueError):
                                 pass
                     if r.get("snapshot_time"):

@@ -132,10 +132,10 @@ window.StockDetail = (function(){
           <span style="font-size:15px;font-weight:600;color:${chgColor};">${chg>=0?'+':''}${fmt(chg)}%</span>
           <span style="font-size:11px;color:var(--color-text-subtle);"><i class="fas fa-clock"></i> ${b.snapshot_time || iv.snapshot_time || '—'}</span>
         </div>
-        <div><span style="color:var(--color-text-subtle);">今开</span> <b>${fmt(b.open)}</b></div>
-        <div><span style="color:var(--color-text-subtle);">昨收</span> <b>${fmt(b.prev_close)}</b></div>
-        <div><span style="color:var(--color-text-subtle);">最高</span> <b style="color:var(--color-danger);">${fmt(b.high)}</b></div>
-        <div><span style="color:var(--color-text-subtle);">最低</span> <b style="color:var(--color-success);">${fmt(b.low)}</b></div>
+         <div><span style="color:var(--color-text-subtle);">今开</span> <b>${fmt(b.open, 4)}</b></div>
+         <div><span style="color:var(--color-text-subtle);">昨收</span> <b>${fmt(b.prev_close, 4)}</b></div>
+         <div><span style="color:var(--color-text-subtle);">最高</span> <b style="color:var(--color-danger);">${fmt(b.high, 4)}</b></div>
+         <div><span style="color:var(--color-text-subtle);">最低</span> <b style="color:var(--color-success);">${fmt(b.low, 4)}</b></div>
         <div><span style="color:var(--color-text-subtle);">成交量</span> <b>${handFmt(b.volume)}</b></div>
         <div><span style="color:var(--color-text-subtle);">成交额</span> <b>${b.amount_wan!=null?(b.amount_wan/10000).toFixed(2)+'亿':'—'}</b></div>
         <div><span style="color:var(--color-text-subtle);">换手率</span> <b>${b.turnover!=null?fmt(b.turnover)+'%':'—'}</b></div>
