@@ -119,3 +119,5 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 正式 Web、Core、Portfolio、Biz 和 Comparison 入口的在线数据 fallback 扫描已清零；显式 `FallbackDataSource`、`OnlineSource` 和迁移能力仅保留给测试/隔离研究。分红 Published 契约尚未建立，正式股息锚现在明确返回不可用。
 
 阶段 3 已建立通用 Data Worker 批次框架：普通证券按 `stock`/`etf` 分组后执行 `stock_daily`，指数和行业保持独立任务链；批次默认 50 只，成功项跳过和 partial Raw 恢复复用既有机制。该框架尚未接管生产全市场任务。
+
+阶段 3 受控生产验证未通过：`sh600000` 单证券子批次在 120 秒内未完成，已人工停止 Data Worker 并将父/子 Request、JobRun、SourceBatch 收口为失败/超时；未生成新 Published Version，Raw 文件保留。后续必须先修复 whole-task deadline 和状态一致性，再重新验证 ETF 批次及完整后续链路。

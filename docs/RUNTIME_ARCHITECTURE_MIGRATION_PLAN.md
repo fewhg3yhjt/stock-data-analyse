@@ -372,6 +372,16 @@ pids_limit: 64
 - 阶段 3 测试共 29 项通过，另有已有 SourceBatch/财务报告 checkpoint 测试 8 项通过。
 - 当前未完成：真实生产批次接管、受控中断后的跨进程恢复演练、质量按类型统计接入和指数/行业独立链路的进一步批次化。
 
+#### 阶段 3 受控生产验证记录（2026-09-08）
+
+- Web 保持停止，仅在生产 `management.db` 创建了明确日期 `2026-09-07`、证券范围 `sh600000`（stock）和 `sh510300`（ETF）的受控 Request，批次大小为 1。
+- Data Worker 成功领取父 Request，并按类型创建子批次；先执行 `sh600000`，未扩大到全市场或 ETF 批次。
+- `sh600000` 子批次运行超过设定的 120 秒仍未完成，Data Worker 心跳与 JobRun 状态出现短暂不一致；经确认后停止 Data Worker。
+- 父 Request `req_controlled_20260908233047_e900de79` 已为 `failed`；子 Request `req_20260908233104_710c2ad8896c` 已为 `timeout`；JobRun `2609` 已为 `timeout`；SourceBatch `tencent_20260908233104_7306c25f2e` 已为 `failed`。
+- 没有生成新的 `stock_daily`/`indicators` Dataset Version，也没有更新 Published Current；已有 Raw 文件保留，任务锁已释放，待处理 Request 为 0。
+- 验证结论：类型分组和子批次创建有效，但 whole-task deadline、Worker 心跳与实际执行状态一致性、跨进程中断恢复仍未达到验收要求；不能宣称阶段 3 生产批次接管完成。
+- 通知失败事件再次遇到通知库只读错误；任务事实本身已正常收口，通知库问题需单独修复。
+
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
 目标：数据生产阶段独立落盘和传递版本。
