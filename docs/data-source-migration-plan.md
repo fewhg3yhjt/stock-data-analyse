@@ -121,3 +121,7 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 阶段 3 已建立通用 Data Worker 批次框架：普通证券按 `stock`/`etf` 分组后执行 `stock_daily`，指数和行业保持独立任务链；批次默认 50 只，成功项跳过和 partial Raw 恢复复用既有机制。该框架尚未接管生产全市场任务。
 
 阶段 3 受控生产验证未通过：`sh600000` 单证券子批次在 120 秒内未完成，已人工停止 Data Worker 并将父/子 Request、JobRun、SourceBatch 收口为失败/超时；未生成新 Published Version，Raw 文件保留。后续必须先修复 whole-task deadline 和状态一致性，再重新验证 ETF 批次及完整后续链路。
+
+阶段 3 超时收口已修复并通过 58 项阶段相关测试：Data Worker 对有 `task_timeout` 的阶段使用可终止子进程，超时会统一收口 Request、JobRun、SourceBatch 和任务锁；尚未重新执行生产数据验证。
+
+当前生产队列和 SourceBatch 均无运行中记录，Web/Data Worker 保持停止；下一次生产验证必须在明确范围和 Scheduler 隔离条件下执行。

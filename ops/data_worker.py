@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import multiprocessing
 import os
 import signal
 import socket
@@ -38,6 +39,18 @@ DEFAULT_DATA_TASKS = (
     "valuation_snapshot_capture", "valuation_snapshot_build", "valuation_snapshot_quality",
     "valuation_snapshot_publish",
 )
+
+
+class DataTaskTimeout(TimeoutError):
+    """数据阶段超过 Worker 强制 deadline。"""
+
+
+def _execute_task_child(db_path, task_key, payload, request_id, result_queue) -> None:
+    """Run the existing task executor in a killable child process."""
+    try:
+        result_queue.put(("result", execute_task(db_path, task_key, payload, request_id=request_id)))
+    except BaseException as exc:  # noqa: BLE001 - parent converts it to failed
+        result_queue.put(("error", type(exc).__name__, str(exc)))
 
 
 def _worker_id() -> str:
@@ -143,8 +156,14 @@ class DataWorker:
         payload["requested_by"] = payload.get("requested_by") or f"data-worker:{self.worker_id}"
         try:
             result = self.execute_request(request, payload)
+            if result is None:
+                raise RuntimeError("数据任务未返回结果")
             if result.get("status") == "success":
                 result["downstream_requests"] = self.enqueue_downstream(request, result)
+        except DataTaskTimeout as exc:
+            self.center.update_request(request_id, "timeout")
+            logger.warning("数据任务超时: %s", request_id)
+            return {"request_id": request_id, "status": "timeout", "error": str(exc)}
         except Exception as exc:  # noqa: BLE001
             # execute_task normally owns Run finalization; this covers failures
             # before TaskRunner can create a Run after the request was claimed.
@@ -155,11 +174,89 @@ class DataWorker:
             self.heartbeat(status="idle")
         return result
 
+    def execute_task_with_deadline(self, task_key: str, payload: dict,
+                                   request_id: str, deadline: float | None = None) -> dict:
+        """Execute a data stage in a killable process with a whole-stage deadline."""
+        if deadline is None:
+            return execute_task(self.db_path, task_key, payload, request_id=request_id)
+        remaining = max(0.0, float(deadline) - time.monotonic())
+        if remaining <= 0:
+            raise DataTaskTimeout(f"数据任务已达到 deadline: {task_key}")
+        context = multiprocessing.get_context("fork")
+        result_queue = context.Queue()
+        child = context.Process(
+            target=_execute_task_child,
+            args=(self.db_path, task_key, payload, request_id, result_queue),
+            name=f"data-task-{task_key}",
+        )
+        child.start()
+        child.join(remaining)
+        if child.is_alive():
+            child.terminate()
+            child.join(5)
+            self._close_abandoned_request(request_id, task_key,
+                                           f"数据任务超过 whole-task deadline ({remaining:.1f}s)")
+            raise DataTaskTimeout(f"数据任务超过 whole-task deadline: {task_key}")
+        try:
+            message = result_queue.get_nowait()
+        except Exception:
+            message = ("error", "ChildProcessExit", f"数据任务子进程退出，exitcode={child.exitcode}")
+        finally:
+            result_queue.close()
+            result_queue.join_thread()
+        if message[0] == "error":
+            raise RuntimeError(message[2])
+        return message[1]
+
+    def _close_abandoned_request(self, request_id: str, task_key: str, reason: str) -> None:
+        """Close all durable records left running after a killed child."""
+        from StockInvestmentTool.ops.job_runs import JobRunStore
+        from StockInvestmentTool.warehouse.source_batches import SourceBatchStore
+
+        jobs = JobRunStore(self.db_path)
+        with jobs._connect() as conn:
+            run_ids = [row[0] for row in conn.execute(
+                "SELECT id FROM job_runs WHERE request_id=? AND status='running'", (request_id,)
+            ).fetchall()]
+        for run_id in run_ids:
+            jobs.finish(run_id, "timeout", result={"reason": reason, "task_key": task_key}, error=reason)
+            with jobs._connect() as conn:
+                lock_keys = [row[0] for row in conn.execute(
+                    "SELECT lock_key FROM task_locks WHERE owner_run_id=?", (run_id,)
+                ).fetchall()]
+            for lock_key in lock_keys:
+                jobs.release_lock(lock_key, run_id)
+        with self.center._connect() as conn:
+            has_batches = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_batches'"
+            ).fetchone()
+            batch_ids = [row[0] for row in conn.execute(
+                "SELECT batch_id FROM source_batches WHERE job_run_id=? AND status='running'",
+                (run_ids[0],) if run_ids else (-1,),
+            ).fetchall()] if has_batches else []
+        if batch_ids:
+            store = SourceBatchStore(self.db_path)
+            for batch_id in batch_ids:
+                batch = store.get(batch_id) or {}
+                store.finish(
+                    batch_id, success_symbols=int(batch.get("success_symbols") or 0),
+                    failed_symbols=max(0, int(batch.get("expected_symbols") or 0) - int(batch.get("success_symbols") or 0)),
+                    skipped_symbols=int(batch.get("skipped_symbols") or 0), row_count=int(batch.get("row_count") or 0),
+                    raw_path=batch.get("raw_path"), checksum=batch.get("checksum"),
+                    file_size=batch.get("file_size"), status="failed", error_summary=reason,
+                    failure_details=[reason],
+                )
+        self.center.update_request(request_id, "timeout")
+
     def execute_request(self, request: dict, payload: dict) -> dict:
         """Execute one request, batching mixed stock/ETF capture safely."""
+        deadline = None
+        if payload.get("task_timeout") is not None:
+            deadline = time.monotonic() + max(0.0, float(payload["task_timeout"]))
         if request["task_key"] != "stock_daily_capture":
-            return execute_task(self.db_path, request["task_key"], payload,
-                                request_id=request["request_id"])
+            return self.execute_task_with_deadline(
+                request["task_key"], payload, request["request_id"], deadline,
+            )
 
         symbols = payload.get("symbols") or self._active_symbols(request)
         groups = self._batch_symbols(symbols)
@@ -167,8 +264,10 @@ class DataWorker:
             payload["symbols"] = groups[0][1] if groups else []
             payload["batch_index"] = 1 if groups else 0
             payload["batch_count"] = len(groups)
-            return execute_task(self.db_path, request["task_key"], payload,
-                                request_id=request["request_id"])
+            return self.execute_task_with_deadline(
+                request["task_key"], payload,
+                request["request_id"], deadline,
+            )
 
         results = []
         for index, (asset_type, batch) in enumerate(groups, 1):
@@ -187,8 +286,9 @@ class DataWorker:
                 input_versions=payload.get("input_versions") or {},
                 request_payload=child_payload,
             )
-            results.append(execute_task(self.db_path, request["task_key"], child_payload,
-                                        request_id=child_id))
+            results.append(self.execute_task_with_deadline(
+                request["task_key"], child_payload, child_id, deadline,
+            ))
 
         statuses = [item.get("status") for item in results]
         failed = [item for item in results if item.get("status") not in {"success", "partial_success"}]

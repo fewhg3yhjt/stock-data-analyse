@@ -382,6 +382,20 @@ pids_limit: 64
 - 验证结论：类型分组和子批次创建有效，但 whole-task deadline、Worker 心跳与实际执行状态一致性、跨进程中断恢复仍未达到验收要求；不能宣称阶段 3 生产批次接管完成。
 - 通知失败事件再次遇到通知库只读错误；任务事实本身已正常收口，通知库问题需单独修复。
 
+#### 阶段 3 超时收口修复记录（2026-09-08）
+
+- Data Worker 现在将每个有 `task_timeout` 的数据阶段放入可终止子进程执行，父 Worker 以 whole-task deadline 为准等待并在超时后终止子进程。
+- 超时收口会统一处理 Request、JobRun、SourceBatch 和任务锁；不存在 SourceBatch 表的隔离任务也不会覆盖原始超时错误。
+- 子进程返回空结果会被视为失败，不再触发 `None.get` 类二次错误。
+- 新增测试覆盖阻塞子进程、子进程已写入 running JobRun/SourceBatch 后超时、锁释放和无 running 残留；数据任务阶段相关测试共 58 项通过。
+- 当前仍有 multiprocessing 在多线程进程中使用 `fork` 的 Python 3.12 DeprecationWarning；不影响功能测试，但后续可评估改用更安全的启动上下文。
+
+#### 阶段 3 修复验证记录（2026-09-08）
+
+- 已新增阻塞子进程的隔离测试：子进程先写入 running JobRun 和 SourceBatch，再超过 deadline；父 Worker 能终止子进程并将相关事实收口，且无遗留 running 锁。
+- 修复了无 deadline 子任务异常、子进程空结果和临时库缺少 SourceBatch 表时的错误覆盖问题。
+- 阶段 3 相关回归共 58 项通过；当前仍未重新执行生产真实采集，生产批次接管仍需后续受控验证。
+
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
 目标：数据生产阶段独立落盘和传递版本。

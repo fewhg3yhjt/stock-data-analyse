@@ -40,7 +40,9 @@ def test_data_worker_records_heartbeat_and_timeout_result(tmp_path, monkeypatch)
     result = worker.process_once()
 
     assert result["status"] == "timeout"
-    assert seen == {"db": db, "task": "stock_daily_build", "timeout": 7, "request": request_id}
+    # The executor runs in a child process when a deadline is configured, so
+    # child-local observations are intentionally not visible in the parent.
+    assert seen == {}
     assert center.request(request_id)["status"] == "timeout"
     with worker.center._connect() as conn:
         row = conn.execute("SELECT status,current_request_id FROM data_worker_heartbeats WHERE worker_id=?", (worker.worker_id,)).fetchone()
@@ -188,3 +190,61 @@ def test_data_worker_persists_type_specific_child_requests(tmp_path, monkeypatch
     assert [__import__("json").loads(row[1]) for row in children] == [["sh600000"], ["sh510300"]]
     payloads = [__import__("json").loads(row[2]) for row in children]
     assert [payload["asset_types"] for payload in payloads] == [["stock"], ["etf"]]
+
+
+def test_data_worker_kills_blocked_child_and_closes_running_records(tmp_path, monkeypatch):
+    import time
+    from warehouse.source_batches import SourceBatchStore
+    from ops.job_runs import JobRunStore
+
+    db, center, request_id = _request(tmp_path, task_key="stock_daily_build")
+    worker = DataWorker(db, task_keys={"stock_daily_build"}, task_timeout=0.2)
+
+    def blocked(*_args, **_kwargs):
+        time.sleep(5)
+
+    monkeypatch.setattr("ops.data_worker.execute_task", blocked)
+    result = worker.process_once()
+
+    assert result["status"] == "timeout"
+    assert "whole-task deadline" in result["error"]
+    assert center.request(request_id)["status"] == "timeout"
+    with center._connect() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM job_runs WHERE request_id=? AND status='running'",
+            (request_id,),
+        ).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM task_locks WHERE owner_run_id IN (SELECT id FROM job_runs WHERE request_id=?)", (request_id,)).fetchone()[0] == 0
+
+
+def test_data_worker_timeout_closes_child_source_batch(tmp_path, monkeypatch):
+    import time
+    from ops.job_runs import JobRunStore
+    from warehouse.source_batches import SourceBatchStore
+
+    db, center, request_id = _request(tmp_path, task_key="stock_daily_build")
+    monkeypatch.setenv("BUSINESS_DB_PATH", str(tmp_path / "business.db"))
+    worker = DataWorker(db, task_keys={"stock_daily_build"}, task_timeout=0.2)
+
+    def blocked(db_path, task_key, payload, request_id=None):
+        run_id = JobRunStore(db_path).start(task_key, request_id=request_id)
+        SourceBatchStore(db_path).start(
+            run_date="2026-09-08", trade_date_start="2026-09-07", trade_date_end="2026-09-07",
+            expected_symbols=1, universe_id="test", request_context={}, job_run_id=run_id,
+        )
+        time.sleep(5)
+
+    monkeypatch.setattr("ops.data_worker.execute_task", blocked)
+    result = worker.process_once()
+
+    assert result["status"] == "timeout"
+    with center._connect() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM job_runs WHERE request_id=? AND status='running'",
+            (request_id,),
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM source_batches WHERE job_run_id IN "
+            "(SELECT id FROM job_runs WHERE request_id=?) AND status='running'",
+            (request_id,),
+        ).fetchone()[0] == 0
