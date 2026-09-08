@@ -4,7 +4,7 @@
 > 
 > 用途：后续会话、开发人员和验证人员必须先阅读本文，再实施本主题相关改动。
 > 
-> 当前状态：方案已确认，阶段 0 尚未开始。本文不是“已经完成”的说明。
+> 当前状态：方案已确认，阶段 0 尚未开始。本文不是“已经完成”的说明。2026-09-08 已完成一次生产现状核对，结论见下文。
 
 ## 1. 执行规则
 
@@ -96,7 +96,64 @@ Killed process ... waitress-serve
 
 当前新代码已记录 Tencent Raw 单位并处理 `sh68*` 特殊成交量口径，但历史 Published 分区仍存在大量单位异常。历史修复必须单独版本化，不能与运行架构拆分混做。
 
-## 4. 目标架构
+## 4. 生产收口现状核对（2026-09-08）
+
+本节是对当前代码和生产管理库的事实记录，不是目标状态声明。
+
+### 4.1 已落地
+
+- `Warehouse` 的生产默认管理库已指向 `management.db`。
+- `DatasetAccess` 已作为正式数据读取入口，读取 `dataset_current` 并校验 Published 状态、质量、文件和 checksum。
+- 行业成员、行业日线、行业特征和行业轮动已有 Published 链路。
+- 生产 `management.db` 已存在并启用 stock_daily、行业、指标等任务定义。
+- `instruments` 当前由 `management.db.instruments` 提供基础标的目录服务，Web 不直接写 SQL。
+- 公开 API、静态 JSON 和 `/market` 已有独立访问入口。
+
+### 4.2 尚未闭环
+
+1. `web/app.py` 的股票分类接口仍存在 fundamentals 缺失后在线采集并写仓库的路径，尚未满足 Published-only。
+2. `web/scheduler.py` 仍在 Web 进程内触发行业采集、行业特征、行业轮动和其他数据任务，独立 Data Worker 尚未建立。
+3. `allow_legacy` 仍存在于生产可调用模块；默认值多数为关闭，但尚未完成生产入口分类审计和能力收口。
+4. `instruments` 是管理库基础目录服务还是未来 Published Dataset，服务边界尚未最终定稿。
+5. 生产验收证据不足：尚未完成全量任务闭环证明、Published 文件对账、隔离旧库冷启动、生产旧库读写证明、只读观察期和旧任务台账对账。
+
+### 4.3 验收证据要求
+
+任务定义存在不等于生产闭环完成。每个生产任务都必须分别核验：
+
+```text
+active definition
++ enabled
++ recorded run
++ output version
++ quality result
++ dataset_current
+```
+
+生产切换还必须证明：
+
+- `dataset_current`、`dataset_versions`、Published 文件和 checksum 一致。
+- 隔离旧库后 Web、任务中心、调度注册、数据访问和健康检查可以冷启动。
+- 生产运行期间旧库没有读取和写入。
+- 旧任务台账与 `management.db` 已完成对账并进入只读观察。
+- Web 原始入口到最终页面结果的完整链路验证通过。
+
+### 4.4 旧库引用分类原则
+
+全局出现旧库名称或 `allow_legacy` 不等于生产依赖。引用必须归类为：
+
+| 分类 | 处理原则 |
+|---|---|
+| 生产运行时读取/写入 | 必须迁移、阻断或删除 |
+| 测试 fixture | 可保留，但必须使用隔离临时库 |
+| 一次性迁移工具 | 可保留显式历史输入，不得被运行时调用 |
+| 备份工具 | 可保留归档输入，不得作为业务读取源 |
+| 诊断工具 | 只读并标明历史/归档语义 |
+| 文档 | 区分当前事实、目标状态和历史记录 |
+
+不能因为 `Warehouse()` 默认使用 `management.db`，就宣布全局生产收口完成。
+
+## 5. 目标架构
 
 不更换 Flask、Waitress、APScheduler、Docker Compose、SQLite 和现有数据治理链路。不引入 Celery、Kafka、Redis Queue。
 
@@ -132,7 +189,7 @@ Killed process ... waitress-serve
 | Data Worker | stock_daily、行业数据、指标构建、质量、发布、数据修复 | 提供 Web、启动 APScheduler、执行业务策略任务 |
 | Business Worker | 单股/小批量策略、回测、模拟、通知 | 写入 stock_daily 正式数据 |
 
-## 5. Web 与策略验证边界
+## 6. Web 与策略验证边界
 
 本文不禁止 Web 使用历史数据。真正的边界是数据规模和任务重量：
 
@@ -162,7 +219,7 @@ Killed process ... waitress-serve
 - 行业特征和行业轮动生产。
 - 历史单位修复。
 
-## 6. 分阶段实施
+## 7. 分阶段实施
 
 ### 阶段 0：基线
 
@@ -282,7 +339,7 @@ Publish -> dataset_current 切换
 
 验收至少包括：记录数不变、OHLC 不变、非 `sh68*` 不变、修正数量可解释、异常比例下降、指定股票抽样正确、旧版本可回滚。
 
-## 7. 资源预算原则
+## 8. 资源预算原则
 
 当前节点约 2 GiB RAM，另有 OpenCode、博客、Caddy、Redis 和系统服务。预算不是承诺值，必须通过阶段实测调整。
 
@@ -298,7 +355,7 @@ Publish -> dataset_current 切换
 
 不得通过提高并发解决问题。Tencent 请求保持串行和现有限速。Swap 只作为保险，不作为持续超额运行方案。
 
-## 8. 每阶段强制交付格式
+## 9. 每阶段强制交付格式
 
 ```text
 阶段名称：
@@ -324,7 +381,7 @@ Publish -> dataset_current 切换
 
 没有真实场景结果，不能声称阶段完成。没有独立提交，不能进入下一阶段。
 
-## 9. 兼容性门禁
+## 10. 兼容性门禁
 
 每个阶段都必须检查：
 
@@ -344,7 +401,7 @@ Publish -> dataset_current 切换
 - Data Worker 不提供 Web，也不启动 Scheduler。
 - OpenCode、博客和其他无关服务不被停止或改动。
 
-## 10. 阶段提交约定
+## 11. 阶段提交约定
 
 每阶段独立提交，提交前必须检查 `git status`、`git diff`、`git log --oneline -10`，只暂存本阶段文件，不提交 `.env`、密钥或无关改动。
 
@@ -361,7 +418,7 @@ feat(runtime): classify worker failures
 fix(data): publish corrected stock daily versions
 ```
 
-## 11. 最终验收
+## 12. 最终验收
 
 最终必须证明：
 
@@ -383,6 +440,6 @@ fix(data): publish corrected stock daily versions
 16. `/market`、公开 API、静态 JSON 均可访问。
 17. 节点内存、Swap 和磁盘保持安全。
 
-## 12. 下一步
+## 13. 下一步
 
 下一步只能执行阶段 0：只读建立基线。阶段 0 验收前，不得新增 Data Worker、修改 Scheduler、补采 `stock_daily` 或修复历史 `sh68*` 数据。

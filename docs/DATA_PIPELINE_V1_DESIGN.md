@@ -2629,6 +2629,8 @@ stock_daily_version
 - 全量回归：257 个测试通过（以当前工作树实际测试统计为准）。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
 - 当前生产数据管理路径：`MANAGEMENT_DB_PATH` 已使 `Warehouse` 使用 `management.db`；旧库仅允许显式迁移/备份/归档工具使用，生产运行时旧引用和 fallback 的全量审计仍待完成。
+
+截至 2026-09-08，以下闭环证据仍缺失：财务分类接口 Published-only、Scheduler/Data Worker 分离、生产运行时旧库零读写、全量任务与数据版本对账、隔离旧库冷启动、旧任务台账对账和生产只读观察期。
 - Phase 3-6 已在验证目录完成基础闭环：Raw Batch -> Candidate Builder -> Dataset Version -> Quality -> Publish；生产下游仍未切换。
 - 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和生产小范围验证记录；历史快照已按真实日期统一建立 current。
 - 辅助源任务是否参与调度由对应 `config/tasks/*_capture.yaml` 的任务配置决定，不再使用独立环境变量旁路控制。

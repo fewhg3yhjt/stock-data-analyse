@@ -23,6 +23,14 @@ inputs, but production code must not silently fall back to them.
 - 生产 `management.db` 已存在并启用 stock_daily、industry、指标和行业相关任务定义。
 - 旧库仅允许作为显式迁移、备份、诊断或测试输入，不能作为生产业务读取源。
 
+本次现状核对还确认：
+
+- `web/app.py` 的股票分类接口仍可能在 fundamentals 缺失时在线采集并写仓库。
+- `web/scheduler.py` 仍在 Web 进程内触发部分数据生产任务。
+- `allow_legacy` 仍存在于生产可调用模块，尚未完成运行时入口分类收口。
+- `instruments` 当前定位为 `management.db` 的基础标的目录服务，但最终契约边界仍需定稿。
+- 生产任务定义、实际运行、版本、质量和 `dataset_current` 尚未形成全量验收证据。
+
 ## Remaining Production Work
 
 - `web/scheduler.py` 仍在 Web 进程内触发部分数据生产任务；需要按运行架构方案迁移到独立 Data Worker。
@@ -51,3 +59,16 @@ inputs, but production code must not silently fall back to them.
   Published files.
 - Confirm each task has an active definition and a recorded run.
 - Confirm web responses include explicit dataset category and `as_of` values.
+
+## Current Closure Checklist
+
+以下事项当前均未完成：
+
+- 财务分类接口 Published-only 收口。
+- Scheduler 与 Web 数据生产职责分离。
+- Data Worker 生产接管。
+- 生产运行时旧库读写为零的证明。
+- 全量任务 active/enabled/run/output/quality/current 对账。
+- `dataset_current`、版本记录、Published 文件和 checksum 对账。
+- 移除旧库输入后的隔离环境冷启动。
+- 旧任务台账与 `management.db` 对账及只读观察。
