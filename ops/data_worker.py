@@ -26,6 +26,17 @@ DATA_TASK_TYPES = frozenset({
     "SOURCE_CAPTURE", "DATA_BUILD", "INDICATOR_BUILD", "DERIVED_BUILD",
     "QUALITY_CHECK", "DATA_PUBLISH", "FACTOR_BUILD",
 })
+DEFAULT_DATA_TASKS = (
+    "stock_daily_capture", "stock_daily_build", "stock_daily_quality",
+    "stock_daily_publish", "indicators_build", "factors_build",
+    "industry_capture", "industry_membership_capture", "industry_daily_capture",
+    "industry_features_build", "industry_rotation_build", "fundamentals_capture",
+    "valuation_capture", "money_flow_capture", "financial_reports_capture",
+    "financial_reports_build", "financial_reports_quality", "financial_reports_publish",
+    "valuation_daily_build", "valuation_daily_quality", "valuation_daily_publish",
+    "valuation_snapshot_capture", "valuation_snapshot_build", "valuation_snapshot_quality",
+    "valuation_snapshot_publish",
+)
 
 
 def _worker_id() -> str:
@@ -104,7 +115,7 @@ class DataWorker:
                 return None
             conn.commit()
         request = dict(row)
-        for key, default in (("symbols", []), ("input_versions", {})):
+        for key, default in (("symbols", []), ("input_versions", {}), ("request_payload", {})):
             try:
                 request[key] = json.loads(request.get(key) or json.dumps(default))
             except (TypeError, ValueError):
@@ -119,11 +130,18 @@ class DataWorker:
         request_id = request["request_id"]
         self.heartbeat(status="running", request_id=request_id)
         payload = dict(request)
+        payload.update(request.get("request_payload") or {})
+        payload["period_start"] = request.get("period_start")
+        payload["period_end"] = request.get("period_end")
+        payload["symbols"] = request.get("symbols") or []
+        payload["input_versions"] = request.get("input_versions") or {}
         if self.task_timeout is not None and not payload.get("task_timeout"):
             payload["task_timeout"] = self.task_timeout
         payload["requested_by"] = payload.get("requested_by") or f"data-worker:{self.worker_id}"
         try:
             result = execute_task(self.db_path, request["task_key"], payload, request_id=request_id)
+            if result.get("status") == "success":
+                result["downstream_requests"] = self.enqueue_downstream(request, result)
         except Exception as exc:  # noqa: BLE001
             # execute_task normally owns Run finalization; this covers failures
             # before TaskRunner can create a Run after the request was claimed.
@@ -133,6 +151,51 @@ class DataWorker:
         finally:
             self.heartbeat(status="idle")
         return result
+
+    def enqueue_downstream(self, request: dict, result: dict) -> list[dict]:
+        """Queue the next data stage only after a successful upstream stage."""
+        if result.get("status") != "success":
+            return []
+        chain = {
+            "stock_daily_capture": "stock_daily_build",
+            "stock_daily_build": "stock_daily_quality",
+            "stock_daily_quality": "stock_daily_publish",
+            "stock_daily_publish": "indicators_build",
+        }
+        next_task = chain.get(request["task_key"])
+        if not next_task:
+            return []
+        task = self.center.task(next_task)
+        if not task or not task.get("enabled"):
+            return []
+        upstream = result.get("result") or result
+        input_versions = upstream.get("output_versions") or upstream.get("versions") or {}
+        input_batch_id = upstream.get("source_batch_id")
+        payload = dict(request.get("request_payload") or {})
+        payload.update({
+            "input_versions": input_versions,
+            "input_batch_id": input_batch_id,
+            "parent_request_id": request["request_id"],
+        })
+        with self.center._connect() as conn:
+            existing = conn.execute(
+                """SELECT request_id,status FROM task_execution_requests
+                   WHERE task_key=? AND period_start=? AND period_end=?
+                     AND status IN ('requested','running','success')
+                   ORDER BY created_at DESC LIMIT 1""",
+                (next_task, request.get("period_start"), request.get("period_end")),
+            ).fetchone()
+        if existing:
+            return [{"request_id": existing[0], "task_key": next_task,
+                     "status": existing[1], "deduplicated": True}]
+        request_id = self.center.create_request(
+            next_task, request.get("trigger_type") or "scheduled",
+            period_start=request.get("period_start"), period_end=request.get("period_end"),
+            symbols=request.get("symbols") or [], requested_by=f"data-worker:{self.worker_id}",
+            input_versions=input_versions, request_payload=payload,
+        )
+        return [{"request_id": request_id, "task_key": next_task,
+                 "status": "requested", "deduplicated": False}]
 
     def run_loop(self, stop: threading.Event | None = None) -> None:
         stop = stop or threading.Event()
@@ -152,7 +215,7 @@ def _parse_tasks(raw: str) -> set[str]:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="StockInvestmentTool data worker")
     parser.add_argument("--db", type=Path, default=None, help="management.db 路径")
-    parser.add_argument("--tasks", default=os.getenv("DATA_WORKER_TASKS", ""),
+    parser.add_argument("--tasks", default=os.getenv("DATA_WORKER_TASKS", ",".join(DEFAULT_DATA_TASKS)),
                         help="允许执行的 data task key，逗号分隔")
     parser.add_argument("--poll-interval", type=float,
                         default=float(os.getenv("DATA_WORKER_POLL_INTERVAL", "2")))

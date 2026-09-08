@@ -76,3 +76,31 @@ def test_data_worker_does_not_claim_non_data_task(tmp_path):
 
     assert worker.claim_next() is None
     assert center.request(request_id)["status"] == "requested"
+
+
+def test_data_worker_queues_next_daily_stage_only_after_success(tmp_path):
+    db, center, request_id = _request(tmp_path, task_key="stock_daily_capture")
+    worker = DataWorker(db, task_keys={"stock_daily_build"})
+    request = center.request(request_id)
+    result = worker.enqueue_downstream(request, {"status": "success", "result": {"source_batch_id": "batch-1"}})
+
+    assert result[0]["task_key"] == "stock_daily_build"
+    child = center.request(result[0]["request_id"])
+    assert child["request_payload"]["input_batch_id"] == "batch-1"
+
+
+def test_data_worker_does_not_queue_after_failed_stage(tmp_path):
+    db, center, request_id = _request(tmp_path, task_key="stock_daily_capture")
+    worker = DataWorker(db, task_keys={"stock_daily_build"})
+    request = center.request(request_id)
+
+    assert worker.enqueue_downstream(request, {"status": "failed"}) == []
+
+
+def test_data_worker_default_allowlist_covers_daily_chain():
+    from ops.data_worker import DEFAULT_DATA_TASKS
+
+    assert DEFAULT_DATA_TASKS[:5] == (
+        "stock_daily_capture", "stock_daily_build", "stock_daily_quality",
+        "stock_daily_publish", "indicators_build",
+    )

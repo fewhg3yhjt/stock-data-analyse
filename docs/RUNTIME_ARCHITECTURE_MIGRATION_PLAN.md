@@ -297,6 +297,16 @@ pids_limit: 64
 
 验收场景：上游成功完整链路；Capture 失败只产生 Capture 失败；Capture 超时不执行下游；输入日期不一致时轮动阻断；同一任务/日期只有一个有效执行者。
 
+#### 阶段 2 当前实施记录（2026-09-08）
+
+- `web/scheduler.py` 的日线链路、辅助数据链路和封盘重试链路已改为只创建数据 Request，不再在这些生产调度路径中直接调用 Collector、Builder、Quality 或 Publisher。
+- Scheduler 入队按任务和周期幂等去重，并保留 `task_timeout`、`as_of`、输入版本等结构化 Request payload。
+- `ops.data_worker.DataWorker` 在数据阶段成功后按固定日线链路创建下游 Request；上游失败、timeout 或非 success 时不推进下游。
+- `task_execution_requests` 增加 `request_payload` 字段，并对已有管理库执行非破坏性列补齐，保证 Scheduler 到 Data Worker 的参数不丢失。
+- Data Worker 默认 allowlist 已覆盖配置的数据任务，且仍通过 `task_type` 校验隔离业务任务。
+- 阶段 2 相关测试共 28 项通过，包含入队幂等、Scheduler 无直接生产调用、上下游成功/失败阻断、任务配置和日期对齐测试。
+- 当前未完成：Data Worker 尚未接管生产服务；Compose 仍使用显式 profile；全市场批次化和断点续跑留在阶段 3。
+
 ### 阶段 3：stock_daily 批次化与断点续跑
 
 目标：一次 OOM、超时或 Worker 重启只影响当前批次。

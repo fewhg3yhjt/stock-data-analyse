@@ -94,7 +94,8 @@ class TaskCenter:
               request_id TEXT PRIMARY KEY, task_key TEXT NOT NULL, trigger_type TEXT NOT NULL,
               period_start TEXT, period_end TEXT, symbols TEXT, config_version INTEGER,
               input_versions TEXT NOT NULL DEFAULT '{}', requested_by TEXT NOT NULL,
-              status TEXT NOT NULL, created_at TEXT NOT NULL
+              status TEXT NOT NULL, created_at TEXT NOT NULL,
+              request_payload TEXT NOT NULL DEFAULT '{}'
             );
             CREATE TABLE IF NOT EXISTS task_run_events (
               event_id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL,
@@ -140,6 +141,12 @@ class TaskCenter:
               checksum_before TEXT, checksum_after TEXT
             );
             """)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(task_execution_requests)")}
+            if "request_payload" not in columns:
+                conn.execute(
+                    "ALTER TABLE task_execution_requests "
+                    "ADD COLUMN request_payload TEXT NOT NULL DEFAULT '{}'"
+                )
             columns = {row[1] for row in conn.execute("PRAGMA table_info(task_execution_requests)")}
             if "input_versions" not in columns:
                 conn.execute("ALTER TABLE task_execution_requests ADD COLUMN input_versions TEXT NOT NULL DEFAULT '{}' ")
@@ -414,7 +421,8 @@ class TaskCenter:
             conn.execute("UPDATE metric_definitions SET enabled=0,updated_at=? WHERE metric_key=?", (_now(), metric_key))
 
     def create_request(self, task_key: str, trigger_type: str, *, period_start=None, period_end=None,
-                       symbols=None, requested_by="admin", input_versions=None) -> str:
+                       symbols=None, requested_by="admin", input_versions=None,
+                       request_payload=None) -> str:
         if trigger_type not in {"scheduled", "manual", "backfill", "retry", "shadow"}:
             raise TaskConfigError("非法任务触发类型")
         if period_start and period_end and str(period_end) < str(period_start):
@@ -426,12 +434,12 @@ class TaskCenter:
                 raise TaskConfigError(f"任务不存在: {task_key}")
             conn.execute("""INSERT INTO task_execution_requests
                 (request_id,task_key,trigger_type,period_start,period_end,symbols,config_version,
-                 input_versions,requested_by,status,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                 input_versions,requested_by,status,created_at,request_payload)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                          (request_id, task_key, trigger_type, period_start, period_end,
-                          json.dumps(symbols or [], ensure_ascii=False), row[0],
-                          json.dumps(input_versions or {}, ensure_ascii=False), requested_by,
-                          "requested", _now()))
+                           json.dumps(symbols or [], ensure_ascii=False), row[0],
+                           json.dumps(input_versions or {}, ensure_ascii=False), requested_by,
+                           "requested", _now(), json.dumps(request_payload or {}, ensure_ascii=False)))
         return request_id
 
     def request(self, request_id: str) -> dict | None:
@@ -448,6 +456,10 @@ class TaskCenter:
             item["input_versions"] = json.loads(item.get("input_versions") or "{}")
         except (TypeError, ValueError):
             item["input_versions"] = {}
+        try:
+            item["request_payload"] = json.loads(item.get("request_payload") or "{}")
+        except (TypeError, ValueError):
+            item["request_payload"] = {}
         return item
 
     def update_request(self, request_id: str, status: str) -> None:

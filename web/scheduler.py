@@ -250,84 +250,65 @@ def _rotation_inputs_aligned(target_date: str) -> bool:
 
 
 def run_daily_data_chain(*, dates: list[str] | None = None) -> dict:
-    """Run the sole task-center daily data chain for identified trade dates."""
-    from StockInvestmentTool.ops.task_execution import execute_pipeline
+    """Enqueue daily capture requests; Data Worker executes the full chain."""
+    target_dates = dates or daily_data_gap_dates()
+    requests = []
+    for trade_date in target_dates:
+        requests.append(_enqueue_data_request(
+            "stock_daily_capture", period_start=trade_date, period_end=trade_date,
+            trigger_type="scheduled", requested_by="scheduler",
+            task_timeout=_daily_timeout(),
+        ))
+    return {"dates": target_dates, "requests": requests,
+            "status": "requested" if requests else "skipped"}
+
+
+def _enqueue_data_request(task_key: str, *, period_start: str, period_end: str,
+                          trigger_type: str = "scheduled",
+                          requested_by: str = "scheduler", **payload) -> dict:
+    """Persist one idempotent request without executing data production."""
     from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
 
-    configured = TaskCenter(management_db_path()).active_configs()
-    missing = [key for key in DAILY_DATA_CHAIN if key not in configured]
-    if missing:
-        raise RuntimeError(f"日线正式链路配置不完整，缺少阶段: {', '.join(missing)}")
-    target_dates = dates or daily_data_gap_dates()
-    runs = []
-    for trade_date in target_dates:
-        runs.append(execute_pipeline(
-            management_db_path(), DAILY_DATA_CHAIN,
-            {"trigger_type": "scheduled", "requested_by": "scheduler",
-             "period_start": trade_date, "period_end": trade_date,
-             "task_timeout": _daily_timeout()},
-        ))
-    return {"dates": target_dates, "runs": runs,
-            "status": runs[-1]["status"] if runs else "skipped"}
+    center = TaskCenter(management_db_path())
+    with center._connect() as conn:
+        row = conn.execute(
+            """SELECT request_id,status FROM task_execution_requests
+               WHERE task_key=? AND period_start=? AND period_end=?
+                 AND status IN ('requested','running','success')
+               ORDER BY created_at DESC LIMIT 1""",
+            (task_key, period_start, period_end),
+        ).fetchone()
+    if row:
+        return {"request_id": row[0], "task_key": task_key, "status": row[1],
+                "deduplicated": True}
+    request_id = center.create_request(
+        task_key, trigger_type, period_start=period_start, period_end=period_end,
+        symbols=payload.get("symbols") or [], requested_by=requested_by,
+        input_versions=payload.get("input_versions") or {}, request_payload=payload,
+    )
+    return {"request_id": request_id, "task_key": task_key, "status": "requested",
+            "deduplicated": False}
 
 
 def run_auxiliary_data_pipeline(parent_run_id: int | None = None) -> dict:
-    """Collect auxiliary datasets according to the Active Config."""
-    from StockInvestmentTool.warehouse.fundamentals_collect import FundamentalsCollector
-    from StockInvestmentTool.warehouse.industry import IndustryCollector, stage_and_publish_industry_batch
-    from StockInvestmentTool.warehouse.storage import Warehouse
+    """Enqueue enabled auxiliary capture tasks; Data Worker executes them."""
     from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
-    from StockInvestmentTool.fundflow.capture import capture_money_flow
 
-    warehouse = Warehouse()
-    for name in ("industry_membership", "fundamentals", "valuation_daily", "money_flow_daily"):
-        warehouse.metadata.register_dataset(name)
     configured = TaskCenter(management_db_path()).active_configs()
-    result = {"enabled_tasks": []}
-    collector = FundamentalsCollector(warehouse=warehouse)
-    if _task_schedule_enabled(configured, "industry_capture"):
-        try:
-            industry = IndustryCollector(warehouse).collect_membership(
-                snapshot_date=datetime.now().strftime("%Y-%m-%d"))
-            if industry.get("raw_batch_id"):
-                industry["published"] = stage_and_publish_industry_batch(
-                    warehouse, dataset_name="industry_membership",
-                    batch_id=industry["raw_batch_id"],
-                    expected_symbols=industry.get("expected_symbols"),
-                )
-            result["industry"] = industry
-        except Exception as exc:
-            logger.error("行业采集失败: %s", exc)
-            result["industry"] = {"failed": [str(exc)]}
-        result["enabled_tasks"].append("industry_capture")
-    if _task_schedule_enabled(configured, "fundamentals_capture"):
-        try:
-            result["fundamentals"] = collector.collect_fundamentals()
-        except Exception as exc:
-            logger.error("财务史采集失败: %s", exc)
-            result["fundamentals"] = {"failed": 1, "error": str(exc)}
-        result["enabled_tasks"].append("fundamentals_capture")
-    if _task_schedule_enabled(configured, "valuation_capture"):
-        try:
-            from StockInvestmentTool.warehouse.backfill import ValuationBackfill
-            daily = warehouse.read_daily(warehouse.available_months("daily")[-1])
-            codes = sorted(c for c in daily["code"].unique()
-                           if c.startswith(("sh6", "sz0", "sz3", "bj4", "bj8")))
-            result["valuation"] = ValuationBackfill(warehouse).backfill_many(
-                codes, (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d"),
-                (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"), reprocess=True)
-        except Exception as exc:
-            logger.error("估值采集失败: %s", exc)
-            result["valuation"] = {"failed": 1, "error": str(exc)}
-        result["enabled_tasks"].append("valuation_capture")
-    if _task_schedule_enabled(configured, "money_flow_capture"):
-        try:
-            result["money_flow"] = capture_money_flow("stock", "now", warehouse=warehouse)
-        except Exception as exc:
-            logger.error("资金流采集失败: %s", exc)
-            result["money_flow"] = {"ok": False, "error": str(exc)}
-        result["enabled_tasks"].append("money_flow_capture")
-    result["enabled"] = True
+    result = {"enabled_tasks": [], "requests": []}
+    target = _latest_closed_trade_date().isoformat()
+    for task_key in ("industry_capture", "fundamentals_capture", "valuation_capture", "money_flow_capture"):
+        if not _task_schedule_enabled(configured, task_key):
+            continue
+        request = _enqueue_data_request(
+            task_key, period_start=target, period_end=target,
+            trigger_type="scheduled", requested_by="scheduler",
+            parent_run_id=parent_run_id, task_timeout=_daily_timeout(),
+        )
+        result[task_key] = request
+        result["requests"].append(request)
+        result["enabled_tasks"].append(task_key)
+    result["enabled"] = bool(result["enabled_tasks"])
     return result
 
 
@@ -515,24 +496,14 @@ def _schedule_configured_data_tasks(scheduler) -> None:
     from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
 
     def run_task(task_key):
-        from StockInvestmentTool.ops.task_execution import execute_pipeline, execute_task
         trading_date = _latest_closed_trade_date().isoformat()
-        payload = {
-            "trigger_type": "scheduled", "requested_by": "scheduler",
-            "period_start": trading_date, "period_end": trading_date,
-        }
         if task_key == "stock_daily_capture":
-            payload["task_timeout"] = _daily_timeout()
-            return run_daily_data_chain()
-        elif task_key == "valuation_capture":
-            # 估值是全市场逐只串行，设置批次超时，避免阻塞 web worker。
-            payload["task_timeout"] = _daily_timeout()
-            configured_keys = TaskCenter(management_db_path()).active_configs()
-            chain = [key for key in ("stock_daily_capture", "stock_daily_build", "stock_daily_quality",
-                                     "stock_daily_publish", "indicators_build")
-                     if (configured_keys.get(key) or {}).get("enabled")]
-            return execute_pipeline(management_db_path(), chain or [task_key], payload)
-        return execute_task(management_db_path(), task_key, payload)
+            return run_daily_data_chain(dates=[trading_date])
+        return _enqueue_data_request(
+            task_key, period_start=trading_date, period_end=trading_date,
+            trigger_type="scheduled", requested_by="scheduler",
+            task_timeout=_daily_timeout(),
+        )
 
     from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
     for item in TaskCenter(management_db_path()).active_configs().values():
@@ -616,7 +587,6 @@ def run_post_close_retry_job() -> dict:
     一次失败不抛异常，保持调度器存活，交由下一轮小时触发再试。
     """
     from StockInvestmentTool.ops.task_center import TaskCenter, management_db_path
-    from StockInvestmentTool.ops.task_execution import execute_task
     trading_date = _latest_closed_trade_date()
     trading_date_text = trading_date.isoformat()
     configured = TaskCenter(management_db_path()).active_configs()
@@ -643,35 +613,24 @@ def run_post_close_retry_job() -> dict:
                    "period_start": trading_date_text, "period_end": trading_date_text,
                    "task_timeout": _daily_timeout()}
         try:
-            captured = execute_task(management_db_path(), "industry_daily_capture", payload)
+            captured = _enqueue_data_request(
+                "industry_daily_capture", period_start=trading_date_text,
+                period_end=trading_date_text, trigger_type="retry",
+                requested_by="scheduler", task_timeout=_daily_timeout(),
+            )
             result["industry_daily"] = captured
             result["retried"].append("industry_daily")
-            full_result = captured.get("result") or {}
-            # 采集只产出 Raw Batch；再走 Quality + Publish 后才可被下游读取。
-            if full_result.get("raw_batch_id"):
-                from StockInvestmentTool.warehouse.industry import stage_and_publish_industry_batch
-                from StockInvestmentTool.warehouse.storage import Warehouse
-                published = stage_and_publish_industry_batch(
-                    Warehouse(meta_db_path=management_db_path()),
-                    dataset_name="industry_daily", batch_id=full_result["raw_batch_id"],
-                    expected_symbols=full_result.get("expected_symbols"),
-                     partition=trading_date_text[:7])
-                result["industry_daily_publish"] = published
-            if enabled("industry_features_build") and _dataset_released("industry_daily", trading_date_text):
-                result["industry_features"] = execute_task(
-                    management_db_path(), "industry_features_build",
-                    {"trigger_type": "retry", "requested_by": "scheduler",
-                     "period_start": trading_date_text, "period_end": trading_date_text, "as_of": trading_date_text})
-                result["retried"].append("industry_features_build")
+            # 下游由 Data Worker 在上游成功发布后创建，不在 Web 进程同步执行。
         except Exception as exc:  # noqa: BLE001
             result["industry_daily_error"] = str(exc)
     if (enabled("industry_rotation_build") and _rotation_inputs_aligned(trading_date_text)
             and not _dataset_released("industry_rotation_daily", trading_date_text)):
         try:
-            result["industry_rotation"] = execute_task(
-                management_db_path(), "industry_rotation_build",
-                 {"trigger_type": "retry", "requested_by": "scheduler",
-                  "period_start": trading_date_text, "period_end": trading_date_text, "as_of": trading_date_text})
+            result["industry_rotation"] = _enqueue_data_request(
+                "industry_rotation_build", period_start=trading_date_text,
+                period_end=trading_date_text, trigger_type="retry",
+                requested_by="scheduler", as_of=trading_date_text,
+            )
             result["retried"].append("industry_rotation_build")
         except Exception as exc:  # noqa: BLE001
             result["industry_rotation_error"] = str(exc)
