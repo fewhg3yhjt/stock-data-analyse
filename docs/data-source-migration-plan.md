@@ -93,3 +93,13 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 - `dataset_current`、版本记录、Published 文件和 checksum 对账。
 - 移除旧库输入后的隔离环境冷启动。
 - 旧任务台账与 `management.db` 对账及只读观察。
+
+## Stage 0 Baseline
+
+阶段 0 只读基线已完成，报告已登记：
+
+- [生产管理库任务审计](audits/production_management_db_task_audit_20260908.md)
+- [生产 Dataset Current 对账](audits/production_dataset_current_reconciliation_20260908.md)
+- [生产旧库运行时引用审计](audits/production_legacy_runtime_reference_audit_20260908.md)
+
+阶段 0 只证明当前事实和缺口，不代表 Data Worker 已建立、Scheduler 已停止执行数据生产，或旧库已经完成零读写验收。

@@ -4,7 +4,7 @@
 > 
 > 用途：后续会话、开发人员和验证人员必须先阅读本文，再实施本主题相关改动。
 > 
-> 当前状态：生产现状核对已完成；运行架构迁移实施阶段 0 尚未开始。本文不是“已经完成”的说明。
+> 当前状态：生产现状核对和阶段 0 只读基线已完成；Data Worker/运行架构迁移实施尚未开始。本文不是“已经完成”的说明。
 
 ## 1. 执行规则
 
@@ -152,6 +152,16 @@ active definition
 | 文档 | 区分当前事实、目标状态和历史记录 |
 
 不能因为 `Warehouse()` 默认使用 `management.db`，就宣布全局生产收口完成。
+
+### 4.5 阶段 0 基线产物
+
+阶段 0 已完成只读核验，报告如下：
+
+- [生产管理库任务审计](audits/production_management_db_task_audit_20260908.md)
+- [生产 Dataset Current 对账](audits/production_dataset_current_reconciliation_20260908.md)
+- [生产旧库运行时引用审计](audits/production_legacy_runtime_reference_audit_20260908.md)
+
+阶段 0 只证明当前事实和缺口，不代表 Data Worker 已建立、Scheduler 已停止执行数据生产，或旧库已经完成零读写验收。
 
 ## 5. 目标架构
 

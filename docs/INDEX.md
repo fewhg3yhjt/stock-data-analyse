@@ -21,6 +21,12 @@
 - [数据链路与产品状态流转收口实施任务书](DATA_PIPELINE_STATEFLOW_REMEDIATION_PLAN.md)：针对当前双轨数据链路、任务状态、质量门禁和下游消费断点的分阶段实施计划、测试矩阵与验收标准。
 - [指标归一后续改造清单](INDICATOR_NORMALIZATION_BACKLOG.md)：指标口径归一改造中识别出的遗留边界项（数据源契约、数据接管、回测基线重录等）。
 
+### 生产审计
+
+- [生产管理库任务审计](audits/production_management_db_task_audit_20260908.md)：阶段 0 任务定义、运行事实和 Data Worker 前置基线。
+- [生产 Dataset Current 对账](audits/production_dataset_current_reconciliation_20260908.md)：Published 版本、文件和 checksum 的只读对账。
+- [生产旧库运行时引用审计](audits/production_legacy_runtime_reference_audit_20260908.md)：Web、Scheduler、Worker 和旧库引用分类基线。
+
 ## 需求与现状
 
 - [需求规格](SRD.md)：产品需求和功能边界。
