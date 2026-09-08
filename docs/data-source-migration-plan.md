@@ -103,3 +103,5 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 - [生产旧库运行时引用审计](audits/production_legacy_runtime_reference_audit_20260908.md)
 
 阶段 0 只证明当前事实和缺口，不代表 Data Worker 已建立、Scheduler 已停止执行数据生产，或旧库已经完成零读写验收。
+
+阶段 1 已新增 Data Worker 最小运行骨架，但服务仍处于显式 `data-worker` Compose profile，未接管生产数据任务；详见 [运行架构拆分方案](RUNTIME_ARCHITECTURE_MIGRATION_PLAN.md) 的阶段 1 实施记录。

@@ -272,6 +272,16 @@ pids_limit: 64
 
 验收：容器可启动、无 Waitress/APScheduler、只有一个 Worker 主进程、能连接正确管理库、Web/API/Business Worker 不受影响。
 
+#### 阶段 1 当前实施记录（2026-09-08）
+
+- 已新增 `ops/data_worker.py`，作为不启动 Flask、Waitress 或 APScheduler 的独立数据 Worker 入口。
+- Worker 使用 `task_execution_requests`，按 allowlist 原子领取请求，并复用 `ops.task_execution.execute_task` 执行已注册数据任务。
+- Worker 同时校验任务定义的 `task_type`，只允许数据平面类型，避免通过环境变量误领取业务任务。
+- Worker 写入 `data_worker_heartbeats`，记录进程、主机、状态和当前 Request；异常时将已领取 Request 收口为 `failed`，任务返回的 `timeout` 等终态保持原状态。
+- `docker-compose.yml` 已增加 `data-worker` 服务，但置于 `data-worker` profile 下，阶段 1 不自动改变现有生产执行者；服务使用独立容器、管理库和 `700m` 内存上限建议值。
+- 已通过临时管理库冒烟验证：原子领取和重复领取阻断、异常失败收口、超时结果和心跳恢复为 idle、Compose profile 配置解析。
+- 当前未完成：Scheduler 切换、旧生产路径切断、全市场任务接管、真实容器启动验证和完整 pytest 回归。
+
 ### 阶段 2：Scheduler 只调度
 
 目标：APScheduler 不再直接执行数据生产。

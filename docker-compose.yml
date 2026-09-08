@@ -82,3 +82,42 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Stage 1 role only. The profile keeps the new worker from changing the
+  # current production executor until Scheduler handoff is implemented.
+  data-worker:
+    profiles: ["data-worker"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: stock-invest:latest
+    container_name: stock-invest-data-worker
+    env_file:
+      - path: ${STOCK_ENV_FILE:-./.env}
+        required: false
+    environment:
+      - TZ=Asia/Shanghai
+      - MANAGEMENT_DB_PATH=/app/StockInvestmentTool/output/data/management.db
+      - DATA_WORKER_TASKS=${DATA_WORKER_TASKS:-stock_daily_capture}
+      - DATA_WORKER_POLL_INTERVAL=${DATA_WORKER_POLL_INTERVAL:-2}
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - ${STOCK_OUTPUT_DIR:-./output}:/app/StockInvestmentTool/output
+      - ./:/app/StockInvestmentTool
+    working_dir: /app
+    command: ["python", "-m", "StockInvestmentTool.ops.data_worker"]
+    restart: unless-stopped
+    mem_limit: ${STOCK_DATA_WORKER_MEMORY_LIMIT:-700m}
+    memswap_limit: ${STOCK_DATA_WORKER_MEMORY_SWAP_LIMIT:-1024m}
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3; p='/app/StockInvestmentTool/output/data/management.db'; c=sqlite3.connect(p); assert c.execute('PRAGMA quick_check').fetchone()[0] == 'ok'; c.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
