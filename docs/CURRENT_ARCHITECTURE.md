@@ -180,10 +180,12 @@ flowchart LR
     REPORT --> RESP[CLI 输出或 Web JSON]
 ```
 
+> 下方描述的是当前实现，不是目标运行架构。文中出现的在线 fallback 属于尚未完成收口的旧正式入口，不代表目标生产架构允许 fallback。
+
 当前特点：
 
 - 方案配置已从代码中抽离到 YAML，规则执行部分正在注册表化。
-- 行情数据在不同入口存在不同优先级：业务平面正式读取 Published Dataset；旧持仓监控是仓库优先、baostock 兜底；传统单股分析通过统一 `DataSource` 并在缺失时回退。
+- 行情数据在不同入口存在不同优先级：业务平面正式读取 Published Dataset；旧持仓监控的仓库优先、baostock 兜底以及传统单股分析缺失时回退，均属于尚未完成收口的旧正式入口，不是目标生产架构允许的 fallback。
 - LLM 是可选步骤，失败不会阻断基础分析和报告生成。
 - Web 对重型分析使用 `_heavy_task_lock`，同一进程内限制重型任务并发数为 1。
 
@@ -193,7 +195,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    SCHED[Web 进程 APScheduler\n或手工 CLI] --> COLLECT[MarketCollector]
+    SCHED[当前实现：Web 进程 APScheduler\n或手工 CLI] --> COLLECT[MarketCollector]
     COLLECT --> BS[baostock 全市场清单与日线]
     COLLECT --> TX[腾讯历史日线\n可选主源/备源]
     COLLECT --> RAW[Raw Store\n按 source / dataset / partition]

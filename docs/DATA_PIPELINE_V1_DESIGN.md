@@ -2091,7 +2091,7 @@ generated_at
 | `index_daily` | 未完成 | 当前无正式沪深 300 指数发布数据 | 完成独立指数 Universe、采集、质量和发布前不可作为正式基准 |
 | `valuation_daily` | 受限 | 有 PE/PB 产物 | 外部字段仍有 `peTTM/pbMRQ`，覆盖不足 |
 | `fundamentals` | 未完成 | 部分财务字段可读 | schema、代码、公告日和报告期不统一 |
-| `industry_membership` | 未完成 | 有基础行业字段和少量 snapshot | 正式覆盖严重不足，分类有效期未定义 |
+| `industry_membership` | limited | 已有基础 Published 快照和成员关系 | 正式覆盖、分类有效期和长期生产验收仍需完成 |
 | `money_flow_security_daily` | 受限 | 有部分证券资金流 snapshot | 路径、周期、单位和覆盖契约未完全统一 |
 | `money_flow_industry_daily` | 未完成 | 无稳定正式输入 | 证券/行业记录未完全拆分 |
 
@@ -2311,7 +2311,7 @@ instruments.industry
 | 沪深300基准收益 | `index_daily` | 未完成 | 延期；未完成前 `comparison_status=unavailable` |
 | MA/ATR/动量选股 | `stock_daily` + `indicators` | 可用 | 可用 |
 | 全市场量价筛选 | `stock_daily` + `indicators` | 可用 | 可用 |
-| 行业筛选 | `industry_membership` | 未完成 | 延期 |
+| 行业筛选 | `industry_membership` | limited | 基础 Published 链路已建立；正式覆盖和生产验收完成后扩大能力 |
 | PE/PB 筛选和估值研究 | `valuation_daily` | 受限 | 降级 |
 | 单股技术研究 | `stock_daily` + `indicators` | 可用 | 可用 |
 | 单股基本面研究 | `fundamentals` | 未完成 | 延期 |
@@ -2324,7 +2324,7 @@ instruments.industry
 | 持仓估值和实际收益 | `stock_daily` + `Execution` + `CashLedger` | 可用 | 可用 |
 | 策略/基准对比 | `SimulationResult` + benchmark `stock_daily` | 可用 | 可用 |
 | 资金流辅助选股 | `money_flow_security_daily` | 受限 | 降级 |
-| 行业轮动 | 行业资金流 + 行业分类 | 未完成 | 延期 |
+| 行业轮动 | `industry_daily` + `stock_daily` + 行业分类 | limited | 已有 Published 行业日线、成员、特征和轮动链路；日期对齐、任务闭环和生产验收仍需完成 |
 | 买卖邮件通知 | `StrategyDecision` + `Advice` + Email | 可用 | 可用 |
 
 第一版完整闭环为：
@@ -2627,7 +2627,7 @@ stock_daily_version
 - Phase 2 历史验证已完成：腾讯日线采集曾新增不可覆盖 Raw Batch，记录 Source Batch 和 Job Run 关联；该记录不构成新业务运行时双写要求。
  - 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与历史基线均可追溯。
 - 全量回归：257 个测试通过（以当前工作树实际测试统计为准）。
-- 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
+- 日线物理文件仍存储在 `warehouse/daily/YYYY-MM.parquet`；`DatasetAccess` 已作为正式数据访问层实现并被部分消费者使用，但是否所有生产业务入口都只通过 `DatasetAccess + dataset_current` 读取，仍需完成全量验收。
 - 当前生产数据管理路径：`MANAGEMENT_DB_PATH` 已使 `Warehouse` 使用 `management.db`；旧库仅允许显式迁移/备份/归档工具使用，生产运行时旧引用和 fallback 的全量审计仍待完成。
 
 截至 2026-09-08，以下闭环证据仍缺失：财务分类接口 Published-only、Scheduler/Data Worker 分离、生产运行时旧库零读写、全量任务与数据版本对账、隔离旧库冷启动、旧任务台账对账和生产只读观察期。

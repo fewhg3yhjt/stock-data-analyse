@@ -500,7 +500,7 @@ Parquet / CSV
 
 ### `job_runs.db` 收敛专项
 
-`job_runs.db` 与 `management.db` 均曾承载 TaskCenter 相关表，不能仅通过将默认路径改为 `management.db` 视为完成迁移。收敛必须单独完成：
+生产新任务运行事实目标为 `management.db`。`job_runs.db` 当前保留为历史迁移、对账和归档输入，尚未完成只读归档验收，不能删除。不能仅通过将默认路径改为 `management.db` 视为完成迁移。收敛必须单独完成：
 
 1. 列出 `job_runs.db` 中仍有价值的 `job_runs`、`job_plan`、任务定义、配置、事件和指标管理事实，并建立旧 ID 到 `management.db` ID 的映射。
 2. 对 `job_runs.db` 与 `management.db` 做任务定义、运行记录、计划和状态数量/内容对账，明确重复记录、冲突状态和保留策略。

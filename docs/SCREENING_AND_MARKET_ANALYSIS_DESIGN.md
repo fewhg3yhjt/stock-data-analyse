@@ -57,7 +57,7 @@ Screen Candidate
 1. 选择一个已保存的筛选方案。
 2. 使用指定历史或最新交易日执行筛选。
 3. 支持单个条件和 `AND/OR/NOT` 条件组合。
-4. 支持行情字段、指标字段和证券基础属性筛选；行业筛选依赖 `industry_membership`，当前数据契约未完成，第一版延期。
+4. 支持行情字段、指标字段和证券基础属性筛选；行业筛选依赖已建立基础 Published 链路的 `industry_membership`，正式覆盖、长期任务闭环和生产验收仍受限。
 5. 返回命中股票、命中值、条件解释和数据日期。
 6. 查看单只股票日线走势。
 7. 在走势图上显示指标线和命中信号点。
@@ -70,7 +70,7 @@ Screen Candidate
 
 ```text
 行情/指标筛选：可用，第一版正式验收
-行业筛选：延期，industry_membership 正式覆盖完成后验收
+行业筛选：limited，基础 Published 链路已建立；正式覆盖、任务闭环和生产验收完成后扩大能力
 PE/PB 筛选：降级，仅对有 valuation_daily 数据的标的展示和筛选
 资金流筛选：降级，仅作为显式可选条件，不作为完整选股链路的必要依赖
 ```
@@ -464,7 +464,7 @@ ConditionSpec
 | 指标交叉 | SQL window/LAG |
 | 连续 N 日 | SQL window |
 | N 日计数 | SQL aggregation/window |
-| 行业过滤 | SQL join，延期至 `industry_membership` 可用 |
+| 行业过滤 | SQL join，使用 Published `industry_membership`；覆盖不足时明确返回受限状态 |
 | 复杂登记表达式 | 向量化 |
 | 任意 Python | 禁止 |
 
@@ -949,7 +949,7 @@ close > ma60
 - `signal_scan`：最多 31 个自然日的逐交易日评估、按 symbol 聚合及 ScreenSignal 明细
 - 命中证券数据展开：根据 candidate symbol 读取指定范围行情和指标，不把历史数据嵌入候选
 - ChartService（走势图查询，依赖 DatasetAccess）
-- 行业筛选（`industry_membership` 契约完成后启用）、PE/PB 降级筛选
+- 行业筛选基础能力已接入 Published `industry_membership`；正式覆盖和长期生产验收仍待完成
 
 ### 已补充
 

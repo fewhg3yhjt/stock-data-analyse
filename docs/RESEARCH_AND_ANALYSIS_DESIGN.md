@@ -36,7 +36,7 @@ ScreenCandidate / Observation
 ```text
 技术研究：可用，第一版正式验收
 估值研究：降级，字段或标的缺失必须明确展示
-基本面研究：延期，fundamentals schema、报告期和公告日契约完成后验收
+基本面研究：受限，基础数据和采集能力存在，但 schema、报告期/公告日契约、Published-only 消费和生产验收仍未完成
 市场状态：可用，基于 stock_daily/indicators 生成统一 MarketRegime
 ```
 
@@ -236,7 +236,7 @@ requested_as_of
 ### 实现要点
 
 1. **数据来源**：ResearchService 接收已通过 `load_dataset` 得到的 `df + context`，不自行读数据文件。
-2. **能力状态与数据契约对齐**：技术研究=可用；估值=降级（`valuation_daily` 受限，有 pe_ttm/pb_mrq 列才评估，否则 unavailable）；基本面=deferred（`fundamentals` 契约未完成，第一版延期）。
+2. **能力状态与数据契约对齐**：技术研究=可用；估值=降级（`valuation_daily` 受限，有 pe_ttm/pb_mrq 列才评估，否则 unavailable）；基本面=limited（`fundamentals` 有基础数据和 Published 产物，但字段契约、生产消费和验收仍受限）。
 3. **LLM 边界**：LLM 仅属报告生成阶段，本服务不含 LLM 调用，结构化决策不依赖 LLM。
 4. **决策输出**：result.decisions 保存 StrategyDecision 对象引用，供调用方持久化。
 
