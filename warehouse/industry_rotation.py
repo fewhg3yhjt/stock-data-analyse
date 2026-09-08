@@ -120,16 +120,25 @@ class IndustryRotationBuilder:
         for name, result in (("industry_daily", industry), ("stock_daily", daily)):
             if result.context.get("fallback_used") or result.context.get("source") != "published_dataset":
                 raise DatasetAccessError(f"{name} 不是 Published 数据，禁止生成正式轮动状态")
+        # Auxiliary industry capture and stock daily publication can finish at
+        # different times. Never calculate a stage on an industry-only date:
+        # use the newest date present in both published inputs instead.
         industry_as_of = industry.context.get("data_as_of")
         stock_as_of = daily.context.get("data_as_of")
-        if industry_as_of != as_of or stock_as_of != as_of:
+        common_as_of = min(
+            pd.Timestamp(value) for value in (industry_as_of, stock_as_of, as_of)
+            if value
+        ).strftime("%Y-%m-%d")
+        if common_as_of < start_date:
             raise DatasetAccessError(
                 f"正式轮动输入日期未对齐: target={as_of}, "
                 f"industry_daily={industry_as_of}, stock_daily={stock_as_of}"
             )
+        as_of = common_as_of
 
         boards = industry.data.copy()
         boards["date"] = pd.to_datetime(boards["trading_date"], errors="coerce").dt.normalize()
+        boards = boards[boards["date"] <= pd.Timestamp(as_of)].copy()
         boards["industry_id"] = boards["industry_id"].astype(str)
         boards["industry_name"] = boards["industry_name"].astype(str)
         boards["close"] = pd.to_numeric(boards["close"], errors="coerce")
@@ -149,6 +158,7 @@ class IndustryRotationBuilder:
 
         stocks = daily.data.copy()
         stocks["date"] = pd.to_datetime(stocks["date"], errors="coerce").dt.normalize()
+        stocks = stocks[stocks["date"] <= pd.Timestamp(as_of)].copy()
         stocks["code"] = stocks["code"].astype(str).str.lower().str.replace(".", "", regex=False)
         stocks["close"] = pd.to_numeric(stocks["close"], errors="coerce")
         stocks = stocks.dropna(subset=["date", "close"]).sort_values(["code", "date"])
@@ -211,7 +221,6 @@ class IndustryRotationBuilder:
             _cross_sectional_rank(boards, "ma5_slope_change") * .10 +
             _cross_sectional_rank(boards, "amount_ratio_change") * .10
         )
-        boards = boards[boards["date"] <= pd.Timestamp(as_of)].copy()
         cfg = _config()
         boards = boards.sort_values(["industry_id", "date"])
         stages = []

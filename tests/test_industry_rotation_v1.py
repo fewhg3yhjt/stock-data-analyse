@@ -87,3 +87,36 @@ def test_rotation_builder_tracks_stage_days_per_industry(monkeypatch, tmp_path):
     frame = pd.read_parquet(tmp_path / "warehouse" / "candidates" / "industry_rotation_daily" / "2026-09.parquet")
     for _, group in frame.groupby("industry_id"):
         assert group["stage_days"].iloc[0] >= 1
+
+
+def test_rotation_builder_uses_latest_common_input_date(monkeypatch, tmp_path):
+    from StockInvestmentTool.warehouse import industry_rotation
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    class Result:
+        def __init__(self, data, name, as_of):
+            self.data = data
+            self.context = {"source": "published_dataset", "fallback_used": False,
+                            "partition_versions": {}, "dataset": name, "data_as_of": as_of}
+
+    class Access:
+        def __init__(self, warehouse): pass
+        def load_dataset(self, name, *args, **kwargs):
+            dates = pd.date_range("2026-08-01", "2026-09-07", freq="B")
+            if name == "industry_daily":
+                return Result(pd.DataFrame({"trading_date": dates.tolist() * 2,
+                    "industry_id": ["881121"] * len(dates) + ["881122"] * len(dates),
+                    "industry_name": ["半导体"] * len(dates) + ["通信设备"] * len(dates),
+                    "close": list(range(100, 100 + len(dates))) + list(range(90, 90 + len(dates))),
+                    "amount": [100.] * (len(dates) * 2)}), name, "2026-09-07")
+            stock_dates = dates[dates <= pd.Timestamp("2026-09-04")]
+            return Result(pd.DataFrame({"date": stock_dates.tolist() * 2,
+                "code": ["sh600000"] * len(stock_dates) + ["sh600001"] * len(stock_dates),
+                "close": [100.] * (len(stock_dates) * 2)}), name, "2026-09-04")
+
+    monkeypatch.setattr(industry_rotation, "DatasetAccess", Access)
+    result = IndustryRotationBuilder(Warehouse(tmp_path / "warehouse")).build(
+        start_date="2026-09-01", end_date="2026-09-07", as_of="2026-09-07")
+    assert result["actual_data_as_of"] == "2026-09-04"
+    frame = pd.read_parquet(tmp_path / "warehouse" / "candidates" / "industry_rotation_daily" / "2026-09.parquet")
+    assert frame["date"].max().strftime("%Y-%m-%d") == "2026-09-04"
