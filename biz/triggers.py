@@ -342,8 +342,7 @@ def _evaluate_condition(condition: dict, data: dict) -> bool:
 
 def _indicator_condition_matches(params: dict, data: dict) -> bool:
     """评估指标阈值/穿越（对任一持仓）。"""
-    from StockInvestmentTool.datasource.fetcher import StockDataFetcher
-    from StockInvestmentTool.datasource.base import FallbackDataSource
+    from StockInvestmentTool.datasource.base import get_default_datasource
     from StockInvestmentTool.indicators.context import IndicatorContext
 
     name = str(params.get("name") or "").strip()
@@ -354,7 +353,7 @@ def _indicator_condition_matches(params: dict, data: dict) -> bool:
         threshold = float(params.get("value"))
     except (TypeError, ValueError):
         return False
-    source = FallbackDataSource()
+    source = get_default_datasource()
     for position in data.get("positions") or []:
         code = position.get("stock_code") or position.get("code")
         if not code:

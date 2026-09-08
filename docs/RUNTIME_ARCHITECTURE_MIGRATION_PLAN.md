@@ -325,6 +325,26 @@ pids_limit: 64
 - 通知失败事件尝试写入通知库时遇到只读数据库错误，但不影响上述任务事实收口；该问题另行处理。
 - 本次暴露出阶段 3 前的运行风险：Scheduler 的自动触发可能在受控验证窗口内产生全市场 Request，后续必须增加受控范围开关或隔离验证环境。
 
+#### 数据接口收口记录（2026-09-08）
+
+- 停机隔离期间，正式默认数据源已收口为 Published-only `WarehouseSource`；无 Published 版本时不再隐式读取旧 daily 分区。
+- `AnalysisEngine` 不再在 K 线、基本面和分红读取失败时直接访问在线源；基本面统一通过 Published `fundamentals`，分红在尚无 Published 契约时明确标记 `unavailable`。
+- `web/app.py` 的 `/api/classify` 缺少 Published fundamentals 时返回 `503 unavailable`，不再触发在线采集或写回仓库。
+- `portfolio/dashboard.py` 的基本面快照已改为通过 Published `fundamentals` 读取；`biz/triggers.py` 的指标判断已改用正式默认 Published 数据源。
+- `FallbackDataSource` 和 `OnlineSource` 仍保留为显式测试/隔离研究能力，正式 Web、Core、Portfolio、Biz 入口不再直接构造或使用它们。
+- 数据源相关回归共 31 项通过；扩大到持仓、通知和数据任务相关回归时，仍有既有通知规则数量断言和 `watch_pool` fixture 字段缺失两项失败。
+- `portfolio/monitor.py` 的正式股息锚路径已停止直接访问在线分红接口；在分红 Published 契约建立前明确返回不可用。
+- 当前 Web 和 Business Worker 已恢复；Data Worker 保持停止，待增加受控范围保护后再启动并执行真实数据链路验证。
+
+#### 数据接口迁移生产验证记录（2026-09-08）
+
+- Web、Business Worker 停机隔离期间完成正式入口收口：`WarehouseSource` 默认只读 Published `stock_daily`，Core/Portfolio/Biz/Web 不再在正式路径直接在线采集或隐式 legacy 回退。
+- `DatasetAccess` 对 symbol 分区数据集已按请求 symbol 精确选择版本，避免 `/api/classify` 为读取一个 fundamentals 文件扫描全部历史文件。
+- 重启 Web 后在容器内验证 `fundamentals/sh600000` Published 读取 20 行、耗时约 `0.061s`；原始入口 `/api/classify?code=600000` 返回 HTTP 200，结果包含行业、ROE 和营收增速。
+- 同时验证了无 Published 日线的正式 `WarehouseSource` 会抛出 `DatasetAccessError`，不会读取旧 daily 分区。
+- 本次未启动 Data Worker 执行真实数据 Request，未新增数据版本，未更新 Current；Web 和 Business Worker 已恢复 healthy。
+- 仍有两个非本次改动相关的既有测试失败：通知默认规则数量断言（当前用户配置为 13 条，测试期望 12 条）和 `watch_pool` 测试 fixture 缺少 `asset_type` 字段。
+
 ### 阶段 3：stock_daily 批次化与断点续跑
 
 目标：一次 OOM、超时或 Worker 重启只影响当前批次。

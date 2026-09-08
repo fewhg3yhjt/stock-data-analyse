@@ -37,7 +37,7 @@ class PriceMonitor:
     def __init__(self, fetcher: Optional[StockDataFetcher] = None, datasource=None):
         # 懒加载: 纯 DB 操作（list/show）不应触发 baostock 登录
         self._fetcher = fetcher
-        self.datasource = datasource  # 可注入统一数据源（默认 FallbackDataSource）
+        self.datasource = datasource  # 可注入统一数据源（默认 PublishedDataSource）
 
     @property
     def fetcher(self) -> StockDataFetcher:
@@ -66,7 +66,7 @@ class PriceMonitor:
     def delegate_fetch_kline(self, code: str,
                              start_date: Optional[str] = None,
                              end_date: Optional[str] = None) -> pd.DataFrame:
-        """把取数委托给统一 DataSource（FallbackDataSource）。"""
+        """把取数委托给正式 Published DataSource。"""
         ds = self.datasource or get_default_datasource()
         return ds.fetch_kline(code, start_date, end_date)
 
@@ -106,27 +106,9 @@ class PriceMonitor:
             return pd.DataFrame()
 
     def compute_dividend_anchor(self, code: str) -> Optional[float]:
-        """计算股息率极端低估锚（anchor_price_3）"""
+        """计算股息锚；分红 Published 契约完成前正式路径返回不可用。"""
         code = StockDataFetcher.normalize_code(code)
-        try:
-            end = datetime.now() - timedelta(days=1)
-            py = end.year
-            pq = ((end.month - 1) // 3) or 4
-            if pq == 4:
-                py -= 1
-            divs = []
-            for y in range(py - 5, py + 1):
-                divs.extend(self.fetcher.get_dividend_data(code, y))
-            if not divs:
-                return None
-            # 用最新收盘价作为当前价（粗算锚）
-            kline = self.fetch_kline(code)
-            current_price = float(kline["close"].iloc[-1]) if len(kline) else 0
-            anchor = ValuationHelper.triple_anchor(divs, current_price)
-            if anchor and anchor.get("anchor_price_3"):
-                return float(anchor["anchor_price_3"])
-        except Exception as e:
-            logger.warning("股息率锚计算失败 %s: %s", code, e)
+        logger.info("股息 Published 数据集尚未就绪，跳过股息锚: %s", code)
         return None
 
     def fetch_context_data(self, code: str) -> tuple[pd.DataFrame, Optional[float]]:

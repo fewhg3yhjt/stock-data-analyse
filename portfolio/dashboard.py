@@ -1511,9 +1511,13 @@ class DashboardService:
         """持仓基本面快照（营收/净利/扣非/ROE，复用财务史缓存；失败返回 None）。"""
         try:
             from StockInvestmentTool.datasource.fetcher import StockDataFetcher
+            from StockInvestmentTool.warehouse.datasets import DatasetAccess
+            from StockInvestmentTool.warehouse.storage import Warehouse
 
-            fetcher = StockDataFetcher()
-            df = fetcher.get_fundamental_history(code, years=1)
+            normalized = StockDataFetcher.normalize_code(code).replace(".", "").lower()
+            df = DatasetAccess(Warehouse()).load_dataset(
+                "fundamentals", symbols=[normalized], required_quality="WARNING",
+            ).data
             if df is None or df.empty:
                 return None
             row = df.iloc[-1]

@@ -75,6 +75,11 @@ class DatasetAccess:
                 months = [available[-1]] if available else []
             else:
                 months = sorted(versions)
+        elif partition_type == "symbol":
+            # Symbol-partitioned datasets (for example fundamentals) must not
+            # scan every security file before applying the symbol filter.
+            wanted = {str(value).lower().replace(".", "") for value in (symbols or [])}
+            months = [key for key in sorted(versions) if not wanted or str(key).lower().replace(".", "") in wanted]
         elif not months:
             months = sorted(versions)
         frames = []

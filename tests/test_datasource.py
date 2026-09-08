@@ -32,7 +32,7 @@ def temp_warehouse(tmp_path):
 
 
 def test_warehouse_fetch_kline_fixed_columns(temp_warehouse):
-    src = WarehouseSource(warehouse=temp_warehouse)
+    src = WarehouseSource(warehouse=temp_warehouse, allow_legacy=True)
     df = src.fetch_kline("sh.600900", "2024-01-01", "2024-12-31")
     assert not df.empty
     # 只返回原始行情列（不含指标列）
@@ -40,20 +40,20 @@ def test_warehouse_fetch_kline_fixed_columns(temp_warehouse):
 
 
 def test_warehouse_fetch_daily_series_limit(temp_warehouse):
-    src = WarehouseSource(warehouse=temp_warehouse)
+    src = WarehouseSource(warehouse=temp_warehouse, allow_legacy=True)
     df = src.fetch_daily_series("sh.600900", days=30)
     assert len(df) <= 30
 
 
 def test_warehouse_fetch_daily_series_order(temp_warehouse):
-    src = WarehouseSource(warehouse=temp_warehouse)
+    src = WarehouseSource(warehouse=temp_warehouse, allow_legacy=True)
     df = src.fetch_daily_series("sh.600900", days=100)
     assert df["date"].is_monotonic_increasing
 
 
 def test_warehouse_empty_when_no_partition(tmp_path):
     w = Warehouse(base_dir=Path(tmp_path))
-    src = WarehouseSource(warehouse=w)
+    src = WarehouseSource(warehouse=w, allow_legacy=True)
     df = src.fetch_kline("sh.600000")
     assert df.empty
 
@@ -169,3 +169,12 @@ def test_warehouse_source_reads_published_dataset(tmp_path):
     assert df["close"].tolist() == [20.5, 20.8]
     # 治理路径应返回发布时间范围的数据，而非直读分区
     assert len(df) == 2
+
+
+def test_warehouse_source_requires_published_dataset(tmp_path):
+    warehouse = Warehouse(base_dir=Path(tmp_path) / "warehouse",
+                          meta_db_path=Path(tmp_path) / "management.db")
+    with pytest.raises(Exception, match="Published Dataset"):
+        WarehouseSource(warehouse=warehouse).fetch_kline(
+            "sh600900", "2026-08-01", "2026-08-31"
+        )

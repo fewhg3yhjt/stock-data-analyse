@@ -59,9 +59,10 @@ class WarehouseSource:
     避免逐月 `read_parquet` + `df[df.code==...]` 的内存低效（P1）。
     """
 
-    def __init__(self, warehouse=None):
+    def __init__(self, warehouse=None, *, allow_legacy: bool = False):
         from StockInvestmentTool.warehouse.storage import Warehouse
         self._warehouse = warehouse or Warehouse()
+        self.allow_legacy = bool(allow_legacy)
 
     # ── 内部 ────────────────────────────────────────────
 
@@ -184,8 +185,7 @@ class WarehouseSource:
                               days: int | None = None) -> pd.DataFrame:
         """从 Published Dataset 读取日线（统一访问层，含版本/质量/checksum 治理）。
 
-        无治理版本时回退直读分区（legacy，quality_status=LEGACY 由上层标记），
-        契约校验仍由 _select_daily 保证。
+        正式数据源不回退旧 daily 分区；测试、迁移和隔离研究必须显式开启。
         """
         from StockInvestmentTool.warehouse.datasets import DatasetAccessError, load_dataset
 
@@ -208,6 +208,8 @@ class WarehouseSource:
                 return df.tail(days)
             return df
         except DatasetAccessError as exc:
+            if not self.allow_legacy:
+                raise
             logger.info("WarehouseSource 无治理版本(%s)，回退直读分区: %s", code, exc)
             files = self._daily_files(start)
             if not files:
@@ -247,9 +249,9 @@ class WarehouseSource:
 
 
 class OnlineSource:
-    """在线源：baostock / AkShare / 腾讯，带仓库兜底。
+    """显式在线研究源：baostock / AkShare / 腾讯。
 
-    当 warehouse 无数据时回退在线拉取（复用 StockDataFetcher 的连接自愈能力）。
+    只允许由隔离研究或测试显式构造，不是正式业务默认源。
     返回列对齐 KLINE_COLUMNS（不含指标列）。
     """
 
@@ -301,9 +303,9 @@ class OnlineSource:
 
 
 class FallbackDataSource:
-    """聚合源：warehouse 优先，OnlineSource 兜底（封装原 monitor if-else）。
+    """显式研究/测试聚合源：warehouse 优先，OnlineSource 兜底。
 
-    业务层只依赖 `DataSource` 接口，新增数据源只需实现接口并在优先级链里注册。
+    正式业务不得使用；新增隔离研究数据源时只需在优先级链里注册。
     """
 
     def __init__(self, sources: Optional[list] = None):
@@ -368,5 +370,5 @@ class FallbackDataSource:
 
 
 def get_default_datasource():
-    """全局默认数据源（FallbackDataSource：warehouse 优先、baostock 兜底）。"""
-    return FallbackDataSource([WarehouseSource(), OnlineSource()])
+    """正式默认数据源：只读取 Published Dataset，不在线兜底。"""
+    return WarehouseSource()

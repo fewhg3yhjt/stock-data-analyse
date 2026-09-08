@@ -2460,7 +2460,6 @@ def api_classify():
         if StockDataFetcher.detect_type(code) == "etf":
             return flask.jsonify({"status": "success", "stock_type": "E",
                                   "industry": "场内ETF/LOF", "roe": 0, "rev_growth": 0})
-        fetcher = StockDataFetcher()
         # 行业只读 Published membership；页面请求不得实时采集或写旧缓存。
         from StockInvestmentTool.warehouse.storage import Warehouse
         from StockInvestmentTool.warehouse.datasets import DatasetAccess
@@ -2478,14 +2477,15 @@ def api_classify():
             membership = membership[membership["industry_classification"].astype(str) == category]
         industry = str(membership.iloc[-1]["industry_name"]) if not membership.empty else ""
         sector_id = str(membership.iloc[-1].get("industry_code" if category == "csrc" else "industry_id") or "") if not membership.empty else ""
-        # 财务史：优先读数据层 fundamentals 分区，无则实时拉
+        # 财务史只读 Published fundamentals；页面请求不得实时采集或写仓库。
         roe = rev_growth = 0.0
-        fund = wh.read_fundamentals(code_nodot)
+        fund = DatasetAccess(wh).load_dataset(
+            "fundamentals", symbols=[code_nodot], required_quality="WARNING",
+        ).data
         if fund is None or fund.empty:
-            df = fetcher.get_fundamental_history(code, years=1)
-            if df is not None and not df.empty:
-                wh.write_fundamentals(code_nodot, df)
-                fund = df
+            return flask.jsonify({"status": "unavailable", "error": "Published fundamentals 不可用",
+                                  "code": code, "category": category,
+                                  "data_as_of": None, "reason": "没有已发布的 fundamentals 数据"}), 503
         if fund is not None and not fund.empty:
             row = fund.iloc[-1]
             roe = float(row.get("roe") or 0)

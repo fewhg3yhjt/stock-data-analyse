@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from StockInvestmentTool.core.registry import SchemeRegistry
 from StockInvestmentTool.core.scheme import SchemeConfig
-from StockInvestmentTool.datasource.fetcher import StockDataFetcher
 from StockInvestmentTool.datasource.indicators import TechnicalIndicators
 from StockInvestmentTool.backtest.engine import BacktestEngine
 from StockInvestmentTool.backtest.metrics import PerformanceMetrics
@@ -107,24 +106,9 @@ class MultiSchemeRunner:
         -------
         (kline, dividend_anchor)
         """
-        with StockDataFetcher() as fetcher:
-            kline = None
-            try:
-                from StockInvestmentTool.portfolio.monitor import PriceMonitor
-                kline = PriceMonitor().fetch_kline(code, start_date, end_date)
-            except Exception as e:
-                logger.warning("warehouse K线读取失败(%s)，回退 baostock: %s", code, e)
-            if kline is None or kline.empty:
-                kline = fetcher.get_kline(code=code, start_date=start_date, end_date=end_date)
-
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-            py = end_dt.year
-            pq = ((end_dt.month - 1) // 3) or 4
-            if pq == 4:
-                py -= 1
-            divs = []
-            for y in range(py - 5, py + 1):
-                divs.extend(fetcher.get_dividend_data(code, y))
+        from StockInvestmentTool.portfolio.monitor import PriceMonitor
+        kline = PriceMonitor().fetch_kline(code, start_date, end_date)
+        divs = []
 
         kline = TechnicalIndicators.compute_all(kline)
         sr = TechnicalIndicators.support_resistance(kline)

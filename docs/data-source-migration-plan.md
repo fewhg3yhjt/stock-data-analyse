@@ -111,3 +111,9 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 2026-09-08 已完成生产进程切换：`stock-invest-data-worker` 已启动并保持 healthy，`stock-web` 已重启加载只入队 Scheduler，`stock-invest-business-worker` 保持运行。切换后队列为空，尚未执行切换后的真实数据任务，因此“执行角色已切换”与“新进程已完成真实采集闭环”需要分开验收。
 
 受控验证期间 Scheduler 自动创建了 6915 标的的全市场 Request。经确认后已停止 Data Worker 并将 Request、JobRun、SourceBatch 收口为失败；已产生 Raw 文件保留，未生成新的 Published Version 或更新 Current。Data Worker 当前保持停止，重新验证前必须先增加受控范围保护，不能直接重启后等待 Scheduler 自动触发。
+
+停机隔离期间已完成正式数据接口收口：默认业务数据源只读取 Published Dataset；Web 分类、Core 分析、Portfolio 基本面快照和 Biz 指标触发器不再直接在线采集、写回仓库或使用隐式 legacy fallback。相关数据源回归 31 项通过；通知规则数量和 `watch_pool` fixture 的既有测试问题仍未处理。Web/Business Worker 恢复后，Data Worker 仍需在受控范围保护下单独启动验证。
+
+生产验证结果：容器内按 symbol 精确读取 Published `fundamentals/sh600000` 约 `0.061s`，`/api/classify?code=600000` 原始入口返回 HTTP 200；Web 和 Business Worker 已恢复 healthy，Data Worker 保持停止。此次没有执行真实数据 Request，也没有新增 Dataset Version 或更新 Current。
+
+正式 Web、Core、Portfolio、Biz 和 Comparison 入口的在线数据 fallback 扫描已清零；显式 `FallbackDataSource`、`OnlineSource` 和迁移能力仅保留给测试/隔离研究。分红 Published 契约尚未建立，正式股息锚现在明确返回不可用。

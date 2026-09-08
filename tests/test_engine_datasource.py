@@ -34,10 +34,15 @@ def test_analysis_engine_prefers_warehouse_fundamentals(monkeypatch, kline, tmp_
 
     class FakeWarehouse:
         def get_instrument(self, code): return {"code": code, "name": "测试"}
-        def read_fundamentals(self, code):
-            return pd.DataFrame([{"stat_date": "2025-12-31", "roe": 12.0}])
+        pass
 
     monkeypatch.setattr(WarehouseSource, "__init__", lambda self, warehouse=None: setattr(self, "_warehouse", FakeWarehouse()))
+    class FakeAccess:
+        def __init__(self, warehouse): pass
+        def load_dataset(self, *args, **kwargs):
+            from StockInvestmentTool.warehouse.datasets import DatasetResult
+            return DatasetResult(pd.DataFrame([{"stat_date": "2025-12-31", "roe": 12.0}]), {})
+    monkeypatch.setattr("StockInvestmentTool.warehouse.datasets.DatasetAccess", FakeAccess)
     class FakeFetcher:
         def get_profit_data(self, *args): raise AssertionError("不应读取在线盈利")
         def get_dividend_data(self, *args): return []

@@ -19,7 +19,7 @@ from StockInvestmentTool.config import Config
 from StockInvestmentTool.core.registry import SchemeRegistry
 from StockInvestmentTool.core.scheme import SchemeConfig
 from StockInvestmentTool.datasource.fetcher import StockDataFetcher
-from StockInvestmentTool.datasource.base import DataSource, FallbackDataSource
+from StockInvestmentTool.datasource.base import DataSource
 from StockInvestmentTool.datasource.indicators import TechnicalIndicators, ValuationHelper
 from StockInvestmentTool.strategy.multi_buy import MultiBuyStrategy
 from StockInvestmentTool.backtest.engine import BacktestEngine
@@ -176,7 +176,8 @@ class AnalysisEngine:
                  scheme: Optional[SchemeConfig] = None):
         self.registry = registry or SchemeRegistry()
         self.scheme: SchemeConfig = scheme or self.registry.get(scheme_name)
-        self.data_source = data_source or FallbackDataSource()
+        from StockInvestmentTool.datasource.base import get_default_datasource
+        self.data_source = data_source or get_default_datasource()
 
     # ── 数据获取 ─────────────────────────────────────────
 
@@ -189,33 +190,34 @@ class AnalysisEngine:
         if profit_q == 4:
             profit_year -= 1
 
-        kline = None
-        try:
-            kline = self.data_source.fetch_kline(code, start_date, end_date)
-        except Exception as e:
-            logger.warning("统一数据源 K线读取失败(%s)，回退 baostock: %s", code, e)
+        kline = self.data_source.fetch_kline(code, start_date, end_date)
         if kline is None or kline.empty:
-            kline = fetcher.get_kline(code=code, start_date=start_date, end_date=end_date)
+            raise ValueError(f"Published stock_daily 不可用: {code} {start_date}~{end_date}")
         from StockInvestmentTool.datasource.base import WarehouseSource
+        from StockInvestmentTool.warehouse.datasets import DatasetAccess, DatasetAccessError
         warehouse_source = WarehouseSource()
         basic = warehouse_source.fetch_instrument(code)
-        basic_source = "warehouse" if basic else "online_fallback"
-        fundamentals = warehouse_source.fetch_fundamental_history(code)
+        basic_source = "warehouse" if basic else "unavailable"
+        try:
+            fundamentals = DatasetAccess(warehouse_source._warehouse).load_dataset(
+                "fundamentals", symbols=[code], required_quality="WARNING",
+            ).data
+        except DatasetAccessError:
+            fundamentals = pd.DataFrame()
         profit = {}
         if not fundamentals.empty:
             latest = fundamentals.sort_values("stat_date").iloc[-1]
             profit = latest.to_dict()
             profit_source = "warehouse"
         else:
-            profit = fetcher.get_profit_data(code, profit_year, profit_q)
-            profit_source = "online_fallback"
+            profit_source = "unavailable"
         divs = []
-        for y in range(profit_year - 5, profit_year + 1):
-            divs.extend(fetcher.get_dividend_data(code, y))
+        # Dividends do not yet have a Published Dataset contract. Keep the
+        # analysis shape stable while marking the unavailable source explicitly.
 
         return {"kline": kline, "basic": basic, "profit": profit, "dividends": divs,
                 "data_sources": {"basic": basic_source, "fundamentals": profit_source,
-                                  "dividends": "online_fallback"}}
+                                   "dividends": "unavailable"}}
 
     # ── 技术指标 ─────────────────────────────────────────
 
