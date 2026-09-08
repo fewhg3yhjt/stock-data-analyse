@@ -19,6 +19,7 @@ from pathlib import Path
 
 from StockInvestmentTool.ops.task_center import TaskCenter
 from StockInvestmentTool.ops.task_execution import execute_task
+from StockInvestmentTool.warehouse.asset_profiles import asset_type_for, select_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +52,13 @@ class DataWorker:
     """领取并执行数据任务请求的单进程 Worker。"""
 
     def __init__(self, db_path: Path | str, *, task_keys: set[str] | None = None,
-                 poll_interval: float = 2.0, task_timeout: float | None = None):
+                 poll_interval: float = 2.0, task_timeout: float | None = None,
+                 batch_size: int = 50):
         self.db_path = Path(db_path)
         self.task_keys = set(task_keys or ())
         self.poll_interval = max(0.1, float(poll_interval))
         self.task_timeout = task_timeout
+        self.batch_size = max(1, int(batch_size))
         self.worker_id = _worker_id()
         self.center = TaskCenter(self.db_path, self.db_path)
         self._ensure_worker_table()
@@ -139,7 +142,7 @@ class DataWorker:
             payload["task_timeout"] = self.task_timeout
         payload["requested_by"] = payload.get("requested_by") or f"data-worker:{self.worker_id}"
         try:
-            result = execute_task(self.db_path, request["task_key"], payload, request_id=request_id)
+            result = self.execute_request(request, payload)
             if result.get("status") == "success":
                 result["downstream_requests"] = self.enqueue_downstream(request, result)
         except Exception as exc:  # noqa: BLE001
@@ -151,6 +154,91 @@ class DataWorker:
         finally:
             self.heartbeat(status="idle")
         return result
+
+    def execute_request(self, request: dict, payload: dict) -> dict:
+        """Execute one request, batching mixed stock/ETF capture safely."""
+        if request["task_key"] != "stock_daily_capture":
+            return execute_task(self.db_path, request["task_key"], payload,
+                                request_id=request["request_id"])
+
+        symbols = payload.get("symbols") or self._active_symbols(request)
+        groups = self._batch_symbols(symbols)
+        if len(groups) <= 1:
+            payload["symbols"] = groups[0][1] if groups else []
+            payload["batch_index"] = 1 if groups else 0
+            payload["batch_count"] = len(groups)
+            return execute_task(self.db_path, request["task_key"], payload,
+                                request_id=request["request_id"])
+
+        results = []
+        for index, (asset_type, batch) in enumerate(groups, 1):
+            child_payload = dict(payload)
+            child_payload.update({
+                "symbols": batch,
+                "asset_types": [asset_type],
+                "batch_index": index,
+                "batch_count": len(groups),
+                "parent_request_id": request["request_id"],
+            })
+            child_id = self.center.create_request(
+                request["task_key"], request.get("trigger_type") or "scheduled",
+                period_start=request.get("period_start"), period_end=request.get("period_end"),
+                symbols=batch, requested_by=f"data-worker:{self.worker_id}",
+                input_versions=payload.get("input_versions") or {},
+                request_payload=child_payload,
+            )
+            results.append(execute_task(self.db_path, request["task_key"], child_payload,
+                                        request_id=child_id))
+
+        statuses = [item.get("status") for item in results]
+        failed = [item for item in results if item.get("status") not in {"success", "partial_success"}]
+        source_batches = []
+        asset_type_counts = {
+            "stock": {"expected": 0, "success": 0, "failed": 0, "skipped": 0},
+            "etf": {"expected": 0, "success": 0, "failed": 0, "skipped": 0},
+        }
+        for item in results:
+            inner = item.get("result") or {}
+            source_batches.extend(inner.get("source_batch_ids") or ([inner["source_batch_id"]] if inner.get("source_batch_id") else []))
+            for kind, stats in (inner.get("coverage_by_type") or {}).items():
+                target = asset_type_counts.setdefault(kind, {"expected": 0, "success": 0, "failed": 0, "skipped": 0})
+                for key in target:
+                    target[key] += int(stats.get(key, 0) or 0)
+        status = "failed" if failed else ("partial_success" if "partial_success" in statuses else "success")
+        self.center.update_request(request["request_id"], status)
+        return {"run_id": None, "request_id": request["request_id"], "status": status,
+                "result": {"batch_count": len(groups), "batches": results,
+                            "source_batch_ids": source_batches,
+                            "asset_type_counts": asset_type_counts}}
+
+    def _active_symbols(self, request: dict) -> list[str]:
+        """Resolve the configured active universe without mixing industries."""
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        configured = self.center.task(request["task_key"]) or {}
+        config = next((item for item in configured.get("config_versions", [])
+                       if item.get("version") == configured.get("active_config_version")), {})
+        try:
+            config = json.loads(config.get("config") or "{}")
+        except (TypeError, ValueError):
+            config = {}
+        allowed = (config.get("scope") or {}).get("asset_types") or ["stock", "etf"]
+        warehouse = Warehouse(meta_db_path=self.db_path)
+        symbols = [item["code"] for item in warehouse.list_instruments(asset_types=set(allowed))]
+        return symbols
+
+    def _batch_symbols(self, symbols: list[str]) -> list[tuple[str, list[str]]]:
+        known = self.center.db_path
+        from StockInvestmentTool.warehouse.storage import Warehouse
+
+        types = Warehouse(meta_db_path=known).instrument_types()
+        selected, _ = select_symbols(symbols, asset_types=["stock", "etf"], known_types=types)
+        groups: dict[str, list[str]] = {"stock": [], "etf": []}
+        for code in selected:
+            groups.setdefault(asset_type_for(code, types), []).append(code)
+        return [(kind, batch) for kind in ("stock", "etf")
+                for batch_start in range(0, len(groups.get(kind, [])), self.batch_size)
+                for batch in [groups[kind][batch_start:batch_start + self.batch_size]]]
 
     def enqueue_downstream(self, request: dict, result: dict) -> list[dict]:
         """Queue the next data stage only after a successful upstream stage."""
@@ -227,7 +315,8 @@ def main(argv=None) -> int:
         args.db = management_db_path()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     worker = DataWorker(args.db, task_keys=_parse_tasks(args.tasks),
-                        poll_interval=args.poll_interval, task_timeout=args.task_timeout)
+                        poll_interval=args.poll_interval, task_timeout=args.task_timeout,
+                        batch_size=int(os.getenv("DATA_WORKER_BATCH_SIZE", "50")))
     if args.once:
         worker.process_once()
         worker.heartbeat(status="stopped")

@@ -361,6 +361,17 @@ pids_limit: 64
 
 验收：受控中断后重启只处理剩余股票；成功股票不重复请求；每批有统计；最终完整成功可进入 Build；失败股票不被误记成功。
 
+#### 阶段 3 当前实施记录（2026-09-08）
+
+- `ops.data_worker.DataWorker` 已增加通用批次执行入口：只对 `stock_daily_capture` 进行证券批次化，其他任务仍按独立数据任务执行。
+- 普通证券日线按管理库 `instruments.type` 和 `asset_profiles` 分为 `stock`、`etf` 两组，分别切成默认 50 只一批；指数和行业不会混入普通证券日线批次。
+- 每个子批次 Request 保存 `asset_types`、`batch_index`、`batch_count`、`parent_request_id` 和原始执行 payload；父 Request 汇总子批次结果和 Source Batch ID。
+- 股票和 ETF 共用 `stock_daily_capture` 的采集适配和限流机制，但后续质量/指标适用性仍以各自 profile 的 `required/optional/not_applicable` 为准。
+- 已复用现有 Raw Batch 的成功项跳过和 partial Raw 恢复逻辑；没有新增股票级海量任务表。
+- 修复 Request ID 同秒冲突：`TaskCenter.create_request()` 改用 UUID 后缀，保证同一父任务下多个类型批次可并行持久化而不发生主键冲突。
+- 阶段 3 测试共 29 项通过，另有已有 SourceBatch/财务报告 checkpoint 测试 8 项通过。
+- 当前未完成：真实生产批次接管、受控中断后的跨进程恢复演练、质量按类型统计接入和指数/行业独立链路的进一步批次化。
+
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
 目标：数据生产阶段独立落盘和传递版本。

@@ -100,6 +100,7 @@ services:
       - MANAGEMENT_DB_PATH=/app/StockInvestmentTool/output/data/management.db
       - DATA_WORKER_TASKS=${DATA_WORKER_TASKS:-stock_daily_capture,stock_daily_build,stock_daily_quality,stock_daily_publish,indicators_build,factors_build,industry_capture,industry_membership_capture,industry_daily_capture,industry_features_build,industry_rotation_build,fundamentals_capture,valuation_capture,money_flow_capture,financial_reports_capture,financial_reports_build,financial_reports_quality,financial_reports_publish,valuation_daily_build,valuation_daily_quality,valuation_daily_publish,valuation_snapshot_capture,valuation_snapshot_build,valuation_snapshot_quality,valuation_snapshot_publish}
       - DATA_WORKER_POLL_INTERVAL=${DATA_WORKER_POLL_INTERVAL:-2}
+      - DATA_WORKER_BATCH_SIZE=${DATA_WORKER_BATCH_SIZE:-50}
       - PYTHONDONTWRITEBYTECODE=1
     volumes:
       - ${STOCK_OUTPUT_DIR:-./output}:/app/StockInvestmentTool/output

@@ -117,3 +117,5 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 生产验证结果：容器内按 symbol 精确读取 Published `fundamentals/sh600000` 约 `0.061s`，`/api/classify?code=600000` 原始入口返回 HTTP 200；Web 和 Business Worker 已恢复 healthy，Data Worker 保持停止。此次没有执行真实数据 Request，也没有新增 Dataset Version 或更新 Current。
 
 正式 Web、Core、Portfolio、Biz 和 Comparison 入口的在线数据 fallback 扫描已清零；显式 `FallbackDataSource`、`OnlineSource` 和迁移能力仅保留给测试/隔离研究。分红 Published 契约尚未建立，正式股息锚现在明确返回不可用。
+
+阶段 3 已建立通用 Data Worker 批次框架：普通证券按 `stock`/`etf` 分组后执行 `stock_daily`，指数和行业保持独立任务链；批次默认 50 只，成功项跳过和 partial Raw 恢复复用既有机制。该框架尚未接管生产全市场任务。

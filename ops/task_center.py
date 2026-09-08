@@ -6,6 +6,7 @@ import hashlib
 import json
 import mimetypes
 import sqlite3
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -427,7 +428,7 @@ class TaskCenter:
             raise TaskConfigError("非法任务触发类型")
         if period_start and period_end and str(period_end) < str(period_start):
             raise TaskConfigError("任务结束周期不能早于开始周期")
-        request_id = f"req_{datetime.now():%Y%m%d%H%M%S}_{hashlib.sha1(f'{task_key}{_now()}'.encode()).hexdigest()[:10]}"
+        request_id = f"req_{datetime.now():%Y%m%d%H%M%S}_{uuid.uuid4().hex[:12]}"
         with self._connect() as conn:
             row = conn.execute("SELECT active_config_version FROM task_definitions WHERE task_key=?", (task_key,)).fetchone()
             if not row:

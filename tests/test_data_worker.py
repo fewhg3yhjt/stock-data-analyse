@@ -104,3 +104,87 @@ def test_data_worker_default_allowlist_covers_daily_chain():
         "stock_daily_capture", "stock_daily_build", "stock_daily_quality",
         "stock_daily_publish", "indicators_build",
     )
+
+
+def test_data_worker_batches_stock_and_etf_separately(tmp_path):
+    db = tmp_path / "management.db"
+    center = TaskCenter(db, db)
+    center.sync_definitions()
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    warehouse = Warehouse(base_dir=tmp_path / "warehouse", meta_db_path=db)
+    warehouse.upsert_instruments([
+        {"code": "sh600000", "type": "stock"},
+        {"code": "sh600001", "type": "stock"},
+        {"code": "sh510300", "type": "etf"},
+    ])
+    worker = DataWorker(db, task_keys={"stock_daily_capture"}, batch_size=1)
+
+    groups = worker._batch_symbols(["sh600000", "sh600001", "sh510300"])
+    assert groups == [
+        ("stock", ["sh600000"]), ("stock", ["sh600001"]),
+        ("etf", ["sh510300"]),
+    ]
+
+
+def test_data_worker_resume_uses_collector_skip_for_completed_symbols(tmp_path, monkeypatch):
+    db = tmp_path / "management.db"
+    center = TaskCenter(db, db)
+    center.sync_definitions()
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    warehouse = Warehouse(base_dir=tmp_path / "warehouse", meta_db_path=db)
+    warehouse.upsert_instruments([
+        {"code": "sh600000", "type": "stock"},
+        {"code": "sh600001", "type": "stock"},
+    ])
+    worker = DataWorker(db, task_keys={"stock_daily_capture"}, batch_size=2)
+    request_id = center.create_request(
+        "stock_daily_capture", "retry", period_start="2026-09-07", period_end="2026-09-07",
+        symbols=["sh600000", "sh600001"], requested_by="test",
+    )
+    called = []
+
+    def fake_execute(_db, _task, payload, request_id=None):
+        called.append((payload["symbols"], payload["batch_index"], request_id))
+        return {"status": "success", "result": {"source_batch_id": f"batch-{payload['batch_index']}"}}
+
+    monkeypatch.setattr("ops.data_worker.execute_task", fake_execute)
+    result = worker.process_once()
+
+    assert result["status"] == "success"
+    assert called == [(["sh600000", "sh600001"], 1, called[0][2])]
+
+
+def test_data_worker_persists_type_specific_child_requests(tmp_path, monkeypatch):
+    db = tmp_path / "management.db"
+    center = TaskCenter(db, db)
+    center.sync_definitions()
+    from StockInvestmentTool.warehouse.storage import Warehouse
+    warehouse = Warehouse(base_dir=tmp_path / "warehouse", meta_db_path=db)
+    warehouse.upsert_instruments([
+        {"code": "sh600000", "type": "stock"},
+        {"code": "sh510300", "type": "etf"},
+    ])
+    worker = DataWorker(db, task_keys={"stock_daily_capture"}, batch_size=50)
+    request_id = center.create_request(
+        "stock_daily_capture", "retry", period_start="2026-09-07", period_end="2026-09-07",
+        symbols=["sh600000", "sh510300"], requested_by="test",
+    )
+
+    monkeypatch.setattr(
+        "ops.data_worker.execute_task",
+        lambda _db, _task, payload, request_id=None: {
+            "status": "success", "request_id": request_id,
+            "result": {"source_batch_id": f"batch-{payload['asset_types'][0]}"},
+        },
+    )
+    result = worker.process_once()
+
+    assert result["status"] == "success"
+    children = center._connect().execute(
+        "SELECT task_key,symbols,request_payload FROM task_execution_requests "
+        "WHERE request_id<>? AND task_key='stock_daily_capture' ORDER BY created_at", (request_id,)
+    ).fetchall()
+    assert len(children) == 2
+    assert [__import__("json").loads(row[1]) for row in children] == [["sh600000"], ["sh510300"]]
+    payloads = [__import__("json").loads(row[2]) for row in children]
+    assert [payload["asset_types"] for payload in payloads] == [["stock"], ["etf"]]
