@@ -71,3 +71,19 @@ def test_market_inline_script_is_balanced_and_keeps_official_rotation():
     compile(script, "<market-inline>", "exec")
     assert "window.OFFICIAL_ROTATION" in inline
     assert "window.MARKET_ROTATIONS={};" in inline
+
+
+def test_market_template_contains_stale_data_notice():
+    template = Path("web/templates/market.html").read_text(encoding="utf-8")
+    assert "当前不是最新数据" in template
+    assert "market_data_notice.actual_date" in template
+
+
+def test_market_data_notice_uses_latest_closed_trade_day(monkeypatch):
+    from StockInvestmentTool.web.app import _market_data_notice
+    from StockInvestmentTool.ops import trade_calendar
+
+    monkeypatch.setattr(trade_calendar, "HOLIDAYS", {pd.Timestamp("2026-09-07").date()})
+    notice = _market_data_notice("2026-09-04", pd.Timestamp("2026-09-08 10:00").to_pydatetime())
+    assert notice["expected_trade_date"] == "2026-09-04"
+    assert notice["stale"] is False

@@ -4104,6 +4104,20 @@ def notify_center_page():
     return flask.render_template("notify_composer.html", error=None)
 
 
+def _market_data_notice(actual_data_as_of: str | None, now: datetime | None = None) -> dict:
+    """Compare page data with the latest closed trading day, not calendar day."""
+    from StockInvestmentTool.ops.trade_calendar import latest_closed_trade_day, now_shanghai
+
+    current = now or now_shanghai()
+    expected = latest_closed_trade_day(current)
+    actual = (str(actual_data_as_of or "")[:10] or None)
+    return {
+        "stale": bool(actual and actual < expected.isoformat()),
+        "actual_date": actual,
+        "expected_trade_date": expected.isoformat(),
+    }
+
+
 @web_app.route("/market", methods=["GET"])
 def market_page():
     """大盘页：指数 / 板块 / 持仓折线"""
@@ -4115,6 +4129,8 @@ def market_page():
         board_names = svc.board_names()
         board_overview = svc.board_overview()
         official_rotation = svc.official_rotation_workbench()
+        actual_data_as_of = official_rotation.get("actual_data_as_of")
+        market_data_notice = _market_data_notice(actual_data_as_of)
         industry_rotation = svc.industry_rotation_overview(category="csrc")
         ths_industry_rotation = svc.industry_rotation_overview(category="ths_industry")
         ths_concept_rotation = svc.industry_rotation_overview(category="ths_concept")
@@ -4128,8 +4144,9 @@ def market_page():
                                       industry_rotation=industry_rotation,
                                       ths_industry_rotation=ths_industry_rotation,
                                       ths_concept_rotation=ths_concept_rotation,
-                                     industry_membership=industry_membership,
-                                     positions_codes=positions_codes, error=None)
+                                      industry_membership=industry_membership,
+                                      positions_codes=positions_codes, error=None,
+                                      market_data_notice=market_data_notice)
     except Exception as e:
         logger.exception("大盘页加载失败")
         return flask.render_template("market.html", indices={}, board_names=[],
@@ -4139,8 +4156,10 @@ def market_page():
                                                           "actual_data_as_of": None,
                                                            "reason": "行业轮动数据读取失败"},
                                        ths_industry_rotation={"status": "no_data", "items": []}, ths_concept_rotation={"status": "no_data", "items": []},
-                                      industry_membership={},
-                                     positions_codes=[], error=str(e))
+                                       industry_membership={},
+                                      positions_codes=[], error=str(e),
+                                      market_data_notice={"stale": False, "actual_date": None,
+                                                           "expected_trade_date": None})
 
 
 @web_app.route("/market/index_kline", methods=["GET"])

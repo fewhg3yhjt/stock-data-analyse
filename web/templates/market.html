@@ -9,6 +9,7 @@
 <div class="app">
   <div class="header"><div><h1><i class="fas fa-arrows-rotate"></i> 板块轮动</h1><div class="sub">跟踪价格、相对强度与横截面变化，识别板块阶段，发现下一个机会</div></div>{% set active = 'market' %}{% include '_nav.html' %}</div>
   {% if error %}<div class="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>{% endif %}
+  {% if market_data_notice and market_data_notice.stale %}<div class="market-data-stale-notice" role="status"><i class="fas fa-clock"></i><div><strong>当前不是最新数据</strong><span>本页正式板块轮动数据截至 <b>{{ market_data_notice.actual_date }}</b>，最近应有交易日为 <b>{{ market_data_notice.expected_trade_date }}</b>。页面仍展示最近可用数据，请勿将其当作实时状态。</span></div></div>{% elif market_data_notice and market_data_notice.actual_date %}<div class="market-data-current-notice" role="status"><i class="fas fa-circle-check"></i><span>正式板块轮动数据截至 <b>{{ market_data_notice.actual_date }}</b>，已追平最近应有交易日 {{ market_data_notice.expected_trade_date }}</span></div>{% endif %}
   <div class="ui-card" style="background:#eef6ff;border-color:#c9def7;"><div class="ui-card-header"><span><i class="fas fa-filter-circle-dollar"></i> 个股发现</span><a class="ui-button" href="/market-discovery">打开筛选工作台</a></div><div class="note">基于本地日线数据筛选近 N 日涨跌、成交量变化和价量信号；结果可进入观察池、策略模拟和持仓流程。</div></div>
 
   <div class="ui-card official-rotation-card">
