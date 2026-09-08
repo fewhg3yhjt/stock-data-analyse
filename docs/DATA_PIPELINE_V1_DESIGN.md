@@ -62,9 +62,8 @@ warehouse/indicators/
 warehouse/fundamentals/
 warehouse/minute/
 warehouse/online/
-warehouse/meta.db（旧兼容回退，待下线）
-output/data/management.db（生产数据管理事实）
-output/data/job_runs.db（旧任务台账，待下线）
+output/data/management.db（生产目标数据管理事实）
+output/data/job_runs.db、warehouse/meta.db（历史迁移/备份/归档输入；不得作为生产运行时来源）
 ```
 
 已有能力包括：
@@ -72,7 +71,7 @@ output/data/job_runs.db（旧任务台账，待下线）
 - Parquet 月分区；
 - SQLite 元数据和任务台账；
 - DuckDB 跨分区读取；
-- APScheduler 自动任务；
+- APScheduler 当前仍负责调度并在 Web 进程内触发部分数据任务；目标是只创建请求，由独立 Data Worker 执行生产链；
 - 日线和技术指标任务；研究因子已归入指标任务；
 - 任务阶段、进度、部分成功、失败和跳过状态；
 - 数据新鲜度和数据中心页面。
@@ -2629,7 +2628,7 @@ stock_daily_version
  - 小量批量验证已完成：使用 3 个证券和临时仓库验证 2 个成功、1 个失败的 `partial_success` 场景，Raw 与历史基线均可追溯。
 - 全量回归：257 个测试通过（以当前工作树实际测试统计为准）。
 - 当前正式日线消费路径：未切换，仍为现有 `warehouse/daily/YYYY-MM.parquet`。
-- 当前生产数据管理路径：`MANAGEMENT_DB_PATH` 已使 `Warehouse` 使用 `management.db`；`warehouse/meta.db` 仍被默认回退、行业/标的旧读取、测试和迁移脚本引用，属于待下线兼容库。
+- 当前生产数据管理路径：`MANAGEMENT_DB_PATH` 已使 `Warehouse` 使用 `management.db`；旧库仅允许显式迁移/备份/归档工具使用，生产运行时旧引用和 fallback 的全量审计仍待完成。
 - Phase 3-6 已在验证目录完成基础闭环：Raw Batch -> Candidate Builder -> Dataset Version -> Quality -> Publish；生产下游仍未切换。
 - 辅助源采集已具备统一 Raw Batch 入口：`industry`、`fundamentals`、`valuation_daily`、`money_flow_daily` 均有 YAML 定义和生产小范围验证记录；历史快照已按真实日期统一建立 current。
 - 辅助源任务是否参与调度由对应 `config/tasks/*_capture.yaml` 的任务配置决定，不再使用独立环境变量旁路控制。
@@ -2647,5 +2646,5 @@ stock_daily_version
 - 新管理库阶段已完成验证：`output/validation/data_pipeline/management.db` 可独立承载 YAML 定义和旧数据版本事实，管理服务支持通过 `MANAGEMENT_DB_PATH` 显式切换；当前生产配置已指向 `output/data/management.db`，但生产入口和调度的全量切换验收尚未完成，旧库未删除。
 - 混合证券小量 Shadow 验证已完成：3 只股票（`sh600000`、`sh600519`、`sz000001`）和 1 只 ETF（`sh510050`）在 `2026-08-25` 至 `2026-08-28` 完成真实腾讯采集、标准构建、质量、隔离发布、指标和因子计算；类型统计为 `stock=3`、`etf=1`，覆盖率 100%。
 - 真实 Shadow Run 已完成两次小批量验证：首轮 `sh600000/sh600001/sz000001` 中 `sh600001` 无有效返回，覆盖率 2/3，质量 FAIL 且正确阻断；第二轮使用 `sh600000/sh600519/sz000001`，覆盖 3/3、5 个交易日共 15 行，质量 PASS，完整生成 Shadow Raw/Candidate/Published/指标/因子并登记产物血缘。
-- Shadow 输出位于 `output/data/shadow_validation_retry/`，与正式 `output/data/warehouse/` 隔离；正式 `meta.db`（旧兼容库）、daily、indicators、factors 的 checksum 在运行前后保持不变。
-- `meta.db` 下线前置条件：完成全量引用清理、管理库与旧库对账、隔离环境冷启动和全量回归，并完成生产只读观察；删除属于单独的破坏性运维操作，必须备份后人工确认。
+- Shadow 输出位于 `output/data/shadow_validation_retry/`，与正式 `output/data/warehouse/` 隔离；生产 `management.db`、daily、indicators、factors 的 checksum 在运行前后保持不变。
+- 旧库归档前置条件：完成生产运行时引用清理、管理库与历史库对账、隔离环境冷启动和全量回归，并完成生产只读观察；删除属于单独的破坏性运维操作，必须备份后人工确认。

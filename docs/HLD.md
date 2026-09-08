@@ -123,7 +123,7 @@ flowchart TB
         IC[IndicatorContext<br>统一指标求值入口]
     end
     subgraph 数据层
-        WH[Warehouse parquet+management.db（生产）/meta.db（旧回退）]
+        WH[Warehouse parquet + management.db（生产目标管理事实）]
         OL[Online baostock/akshare/腾讯]
     end
     PMGR --> SC --> RR

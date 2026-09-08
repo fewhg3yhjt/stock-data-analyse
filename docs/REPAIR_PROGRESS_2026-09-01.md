@@ -194,7 +194,7 @@ job_runs.db：存在迁移能力，但未完成全量对账和归档，不能删
 
 ### 5.5 `warehouse/meta.db`
 
-`meta.db` 仍有 6915 条 instruments 和 4574 条 fundamental manifest 等历史元数据。生产当前通过 `MANAGEMENT_DB_PATH` 使用 `management.db`，但代码、测试和迁移路径仍保留 `meta.db` 回退或显式引用。
+截至本报告日期，旧元数据库仍有 6915 条 instruments 和 4574 条 fundamental manifest 等历史元数据。当前生产默认管理库为 `management.db`；旧库仅应保留为显式迁移/备份/归档输入，生产运行时引用收口需以最新审计结果为准。
 
 结论：
 

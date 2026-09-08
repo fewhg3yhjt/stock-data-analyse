@@ -27,7 +27,7 @@ A股分析工具，生产环境直接迭代（Docker 容器 `stock-invest`，代
 指标层 indicators/  可配置/可组合/可编程指标体系
 数据层 warehouse/   raw贴源 → daily加工 → indicators指标
                     → fundamentals基本面 → factors因子 → online快照
-                     → management.db（生产元数据）；meta.db 为待下线旧回退
+                     → management.db（生产目标元数据）；旧元数据库仅作显式迁移/归档输入
 ```
 
 设计文档：`docs/DESIGN.md`
@@ -55,7 +55,7 @@ A股分析工具，生产环境直接迭代（Docker 容器 `stock-invest`，代
 | PE/PB 回补 | ✅ 4799只 | daily（东财）|
 | 全量指标 | ✅ 6435只 37月 | warehouse/indicators/ |
 | 财务史 | ✅ 4551只 | warehouse/fundamentals/ |
-| 行业 | ⚠️ 已补000段+持仓自选（285+只），全市场后台采集中 | management.db instruments.industry（旧 meta.db 待下线） |
+| 行业 | ⚠️ 已补000段+持仓自选（285+只），全市场后台采集中 | management.db instruments.industry；旧元数据库不参与生产读取 |
 | 000开头深市股票 | ✅ 已补（482只 daily/财务史20只/行业采集中）| management.db/daily/fundamentals |
 
 ## 六、关键问题/注意事项

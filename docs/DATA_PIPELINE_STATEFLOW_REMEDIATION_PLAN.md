@@ -27,7 +27,7 @@ External Source
 2. 质量失败可能被任务层记录为成功，并继续进入发布阶段。
 3. Publish 可能在缺少本次输出版本时选择历史合格 Candidate。
 4. Indicators 未经过独立质量检查即登记 `PASS/published`；历史 Factors 文件和诊断兼容代码仍保留，已从 `stock_daily` 正式 consumer 和管理库健康统计中移除。
-5. `management.db`、`warehouse/meta.db`、旧 `job_runs.db` 的事实口径分裂。
+5. `management.db` 与历史旧库之间的事实对账和运行时隔离仍需完成。
 6. 生产文件、数据集配置和消费者之间存在字段契约不一致。
 7. 大量正式业务消费者绕过 `DatasetAccess`，直接读取物理文件或静默在线回退。
 8. 日期口径、数据来源、降级状态和质量状态没有贯穿到 API 和 UI。
@@ -472,13 +472,13 @@ Parquet / CSV
   → analytical datasets
 ```
 
-`warehouse/meta.db` 和旧 `job_runs.db` 进入只读兼容阶段，不再接收新事实。
+历史旧库文件进入只读归档输入阶段，不再接收生产运行时新事实。
 
 ### 9.1 `warehouse/meta.db` 下线专项
 
-当前生产配置已通过 `MANAGEMENT_DB_PATH` 使用 `management.db`，但 `meta.db` 仍有默认回退、行业/标的旧读取、测试和迁移脚本引用。它属于待下线兼容库，不能在当前阶段直接删除。删除前必须完成：
+当前生产配置已通过 `MANAGEMENT_DB_PATH` 使用 `management.db`，但旧库名称仍出现在显式迁移、测试、备份和历史文档中，生产入口全量审计尚未完成。旧库属于历史归档输入，不能在当前阶段直接删除。删除前必须完成：
 
-1. 全量扫描并清理生产代码对 `meta.db` 的隐式默认和业务读取引用。
+1. 全量扫描并清理生产代码对旧元数据库的隐式默认和业务读取引用。
 2. 将 instruments、manifest、行业及其他仍有价值的事实迁移到目标管理库，并输出数量、代码和版本差异报告。
 3. 测试、Shadow、迁移工具改为显式注入目标管理库或显式只读归档输入。
 4. 在隔离目录执行冷启动、全量回归、数据访问、任务调度和健康检查验证。

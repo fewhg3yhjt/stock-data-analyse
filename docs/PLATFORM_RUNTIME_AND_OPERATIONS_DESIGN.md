@@ -18,7 +18,7 @@ API/UI 平台边界
 
 本文定义新业务平台运行模型。数据平面的现有任务载体和 `management.db` 继续负责 capture/build/quality/publish/indicators 等数据任务；本平台只负责业务任务、业务运行库和业务调度，不替换数据平面。
 
-文档状态：目标运行模型 + 当前接入状态。当前生产仍处于迁移过渡期：`management.db` 已作为生产数据管理库使用，但旧 `meta.db`、`job_runs.db` 和部分旧入口尚未完成下线。业务 Worker 已有代码和测试，尚未作为生产常驻消费者接入。
+文档状态：目标运行模型 + 当前接入状态。`management.db` 是生产目标数据管理事实库；旧数据库文件只能作为显式迁移/归档输入，但生产入口的全量引用审计、Scheduler/Data Worker 角色拆分和财务在线 fallback 收口仍未完成。业务 Worker 已作为独立运行角色存在。
 
 文档中的路由、模板、JavaScript 和测试数量不作为静态事实维护；需要数量时以自动检查脚本或当前 CI 收集结果为准。
 
@@ -455,7 +455,7 @@ Route
 - 补齐更多真实业务 handler 后，再逐项开放业务任务调度。
 - 统一业务任务结果 DTO、HTTP 202 和持久化队列。
 - 启动恢复检查、任务影响确认、生产级 ready 依赖检查。
-- 继续补齐更多真实业务 handler 后，再逐项开放业务任务调度；`meta.db` / `job_runs.db` 旧运行路径仍待下线。
+- 继续补齐更多真实业务 handler 后，再逐项开放业务任务调度；数据任务角色拆分和旧数据库引用收口需按运行架构方案分阶段完成。
 - Factors 正式 consumer 和管理库健康统计已移除；历史 Factors 文件与兼容诊断仅保留归档用途。
 
 ### 跨模块验证
@@ -478,8 +478,8 @@ Route
 - `screen.run`、`research.run`、`simulation.run` 正式 API 已改为只创建 BusinessRequest/JobRun 并返回 202；Worker 执行后通过 BusinessRun/领域结果查询接口获取结果。
 - 新业务正式 API 当前已在容器内注册并通过路由契约检查；现有业务页面和旧业务主链路尚未完成切换。
 - 当前容器内正式 API 路由检查通过；业务过渡 API 的精确数量以自动路由检查为准。业务 Worker 已作为单实例生产常驻进程挂载，业务 Scheduler 已注册观察过期维护任务。
-- 生产 `Warehouse` 已通过 `MANAGEMENT_DB_PATH` 使用 `management.db`；`warehouse/meta.db` 仍被默认回退、行业/标的旧读取、测试和迁移脚本引用，只有完成全量引用清理、数据对账、生产只读观察和回归验证后，才允许将其降为归档并在人工确认后删除。
-- 当前仍未闭环：`DataContext` 已完成基础 canonical 字段输出，但 API DTO、Screen 全链路和旧字段适配清理仍待完成；`web/app.py:3041-3042` 的双 Blueprint 注册已清理；stale 时间格式、质量 Candidate 自证、Publisher 分区锁和模拟事件正常路径已完成代码修复；Worker/业务 Scheduler 已生产接入但仍需故障演练；`job_runs.db` 仍需独立只读归档验收。
+- 生产 `Warehouse` 已通过 `MANAGEMENT_DB_PATH` 使用 `management.db`，但全量生产入口审计、在线 fallback 收口、数据对账、隔离冷启动和只读观察仍待完成。测试、迁移和备份工具可保留显式历史输入；归档或删除必须单独确认。
+- 当前仍未闭环：`DataContext` 已完成基础 canonical 字段输出，但 API DTO、Screen 全链路和旧字段适配清理仍待完成；`web/app.py` 的双 Blueprint 注册已清理；stale 时间格式、质量 Candidate 自证、Publisher 分区锁和模拟事件正常路径已完成代码修复；Data Worker/Scheduler 拆分、生产 legacy 引用清理和旧任务文件只读归档验收仍待实施。
 - 路由约束：业务 Blueprint 只允许挂载到明确的 `/api/biz` 命名空间；不得同时注册到 `/api`。旧 `/api/health/details`、`/api/system/alerts` 等同路径必须在路由切换表中明确归属，不能依赖 Blueprint 注册顺序解决冲突。
 - stale 回收约束：heartbeat 存储和比较必须使用同一 UTC 可比较格式，或在应用层解析后比较；必须有“未超时不回收”和“超时可回收”的回归测试。
 - 领域状态约束：BusinessJobRun 与 SimulationRun、ScreenRun、ResearchRun 等领域运行实体必须有明确的状态映射和失败收敛策略。Simulation/Screen/Research 的基础失败落库已实现；任务失败不得留下永久 `running` 的领域记录，执行前创建的 ScreenVersion、UniverseSnapshot 等前置事实仍需通过显式 orphan/reconciled 状态或查询规则处理。

@@ -36,7 +36,7 @@
 │           backtest/       回测引擎（v4.5 委托 TakeProfitOptimizer；V6.0 机械状态机）
 │           notifier/ fundflow/ screener/  独立子工具
 ├ 指标层    indicators/      表达式引擎（基础/组合/代码指标）
-├ 数据层    warehouse/       Parquet 月分区 + management.db（生产）/meta.db（旧回退）+ DuckDB 扫描
+├ 数据层    warehouse/       Parquet 月分区 + management.db（生产唯一管理事实）+ DuckDB 扫描
 │           datasource/      baostock(长连接+自愈) / AkShare / 腾讯行情
 └ 前端      web/static/      多个业务 JS + 多个 Jinja 模板；精确数量以自动检查为准
 ```
@@ -47,8 +47,8 @@
 
 存在**两条并行取数路径**，这是当前架构最重要、也最需要收敛的一点：
 
-- **路径 A — 在线实时（老）**：`StockDataFetcher`（`datasource/fetcher.py`）→ baostock/AkShare，带 CSV/JSON 缓存 + 连接自愈（monkeypatch send_msg 死循环 + signal 看门狗 + 重连退避）。
-- **路径 B — 离线仓库（新）**：`Warehouse`（`warehouse/storage.py`）→ Parquet 月分区 + DuckDB 按需读。
+- **路径 A — 在线实时/显式研究路径**：`StockDataFetcher`（`datasource/fetcher.py`）→ baostock/AkShare，带 CSV/JSON 缓存 + 连接自愈。该路径不得被正式数据消费者静默调用；仍有生产入口需要进一步收口。
+- **路径 B — 离线仓库正式路径**：`Warehouse`（`warehouse/storage.py`）→ `management.db` 管理事实 + Published Parquet 月分区 + DuckDB 按需读。
 
 桥接点在 `portfolio/monitor.py` 的 `PriceMonitor.fetch_kline`：**warehouse 优先，baostock 兜底**。但该「优先/兜底」逻辑以 if-else 散落在 `monitor.py`、`core/engine.py`、`web/app.py` 多处，没有统一的 `DataSource` 抽象。
 
@@ -72,7 +72,7 @@
 | 看板 | `portfolio/dashboard.py` | 1026 | 三页看板数据聚合 |
 | 存储 | `portfolio/storage.py` | 596 | SQLite 单文件 + 轻量迁移 |
 | 指标 | `indicators/engine.py` | 254 | 表达式引擎（基础/组合/代码指标） |
-| 仓库 | `warehouse/storage.py` | 约 390 | Parquet 月分区 + 生产 management.db / 旧 meta.db 回退 |
+| 仓库 | `warehouse/storage.py` | 约 390 | Parquet 月分区 + management.db 管理事实；旧文件仅作显式迁移/归档输入 |
 | 通知 | `notifier/notify.py` + `web/scheduler.py` | 391+469 | 消息构造 + 定时调度 |
 | 前端 | `web/static/*.js` | 当前多个文件 | 具体文件和数量以自动检查为准 |
 
@@ -115,8 +115,8 @@
 
 | # | 问题 | 当前事实 | 影响 |
 |---|---|---|---|
-| M1 | **旧 `warehouse/meta.db` 尚未下线** | 生产环境通过 `MANAGEMENT_DB_PATH` 已将 Warehouse 元数据路径指向 `management.db`；但默认回退、行业/标的旧读取、测试和迁移脚本仍引用 `meta.db` | 现在直接删除会破坏本地/测试/迁移路径，也无法证明所有生产入口已切换 |
-| M2 | **管理库事实仍存在多口径** | `management.db`、`job_runs.db`、`meta.db` 均能在不同路径承载部分管理或运行表 | 数据中心、任务中心和恢复逻辑可能读取不同事实 |
+| M1 | **旧文件引用尚未完成分类收口** | 生产默认 Warehouse 已使用 `management.db`，但测试、迁移、备份和历史文档仍保留旧名称 | 需要完成生产运行时扫描和隔离冷启动；不能把工具输入误删 |
+| M2 | **数据生产运行角色尚未拆分** | Scheduler 仍在 Web 进程内触发部分数据任务 | 数据采集/构建峰值可能影响在线服务，需独立 Data Worker |
 
 ### 6.4 已确认但尚未闭环的后端缺陷
 
@@ -126,7 +126,7 @@
 | B2 | **业务 Blueprint 双前缀注册造成路由冲突** | `web/app.py:3041-3042` | 同一个 `biz_api` 同时注册 `/api/biz` 和 `/api`；与旧 `/api/health/details`、`/api/system/alerts` 等路径重叠，可能静默遮蔽新接口 |
 | B3 | **Quality coverage 使用自证基准** | `ops/task_execution.py:95-100` | 将候选版本自身 `symbol_count` 传为 `expected_symbols`，覆盖率可能恒为 1.0；无法发现 Universe 缺失，质量门禁失去覆盖约束 |
 | B4 | **Publisher 缺少同分区并发互斥** | `warehouse/publish.py:17-61` | 两个版本可同时替换同一正式文件并更新 `dataset_current`，文件、Current 指针和 previous_version 可能不一致 |
-| B5 | **旧 `job_runs.db` 收敛缺少专项迁移方案** | `ops/job_runs.py`、`ops/management_db.py` | 旧库仍可能承载 TaskCenter 运行表；缺少 Legacy ID 映射、重复记录处理、只读切换和独立验收，不能证明 `management.db` 已成为唯一数据任务事实源 |
+| B5 | **旧任务文件最终归档验收未完成** | `ops/job_runs.py`、`ops/management_db.py` | 生产运行事实已使用 `management.db`，但历史输入、对账、只读归档和隔离冷启动仍需独立验收 |
 | B6 | **领域运行状态与 BusinessJobRun 状态曾未收敛** | `biz/task_registry.py`、`biz/repo.py` | Simulation/Screen/Research 失败基础落库已实现；ScreenVersion/UniverseSnapshot 等前置审计事实保留，orphan/reconciled 展示策略和生产验证仍需完善 |
 | B7 | **业务队列领取曾不是严格原子 claim** | `biz/tasks.py` `_claim_run()` | requested Run 现在在单事务中选择、抢锁并置为 running；仍需执行并发 Worker 回归和生产接入验证 |
 | B8 | **新 biz 模拟事件异常路径仍需验证** | `biz/task_registry.py:207-225`、`biz/repo.py:420-447` | 正常和失败路径已有事件持久化；异常时的部分事件保存和独立查询 API 仍需完整回归与生产验证 |
@@ -164,7 +164,7 @@
 4. **通知配置产品化**：时间/渠道/条件的可视化配置 + 免重启生效（U3）。
 5. **前端重构**：统一 base template + 设计系统，收敛页面与导航（U4/U5）。
 6. 拆 `web/app.py` + 异步化（A3）。
-7. 新数据引擎切换收口：完成 `meta.db` 全量引用清理、管理库对账和生产只读观察后，将 `meta.db` 降为不可运行的归档，并在人工确认后再执行删除。
+7. 新数据引擎切换收口：完成生产运行时旧库引用清理、管理库对账、隔离冷启动和生产只读观察后，将旧库降为不可运行的归档，并在人工确认后再执行删除。
 
 ---
 

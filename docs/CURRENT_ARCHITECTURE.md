@@ -74,7 +74,7 @@ flowchart TB
         MDB[management.db\n数据版本、质量、任务中心事实]
         BDB[business.db\n新版业务事实与业务运行]
         PDB[portfolio.db\n旧持仓与自选数据]
-        LEGACY[meta.db / job_runs.db\n旧回退或待下线台账]
+        LEGACY[历史旧库文件\n仅限显式迁移/归档输入]
         FILES[output/reports + charts + cache\n报告、图表、缓存]
     end
     WH --> RAW
@@ -85,7 +85,7 @@ flowchart TB
     ENGINE --> FILES
     BIZ --> FILES
     WH -.生产配置指向.-> MDB
-    WH -.本地/测试回退.-> LEGACY
+    WH -.生产禁止回退\n测试/迁移显式使用.-> LEGACY
 ```
 
 ## 3. 生产部署拓扑
@@ -344,11 +344,11 @@ output/
 │   │   ├── raw/               # 各外部源的贴源数据
 │   │   ├── daily/             # Published 日线月分区 Parquet
 │   │   ├── indicators/        # Published 指标月分区 Parquet
-│   │   ├── fundamentals/      # 财务等辅助数据
+│   │   ├── fundamentals/      # 财务等辅助数据（正式读取需有 Published 版本）
 │   │   ├── valuation/          # 估值数据
 │   │   ├── online/             # 观察池低频快照
 │   │   └── minute/             # 观察池分钟快照
-│   └── meta.db                # Warehouse 默认回退/旧兼容元库，待下线
+│   └── legacy/                 # 仅存放显式迁移/备份/归档输入，不参与生产读取
 ├── reports/                   # Markdown/结构化报告
 └── charts/                    # matplotlib/mplfinance 图表
 ```
@@ -360,8 +360,8 @@ output/
 | `business.db` | 新业务事实库 | 新业务 API、业务 Worker、业务 Repository |
 | `management.db` | 数据管理事实库 | Dataset Registry、版本、质量、Current、数据任务台账 |
 | `portfolio.db` | 旧业务事实库 | 旧 CLI/Web 持仓、交易、自选和建议 |
-| `job_runs.db` | 旧任务台账 | 部分历史/兼容任务路径仍可能引用 |
-| `meta.db` | 旧 Warehouse 元数据回退 | 本地/测试/迁移和部分旧路径仍有引用，生产配置已优先指向 `management.db` |
+| 旧任务台账文件 | 历史迁移/归档输入 | 生产任务事实统一在 `management.db`；旧文件不得被运行时写入 |
+| 旧 Warehouse 元数据库 | 历史迁移/归档输入 | `Warehouse` 生产默认使用 `management.db`；旧文件不得被运行时读取 |
 | Parquet | 数据事实文件 | Raw、标准化、Published 和派生数据按分区保存 |
 
 ## 11. 当前架构优点
@@ -376,8 +376,8 @@ output/
 ## 12. 当前主要限制与风险
 
 - **新旧业务平面并存**：新版 `business.db` 与旧 `portfolio.db` 同时存在，页面和 CLI 尚未完全统一到新业务模型。
-- **任务事实仍有多口径**：数据任务使用 `management.db` 的新管理表，同时保留 `job_runs.db`/旧 `job_runs` 兼容路径，尚未完成全面收口。
-- **`meta.db` 尚未下线**：生产通过 `MANAGEMENT_DB_PATH` 使用 `management.db`，但默认回退、测试、迁移和部分旧读取仍可能触发 `meta.db`。
+- **数据任务运行角色尚未完全拆分**：生产管理事实已统一到 `management.db`，但 APScheduler 仍运行在 Web 进程，数据生产尚未全部迁移到独立 Data Worker。
+- **旧文件最终归档尚未验收**：生产默认路径已不再使用旧元数据库；迁移、备份、测试和历史报告仍可保留旧名称，但必须明确为非运行时输入。
 - **数据任务与业务任务执行模型不同**：业务任务由独立 Worker 执行；数据仓库任务仍由 Web 进程内调度器直接执行，Web 进程存在重任务资源压力。
 - **策略实现双轨**：v4.5 与 V6.0 的规则、状态机和回测能力仍未完全统一到单一执行协议。
 - **通知能力仍在演进**：已有 Outbox、去重和多渠道发送能力，但部分业务任务 handler 仍是基础实现或占位实现。

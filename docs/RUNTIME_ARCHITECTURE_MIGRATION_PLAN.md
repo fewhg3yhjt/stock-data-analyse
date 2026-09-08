@@ -203,7 +203,7 @@ mem_limit: 600m-700m
 pids_limit: 64
 ```
 
-验收：容器可启动、无 Waitress/APS cheduler、只有一个 Worker 主进程、能连接正确管理库、Web/API/Business Worker 不受影响。
+验收：容器可启动、无 Waitress/APScheduler、只有一个 Worker 主进程、能连接正确管理库、Web/API/Business Worker 不受影响。
 
 ### 阶段 2：Scheduler 只调度
 
