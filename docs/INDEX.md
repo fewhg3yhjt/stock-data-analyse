@@ -6,6 +6,7 @@
 
 ## 核心设计
 
+- [运行架构拆分与数据任务治理实施方案](RUNTIME_ARCHITECTURE_MIGRATION_PLAN.md)：后续会话必须遵循的 Web、Scheduler、Data Worker、Business Worker 拆分方案、分阶段范围和验收门禁。
 - [投资分析工具产品总纲](PRODUCT_BLUEPRINT.md)：产品目标、用户主流程、业务模块边界、统一实体和第一版范围。
 - [投资产品领域模型与统一契约](DOMAIN_MODEL_AND_CONTRACTS.md)：新旧体系真源、旧骨架迁移、统一实体、状态和平台任务接入边界。
 - [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md)：数据集生命周期、真实输入契约、指标架构、Universe、质量、版本、发布和业务能力可用性矩阵。
