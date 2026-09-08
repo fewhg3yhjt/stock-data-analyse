@@ -65,7 +65,7 @@ output/data/warehouse/
 ```text
 output/data/portfolio.db              持仓、交易、现金、建议
 output/data/notification_outbox.db   通知 outbox、重试、死信
-output/data/job_runs.db              定时任务执行台账
+output/data/job_runs.db              历史任务迁移/对账/归档输入；生产新任务运行事实目标为 management.db，尚未完成只读归档验收，不能删除
 schemes/indicators.yaml               内置指标定义
 schemes/custom/indicators.yaml        用户指标定义
 schemes/*.yaml                        内置策略方案

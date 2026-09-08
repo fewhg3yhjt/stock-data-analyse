@@ -15,21 +15,42 @@ The legacy `meta.db` and `warehouse.db` files are not valid production data
 sources. They may remain as explicitly isolated test fixtures or migration
 inputs, but production code must not silently fall back to them.
 
-## Current Verified State
+## Code And Configuration Verified
 
 - `Warehouse` 默认使用 `output/data/management.db`；生产默认路径不再回退到旧元数据库。
 - `DatasetAccess` 是正式数据读取入口，读取 `dataset_current` 并校验 Published 状态、文件存在性、质量和 checksum。
 - 行业成员、行业日线、行业特征和行业轮动已接入 Published 数据链路。
-- 生产 `management.db` 已存在并启用 stock_daily、industry、指标和行业相关任务定义。
+- 已在生产 `management.db` 中发现 stock_daily、industry、指标和行业相关任务定义，以及部分 enabled 配置；这不是完整生产闭环证据。
 - 旧库仅允许作为显式迁移、备份、诊断或测试输入，不能作为生产业务读取源。
 
-本次现状核对还确认：
+代码、配置和默认路径核对还确认：
 
 - `web/app.py` 的股票分类接口仍可能在 fundamentals 缺失时在线采集并写仓库。
 - `web/scheduler.py` 仍在 Web 进程内触发部分数据生产任务。
 - `allow_legacy` 仍存在于生产可调用模块，尚未完成运行时入口分类收口。
 - `instruments` 当前定位为 `management.db` 的基础标的目录服务，但最终契约边界仍需定稿。
 - 生产任务定义、实际运行、版本、质量和 `dataset_current` 尚未形成全量验收证据。
+
+## Production Evidence Still Missing
+
+以下内容不能仅凭代码、YAML 或单次查询推断为已完成，必须生成可复核的只读审计记录：
+
+- 检查时间、管理库路径和运行环境标识。
+- 全部实际 `task_key`、`enabled`、`active_config_version`。
+- 每个任务最近一次 Run、状态、周期、错误和输出。
+- 每个数据集的 `dataset_current`、Version、`publish_status`、Quality、文件路径和 checksum。
+- 生产运行时旧库读取/写入为零的证据。
+- 移除旧库输入后的隔离环境冷启动结果。
+- 旧任务台账与 `management.db` 的数量、ID、状态和重复记录对账。
+- Web 原始入口到最终结果页面的完整链路验证。
+
+建议阶段 0 生成并登记以下报告路径；报告不存在时不得引用该路径作为已完成证据：
+
+```text
+docs/audits/production_management_db_task_audit_YYYYMMDD.md
+docs/audits/production_dataset_current_reconciliation_YYYYMMDD.md
+docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
+```
 
 ## Remaining Production Work
 

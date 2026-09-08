@@ -341,7 +341,7 @@ output/
 │   ├── management.db          # 生产数据管理事实：任务、数据集、版本、质量、发布指针
 │   ├── business.db            # 新业务事实：策略、筛选、研究、模拟、观察、组合、通知、日报
 │   ├── portfolio.db           # 旧持仓/交易/自选/建议能力仍使用的 SQLite
-│   ├── job_runs.db            # 旧任务台账，待收口
+│   ├── job_runs.db            # 历史迁移/对账/归档输入；生产新任务事实目标为 management.db
 │   ├── warehouse/
 │   │   ├── raw/               # 各外部源的贴源数据
 │   │   ├── daily/             # Published 日线月分区 Parquet

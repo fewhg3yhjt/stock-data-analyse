@@ -105,7 +105,7 @@ Killed process ... waitress-serve
 - `Warehouse` 的生产默认管理库已指向 `management.db`。
 - `DatasetAccess` 已作为正式数据读取入口，读取 `dataset_current` 并校验 Published 状态、质量、文件和 checksum。
 - 行业成员、行业日线、行业特征和行业轮动已有 Published 链路。
-- 生产 `management.db` 已存在并启用 stock_daily、行业、指标等任务定义。
+- 已在生产 `management.db` 中发现相关任务定义和部分 enabled 配置；具体 active/enabled/run/output/quality/current 对账尚未完成。
 - `instruments` 当前由 `management.db.instruments` 提供基础标的目录服务，Web 不直接写 SQL。
 - 公开 API、静态 JSON 和 `/market` 已有独立访问入口。
 
