@@ -107,3 +107,5 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 阶段 1 已新增 Data Worker 最小运行骨架，但服务仍处于显式 `data-worker` Compose profile，未接管生产数据任务；详见 [运行架构拆分方案](RUNTIME_ARCHITECTURE_MIGRATION_PLAN.md) 的阶段 1 实施记录。
 
 阶段 2 已将 Web Scheduler 的数据生产调用改为 Request 入队；Data Worker 尚未在生产中启用，故当前仍是“新调度契约已建立、生产执行者未切换”的过渡状态。
+
+2026-09-08 已完成生产进程切换：`stock-invest-data-worker` 已启动并保持 healthy，`stock-web` 已重启加载只入队 Scheduler，`stock-invest-business-worker` 保持运行。切换后队列为空，尚未执行切换后的真实数据任务，因此“执行角色已切换”与“新进程已完成真实采集闭环”需要分开验收。

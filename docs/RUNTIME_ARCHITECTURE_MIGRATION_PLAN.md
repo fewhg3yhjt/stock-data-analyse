@@ -307,6 +307,15 @@ pids_limit: 64
 - 阶段 2 相关测试共 28 项通过，包含入队幂等、Scheduler 无直接生产调用、上下游成功/失败阻断、任务配置和日期对齐测试。
 - 当前未完成：Data Worker 尚未接管生产服务；Compose 仍使用显式 profile；全市场批次化和断点续跑留在阶段 3。
 
+#### 阶段 2 生产切换记录（2026-09-08）
+
+- 已通过 `docker compose --profile data-worker up -d data-worker` 启动 `stock-invest-data-worker`，容器状态为 `running/healthy`。
+- Data Worker 已写入生产 `management.db` 心跳，当前状态为 `idle`，没有遗留 Request 被自动执行。
+- Data Worker 启动时已对已有 `task_execution_requests` 做非破坏性 schema 补齐，`request_payload` 字段已存在。
+- 已重启 `stock-web` 使新的 Scheduler 代码加载；Web、Data Worker、Business Worker 均保持 healthy。
+- 切换后生产队列为空，因此本次只验证了进程和调度角色切换，尚未执行切换后的真实采集、构建、质量或发布任务。
+- 切换后的第一条真实数据任务必须使用明确日期和受控证券范围验证；不得直接用全市场采集替代阶段 3 的批次化验收。
+
 ### 阶段 3：stock_daily 批次化与断点续跑
 
 目标：一次 OOM、超时或 Worker 重启只影响当前批次。
