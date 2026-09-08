@@ -135,6 +135,8 @@ def test_daily_capture_timeout_marks_unprocessed_symbols_failed(tmp_path, monkey
 
 def test_daily_capture_resumes_from_partial_raw_batch(tmp_path, monkeypatch):
     warehouse = Warehouse(tmp_path / "warehouse")
+    from StockInvestmentTool.warehouse.coverage import CoverageStore
+
     store = SourceBatchStore(warehouse.meta_db_path)
     partial = warehouse.raw.write_batch("tencent", "stock_daily", "2026-08-28", [
         pd.DataFrame({"date": pd.to_datetime(["2026-08-28"]), "code": ["sh600000"],
@@ -147,6 +149,10 @@ def test_daily_capture_resumes_from_partial_raw_batch(tmp_path, monkeypatch):
     store.finish(batch_id, success_symbols=1, failed_symbols=1, skipped_symbols=0,
                  row_count=1, raw_path=str(partial["path"]), checksum=partial["checksum"],
                  file_size=partial["file_size"], status="partial_success", failure_details=["sh600001"])
+    CoverageStore(warehouse.meta_db_path).record_success(
+        dataset_name="stock_daily", source_name="tencent", entity_type="stock",
+        entity_id="sh600000", data_dates=["2026-08-28"], batch_id=batch_id,
+    )
     collector = MarketCollector(warehouse=warehouse, query_interval=0)
     calls = []
 
@@ -162,3 +168,38 @@ def test_daily_capture_resumes_from_partial_raw_batch(tmp_path, monkeypatch):
                                   target="raw:tencent", capture_raw=True)
     assert calls == ["sh600001"]
     assert result["skipped_symbols"] == 1
+
+
+def test_daily_capture_uses_coverage_index_without_scanning_raw(tmp_path, monkeypatch):
+    from StockInvestmentTool.warehouse.coverage import CoverageStore
+
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.upsert_instruments([
+        {"code": "sh600000", "type": "stock"},
+        {"code": "sh510300", "type": "etf"},
+    ])
+    CoverageStore(warehouse.meta_db_path).record_success(
+        dataset_name="stock_daily", source_name="tencent", entity_type="stock",
+        entity_id="sh600000", data_dates=["2026-09-07"], batch_id="coverage-stock",
+    )
+    collector = MarketCollector(warehouse=warehouse, query_interval=0)
+    calls = []
+
+    def fake_fetch(code, start, end, request_timeout=None):
+        calls.append((code, start, end))
+        return pd.DataFrame({
+            "date": pd.to_datetime(["2026-09-07"]), "code": [code],
+            "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+            "volume": [100], "amount": [1000], "turn": [1.0],
+        })
+
+    monkeypatch.setattr(collector, "_fetch_symbol_tencent", fake_fetch)
+    result = collector.sync_daily(
+        start_date="2026-09-07", end_date="2026-09-07",
+        symbols=["sh600000", "sh510300"], source="tencent", target="raw:tencent",
+        capture_raw=True,
+    )
+
+    assert [item[0] for item in calls] == ["sh510300"]
+    assert result["coverage_by_type"]["stock"]["skipped"] == 1
+    assert result["coverage_by_type"]["etf"]["success"] == 1

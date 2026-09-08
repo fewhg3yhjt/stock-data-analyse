@@ -396,6 +396,15 @@ pids_limit: 64
 - 修复了无 deadline 子任务异常、子进程空结果和临时库缺少 SourceBatch 表时的错误覆盖问题。
 - 阶段 3 相关回归共 58 项通过；当前仍未重新执行生产真实采集，生产批次接管仍需后续受控验证。
 
+#### 覆盖索引改造记录（2026-09-09）
+
+- 新增 `warehouse/coverage.py`，在 `management.db` 中维护 `dataset_entity_coverage` 快速覆盖表和 `dataset_entity_date_status` 日期级状态表。
+- `MarketCollector.sync_daily()` 日常增量判断改为按当前选中实体和 `asset_type` 查询 coverage，不再扫描历史 Raw 文件做全市场 `GROUP BY code`。
+- 成功、失败、空响应和 timeout 会分别更新日期级状态、最后成功日期、最后尝试日期、失败次数和 Source Batch 关联。
+- 增加显式 `scripts/rebuild_entity_coverage.py`，仅供一次性、操作员指定文件的历史索引重建，Scheduler/Data Worker 不会自动调用。
+- 股票和 ETF 共用 `stock_daily`，但 coverage 按 `entity_type` 分开；指数和行业可以复用覆盖服务，但仍保持独立数据集和任务链。
+- 覆盖索引和类型隔离相关测试共 34 项通过；尚未执行生产 coverage 全量重建，也未重新启动生产 Data Worker。
+
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
 目标：数据生产阶段独立落盘和传递版本。

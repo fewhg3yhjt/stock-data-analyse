@@ -353,6 +353,9 @@ class MarketCollector:
                 source, "stock_daily", datetime.now().strftime("%Y-%m-%d")
             )
 
+        from StockInvestmentTool.warehouse.coverage import CoverageStore
+        coverage = CoverageStore(self.warehouse.meta_db_path)
+
         months = self._month_range(start_date, end_date)
         logger.info("增量同步: %d 标的 × %d 月份 (%s ~ %s)",
                     len(symbols), len(months), start_date, end_date)
@@ -369,48 +372,19 @@ class MarketCollector:
         if target.startswith("raw:"):
             raw_source = target.split(":", 1)[1]
 
-        # 构建「每个标的自有最后日期」索引 {code: last_date}
-        # 用 DuckDB 对全部分区 GROUP BY code 取 max(date)（秒级，不占常驻内存）。
-        # 增量判断依据是"该标的自有最后日期"，而非"仓库全局最新交易日"：
-        #   - 某天没拉到 → 下次检测到 last_date < end_date → 自动补拉缺失区间
-        #   - 已到 end_date → 跳过（不重拉）
-        last_dates: dict[str, pd.Timestamp] = {}
-        if raw_source:
-            # Resume from immutable Raw Batches so an hourly retry only fetches
-            # symbols still missing after a prior deadline.
-            with self.warehouse._conn() as conn:
-                rows = conn.execute(
-                    """SELECT raw_path FROM source_batches
-                       WHERE dataset_name='stock_daily' AND source_name=?
-                       AND status IN ('success','partial_success')
-                       AND raw_path IS NOT NULL AND trade_date_start<=?""",
-                    (raw_source, end_date),
-                ).fetchall()
-            files = [str(row[0]) for row in rows if row[0] and Path(row[0]).exists()]
-            files.extend(
-                str(self.warehouse.raw.partition_path(raw_source, ym))
-                for ym in self.warehouse.raw.available_months(raw_source)
-                if self.warehouse.raw.partition_path(raw_source, ym).exists()
-            )
-        else:
-            files = [str(self.warehouse.daily_partition(ym))
-                     for ym in self.warehouse.available_months("daily")
-                     if self.warehouse.daily_partition(ym).exists()]
-        if files:
-            try:
-                import duckdb
-                con = duckdb.connect()
-                try:
-                    file_list = "[" + ",".join("'" + f.replace("'", "''") + "'" for f in files) + "]"
-                    rows = con.execute(
-                        f"SELECT code, MAX(date) AS last_date FROM read_parquet({file_list}, union_by_name=true) GROUP BY code"
-                    ).fetchall()
-                    last_dates = {r[0]: pd.Timestamp(r[1]) for r in rows}
-                finally:
-                    con.close()
-            except Exception as e:
-                logger.warning("构建标的最新日期索引失败(%s)，退回旧覆盖判断", e)
-        logger.info("已覆盖标的: %d 个（跳过）", len(last_dates))
+        # Query the persistent index per selected entity type; never scan Raw
+        # files during normal incremental capture.
+        last_dates = {}
+        for kind in sorted({symbol_types.get(code, "unknown") for code in selected_symbols}):
+            last_dates.update({
+                code: pd.Timestamp(value)
+                for code, value in coverage.latest_success_dates(
+                    "stock_daily", source,
+                    [code for code in selected_symbols if symbol_types.get(code) == kind],
+                    kind,
+                ).items()
+            })
+        logger.info("覆盖索引命中: %d 个标的（来自 management.db）", len(last_dates))
 
         # 内存只持有「按月累积」的数据块；每 flush_every 个标的落盘一次并清空，
         # 避免全市场 × 多月在内存中累积过高（2C2G 下 OOM 风险）。
@@ -478,6 +452,10 @@ class MarketCollector:
             except CollectionTimeout:
                 timed_out = True
                 failed.append(code)
+                coverage.record_failure(dataset_name="stock_daily", source_name=source,
+                                        entity_type=symbol_types.get(code, "unknown"), entity_id=code,
+                                        data_date=end_date, batch_id=batch_id, status="timeout",
+                                        error_code="timeout", error_message="采集任务超时")
                 failed.extend(symbols[i:])
                 logger.warning("采集任务超时，剩余 %d 个标的未处理", len(symbols) - i + 1)
                 if progress_callback:
@@ -485,6 +463,10 @@ class MarketCollector:
                 break
             except Exception as e:
                 failed.append(code)
+                coverage.record_failure(dataset_name="stock_daily", source_name=source,
+                                        entity_type=symbol_types.get(code, "unknown"), entity_id=code,
+                                        data_date=end_date, batch_id=batch_id, status="failed",
+                                        error_code=type(e).__name__, error_message=str(e))
                 logger.warning("拉取 %s 失败: %s", code, e)
                 if _deadline_reached():
                     timed_out = True
@@ -497,6 +479,10 @@ class MarketCollector:
             if df.empty:
                 skipped += 1
                 skipped_codes.append(code)
+                coverage.record_failure(dataset_name="stock_daily", source_name=source,
+                                        entity_type=symbol_types.get(code, "unknown"), entity_id=code,
+                                        data_date=end_date, batch_id=batch_id, status="empty",
+                                        error_code="empty_response", error_message="源返回空数据")
                 if progress_callback:
                     progress_callback(i, len(symbols), code, "无新增数据")
                 continue
@@ -514,6 +500,11 @@ class MarketCollector:
                     raw_writer.abort()
                     raw_writer = None
                     logger.exception("Raw Batch 采集过程中写入失败")
+            if not raw_capture_failed:
+                dates = [str(value)[:10] for value in df["date"].dropna().unique()]
+                coverage.record_success(dataset_name="stock_daily", source_name=source,
+                                        entity_type=symbol_types.get(code, "unknown"), entity_id=code,
+                                        data_dates=dates, batch_id=batch_id)
             # 拆入内存中的月份块（去掉该标的旧数据，追加新数据）
             for ym, grp in df.groupby(df["date"].dt.strftime("%Y-%m")):
                 cur = month_bufs.get(ym)

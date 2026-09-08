@@ -125,3 +125,5 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 阶段 3 超时收口已修复并通过 58 项阶段相关测试：Data Worker 对有 `task_timeout` 的阶段使用可终止子进程，超时会统一收口 Request、JobRun、SourceBatch 和任务锁；尚未重新执行生产数据验证。
 
 当前生产队列和 SourceBatch 均无运行中记录，Web/Data Worker 保持停止；下一次生产验证必须在明确范围和 Scheduler 隔离条件下执行。
+
+阶段 3 覆盖索引已完成代码实现：日常 `stock_daily` 采集按当前批次的 `stock`/`etf` 查询 `management.db` coverage，不再扫描全量历史 Raw；历史 Raw 仅可通过显式重建工具初始化索引。覆盖表同时支持行业和指数实体，但不会改变它们的独立任务链。相关测试已通过 34 项，尚未执行生产 coverage 全量重建或真实数据任务。
