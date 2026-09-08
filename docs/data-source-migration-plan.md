@@ -109,3 +109,5 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 阶段 2 已将 Web Scheduler 的数据生产调用改为 Request 入队；Data Worker 尚未在生产中启用，故当前仍是“新调度契约已建立、生产执行者未切换”的过渡状态。
 
 2026-09-08 已完成生产进程切换：`stock-invest-data-worker` 已启动并保持 healthy，`stock-web` 已重启加载只入队 Scheduler，`stock-invest-business-worker` 保持运行。切换后队列为空，尚未执行切换后的真实数据任务，因此“执行角色已切换”与“新进程已完成真实采集闭环”需要分开验收。
+
+受控验证期间 Scheduler 自动创建了 6915 标的的全市场 Request。经确认后已停止 Data Worker 并将 Request、JobRun、SourceBatch 收口为失败；已产生 Raw 文件保留，未生成新的 Published Version 或更新 Current。Data Worker 当前保持停止，重新验证前必须先增加受控范围保护，不能直接重启后等待 Scheduler 自动触发。

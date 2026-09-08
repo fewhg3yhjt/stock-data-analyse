@@ -316,6 +316,15 @@ pids_limit: 64
 - 切换后生产队列为空，因此本次只验证了进程和调度角色切换，尚未执行切换后的真实采集、构建、质量或发布任务。
 - 切换后的第一条真实数据任务必须使用明确日期和受控证券范围验证；不得直接用全市场采集替代阶段 3 的批次化验收。
 
+#### 阶段 2 受控验证记录（2026-09-08）
+
+- 原计划验证单证券 `sh600000`、明确日期 `2026-09-07`，但 Scheduler 在检查窗口内自动创建了空 `symbols` 的全市场 `stock_daily_capture` Request，范围为 6915 个标的。
+- 经用户确认后已停止 `stock-invest-data-worker`，没有删除已产生的 4 个 Raw Parquet 文件（约 68 MB）。
+- Request `req_20260908220001_8c79c95ddf`、JobRun `2608` 和 SourceBatch `tencent_20260908220045_3d16bf0fee` 均已收口为 `failed`，失败原因记录为用户确认的人工中止，并已释放任务锁。
+- 本次没有生成新的 `stock_daily`/`indicators` Dataset Version，也没有更新 Published Current；Web 和 Business Worker 保持 healthy。
+- 通知失败事件尝试写入通知库时遇到只读数据库错误，但不影响上述任务事实收口；该问题另行处理。
+- 本次暴露出阶段 3 前的运行风险：Scheduler 的自动触发可能在受控验证窗口内产生全市场 Request，后续必须增加受控范围开关或隔离验证环境。
+
 ### 阶段 3：stock_daily 批次化与断点续跑
 
 目标：一次 OOM、超时或 Worker 重启只影响当前批次。
