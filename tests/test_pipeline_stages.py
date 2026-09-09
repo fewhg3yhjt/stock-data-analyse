@@ -202,7 +202,7 @@ def test_builder_applies_yaml_units_once_and_tencent_wins(tmp_path):
     assert result.iloc[0]["amount"] == 1000.0
 
 
-def test_builder_respects_batch_share_yuan_units_without_second_conversion(tmp_path):
+def test_builder_cleans_legacy_tencent_share_yuan_values(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
     source = capture_frames(

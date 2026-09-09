@@ -202,8 +202,9 @@ class MarketCollector:
 
         接口: proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get
         param: <code>,day,<start>,<end>,<count>,qfq
-        返回 [date, open, close, high, low, volume(手), {}, turn%, amount(万), ...]
-        快、稳定、不封 IP；count 上限约 800 根（3 年+）。
+        返回 [date, open, close, high, low, volume, {}, turn%, amount, ...]
+         快、稳定、不封 IP；count 上限约 800 根（3 年+）。Raw 保留接口返回值，
+         单位清洗由 DailyBuilder 负责。
         """
         import requests
 
@@ -232,7 +233,7 @@ class MarketCollector:
         if not rows:
             return pd.DataFrame()
 
-        # 行格式: [date, open, close, high, low, volume(手), {}, turn%, amount(万), ...]
+        # 行格式: [date, open, close, high, low, volume, {}, turn%, amount, ...]
         records = []
         for r in rows:
             if len(r) < 6:
@@ -254,19 +255,6 @@ class MarketCollector:
         df["code"] = code
         for c in ("open", "high", "low", "close"):
             df[c] = pd.to_numeric(df[c], errors="coerce")
-        # Tencent's transport units differ by instrument: normal stocks use
-        # lots/ten-thousand-yuan, STAR stocks use shares/ten-thousand-yuan,
-        # while ETFs use shares/yuan. Keep the raw unit labels for Build.
-        code_normalized = str(code).lower().replace(".", "")
-        is_etf = code_normalized.startswith(("sh5", "sh51", "sh56", "sh58", "sz15", "sz16", "sz18"))
-        volume_unit = "share" if is_etf or code_normalized.startswith("sh68") else "hand"
-        amount_unit = "yuan" if is_etf else "wan_yuan"
-        df["raw_volume_unit"] = volume_unit
-        df["raw_amount_unit"] = amount_unit
-        # Normalize to standard shares/yuan for callers while retaining units.
-        df["volume"] = pd.to_numeric(df["volume"], errors="coerce") * (1 if volume_unit == "share" else 100)
-        if "amount" in df.columns:
-            df["amount"] = pd.to_numeric(df["amount"], errors="coerce") * (1 if amount_unit == "yuan" else 10000)
         if "turn" in df.columns:
             df["turn"] = pd.to_numeric(df["turn"], errors="coerce")
         df["date"] = pd.to_datetime(df["date"])
@@ -371,10 +359,7 @@ class MarketCollector:
                                   "universe_source": request_context.get("universe_source") if isinstance(request_context, dict) else None,
                                   "universe_authoritative": request_context.get("universe_authoritative") if isinstance(request_context, dict) else None,
                                   "universe_snapshot_date": request_context.get("universe_snapshot_date") if isinstance(request_context, dict) else None,
-                                  # Raw keeps Tencent transport values. Build converts once.
-                                   "units": ({"volume": "hand", "amount": "wan_yuan",
-                                              "resolution": "tencent_newfqkline_contract_v1"}
-                                             if source == "tencent" else {})},
+                                   },
                  job_run_id=job_run_id, source_name=source,
             )
             raw_writer = self.warehouse.raw.begin_batch(
@@ -516,20 +501,9 @@ class MarketCollector:
                 continue
             if capture_raw and not raw_capture_failed:
                 try:
-                    raw_frame = df.copy()
-                    # Keep Tencent's transport units in Raw; YAML-driven Builder
-                    # performs the single canonical conversion to shares/yuan.
-                    if source == "tencent":
-                        code_series = raw_frame["code"].astype(str).str.lower().str.replace(".", "", regex=False)
-                        is_etf = code_series.str.startswith(("sh5", "sh51", "sh56", "sh58", "sz15", "sz16", "sz18"))
-                        is_share_volume = is_etf | code_series.str.startswith("sh68")
-                        raw_frame["raw_volume_unit"] = "hand"
-                        raw_frame.loc[is_share_volume, "raw_volume_unit"] = "share"
-                        raw_frame["raw_amount_unit"] = "wan_yuan"
-                        raw_frame.loc[is_etf, "raw_amount_unit"] = "yuan"
-                        raw_frame["volume"] = raw_frame["volume"].where(is_share_volume, raw_frame["volume"] / 100)
-                        raw_frame["amount"] = raw_frame["amount"].where(is_etf, raw_frame["amount"] / 10000)
-                    raw_writer.append(raw_frame)
+                    # Raw is an immutable source-fact layer. Cleaning and unit
+                    # conversion happen later in DailyBuilder.
+                    raw_writer.append(df.copy())
                 except Exception:
                     raw_capture_failed = True
                     raw_writer.abort()
@@ -623,101 +597,6 @@ class MarketCollector:
                  "coverage_by_type": coverage_by_type,
                  "coverage_by_board": coverage_by_board,
                  "raw_batch": raw_result}
-
-    def capture_tencent_raw_units(self, *, start_date: str, end_date: str,
-                                  symbols: Optional[list[str]] = None,
-                                  include_etf: bool = True,
-                                  include_index: bool = False,
-                                  job_run_id: Optional[int] = None,
-                                  progress_callback=None) -> dict:
-        """Capture a unit-declared Tencent Raw Batch without touching daily.
-
-        This repair-only path is deliberately separate from ``sync_daily``:
-        it writes Tencent transport units (hand / wan_yuan) to one immutable
-        Raw Batch and records that contract in SourceBatch metadata.  It never
-        writes the processed ``daily`` partition.
-        """
-        if not start_date or not end_date:
-            raise ValueError("capture_tencent_raw_units requires explicit start_date and end_date")
-        if symbols is None:
-            catalog = self.warehouse.list_instruments(
-                asset_types=["stock", "etf"] if include_etf else ["stock"]
-            )
-            symbols = [item["code"] for item in catalog
-                       if include_index or item.get("type") != "index"]
-        from StockInvestmentTool.warehouse.asset_profiles import select_symbols
-        symbols, asset_type_counts = select_symbols(
-            symbols, known_types=self.warehouse.instrument_types(),
-        )
-        from StockInvestmentTool.warehouse.source_batches import SourceBatchStore
-        run_date = datetime.now().strftime("%Y-%m-%d")
-        store = SourceBatchStore(self.warehouse.meta_db_path)
-        batch_id = store.start(
-            dataset_name="stock_daily", source_name="tencent", run_date=run_date,
-            trade_date_start=start_date, trade_date_end=end_date,
-            expected_symbols=len(symbols), universe_id=f"unit_repair_{run_date.replace('-', '')}",
-            request_context={
-                "source": "tencent", "repair": "unit_metadata_v1",
-                "units": {"volume": "hand", "amount": "wan_yuan",
-                          "resolution": "tencent_newfqkline_contract_v1"},
-                "include_etf": include_etf, "include_index": include_index,
-            },
-            job_run_id=job_run_id,
-        )
-        writer = self.warehouse.raw.begin_batch("tencent", "stock_daily", run_date)
-        failed, skipped, rows = [], 0, 0
-        started = time.time()
-        try:
-            for index, code in enumerate(symbols, 1):
-                try:
-                    frame = self._fetch_symbol_tencent(code, start_date, end_date)
-                except Exception as exc:  # noqa: BLE001
-                    failed.append(code)
-                    logger.warning("单位修复 Raw Capture 失败 %s: %s", code, exc)
-                    continue
-                if frame.empty:
-                    skipped += 1
-                    continue
-                # _fetch_symbol_tencent normalizes to share/yuan for callers;
-                # immutable Raw must retain the declared transport units.
-                raw = frame.copy()
-                # Tencent returns volume in shares for STAR-board 688xxx and
-                # in lots for other stocks/ETFs; amount remains wan yuan.
-                code_series = raw["code"].astype(str).str.lower().str.replace(".", "", regex=False)
-                hand_mask = ~code_series.str.startswith("sh68")
-                raw["raw_volume_unit"] = "hand"
-                raw.loc[~hand_mask, "raw_volume_unit"] = "share"
-                raw["raw_amount_unit"] = "wan_yuan"
-                # _fetch_symbol_tencent returns the canonical in-memory
-                # share/yuan form. Raw repair must first restore Tencent's
-                # transport magnitude for every symbol; the row unit then
-                # tells DailyBuilder whether to multiply it back.
-                raw["volume"] = pd.to_numeric(raw["volume"], errors="coerce") / 100
-                raw["amount"] = pd.to_numeric(raw["amount"], errors="coerce") / 10000
-                writer.append(raw)
-                rows += len(raw)
-                if progress_callback:
-                    progress_callback(index, len(symbols), code, "captured")
-            result = writer.finish()
-            status = "partial_success" if failed else "success"
-            store.finish(
-                batch_id, success_symbols=len(symbols) - len(failed) - skipped,
-                failed_symbols=len(failed), skipped_symbols=skipped, row_count=result["row_count"],
-                raw_path=str(result["path"]), checksum=result["checksum"],
-                file_size=result["file_size"], status=status, failure_details=failed,
-            )
-            return {"batch_id": batch_id, "raw": result, "rows": rows,
-                    "symbols": len(symbols), "failed": failed, "skipped": skipped,
-                    "asset_type_counts": asset_type_counts,
-                    "elapsed_sec": round(time.time() - started, 1)}
-        except Exception as exc:
-            writer.abort()
-            store.finish(batch_id, success_symbols=0, failed_symbols=len(symbols),
-                         skipped_symbols=skipped, row_count=0, raw_path=None,
-                         checksum=None, file_size=None, status="failed",
-                         error_summary=str(exc), failure_details=failed)
-            raise
-
 
 # ── baostock 包装（供 _bs_query 使用，统一走连接自愈）──
 

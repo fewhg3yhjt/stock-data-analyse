@@ -439,14 +439,13 @@ pids_limit: 64
 - 普通股票与 `sh68*` 混合样例已验证转换结果正确，Raw 文件字节保持不变；相关数据构建、采集、覆盖和 Worker 测试共 73 项通过。
 - 该处理期兼容规则仍需在真实历史分区 Build、Quality、Published 之前单独审计输出范围和单位质量，不自动覆盖旧 Published 版本。
 
-#### Tencent 分类型单位修复记录（2026-09-09）
+#### Raw 与清洗职责收口记录（2026-09-09）
 
-- 根据腾讯接口对异常证券的串行复核，确认 `stock / sh68* / ETF` 的原始单位不同，不能统一按普通股票换算。
-- 新采集适配器现在保留行级单位：普通股票为 `volume=hand, amount=wan_yuan`；`sh68*` 为 `volume=share, amount=wan_yuan`；ETF 为 `volume=share, amount=yuan`。
-- Raw 写入前会恢复为腾讯运输单位，并保存 `raw_volume_unit/raw_amount_unit`；后续 Build 统一输出股/元。
-- 历史缺少单位元数据的 Tencent Raw 在 Build 阶段按相同代码规则推断，原始 Raw 和旧 Batch 元数据不变；显式 Batch/行级单位优先。
-- 单位专项、采集、Build、Quality、DatasetAccess、Coverage 和 Data Worker 回归共 77 项通过；尚未执行生产历史分区的重新 Build/Publish。
-- 旧 Tencent Batch 级 `request_context.units` 不再覆盖历史混合数据的逐行判断；Build 仅信任行级单位，否则按现有类型和数值一致性逻辑推断。
+- Tencent Capture/Raw 保留接口解析后的源头字段原值，不按证券类型改写成交量、成交额，也不写入推导单位列。
+- `DailyBuilder` 是当前 `stock_daily` 的清洗标准化层，在生成 Candidate 时执行单位转换、字段整理和历史数据一致性推断。
+- 历史 Raw 文件保持不变；缺少单位信息的历史 Tencent Raw 只在 Build 处理视图中推断，不修改 Raw 或 SourceBatch 原始事实。
+- `request_context.units` 不再由 Capture 自动注入，也不作为 Tencent Raw 的标准化依据；显式行级单位仅作为历史/测试输入的清洗元数据。
+- 采集、Build、Quality、DatasetAccess、Coverage 和 Data Worker 回归 51 项通过；尚未执行生产历史分区的重新 Build/Publish。
 
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 

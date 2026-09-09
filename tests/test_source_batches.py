@@ -101,7 +101,7 @@ def test_small_batch_tencent_capture_keeps_legacy_daily_path(tmp_path, monkeypat
     assert pd.read_parquet(batch["raw_path"]).shape[0] == 4
 
 
-def test_tencent_capture_writes_type_specific_raw_units(tmp_path, monkeypatch):
+def test_tencent_capture_preserves_source_values_in_raw(tmp_path, monkeypatch):
     warehouse = Warehouse(tmp_path / "warehouse")
     collector = MarketCollector(warehouse=warehouse, query_interval=0)
 
@@ -120,15 +120,14 @@ def test_tencent_capture_writes_type_specific_raw_units(tmp_path, monkeypatch):
         target="raw:tencent", capture_raw=True, flush_every=10,
     )
     raw = pd.read_parquet(result["raw_batch"]["path"])
-    assert raw.set_index("code").loc["sh600000", "volume"] == 10.0
-    assert raw.set_index("code").loc["sh600000", "amount"] == 0.0102
+    assert raw.set_index("code").loc["sh600000", "volume"] == 1000.0
+    assert raw.set_index("code").loc["sh600000", "amount"] == 102.0
     assert raw.set_index("code").loc["sh688007", "volume"] == 1000000.0
-    assert raw.set_index("code").loc["sh688007", "amount"] == 10.0
+    assert raw.set_index("code").loc["sh688007", "amount"] == 100000.0
     assert raw.set_index("code").loc["sh510300", "volume"] == 1000000.0
     assert raw.set_index("code").loc["sh510300", "amount"] == 100000.0
-    assert raw.set_index("code").loc["sh600000", "raw_volume_unit"] == "hand"
-    assert raw.set_index("code").loc["sh688007", "raw_volume_unit"] == "share"
-    assert raw.set_index("code").loc["sh510300", "raw_amount_unit"] == "yuan"
+    assert "raw_volume_unit" not in raw.columns
+    assert "raw_amount_unit" not in raw.columns
 
 
 def test_daily_capture_requires_explicit_date_range(tmp_path):

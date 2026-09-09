@@ -93,13 +93,10 @@ sources:
       volume: volume
       amount: amount
       turn: turn
+    # Cleaning rules applied by DailyBuilder, never by Capture/Raw storage.
     unit_conversions:
       volume: hand_to_share
       amount: wan_yuan_to_yuan
-    raw_units:
-      volume: type_dependent
-      amount: type_dependent
-      resolution: tencent_type_dependent_contract_v2
     request_defaults:
       adjust: qfq
   - name: baostock

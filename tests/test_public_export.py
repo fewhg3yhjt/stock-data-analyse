@@ -20,7 +20,7 @@ def test_export_public_daily_writes_atomic_static_json_from_published_data(tmp_p
     frame = pd.DataFrame({
         "date": pd.to_datetime(["2026-09-01", "2026-09-02"]), "code": ["sz000400", "sz000400"],
         "open": [21.0, 21.1], "high": [21.5, 21.6], "low": [20.8, 20.9], "close": [21.3, 21.4],
-        # Tencent Raw transport units: hand / wan yuan.
+        # Tencent Raw source values; DailyBuilder performs cleaning conversion.
         "volume": [1.0, 2.0], "amount": [0.213, 0.428], "turn": [1.1, 1.2],
     })
     source = capture_frames(warehouse, dataset_name="stock_daily", source_name="tencent", frames=[frame],

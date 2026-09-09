@@ -136,4 +136,4 @@ Universe 生命周期已补齐：权威清单中未出现的 active 实体先标
 
 历史 Tencent Raw 的单位问题已改为处理期修复：Build 读取时普通股票按 `hand/wan_yuan`、`sh68*` 按 `share/wan_yuan`、ETF 按 `share/yuan` 推断，原始 Raw 和 Batch 元数据不变；显式单位优先，质量检查仍保留。相关回归 73 项通过，尚未执行生产历史分区 Build/Publish。
 
-Tencent 分类型单位契约已修正：普通股票 `hand/wan_yuan`、`sh68*` `share/wan_yuan`、ETF `share/yuan`；采集层保留行级单位，Build 层统一输出股/元。历史无单位 Raw 只在处理期按代码和数值一致性推断，旧 Batch 级 units 不再作为混合历史数据的优先依据。相关数据流水线回归 77 项通过，尚未执行生产历史数据重建或发布。
+Raw 与清洗职责已明确：Tencent Capture/Raw 保留源头字段原值，不按资产类型改写成交量、成交额，也不写入推导单位列；`DailyBuilder` 作为清洗标准化层，在生成 Candidate 时按配置及历史数据一致性完成单位转换。相关数据流水线回归待本次改动后重新验证，尚未执行生产历史数据重建或发布。
