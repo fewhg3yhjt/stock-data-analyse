@@ -4364,6 +4364,17 @@ def serve_chart(filename):
     return flask.send_from_directory(str(chart_dir), filename)
 
 
+@web_app.route("/exports/watch_pool_under_35_daily_20260909.csv")
+def serve_watch_pool_under_35_export():
+    """Download the user-requested watch-pool daily CSV export."""
+    filename = "watch_pool_under_35_daily_20260909.csv"
+    export_path = Path(Config.DATA_DIR) / filename
+    if not export_path.is_file():
+        return flask.jsonify({"status": "error", "error": "导出文件不存在"}), 404
+    return flask.send_file(export_path, as_attachment=True, download_name=filename,
+                           mimetype="text/csv; charset=utf-8")
+
+
 def create_app():
     """创建 Flask 应用"""
     app = flask.Flask(
