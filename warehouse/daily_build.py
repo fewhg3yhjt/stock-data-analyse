@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import uuid
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -151,17 +153,17 @@ class DailyBuilder:
             if prefixes:
                 preferred.loc[codes.str.startswith(prefixes)] = f"{rule['volume']}/{rule['amount']}"
         result = preferred.copy()
-        for index in frame.index:
-            valid = {
-                name: float(values.loc[index])
-                for name, values in candidates.items()
-                if pd.notna(values.loc[index]) and 0.2 <= float(values.loc[index]) <= 5.0
-            }
-            if valid:
-                result.loc[index] = min(
-                    valid,
-                    key=lambda name: (name != preferred.loc[index], abs(valid[name] - 1.0)),
-                )
+        candidate_names = list(candidates)
+        candidate_values = pd.DataFrame(candidates, index=frame.index)
+        valid = candidate_values.notna() & candidate_values.ge(0.2) & candidate_values.le(5.0)
+        distances = candidate_values.sub(1.0).abs().where(valid)
+        preferred_matrix = pd.DataFrame(
+            {name: preferred.eq(name) for name in candidate_names}, index=frame.index
+        )
+        scores = distances + (~preferred_matrix).astype(float) * 1e-12
+        nearest = scores.fillna(float("inf")).idxmin(axis=1)
+        nearest.loc[distances.isna().all(axis=1)] = pd.NA
+        result.loc[nearest.notna()] = nearest.loc[nearest.notna()]
         volume_units = result.str.split("/").str[0]
         amount_units = result.str.split("/").str[1]
         return volume_units, amount_units
@@ -257,7 +259,119 @@ class DailyBuilder:
                 frames.append(current_frame)
         if not frames:
             raise ValueError("没有可用于构建的 Raw Batch")
+        return self._finalize_partition(
+            partition, frames, source_frames, batch_ids, include_current=include_current,
+        )
 
+    def build_partitions(self, partitions: Iterable[str], raw_batches: Optional[Iterable[tuple]] = None,
+                         *, include_current: bool = True) -> dict[str, dict]:
+        """Build several monthly partitions in one bounded Raw scan.
+
+        A large historical Raw batch commonly spans many months.  Scanning it
+        once per output month multiplies I/O and unit inference cost, so route
+        each normalized Arrow chunk to its target month before finalizing each
+        partition independently.
+        """
+        partitions = sorted(set(partitions))
+        if not partitions:
+            return {}
+        selected_batches = self.select_raw_batches(partitions[0]) if raw_batches is None else list(raw_batches)
+        if raw_batches is None:
+            selected_batches = []
+            for partition in partitions:
+                for item in self.select_raw_batches(partition):
+                    if item not in selected_batches:
+                        selected_batches.append(item)
+        targets = set(partitions)
+        staging_root = self.warehouse.base_dir / "candidates" / "stock_daily" / f".build-{uuid.uuid4().hex}"
+        staging_root.mkdir(parents=True, exist_ok=True)
+        writers = {}
+        selected_sources = {item[0] for item in selected_batches}
+        track_source_frames = len(selected_sources) > 1
+        source_frames_by_month: dict[str, dict[str, list[pd.DataFrame]]] = {
+            partition: {} for partition in partitions
+        }
+        batch_ids = []
+        with self.warehouse._conn() as conn:
+            batch_contexts = {
+                row[0]: json.loads(row[1] or "{}")
+                for row in conn.execute("SELECT batch_id, request_context FROM source_batches").fetchall()
+            }
+            path_batch_ids = {
+                str(row[1]): row[0]
+                for row in conn.execute(
+                    "SELECT batch_id, raw_path FROM source_batches WHERE raw_path IS NOT NULL"
+                ).fetchall()
+            }
+        import pyarrow.parquet as pq
+        for item in selected_batches:
+            source, path = item[:2]
+            batch_id = item[2] if len(item) > 2 else path_batch_ids.get(str(path), "")
+            batch_ids.append(batch_id or str(path))
+            context = batch_contexts.get(batch_id, {})
+            units = context.get("units")
+            if source == "tencent":
+                units = {}
+            elif units is None:
+                fallback = self._sources.get(source, {}).get("raw_units")
+                if fallback is None:
+                    raise ValueError(f"{source} Raw Batch {batch_id or path} 缺少单位元数据")
+                units = {**fallback, "resolution": "source_config_default"}
+            parquet = pq.ParquetFile(path)
+            for record_batch in parquet.iter_batches(batch_size=50_000):
+                frame = self._normalize(record_batch.to_pandas(), source, units=units)
+                months = pd.to_datetime(frame["date"], errors="coerce").dt.strftime("%Y-%m")
+                for partition in sorted(set(months.dropna()) & targets):
+                    part = frame[months == partition]
+                    if part.empty:
+                        continue
+                    part = part.copy()
+                    part["_source"] = source
+                    path = staging_root / f"{partition}.parquet"
+                    import pyarrow as pa
+                    import pyarrow.parquet as pq
+                    table = pa.Table.from_pandas(part, preserve_index=False)
+                    writer = writers.get(partition)
+                    if writer is None:
+                        writer = pq.ParquetWriter(path, table.schema, compression="zstd")
+                        writers[partition] = writer
+                    writer.write_table(table)
+                    if track_source_frames:
+                        source_frames_by_month[partition].setdefault(source, []).append(part)
+        for writer in writers.values():
+            writer.close()
+        results = {}
+        try:
+            import pyarrow.parquet as pq
+            for partition in partitions:
+                staged = staging_root / f"{partition}.parquet"
+                frames = []
+                if staged.exists():
+                    parquet = pq.ParquetFile(staged)
+                    frames = [batch.to_pandas() for batch in parquet.iter_batches(batch_size=50_000)]
+                if include_current:
+                    current = self.warehouse.read_daily(partition)
+                    if current is not None and not current.empty:
+                        current_frame = self._normalize_current(current)
+                        current_frame["_source"] = "legacy_daily"
+                        frames.append(current_frame)
+                if not frames:
+                    raise ValueError(f"{partition} 没有可用于构建的 Raw Batch")
+                source_frames = {
+                    source: pd.concat(chunks, ignore_index=True)
+                    for source, chunks in source_frames_by_month[partition].items()
+                }
+                results[partition] = self._finalize_partition(
+                    partition, frames, source_frames, batch_ids,
+                    include_current=include_current,
+                )
+        finally:
+            shutil.rmtree(staging_root, ignore_errors=True)
+        return results
+
+    def _finalize_partition(self, partition: str, frames: list[pd.DataFrame],
+                            source_frames: dict[str, pd.DataFrame], batch_ids: list[str],
+                            *, include_current: bool) -> dict:
         combined = pd.concat(frames, ignore_index=True)
         combined["date"] = pd.to_datetime(combined["date"], errors="coerce")
         priority = {name: item["priority"] for name, item in self._sources.items()}
