@@ -180,6 +180,29 @@ class MarketCollector:
         df = df.sort_values("date").drop_duplicates("date")
         return df
 
+    @staticmethod
+    def _validate_source_frame(frame: pd.DataFrame) -> str | None:
+        """Reject malformed source rows before they enter Current Raw."""
+        required = {"date", "code"}
+        missing = required - set(frame.columns)
+        if missing:
+            return f"缺少主键字段: {sorted(missing)}"
+        dates = pd.to_datetime(frame["date"], errors="coerce")
+        codes = frame["code"].astype(str)
+        if dates.isna().any() or codes.eq("").any() or codes.str.contains(r"[./]", regex=True).any():
+            return "存在无效日期或证券代码"
+        for field in ("open", "high", "low", "close", "volume", "amount"):
+            if field not in frame:
+                continue
+            values = pd.to_numeric(frame[field], errors="coerce")
+            if values.isna().any():
+                return f"字段 {field} 存在不可解析数值"
+            if field in {"volume", "amount"} and values.lt(0).any():
+                return f"字段 {field} 存在负数"
+        if frame.duplicated(["date", "code"]).any():
+            return "同一批次存在重复 date+code"
+        return None
+
     def _month_range(self, start: str, end: str) -> list[str]:
         """区间内所有 YYYY-MM 列表"""
         months = []
@@ -476,6 +499,18 @@ class MarketCollector:
                 if progress_callback:
                     progress_callback(i, len(symbols), code, "无新增数据")
                 continue
+            format_error = self._validate_source_frame(df)
+            if format_error:
+                failed.append(code)
+                coverage.record_failure(
+                    dataset_name="stock_daily", source_name=source,
+                    entity_type=symbol_types.get(code, "unknown"), entity_id=code,
+                    data_date=end_date, batch_id=batch_id,
+                    status="manual_retry_required", error_code="invalid_source_format",
+                    error_message=format_error,
+                )
+                logger.warning("源数据格式异常，转人工重拉 %s: %s", code, format_error)
+                continue
             if capture_raw and not raw_capture_failed:
                 try:
                     # Raw is an immutable source-fact layer. Cleaning and unit
@@ -509,8 +544,32 @@ class MarketCollector:
                                    failed_symbols=len(failed), skipped_symbols=skipped,
                                    row_count=raw_result["row_count"], raw_path=str(raw_result["path"]),
                                    checksum=raw_result["checksum"], file_size=raw_result["file_size"],
-                                    status=batch_status, error_summary="采集任务超时" if timed_out else "",
-                                    failure_details=failed)
+                                     status=batch_status, error_summary="采集任务超时" if timed_out else "",
+                                     failure_details=failed)
+                if batch_status in {"success", "partial_success"}:
+                    try:
+                        effective = self.warehouse.raw.merge_batch_to_effective(
+                            source, "stock_daily", raw_result["path"]
+                        )
+                        batch_store.update_request_context(batch_id, {
+                            "effective_raw": {
+                                month: {"path": str(item["path"]),
+                                        "row_count": item["row_count"],
+                                        "incoming_keys": item["incoming_keys"]}
+                                for month, item in effective.items()
+                            }
+                        })
+                    except Exception as exc:
+                        raw_capture_failed = True
+                        batch_store.finish(
+                            batch_id, success_symbols=len(symbols) - len(failed) - skipped,
+                            failed_symbols=len(failed), skipped_symbols=skipped,
+                            row_count=raw_result["row_count"], raw_path=str(raw_result["path"]),
+                            checksum=raw_result["checksum"], file_size=raw_result["file_size"],
+                            status="failed", error_summary=f"Current Raw 合并失败: {exc}",
+                            failure_details=failed,
+                        )
+                        logger.exception("Current Raw 合并失败: %s", batch_id)
             except Exception as exc:
                 raw_capture_failed = True
                 logger.error("Raw Batch 写入失败，不阻断旧 daily: %s", exc)

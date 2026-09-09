@@ -121,6 +121,41 @@ def test_stock_daily_capture_does_not_use_legacy_monthly_raw_writer(tmp_path, mo
     assert result["raw_batch"]["row_count"] == 1
 
 
+def test_effective_raw_merges_by_key_and_new_data_wins(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    first = warehouse.raw.write_batch("tencent", "stock_daily", "2026-08-28", [pd.DataFrame({
+        "date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
+        "close": [10.0], "volume": [100.0], "amount": [102.0],
+    })])
+    second = warehouse.raw.write_batch("tencent", "stock_daily", "2026-08-29", [pd.DataFrame({
+        "date": [pd.Timestamp("2026-08-28"), pd.Timestamp("2026-08-29")],
+        "code": ["sh600000", "sh600000"], "close": [10.2, 10.3],
+        "volume": [101.0, 102.0], "amount": [103.0, 104.0],
+    })])
+    warehouse.raw.merge_batch_to_effective("tencent", "stock_daily", first["path"])
+    result = warehouse.raw.merge_batch_to_effective("tencent", "stock_daily", second["path"])
+    effective = pd.read_parquet(result["2026-08"]["path"]).sort_values("date")
+    assert len(effective) == 2
+    assert effective.iloc[0]["close"] == 10.2
+    assert effective.iloc[1]["close"] == 10.3
+
+
+def test_invalid_source_format_is_manual_retry_and_not_written(tmp_path, monkeypatch):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    collector = MarketCollector(warehouse=warehouse, query_interval=0)
+    monkeypatch.setattr(collector, "_fetch_symbol_tencent", lambda code, start, end, request_timeout=None: pd.DataFrame({
+        "date": [pd.Timestamp("2026-08-28")], "code": [code], "open": [10.0],
+        "high": [10.5], "low": [9.8], "close": [10.2], "volume": [-1.0],
+        "amount": [102.0], "turn": [1.0],
+    }))
+    result = collector.sync_daily(
+        start_date="2026-08-28", end_date="2026-08-28", symbols=["sh600000"],
+        source="tencent", target="raw:tencent", capture_raw=True,
+    )
+    assert result["failed"] == ["sh600000"]
+    assert result["raw_capture_failed"] is True
+
+
 def test_daily_capture_requires_explicit_date_range(tmp_path):
     collector = MarketCollector(warehouse=Warehouse(tmp_path / "warehouse"), query_interval=0)
     with pytest.raises(ValueError, match="必须显式传入"):

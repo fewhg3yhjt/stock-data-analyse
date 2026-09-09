@@ -72,6 +72,7 @@
 | 内部值 | 用户名称 |
 |---|---|
 | `raw_batch` | 原始采集数据 |
+| `current_raw` | 去重后的当前有效原始数据 |
 | `candidate` | 待发布标准数据 |
 | `quality_report` | 质量检查报告 |
 | `published_dataset` | 正式数据 |
@@ -131,6 +132,7 @@ Parquet/CSV 原始数据、标准结果和派生结果文件
 |---|---|
 | Capture / Source Adapter | 请求外部来源、解析响应、记录采集结果 |
 | Raw Batch | 保存源头字段原值和采集批次事实 |
+| Current Raw | 按 `date + code` 合并去重，提供当前有效原始视图 |
 | Build / Cleaning | 清洗、标准化、单位转换、合并并生成 Candidate |
 | Quality | 对 Candidate 做质量判断并形成门禁结论 |
 | Publish | 发布通过质量门禁的指定版本并更新 Current |
@@ -138,7 +140,7 @@ Parquet/CSV 原始数据、标准结果和派生结果文件
 | Indicators | 基于 Published 上游数据生成派生指标 |
 | Business Consumers | 使用 Published 数据完成业务功能 |
 
-Raw 不做单位转换；单位转换属于 Build / Cleaning，并且必须由数据集 YAML 配置驱动。任务成功不等于质量合格，Candidate 也不等于正式数据。
+Raw 不做单位转换；单位转换属于 Build / Cleaning，并且必须由数据集 YAML 配置驱动。Raw Batch 是采集证据，Current Raw 是去重后的有效原始视图。任务成功不等于质量合格，Candidate 也不等于正式数据。
 
 ## 十、任务执行的统一入口
 

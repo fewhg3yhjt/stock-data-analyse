@@ -46,6 +46,15 @@ class DailyBuilder:
             raise ValueError(f"没有找到 {partition} 可用的 stock_daily Raw Batch")
         return selected
 
+    def select_effective_raw(self, partition: str, sources: Optional[list[str]] = None) -> list[tuple[str, Path, str]]:
+        """Select Current Raw partitions when they have been materialized."""
+        selected = []
+        for source in sources or list(self._sources):
+            path = self.warehouse.raw.effective_path(source, "stock_daily", partition)
+            if path.exists():
+                selected.append((source, path, f"effective:{source}:stock_daily:{partition}"))
+        return selected
+
     def _normalize(self, frame: pd.DataFrame, source: str, *, units: dict | None = None) -> pd.DataFrame:
         if source not in self._sources:
             raise ValueError(f"未注册的数据源: {source}")
@@ -147,7 +156,7 @@ class DailyBuilder:
             f"{default['volume']}/{default['amount']}", index=frame.index
         )
         for rule in rules:
-            if rule.get("default"):
+            if rule.get("default") or rule.get("inference_only"):
                 continue
             prefixes = tuple(str(prefix).lower() for prefix in rule.get("code_prefixes", []))
             if prefixes:
@@ -209,7 +218,10 @@ class DailyBuilder:
 
     def build_partition(self, partition: str, raw_batches: Optional[Iterable[tuple]] = None,
                         *, include_current: bool = True) -> dict:
-        selected_batches = self.select_raw_batches(partition) if raw_batches is None else list(raw_batches)
+        selected_batches = list(raw_batches) if raw_batches is not None else self.select_raw_batches(partition)
+        effective = self.select_effective_raw(partition)
+        if effective:
+            selected_batches = effective + selected_batches
         frames = []
         source_frames: dict[str, pd.DataFrame] = {}
         batch_ids = []

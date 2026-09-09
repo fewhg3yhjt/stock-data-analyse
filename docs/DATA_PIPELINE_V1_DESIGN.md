@@ -242,9 +242,10 @@ Published Dataset、management.db、发布/回滚/恢复、生产验证：必须
 | Source Adapter | 来源适配层 | 调用指定外部接口，处理认证、限速、请求超时、响应解析和来源字段映射；将外部代码转换为 canonical code | 不做业务标准化，不填补缺失，不把失败响应伪装成成功 |
 | Capture / Data Worker | 采集执行层 | 按明确日期和证券范围执行采集请求，记录任务进度、重试、失败、跳过和超时，提交 Raw Batch | 不直接发布正式数据，不在 Web 请求中执行全市场生产，不修改既有 Raw |
 | Raw Store / Raw Batch | 原始事实层 | 以不可变批次保存采集后解析得到的源头字段原值，并记录来源、范围、日期、行数、checksum 和状态 | 不做单位转换、补值、去重、异常修正或正式业务读取 |
+| Current Raw | 有效原始视图 | 将成功批次按 `date + code` 合并去重；新成功记录只覆盖实际命中的键，供 Build 使用 | 不覆盖未命中的旧键，不接受失败/空响应，不替代 Batch Manifest |
 | Universe | 采集范围层 | 提供本次任务的证券清单、资产类型、快照来源和有效性状态 | 不代表某证券某日已有行情，不把清单缺失直接判定为退市 |
 | Coverage | 覆盖事实层 | 记录证券、日期、来源和数据集的成功、失败、跳过及最近成功日期，支持增量采集 | 不生成行情数据，不替代 Raw Batch 或质量结论 |
-| Build / Cleaning | 清洗标准化层 | 从 Raw 生成 Candidate；按 YAML 中的 `unit_rules` 和 `unit_conversions` 执行字段类型整理、代码和日期标准化、单位转换、历史数据推断、来源合并、优先级处理和去重 | 不修改 Raw，不绕过质量检查，不直接切换正式版本 |
+| Build / Cleaning | 清洗标准化层 | 从 Raw 生成 Candidate；按 YAML 中的 `unit_rules` 和 `unit_conversions` 执行字段类型整理、代码和日期标准化、单位转换、历史数据推断、来源合并、优先级处理和去重；历史兼容规则必须标记为 `inference_only` | 不修改 Raw，不绕过质量检查，不直接切换正式版本 |
 | Candidate | 待发布结果层 | 保存某次 Build 生成的标准字段结果、输入批次、内容指纹和差异报告，等待质量判断 | 不等同于当前正式数据，不可被正式业务默认读取 |
 | Quality | 质量门禁层 | 检查覆盖率、字段完整性、重复键、日期新鲜度、数值合法性、单位一致性和来源冲突，输出 PASS/WARNING/FAIL | 不负责修复数据，不因任务执行成功而自动判定合格 |
 | Publish / Dataset Current | 正式版本层 | 对通过质量门禁的指定 Candidate 做版本登记、checksum 校验、原子发布，并更新当前版本指针；保留旧版本用于回滚 | 不选择未经请求的历史版本，不发布 FAIL Candidate，不覆盖 Raw |
@@ -271,6 +272,7 @@ Metadata
 其中最重要的边界是：
 
 - Raw 是可追溯的源头事实层，允许解析和结构化落盘，但不改变源头字段值。
+- Raw Batch 是采集证据；Current Raw 是去重后的有效原始视图。当前两者并存，历史 Batch 在完成迁移和回滚窗口确认前不删除。
 - 清洗、标准化和单位转换统一发生在 Build/清洗层；具体单位规则和转换倍数必须记录在数据集 YAML 的 `unit_rules` 与 `unit_conversions`，由 Builder 按配置执行，输出统一业务口径的 Candidate。
 - 任务 `success` 只表示执行完成；只有 Quality 通过并完成 Publish，数据才是正式可消费数据。
 - `SourceBatch`、`Coverage`、`Dataset Version` 和 `Quality Report` 分别记录采集事实、覆盖事实、生成结果和质量结论，不能互相替代。

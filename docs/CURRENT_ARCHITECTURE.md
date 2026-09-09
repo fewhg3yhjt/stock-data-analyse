@@ -198,8 +198,9 @@ flowchart TB
     SCHED[当前实现：Web 进程 APScheduler\n或手工 CLI] --> COLLECT[MarketCollector]
     COLLECT --> BS[baostock 全市场清单与日线]
     COLLECT --> TX[腾讯历史日线\n可选主源/备源]
-    COLLECT --> RAW[Raw Store\n按 source / dataset / partition]
-    RAW --> BUILD[DailyBuilder / Cleaning\n清洗、标准化、单位转换、合并、去重]
+    COLLECT --> RAW[Raw Batch\n源头事实批次]
+    RAW --> EFFECTIVE[Current Raw\n按 date+code 合并去重]
+    EFFECTIVE --> BUILD[DailyBuilder / Cleaning\n清洗、标准化、单位转换]
     BUILD --> CAND[Candidate Parquet]
     CAND --> QUALITY[Quality Check\n覆盖、字段、重复、日期、数值]
     QUALITY -->|PASS / WARNING| PUBLISH[Publisher\n分区锁 + checksum + 原子替换]
@@ -238,6 +239,8 @@ flowchart LR
 `DatasetAccess` 默认要求 Published Dataset，校验当前版本、质量和文件 checksum。业务平面不直接选择数据源，也不直接读取 Raw 文件。
 
 数据链模块边界以 [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md#44-数据链模块角色与职责) 为准。当前实现中的 `DailyBuilder` 同时承担 Build 和清洗标准化职责：Raw 只保留源头字段原值，单位规则和转换倍数从数据集 YAML 读取，并在生成 Candidate 时执行；Quality 和 Publish 不负责修复数据。
+
+采集成功批次会先合并到 Current Raw；合并按 `date + code` 覆盖，新批次未命中的旧键继续保留。失败、空响应和源头格式异常不会覆盖 Current Raw，格式异常进入 `manual_retry_required`。
 
 `MarketCollector.sync_daily` 只允许写入 `raw:<source>` Raw Batch；`target="daily"` 已下线并会直接报错。CLI、生产任务和 Shadow 验证均必须先采集 Raw，再由 `DailyBuilder` 生成 Candidate。
 

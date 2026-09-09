@@ -29,6 +29,8 @@ from typing import Iterable, Optional
 
 import pandas as pd
 
+from StockInvestmentTool.warehouse.storage import _atomic_parquet_write
+
 logger = logging.getLogger(__name__)
 
 # 各源的标准列（源原始字段，尽量保持原样）
@@ -127,6 +129,43 @@ class RawStore(_BatchRawStore):
 
     def partition_path(self, source: str, month: str) -> Path:
         return self.source_dir(source) / f"{month}.parquet"
+
+    def effective_path(self, source: str, dataset: str, month: str) -> Path:
+        """Return the deduplicated current Raw partition for one month."""
+        return self.raw_dir / "effective" / source / dataset / f"{month}.parquet"
+
+    def merge_batch_to_effective(self, source: str, dataset: str, batch_path: Path,
+                                 *, keep_new: bool = True) -> dict[str, dict]:
+        """Merge a successful batch into Current Raw by ``date + code``."""
+        batch = pd.read_parquet(batch_path)
+        required = {"date", "code"}
+        if not required.issubset(batch.columns):
+            raise ValueError(f"Raw Batch 缺少主键字段: {sorted(required - set(batch.columns))}")
+        batch = batch.copy()
+        batch["date"] = pd.to_datetime(batch["date"], errors="coerce")
+        batch["code"] = batch["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+        if batch[["date", "code"]].isna().any().any():
+            raise ValueError("Raw Batch 存在无效主键")
+        results = {}
+        for month, incoming in batch.groupby(batch["date"].dt.strftime("%Y-%m")):
+            path = self.effective_path(source, dataset, month)
+            existing = pd.read_parquet(path) if path.exists() else None
+            if existing is not None and not existing.empty:
+                existing["date"] = pd.to_datetime(existing["date"], errors="coerce")
+                existing["code"] = existing["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+                merged = pd.concat([existing, incoming], ignore_index=True)
+                merged = merged.drop_duplicates(["date", "code"], keep="last" if keep_new else "first")
+            else:
+                merged = incoming.drop_duplicates(["date", "code"], keep="last" if keep_new else "first")
+            merged = merged.sort_values(["date", "code"]).reset_index(drop=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_parquet_write(merged, path)
+            results[month] = {
+                "path": path,
+                "row_count": len(merged),
+                "incoming_keys": int(len(incoming.drop_duplicates(["date", "code"]))),
+            }
+        return results
 
     def write(self, source: str, month: str, df: pd.DataFrame,
               overwrite: bool = False) -> int:

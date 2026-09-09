@@ -117,7 +117,7 @@ class CoverageStore:
             failures = int(current[1]) if current else 0
             if status == "success" and (not last_success or data_date > last_success):
                 last_success = data_date
-            if status in {"failed", "timeout", "empty"}:
+            if status in {"failed", "timeout", "empty", "manual_retry_required"}:
                 failures += 1
             conn.execute(
                 """INSERT INTO dataset_entity_coverage
