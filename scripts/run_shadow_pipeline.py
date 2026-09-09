@@ -158,7 +158,8 @@ def _capture(warehouse, symbols, start_date, end_date, asset_types, run_id):
     from StockInvestmentTool.warehouse.collector import MarketCollector
     captured = MarketCollector(warehouse=warehouse, query_interval=0.3).sync_daily(
         start_date=start_date, end_date=end_date, symbols=symbols, include_etf=True,
-        source="tencent", target="daily", flush_every=10, job_run_id=run_id,
+        source="tencent", target="raw:tencent", capture_raw=True,
+        flush_every=10, job_run_id=run_id,
         asset_types=asset_types,
     )
     if not captured.get("source_batch_id") or captured.get("raw_capture_failed"):

@@ -64,41 +64,12 @@ def test_raw_batch_empty_input_is_rejected(tmp_path):
         warehouse.raw.write_batch("tencent", "stock_daily", "2026-08-28", [])
 
 
-def test_small_batch_tencent_capture_keeps_legacy_daily_path(tmp_path, monkeypatch):
+def test_daily_capture_rejects_legacy_daily_path(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     collector = MarketCollector(warehouse=warehouse, query_interval=0)
-
-    def fake_fetch(code, start, end):
-        if code == "sz000001":
-            raise ConnectionError("simulated timeout")
-        return pd.DataFrame({
-            "date": pd.to_datetime(["2026-08-27", "2026-08-28"]),
-            "code": [code, code], "open": [10.0, 10.2], "high": [10.5, 10.6],
-            "low": [9.8, 10.0], "close": [10.2, 10.4], "volume": [100, 120],
-            "amount": [1000, 1200], "turn": [1.0, 1.2], "peTTM": [None, None],
-            "pbMRQ": [None, None], "tradestatus": [None, None],
-        })
-
-    monkeypatch.setattr(collector, "_fetch_symbol_tencent", fake_fetch)
-    result = collector.sync_daily(
-        start_date="2026-08-27", end_date="2026-08-28",
-        symbols=["sh600000", "sz000001", "sh600001"], source="tencent",
-        target="daily", flush_every=1, job_run_id=42,
-    )
-
-    assert result["raw_capture_failed"] is False
-    assert result["source_batch_id"]
-    assert result["failed"] == ["sz000001"]
-    assert len(warehouse.read_daily("2026-08")) == 4
-    batch = SourceBatchStore(warehouse.meta_db_path).get(result["source_batch_id"])
-    assert batch["status"] == "partial_success"
-    assert batch["job_run_id"] == 42
-    assert batch["expected_symbols"] == 3
-    assert batch["success_symbols"] == 2
-    assert batch["failed_symbols"] == 1
-    assert batch["skipped_symbols"] == 0
-    assert batch["row_count"] == 4
-    assert pd.read_parquet(batch["raw_path"]).shape[0] == 4
+    with pytest.raises(ValueError, match="不再支持 target='daily'"):
+        collector.sync_daily(start_date="2026-08-27", end_date="2026-08-28",
+                              symbols=["sh600000"], source="tencent", target="daily")
 
 
 def test_tencent_capture_preserves_source_values_in_raw(tmp_path, monkeypatch):

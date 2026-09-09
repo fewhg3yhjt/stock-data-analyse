@@ -49,6 +49,7 @@ class DailyBuilder:
             raise ValueError(f"未注册的数据源: {source}")
         source_config = self._sources[source]
         mapping = source_config.get("field_mapping", {})
+        factors = self._unit_conversion_factors(source)
         out = frame.rename(columns={raw: standard for standard, raw in mapping.items()}).copy()
         required = {"date", "code"}
         if not required.issubset(out.columns):
@@ -61,65 +62,94 @@ class DailyBuilder:
         if source == "tencent" and row_volume_units is None:
             # Batch-level Tencent units may describe mixed historical data and
             # must not override row-level/type-aware interpretation.
-            row_volume_units, row_amount_units = self._infer_tencent_units(out)
-        if row_volume_units is not None:
-            # Tencent's 68xxxx STAR/BEI? market response is share-based.
-            # Enforce the adapter contract even for legacy repair batches that
-            # carried an incorrect row label.
-            code_series = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
-            row_volume_units = row_volume_units.astype(str).where(
-                ~code_series.str.startswith("sh68"), "share"
+            row_volume_units, row_amount_units = self._infer_tencent_units(
+                out, source_config.get("unit_rules", [])
             )
+        if row_volume_units is not None:
             out["raw_volume_unit"] = row_volume_units
         volume_unit = units.get("volume")
         amount_unit = units.get("amount")
+        volume_factors = factors.get("volume", {})
+        amount_factors = factors.get("amount", {})
         if row_volume_units is not None:
-            invalid = ~row_volume_units.astype(str).isin({"hand", "share"})
+            invalid = ~row_volume_units.astype(str).map(
+                lambda unit: f"{unit}_to_share" in volume_factors
+            )
             if invalid.any():
                 raise ValueError(f"{source} Raw Batch 存在未知 volume 单位行数: {int(invalid.sum())}")
             volume_unit = None
         if row_amount_units is not None:
-            invalid = ~row_amount_units.astype(str).isin({"wan_yuan", "yuan"})
+            invalid = ~row_amount_units.astype(str).map(
+                lambda unit: f"{unit}_to_yuan" in amount_factors
+            )
             if invalid.any():
                 raise ValueError(f"{source} Raw Batch 存在未知 amount 单位行数: {int(invalid.sum())}")
             amount_unit = None
-        if row_volume_units is None and volume_unit not in {"hand", "share"}:
+        if row_volume_units is None and f"{volume_unit}_to_share" not in volume_factors:
             raise ValueError(f"{source} Raw Batch volume 单位未识别: {volume_unit!r}")
-        if row_amount_units is None and amount_unit not in {"wan_yuan", "yuan"}:
+        if row_amount_units is None and f"{amount_unit}_to_yuan" not in amount_factors:
             raise ValueError(f"{source} Raw Batch 单位未识别: volume={volume_unit!r}, amount={amount_unit!r}")
         if "volume" in out:
             values = pd.to_numeric(out["volume"], errors="coerce")
             if row_volume_units is None:
-                out["volume"] = values if volume_unit == "share" else values * 100
+                factor = factors.get("volume", {}).get(f"{volume_unit}_to_share")
+                if factor is None:
+                    raise ValueError(f"{source} Raw Batch 未配置 volume 转换: {volume_unit!r}")
+                out["volume"] = values * factor
             else:
-                out["volume"] = values.where(row_volume_units.astype(str).eq("share"), values * 100)
+                factors_by_unit = row_volume_units.astype(str).map(
+                    lambda unit: factors.get("volume", {}).get(f"{unit}_to_share")
+                )
+                if factors_by_unit.isna().any():
+                    raise ValueError(f"{source} Raw Batch 未配置 volume 转换")
+                out["volume"] = values * factors_by_unit
         if "amount" in out:
             values = pd.to_numeric(out["amount"], errors="coerce")
             if row_amount_units is None:
-                out["amount"] = values if amount_unit == "yuan" else values * 10000
+                factor = factors.get("amount", {}).get(f"{amount_unit}_to_yuan")
+                if factor is None:
+                    raise ValueError(f"{source} Raw Batch 未配置 amount 转换: {amount_unit!r}")
+                out["amount"] = values * factor
             else:
-                out["amount"] = values.where(row_amount_units.astype(str).eq("yuan"), values * 10000)
+                factors_by_unit = row_amount_units.astype(str).map(
+                    lambda unit: factors.get("amount", {}).get(f"{unit}_to_yuan")
+                )
+                if factors_by_unit.isna().any():
+                    raise ValueError(f"{source} Raw Batch 未配置 amount 转换")
+                out["amount"] = values * factors_by_unit
         for field in self.config["fields"]:
             if field["name"] not in out:
                 out[field["name"]] = pd.NA
         return out[[field["name"] for field in self.config["fields"]]]
 
-    @staticmethod
-    def _infer_tencent_units(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
-        """Infer legacy Tencent units per row from type and value consistency."""
+    def _infer_tencent_units(self, frame: pd.DataFrame, rules: list[dict]) -> tuple[pd.Series, pd.Series]:
+        """Infer legacy Tencent units from configured rules and value consistency."""
         codes = frame["code"].astype(str).str.lower().str.replace(".", "", regex=False)
         volume = pd.to_numeric(frame.get("volume"), errors="coerce")
         amount = pd.to_numeric(frame.get("amount"), errors="coerce")
         close = pd.to_numeric(frame.get("close"), errors="coerce")
-        candidates = {
-            "hand/wan_yuan": amount * 10000 / (volume * 100 * close),
-            "share/wan_yuan": amount * 10000 / (volume * close),
-            "hand/yuan": amount / (volume * 100 * close),
-            "share/yuan": amount / (volume * close),
-        }
-        preferred = pd.Series("hand/wan_yuan", index=frame.index)
-        preferred.loc[codes.str.startswith("sh68")] = "share/wan_yuan"
-        preferred.loc[codes.str.startswith(("sh5", "sz15", "sz16", "sz18"))] = "share/yuan"
+        conversion = self._unit_conversion_factors("tencent")
+        candidates = {}
+        for rule in rules:
+            volume_unit, amount_unit = rule["volume"], rule["amount"]
+            key = f"{volume_unit}/{amount_unit}"
+            amount_factor = conversion.get("amount", {}).get(f"{amount_unit}_to_yuan")
+            volume_factor = conversion.get("volume", {}).get(f"{volume_unit}_to_share")
+            if amount_factor is None or volume_factor is None:
+                raise ValueError(f"tencent unit_rules 引用了未配置的单位: {key}")
+            candidates[key] = amount * amount_factor / (volume * volume_factor * close)
+        if not candidates:
+            raise ValueError("tencent Raw 缺少 unit_rules 配置")
+        default = next((rule for rule in rules if rule.get("default")), rules[-1])
+        preferred = pd.Series(
+            f"{default['volume']}/{default['amount']}", index=frame.index
+        )
+        for rule in rules:
+            if rule.get("default"):
+                continue
+            prefixes = tuple(str(prefix).lower() for prefix in rule.get("code_prefixes", []))
+            if prefixes:
+                preferred.loc[codes.str.startswith(prefixes)] = f"{rule['volume']}/{rule['amount']}"
         result = preferred.copy()
         for index in frame.index:
             valid = {
@@ -135,6 +165,13 @@ class DailyBuilder:
         volume_units = result.str.split("/").str[0]
         amount_units = result.str.split("/").str[1]
         return volume_units, amount_units
+
+    def _unit_conversion_factors(self, source: str) -> dict[str, dict[str, float]]:
+        conversions = self._sources[source].get("unit_conversions", {})
+        return {
+            field: {str(key): float(value) for key, value in (values or {}).items()}
+            for field, values in conversions.items()
+        }
 
     def _normalize_current(self, frame: pd.DataFrame) -> pd.DataFrame:
         out = frame.copy()

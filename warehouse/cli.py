@@ -35,7 +35,8 @@ def cmd_init(args):
         raise ValueError("init 必须显式传入 --start 和 --end")
     start, end = args.start, args.end
     res = c.sync_daily(start_date=start, end_date=end, include_etf=True,
-                       include_index=args.include_index, max_symbols=args.max_symbols)
+                       include_index=args.include_index, max_symbols=args.max_symbols,
+                       source="baostock", target="raw:baostock")
     print(f"✅ 日线同步: +{res['added_rows']} 行, 失败 {len(res['failed'])}")
     if res["failed"]:
         print(f"   失败代码(前10): {res['failed'][:10]}")
@@ -253,8 +254,8 @@ def main(argv: list[str] | None = None):
     p_sync.add_argument("--source", default="baostock",
                         choices=["baostock", "tencent"],
                         help="数据源: baostock(默认)/tencent(腾讯,不封IP)")
-    p_sync.add_argument("--target", default="daily",
-                        help="写入目标: daily(加工层,默认)/raw:tencent(贴源层)")
+    p_sync.add_argument("--target", default=None,
+                        help="仅允许 raw:<source>；daily 直写已下线")
 
     p_scan = sub.add_parser("scan", help="全市场指标扫描（indicators 分区）")
     p_scan.add_argument("--start", required=True)

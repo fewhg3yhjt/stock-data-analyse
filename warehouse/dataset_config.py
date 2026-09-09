@@ -86,6 +86,22 @@ def validate_dataset_config(data: dict, *, dataset_name: str = "stock_daily") ->
             raise DatasetConfigError(f"sources[{index}].priority 必须是整数")
         _require_mapping(source.get("field_mapping", {}), f"sources[{index}].field_mapping")
         _require_mapping(source.get("unit_conversions", {}), f"sources[{index}].unit_conversions")
+        rules = source.get("unit_rules", [])
+        if not isinstance(rules, list):
+            raise DatasetConfigError(f"sources[{index}].unit_rules 必须是列表")
+        defaults = 0
+        for rule_index, rule in enumerate(rules):
+            rule = _require_mapping(rule, f"sources[{index}].unit_rules[{rule_index}]")
+            if not isinstance(rule.get("name"), str) or not rule["name"].strip():
+                raise DatasetConfigError(f"sources[{index}].unit_rules[{rule_index}].name 必须是非空字符串")
+            if not isinstance(rule.get("volume"), str) or not isinstance(rule.get("amount"), str):
+                raise DatasetConfigError(f"sources[{index}].unit_rules[{rule_index}] 必须声明 volume 和 amount")
+            if rule.get("default"):
+                defaults += 1
+            elif not isinstance(rule.get("code_prefixes"), list) or not rule["code_prefixes"]:
+                raise DatasetConfigError(f"sources[{index}].unit_rules[{rule_index}] 必须声明 code_prefixes 或 default")
+        if defaults > 1:
+            raise DatasetConfigError(f"sources[{index}].unit_rules 最多只能有一个 default 规则")
         source_names.append(source["name"])
     if len(source_names) != len(set(source_names)) or not sources:
         raise DatasetConfigError("sources 必须非空且来源名称唯一")

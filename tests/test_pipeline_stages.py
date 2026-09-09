@@ -221,6 +221,21 @@ def test_builder_cleans_legacy_tencent_share_yuan_values(tmp_path):
     assert result.iloc[0]["amount"] == 1020.0
 
 
+def test_builder_uses_yaml_conversion_factors(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    builder = DailyBuilder(warehouse)
+    builder.config["sources"][0]["unit_conversions"]["volume"]["hand_to_share"] = 7
+    builder.config["sources"][0]["unit_conversions"]["amount"]["wan_yuan_to_yuan"] = 13
+    cleaned = builder._normalize(pd.DataFrame({
+        "date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
+        "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+        "volume": [10.0], "amount": [2.0],
+        "raw_volume_unit": ["hand"], "raw_amount_unit": ["wan_yuan"],
+    }), "tencent")
+    assert cleaned.iloc[0]["volume"] == 70.0
+    assert cleaned.iloc[0]["amount"] == 26.0
+
+
 def test_builder_rejects_unknown_raw_units(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
@@ -263,7 +278,7 @@ def test_builder_infers_historical_tencent_units_without_mutating_raw(tmp_path):
     assert source["raw"]["path"].read_bytes() == raw_before
 
 
-def test_builder_enforces_tencent_68_market_share_contract(tmp_path):
+def test_builder_uses_explicit_row_unit_metadata(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
     source = capture_frames(
@@ -279,7 +294,7 @@ def test_builder_enforces_tencent_68_market_share_contract(tmp_path):
         "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
     )
     result = pd.read_parquet(build["path"])
-    assert result.iloc[0]["volume"] == 1000000.0
+    assert result.iloc[0]["volume"] == 100000000.0
 
 
 def test_builder_infers_legacy_etf_share_yuan_units(tmp_path):

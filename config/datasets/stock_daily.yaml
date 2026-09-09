@@ -95,15 +95,36 @@ sources:
       turn: turn
     # Cleaning rules applied by DailyBuilder, never by Capture/Raw storage.
     unit_conversions:
-      volume: hand_to_share
-      amount: wan_yuan_to_yuan
+      volume:
+        hand_to_share: 100
+        share_to_share: 1
+      amount:
+        wan_yuan_to_yuan: 10000
+        yuan_to_yuan: 1
+    unit_rules:
+      - name: star_stock
+        code_prefixes: [sh68]
+        volume: share
+        amount: wan_yuan
+      - name: etf
+        code_prefixes: [sh5, sz15, sz16, sz18]
+        volume: share
+        amount: yuan
+      - name: stock
+        default: true
+        volume: hand
+        amount: wan_yuan
     request_defaults:
       adjust: qfq
   - name: baostock
     role: validate + fallback
     priority: 2
     field_mapping: {date: date, code: code, open: open, high: high, low: low, close: close, pre_close: preclose, volume: volume, amount: amount, turn: turn, tradestatus: tradestatus, pe_ttm: "peTTM", pb_mrq: "pbMRQ"}
-    unit_conversions: {}
+    unit_conversions:
+      volume:
+        share_to_share: 1
+      amount:
+        yuan_to_yuan: 1
     raw_units:
       volume: share
       amount: yuan

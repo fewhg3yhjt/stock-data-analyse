@@ -138,7 +138,7 @@ Parquet/CSV 原始数据、标准结果和派生结果文件
 | Indicators | 基于 Published 上游数据生成派生指标 |
 | Business Consumers | 使用 Published 数据完成业务功能 |
 
-Raw 不做单位转换；单位转换属于 Build / Cleaning。任务成功不等于质量合格，Candidate 也不等于正式数据。
+Raw 不做单位转换；单位转换属于 Build / Cleaning，并且必须由数据集 YAML 配置驱动。任务成功不等于质量合格，Candidate 也不等于正式数据。
 
 ## 十、任务执行的统一入口
 

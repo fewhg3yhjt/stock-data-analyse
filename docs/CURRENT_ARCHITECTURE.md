@@ -237,7 +237,9 @@ flowchart LR
 
 `DatasetAccess` 默认要求 Published Dataset，校验当前版本、质量和文件 checksum。业务平面不直接选择数据源，也不直接读取 Raw 文件。
 
-数据链模块边界以 [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md#44-数据链模块角色与职责) 为准。当前实现中的 `DailyBuilder` 同时承担 Build 和清洗标准化职责：Raw 只保留源头字段原值，单位转换和历史数据推断在读取 Raw 生成 Candidate 时执行；Quality 和 Publish 不负责修复数据。
+数据链模块边界以 [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md#44-数据链模块角色与职责) 为准。当前实现中的 `DailyBuilder` 同时承担 Build 和清洗标准化职责：Raw 只保留源头字段原值，单位规则和转换倍数从数据集 YAML 读取，并在生成 Candidate 时执行；Quality 和 Publish 不负责修复数据。
+
+`MarketCollector.sync_daily` 只允许写入 `raw:<source>` Raw Batch；`target="daily"` 已下线并会直接报错。CLI、生产任务和 Shadow 验证均必须先采集 Raw，再由 `DailyBuilder` 生成 Candidate。
 
 ## 7. 新业务任务异步流程
 

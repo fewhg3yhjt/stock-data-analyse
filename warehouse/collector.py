@@ -242,11 +242,11 @@ class MarketCollector:
                 "date": r[0],
                 "open": r[1], "close": r[2],
                 "high": r[3], "low": r[4],
-                "volume": r[5],  # 单位「手」，稍后 ×100 转股
+                "volume": r[5],  # 保留接口返回值，单位转换由 DailyBuilder 执行
             }
             if len(r) >= 9:  # proxy 接口含换手率/成交额
                 rec["turn"] = r[7]           # 换手率 %
-                rec["amount"] = r[8]         # 成交额（万元）→ 稍后转元
+                rec["amount"] = r[8]         # 保留接口返回值，单位转换由 DailyBuilder 执行
             records.append(rec)
         if not records:
             return pd.DataFrame()
@@ -275,7 +275,7 @@ class MarketCollector:
                    max_symbols: Optional[int] = None,
                    flush_every: int = 1000,
                    source: str = "baostock",
-                   target: str = "daily",
+                    target: Optional[str] = None,
                    progress_callback=None, job_run_id: Optional[int] = None,
                    capture_raw: Optional[bool] = None,
                      asset_types: Optional[list[str]] = None,
@@ -293,9 +293,7 @@ class MarketCollector:
             max_symbols: 最多处理多少只（测试用）
             flush_every: 每处理 N 个标的就落盘一次，控制内存峰值（2C2G 安全）
             source: 数据源 baostock（默认）/ tencent（腾讯，不封IP）
-            target: 写入目标
-                daily     → 加工层 daily/ 分区（旧行为，直接写完整宽表）
-                raw:<src> → 贴源层 raw/<src>/ 分区（源数据独立存放，不覆盖）
+             target: 仅允许 raw:<src>；旧的 daily 直写路径已下线。
             force_refresh: 忽略已有覆盖日期，重新请求指定证券的完整区间。
 
         Returns:
@@ -341,7 +339,13 @@ class MarketCollector:
             symbol_types = {code: symbol_types.get(code, "unknown") for code in selected_symbols}
             symbol_boards = {code: symbol_boards.get(code, "unknown") for code in selected_symbols}
 
-        capture_raw = (source == "tencent" and target == "daily") if capture_raw is None else capture_raw
+        if target == "daily":
+            raise ValueError("sync_daily 不再支持 target='daily'；请使用 Raw Batch + DailyBuilder")
+        if target is not None and target != f"raw:{source}":
+            raise ValueError(f"sync_daily 只允许写入当前 source 的 Raw Batch: raw:{source}")
+        if capture_raw is False:
+            raise ValueError("sync_daily 只允许通过 Raw Batch 采集，capture_raw 必须为 True")
+        capture_raw = True
         batch_store = None
         batch_id = None
         raw_writer = None
@@ -381,9 +385,7 @@ class MarketCollector:
         t0 = time.time()
 
         # 解析写入目标
-        raw_source = None
-        if target.startswith("raw:"):
-            raw_source = target.split(":", 1)[1]
+        raw_source = source
 
         # Query the persistent index per selected entity type; never scan Raw
         # files during normal incremental capture.
