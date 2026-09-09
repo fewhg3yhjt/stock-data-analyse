@@ -267,7 +267,9 @@ class DailyBuilder:
                 previous = source_frames.get(source)
                 source_frames[source] = (pd.concat([previous, frame], ignore_index=True)
                                          if previous is not None and not previous.empty else frame)
-                frame["_source"] = source
+                frame["_source"] = (
+                    f"effective:{source}" if str(batch_id).startswith("effective:") else source
+                )
                 frames.append(frame)
         if include_current:
             current = self.warehouse.read_daily(partition)
@@ -344,7 +346,9 @@ class DailyBuilder:
                     if part.empty:
                         continue
                     part = part.copy()
-                    part["_source"] = source
+                    part["_source"] = (
+                        f"effective:{source}" if str(batch_id).startswith("effective:") else source
+                    )
                     path = staging_root / f"{partition}.parquet"
                     import pyarrow as pa
                     import pyarrow.parquet as pq
@@ -393,6 +397,7 @@ class DailyBuilder:
         combined = pd.concat(frames, ignore_index=True)
         combined["date"] = pd.to_datetime(combined["date"], errors="coerce")
         priority = {name: item["priority"] for name, item in self._sources.items()}
+        priority.update({f"effective:{name}": -1 for name in self._sources})
         priority["legacy_daily"] = 999
         combined["_priority"] = combined["_source"].map(priority).fillna(999)
         combined = combined.sort_values(["date", "code", "_priority"], kind="stable")

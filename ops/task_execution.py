@@ -186,14 +186,9 @@ def _build(warehouse: Warehouse, request: dict) -> dict:
         # snapshot and silently drop older successful symbols/dates.
         if request.get("controlled_validation") and request.get("input_batch_id"):
             selected = []
-        else:
-            selected = None
-        if request.get("input_batch_id"):
             path = _batch(warehouse, request["input_batch_id"])
             item = ("tencent", path, request["input_batch_id"])
-            if selected is None:
-                selected = [item]
-            elif item[2] not in {entry[2] for entry in selected}:
+            if item[2] not in {entry[2] for entry in selected}:
                 selected.append(item)
         build = DailyBuilder(warehouse).build_partition(
             partition, selected, include_current=not request.get("controlled_validation"),
