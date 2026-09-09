@@ -90,9 +90,10 @@ def test_access_falls_back_for_one_missing_month_when_other_month_is_published(t
         frames=[pd.DataFrame({
             "date": [pd.Timestamp("2026-09-01")], "code": ["sh600000"],
             "open": [10.1], "high": [10.6], "low": [10.0], "close": [10.4],
-            "volume": [1000.0], "amount": [100000.0], "turn": [1.0],
+            "volume": [1000.0], "amount": [102.0], "turn": [1.0],
         })], expected_symbols=1, success_symbols=1, universe_id="u",
-        request_context={"fixture": True})
+         request_context={"fixture": True,
+                          "units": {"volume": "hand", "amount": "wan_yuan"}})
     build = DailyBuilder(warehouse).build_partition(
         "2026-09", [("tencent", source["raw"]["path"])], include_current=False)
     state = PipelineState(warehouse.meta_db_path)

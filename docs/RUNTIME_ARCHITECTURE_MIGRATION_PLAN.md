@@ -430,6 +430,14 @@ pids_limit: 64
 - `sh510300`（ETF）未执行；验证 Worker 已停止，当前没有 pending Request 或 running SourceBatch。
 - 验证结论：Universe/coverage/单证券 Capture 路径已真实跑通；后续 Build 受历史 Raw 契约问题阻断，必须先隔离或补齐历史单位元数据，不能跳过校验继续发布。
 
+#### 历史 Tencent Raw 处理期单位修复记录（2026-09-09）
+
+- 未修改历史 Raw 文件，也未修改原有 SourceBatch `request_context`。
+- `DailyBuilder` 在读取缺少单位元数据的历史 Tencent Batch 时，按行推断单位：普通证券 `volume=hand`、`sh68*` `volume=share`，两者 `amount=wan_yuan`。
+- 已有显式 `raw_volume_unit/raw_amount_unit` 行级单位和 Batch `units` 元数据优先于推断规则；推断只发生在 Build 处理视图中。
+- 普通股票与 `sh68*` 混合样例已验证转换结果正确，Raw 文件字节保持不变；相关数据构建、采集、覆盖和 Worker 测试共 73 项通过。
+- 该处理期兼容规则仍需在真实历史分区 Build、Quality、Published 之前单独审计输出范围和单位质量，不自动覆盖旧 Published 版本。
+
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
 目标：数据生产阶段独立落盘和传递版本。

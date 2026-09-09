@@ -58,6 +58,15 @@ class DailyBuilder:
         units = units or {}
         row_volume_units = out.get("raw_volume_unit")
         row_amount_units = out.get("raw_amount_unit")
+        if source == "tencent" and row_volume_units is None and not units:
+            # Legacy Tencent Raw batches predate unit metadata. Their verified
+            # contract is hand/wan_yuan for normal securities, while sh68*
+            # rows use shares/wan_yuan. This only affects the build view; Raw
+            # files and their source-batch metadata remain unchanged.
+            code_series = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+            row_volume_units = pd.Series("hand", index=out.index)
+            row_volume_units.loc[code_series.str.startswith("sh68")] = "share"
+            row_amount_units = pd.Series("wan_yuan", index=out.index)
         if row_volume_units is not None:
             # Tencent's 68xxxx STAR/BEI? market response is share-based.
             # Enforce the adapter contract even for legacy repair batches that
@@ -154,15 +163,17 @@ class DailyBuilder:
             context = batch_contexts.get(batch_id, {})
             units = context.get("units")
             if units is None:
-                # Tencent historical batches cannot be safely reconstructed by
-                # source name alone: 2026-09 proved mixed transport/final units.
-                if source == "tencent" and batch_id:
-                    raise ValueError(f"tencent Raw Batch {batch_id or path} 缺少单位元数据，禁止构建")
+                # The legacy Tencent adapter infers units per row in _normalize:
+                # normal securities are hand/wan_yuan and sh68* are
+                # share/wan_yuan. Keep the inferred rule in the build only.
+                if source == "tencent":
+                    units = {}
                 # Other sources may use an explicit source-contract default.
-                fallback = self._sources.get(source, {}).get("raw_units")
-                if fallback is None:
-                    raise ValueError(f"{source} Raw Batch {batch_id or path} 缺少单位元数据")
-                units = {**fallback, "resolution": "source_config_default"}
+                else:
+                    fallback = self._sources.get(source, {}).get("raw_units")
+                    if fallback is None:
+                        raise ValueError(f"{source} Raw Batch {batch_id or path} 缺少单位元数据")
+                    units = {**fallback, "resolution": "source_config_default"}
             frame = self._read_raw_partition(path, source, partition, units=units)
             if frame is not None and not frame.empty:
                 previous = source_frames.get(source)

@@ -238,22 +238,28 @@ def test_builder_rejects_unknown_raw_units(tmp_path):
         )
 
 
-def test_builder_rejects_historical_tencent_batch_without_units(tmp_path):
+def test_builder_infers_historical_tencent_units_without_mutating_raw(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
     source = capture_frames(
         warehouse, dataset_name="stock_daily", source_name="tencent",
-        frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
-                              "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
-                              "volume": [1.0], "amount": [0.1]})],
+        frames=[pd.DataFrame({"date": pd.to_datetime(["2026-08-28", "2026-08-28"]),
+                              "code": ["sh600000", "sh688007"],
+                              "open": [10.0, 40.0], "high": [10.5, 41.0],
+                              "low": [9.8, 39.0], "close": [10.2, 40.0],
+                              "volume": [100.0, 1000000.0], "amount": [102.0, 40000.0]})],
         expected_symbols=1, success_symbols=1, universe_id="u", request_context={"fixture": True},
     )
     with warehouse._conn() as conn:
         conn.execute("UPDATE source_batches SET request_context='{}' WHERE batch_id=?", (source["batch_id"],))
-    with pytest.raises(ValueError, match="缺少单位元数据"):
-        DailyBuilder(warehouse).build_partition(
-            "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
-        )
+    raw_before = source["raw"]["path"].read_bytes()
+    build = DailyBuilder(warehouse).build_partition(
+        "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
+    )
+    result = pd.read_parquet(build["path"]).sort_values("code")
+    assert result["volume"].tolist() == [10000.0, 1000000.0]
+    assert result["amount"].tolist() == [1020000.0, 400000000.0]
+    assert source["raw"]["path"].read_bytes() == raw_before
 
 
 def test_builder_enforces_tencent_68_market_share_contract(tmp_path):
