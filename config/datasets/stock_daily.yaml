@@ -108,8 +108,8 @@ sources:
         amount: wan_yuan
       - name: etf
         code_prefixes: [sh5, sz15, sz16, sz18]
-        volume: share
-        amount: yuan
+        volume: hand
+        amount: wan_yuan
       - name: stock
         default: true
         volume: hand

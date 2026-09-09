@@ -202,14 +202,15 @@ def test_builder_applies_yaml_units_once_and_tencent_wins(tmp_path):
     assert result.iloc[0]["amount"] == 1000.0
 
 
-def test_builder_cleans_legacy_tencent_share_yuan_values(tmp_path):
+def test_builder_cleans_explicit_tencent_share_yuan_values(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
     source = capture_frames(
         warehouse, dataset_name="stock_daily", source_name="tencent",
         frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
                               "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
-                              "volume": [100.0], "amount": [1020.0], "turn": [1.0]})],
+                              "volume": [100.0], "amount": [1020.0], "turn": [1.0],
+                              "raw_volume_unit": ["share"], "raw_amount_unit": ["yuan"]})],
         expected_symbols=1, success_symbols=1, universe_id="u",
         request_context={"units": {"volume": "share", "amount": "yuan", "resolution": "fixture"}},
     )
@@ -297,22 +298,22 @@ def test_builder_uses_explicit_row_unit_metadata(tmp_path):
     assert result.iloc[0]["volume"] == 100000000.0
 
 
-def test_builder_infers_legacy_etf_share_yuan_units(tmp_path):
+def test_builder_infers_legacy_etf_hand_wan_yuan_units(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     warehouse.metadata.register_stock_daily()
     source = capture_frames(
         warehouse, dataset_name="stock_daily", source_name="tencent",
         frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh510300"],
                               "open": [4.0], "high": [4.1], "low": [3.9], "close": [4.0],
-                              "volume": [1000000.0], "amount": [4000000.0]})],
+                              "volume": [1000000.0], "amount": [4000.0]})],
         expected_symbols=1, success_symbols=1, universe_id="u", request_context={},
     )
     build = DailyBuilder(warehouse).build_partition(
         "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
     )
     result = pd.read_parquet(build["path"])
-    assert result.iloc[0]["volume"] == 1000000.0
-    assert result.iloc[0]["amount"] == 4000000.0
+    assert result.iloc[0]["volume"] == 100000000.0
+    assert result.iloc[0]["amount"] == 40000000.0
 
 
 def test_controlled_build_uses_only_explicit_input_batch(tmp_path):

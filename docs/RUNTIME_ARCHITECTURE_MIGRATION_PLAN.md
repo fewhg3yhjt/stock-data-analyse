@@ -434,7 +434,7 @@ pids_limit: 64
 
 - 未修改历史 Raw 文件，也未修改原有 SourceBatch `request_context`。
 - `DailyBuilder` 在读取缺少单位元数据的历史 Tencent Batch 时，按行推断单位：普通证券 `volume=hand`、`sh68*` `volume=share`，两者 `amount=wan_yuan`。
-- 当前规则已扩展为：普通股票 `hand/wan_yuan`、`sh68*` `share/wan_yuan`、ETF `share/yuan`。
+- 当前规则为：普通股票和 ETF `hand/wan_yuan`、`sh68*` `share/wan_yuan`。
 - 已有显式 `raw_volume_unit/raw_amount_unit` 行级单位和 Batch `units` 元数据优先于推断规则；推断只发生在 Build 处理视图中。
 - 普通股票与 `sh68*` 混合样例已验证转换结果正确，Raw 文件字节保持不变；相关数据构建、采集、覆盖和 Worker 测试共 73 项通过。
 - 该处理期兼容规则仍需在真实历史分区 Build、Quality、Published 之前单独审计输出范围和单位质量，不自动覆盖旧 Published 版本。
@@ -446,6 +446,8 @@ pids_limit: 64
 - 历史 Raw 文件保持不变；缺少单位信息的历史 Tencent Raw 只在 Build 处理视图中推断，不修改 Raw 或 SourceBatch 原始事实。
 - `request_context.units` 不再由 Capture 自动注入，也不作为 Tencent Raw 的标准化依据；显式行级单位仅作为历史/测试输入的清洗元数据。
 - 采集、Build、Quality、DatasetAccess、Coverage 和 Data Worker 回归 51 项通过；尚未执行生产历史分区的重新 Build/Publish。
+
+全量 ETF 实测补充：管理库中 `1,630` 只 ETF 按 Tencent 接口串行采集 `2026-09-08`，`1,628` 只返回数据、2 只为空、0 只请求失败；全部成功样本符合 `hand/wan_yuan`，因此 ETF 的 YAML 规则统一采用 `hand/wan_yuan`。验证产物位于 `/tmp/opencode/etf_unit_audit_20260908`，未写入生产数据。
 
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
