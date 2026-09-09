@@ -130,9 +130,11 @@ class RawStore(_BatchRawStore):
     def partition_path(self, source: str, month: str) -> Path:
         return self.source_dir(source) / f"{month}.parquet"
 
-    def effective_path(self, source: str, dataset: str, month: str) -> Path:
-        """Return the deduplicated current Raw partition for one month."""
-        return self.raw_dir / "effective" / source / dataset / f"{month}.parquet"
+    def effective_path(self, source: str, dataset: str, data_date: str) -> Path:
+        """Return the deduplicated Current Raw file for one business date."""
+        day = pd.Timestamp(data_date)
+        return (self.raw_dir / "effective" / source / dataset / f"{day:%Y}" /
+                f"{day:%m}" / f"{day:%d}.parquet")
 
     def merge_batch_to_effective(self, source: str, dataset: str, batch_path: Path,
                                  *, keep_new: bool = True) -> dict[str, dict]:
@@ -147,8 +149,8 @@ class RawStore(_BatchRawStore):
         if batch[["date", "code"]].isna().any().any():
             raise ValueError("Raw Batch 存在无效主键")
         results = {}
-        for month, incoming in batch.groupby(batch["date"].dt.strftime("%Y-%m")):
-            path = self.effective_path(source, dataset, month)
+        for data_date, incoming in batch.groupby(batch["date"].dt.strftime("%Y-%m-%d")):
+            path = self.effective_path(source, dataset, data_date)
             existing = pd.read_parquet(path) if path.exists() else None
             if existing is not None and not existing.empty:
                 existing["date"] = pd.to_datetime(existing["date"], errors="coerce")
@@ -160,7 +162,7 @@ class RawStore(_BatchRawStore):
             merged = merged.sort_values(["date", "code"]).reset_index(drop=True)
             path.parent.mkdir(parents=True, exist_ok=True)
             _atomic_parquet_write(merged, path)
-            results[month] = {
+            results[data_date] = {
                 "path": path,
                 "row_count": len(merged),
                 "incoming_keys": int(len(incoming.drop_duplicates(["date", "code"]))),

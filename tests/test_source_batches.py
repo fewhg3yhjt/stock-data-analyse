@@ -120,7 +120,7 @@ def test_stock_daily_capture_does_not_use_legacy_monthly_raw_writer(tmp_path, mo
     )
     assert result["raw_batch"]["row_count"] == 1
     effective = pd.read_parquet(
-        warehouse.raw.effective_path("tencent", "stock_daily", "2026-08")
+        warehouse.raw.effective_path("tencent", "stock_daily", "2026-08-28")
     )
     assert len(effective) == 1
 
@@ -138,10 +138,12 @@ def test_effective_raw_merges_by_key_and_new_data_wins(tmp_path):
     })])
     warehouse.raw.merge_batch_to_effective("tencent", "stock_daily", first["path"])
     result = warehouse.raw.merge_batch_to_effective("tencent", "stock_daily", second["path"])
-    effective = pd.read_parquet(result["2026-08"]["path"]).sort_values("date")
-    assert len(effective) == 2
-    assert effective.iloc[0]["close"] == 10.2
-    assert effective.iloc[1]["close"] == 10.3
+    first_day = pd.read_parquet(result["2026-08-28"]["path"])
+    second_day = pd.read_parquet(result["2026-08-29"]["path"])
+    assert len(first_day) == 1
+    assert len(second_day) == 1
+    assert first_day.iloc[0]["close"] == 10.2
+    assert second_day.iloc[0]["close"] == 10.3
 
 
 def test_invalid_source_format_is_manual_retry_and_not_written(tmp_path, monkeypatch):

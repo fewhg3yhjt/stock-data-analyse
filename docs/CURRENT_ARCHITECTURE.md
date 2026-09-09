@@ -240,7 +240,7 @@ flowchart LR
 
 数据链模块边界以 [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md#44-数据链模块角色与职责) 为准。当前实现中的 `DailyBuilder` 同时承担 Build 和清洗标准化职责：Raw 只保留源头字段原值，单位规则和转换倍数从数据集 YAML 读取，并在生成 Candidate 时执行；Quality 和 Publish 不负责修复数据。
 
-采集成功批次会先合并到 Current Raw；合并按 `date + code` 覆盖，新批次未命中的旧键继续保留。失败、空响应和源头格式异常不会覆盖 Current Raw，格式异常进入 `manual_retry_required`。
+采集成功批次会先按业务日期拆分并合并到 Current Raw（每天一个全市场文件）；合并按 `date + code` 覆盖，新批次未命中的旧键继续保留。失败、空响应和源头格式异常不会覆盖 Current Raw，格式异常进入 `manual_retry_required`。
 
 `MarketCollector.sync_daily` 只允许写入 `raw:<source>` Raw Batch；`target="daily"` 已下线并会直接报错。CLI、生产任务和 Shadow 验证均必须先采集 Raw，再由 `DailyBuilder` 生成 Candidate。
 

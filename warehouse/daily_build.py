@@ -47,12 +47,17 @@ class DailyBuilder:
         return selected
 
     def select_effective_raw(self, partition: str, sources: Optional[list[str]] = None) -> list[tuple[str, Path, str]]:
-        """Select Current Raw partitions when they have been materialized."""
+        """Select date-level Current Raw files within a monthly partition."""
         selected = []
+        month_start = pd.Timestamp(f"{partition}-01")
+        month_end = month_start + pd.offsets.MonthEnd(1)
         for source in sources or list(self._sources):
-            path = self.warehouse.raw.effective_path(source, "stock_daily", partition)
-            if path.exists():
-                selected.append((source, path, f"effective:{source}:stock_daily:{partition}"))
+            root = self.warehouse.raw.raw_dir / "effective" / source / "stock_daily"
+            if not root.exists():
+                continue
+            for path in sorted(root.glob(f"{month_start:%Y}/{month_start:%m}/*.parquet")):
+                if month_start <= pd.Timestamp(path.stem) <= month_end:
+                    selected.append((source, path, f"effective:{source}:stock_daily:{path.stem}"))
         return selected
 
     def _normalize(self, frame: pd.DataFrame, source: str, *, units: dict | None = None) -> pd.DataFrame:
