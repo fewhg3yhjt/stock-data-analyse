@@ -99,6 +99,31 @@ def test_data_worker_does_not_queue_after_failed_stage(tmp_path):
     assert worker.enqueue_downstream(request, {"status": "failed"}) == []
 
 
+def test_data_worker_queues_after_quality_warning_when_publish_allowed(tmp_path):
+    db, center, request_id = _request(tmp_path, task_key="stock_daily_quality")
+    worker = DataWorker(db, task_keys={"stock_daily_publish"})
+    request = center.request(request_id)
+
+    result = worker.enqueue_downstream(
+        request, {"status": "partial_success", "result": {
+            "status": "WARNING", "publish_allowed": True,
+            "output_versions": {"2026-09": "stock_daily_candidate"},
+        }},
+    )
+
+    assert result[0]["task_key"] == "stock_daily_publish"
+
+
+def test_data_worker_does_not_queue_partial_capture_result(tmp_path):
+    db, center, request_id = _request(tmp_path, task_key="stock_daily_capture")
+    worker = DataWorker(db, task_keys={"stock_daily_build"})
+    request = center.request(request_id)
+
+    assert worker.enqueue_downstream(
+        request, {"status": "partial_success", "result": {"publish_allowed": True}},
+    ) == []
+
+
 def test_controlled_validation_does_not_queue_formal_downstream(tmp_path):
     db, center, request_id = _request(tmp_path, task_key="stock_daily_build")
     request = center.request(request_id)

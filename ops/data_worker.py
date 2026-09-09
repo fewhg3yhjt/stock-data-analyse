@@ -158,7 +158,7 @@ class DataWorker:
             result = self.execute_request(request, payload)
             if result is None:
                 raise RuntimeError("数据任务未返回结果")
-            if result.get("status") == "success":
+            if self._can_enqueue_downstream(result, task_key=request["task_key"]):
                 result["downstream_requests"] = self.enqueue_downstream(request, result)
         except DataTaskTimeout as exc:
             self.center.update_request(request_id, "timeout")
@@ -400,8 +400,9 @@ class DataWorker:
                 for batch in [groups[kind][batch_start:batch_start + self.batch_size]]]
 
     def enqueue_downstream(self, request: dict, result: dict) -> list[dict]:
-        """Queue the next data stage only after a successful upstream stage."""
-        if result.get("status") != "success" or request.get("request_payload", {}).get("controlled_validation"):
+        """Queue the next data stage only after an allowed upstream result."""
+        if (not self._can_enqueue_downstream(result, task_key=request["task_key"])
+                or request.get("request_payload", {}).get("controlled_validation")):
             return []
         chain = {
             "stock_daily_capture": "stock_daily_build",
@@ -443,6 +444,19 @@ class DataWorker:
         )
         return [{"request_id": request_id, "task_key": next_task,
                  "status": "requested", "deduplicated": False}]
+
+    @staticmethod
+    def _can_enqueue_downstream(result: dict | None, *, task_key: str = "") -> bool:
+        """Allow quality WARNING only when its explicit publish gate is open."""
+        result = result or {}
+        if result.get("status") == "success":
+            return True
+        if result.get("status") != "partial_success":
+            return False
+        if task_key != "stock_daily_quality":
+            return False
+        nested = result.get("result") or {}
+        return bool(nested.get("publish_allowed"))
 
     def run_loop(self, stop: threading.Event | None = None) -> None:
         stop = stop or threading.Event()
