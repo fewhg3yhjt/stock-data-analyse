@@ -324,8 +324,15 @@ class DataWorker:
             config = {}
         allowed = (config.get("scope") or {}).get("asset_types") or ["stock", "etf"]
         warehouse = Warehouse(meta_db_path=self.db_path)
-        symbols = [item["code"] for item in warehouse.list_instruments(asset_types=set(allowed))]
-        return symbols
+        from StockInvestmentTool.warehouse.universe import UniverseStore
+        snapshot_date = request.get("period_end") or request.get("period_start")
+        universe = UniverseStore(self.db_path).latest_snapshot(
+            as_of=snapshot_date, entity_types=set(allowed),
+        ) if snapshot_date else None
+        if universe and universe.get("items"):
+            return [item["entity_id"] for item in universe["items"]]
+        return [item["code"] for item in warehouse.list_instruments(asset_types=set(allowed))
+                if item.get("universe_status", "active") == "active"]
 
     def _batch_symbols(self, symbols: list[str]) -> list[tuple[str, list[str]]]:
         known = self.center.db_path

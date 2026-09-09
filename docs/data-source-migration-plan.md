@@ -127,3 +127,5 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 当前生产队列和 SourceBatch 均无运行中记录，Web/Data Worker 保持停止；下一次生产验证必须在明确范围和 Scheduler 隔离条件下执行。
 
 阶段 3 覆盖索引已完成代码实现：日常 `stock_daily` 采集按当前批次的 `stock`/`etf` 查询 `management.db` coverage，不再扫描全量历史 Raw；历史 Raw 仅可通过显式重建工具初始化索引。覆盖表同时支持行业和指数实体，但不会改变它们的独立任务链。相关测试已通过 34 项，尚未执行生产 coverage 全量重建或真实数据任务。
+
+Universe 双路径已建立：权威全量清单成功时同步证券目录和当日快照；获取失败时使用最近有效历史快照或 active 目录继续采集，但不据此执行退市标记。Data Worker 空范围任务只消费快照/目录，不再自行扫描历史 Raw；新证券和交易状态字段已进入 `instruments`，尚未执行生产全量 Universe 同步。

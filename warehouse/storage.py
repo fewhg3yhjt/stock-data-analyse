@@ -122,10 +122,17 @@ class Warehouse:
                     updated_at TEXT
                 )
             """)
-            # 迁移：老库加 industry 列
             cols = {r[1] for r in c.execute("PRAGMA table_info(instruments)").fetchall()}
-            if "industry" not in cols:
-                c.execute("ALTER TABLE instruments ADD COLUMN industry TEXT DEFAULT ''")
+            for name, definition in {
+                "trade_status": "TEXT NOT NULL DEFAULT ''",
+                "universe_status": "TEXT NOT NULL DEFAULT 'active'",
+                "first_seen_date": "TEXT",
+                "last_seen_date": "TEXT",
+                "delisted_date": "TEXT",
+                "last_source": "TEXT NOT NULL DEFAULT ''",
+            }.items():
+                if name not in cols:
+                    c.execute(f"ALTER TABLE instruments ADD COLUMN {name} {definition}")
             c.execute("""
                 CREATE TABLE IF NOT EXISTS daily_manifest (
                     month TEXT PRIMARY KEY,       -- YYYY-MM
@@ -152,14 +159,20 @@ class Warehouse:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self._conn() as c:
             c.executemany(
-                """INSERT INTO instruments(code,name,type,board,listed_date,industry,updated_at)
-                   VALUES(?,?,?,?,?,?,?)
+                """INSERT INTO instruments(code,name,type,board,listed_date,industry,updated_at,
+                   trade_status,universe_status,first_seen_date,last_seen_date,delisted_date,last_source)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(code) DO UPDATE SET
                      name=excluded.name, type=excluded.type, board=excluded.board,
                      listed_date=excluded.listed_date, industry=excluded.industry,
-                     updated_at=excluded.updated_at""",
+                     updated_at=excluded.updated_at, trade_status=excluded.trade_status,
+                     universe_status=excluded.universe_status, first_seen_date=COALESCE(instruments.first_seen_date, excluded.first_seen_date),
+                     last_seen_date=excluded.last_seen_date, last_source=excluded.last_source""",
                 [(r.get("code"), r.get("name"), r.get("type"), r.get("board"),
-                  r.get("listed_date"), r.get("industry", ""), now) for r in rows],
+                  r.get("listed_date"), r.get("industry", ""), now,
+                  r.get("trade_status", r.get("tradeStatus", "")),
+                  r.get("universe_status", "active"), r.get("first_seen_date"),
+                  r.get("last_seen_date"), r.get("delisted_date"), r.get("last_source", "")) for r in rows],
             )
 
     def all_codes(self) -> list[str]:

@@ -405,6 +405,15 @@ pids_limit: 64
 - 股票和 ETF 共用 `stock_daily`，但 coverage 按 `entity_type` 分开；指数和行业可以复用覆盖服务，但仍保持独立数据集和任务链。
 - 覆盖索引和类型隔离相关测试共 34 项通过；尚未执行生产 coverage 全量重建，也未重新启动生产 Data Worker。
 
+#### Universe 双路径记录（2026-09-09）
+
+- 新增 `warehouse/universe.py`，维护 `universe_snapshots` 和 `universe_snapshot_items`，记录清单来源、是否权威、是否完整、交易状态和 active 标记。
+- 权威全量清单成功时由 `MarketCollector.sync_instruments()` 写入 `instruments` 和当日快照；空清单或源异常时优先使用最近历史快照，再退回现有目录。
+- 非权威历史/目录兜底只用于继续识别采集对象，不会把未出现在兜底清单中的证券标记为退市；只有后续明确的权威清单流程才允许执行下架判定。
+- Data Worker 的空 `symbols` Request 优先读取目标日期之前最近的 Universe 快照，并按任务 scope 过滤；找不到快照时才使用 `instruments.universe_status='active'` 目录。
+- 新增交易状态、Universe 生命周期字段到 `instruments`：`trade_status`、`universe_status`、`first_seen_date`、`last_seen_date`、`delisted_date`、`last_source`。
+- Universe 双路径、交易状态和历史兜底测试已通过 30 项；尚未在生产执行当天全量 Universe 同步。
+
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
 目标：数据生产阶段独立落盘和传递版本。

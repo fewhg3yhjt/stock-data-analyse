@@ -111,6 +111,7 @@ class MarketCollector:
 
         items = self.list_market(include_etf=include_etf,
                                  include_index=include_index, day=day)
+        snapshot_date = day or datetime.now().strftime("%Y-%m-%d")
         rows = []
         for it in items:
             code = it["code"]
@@ -119,8 +120,18 @@ class MarketCollector:
                 "code": code, "name": it.get("name", ""), "type": it["type"],
                 "board": board or ("" if it["type"] == "stock" else it["type"]),
                 "listed_date": "",
+                "trade_status": it.get("tradeStatus", ""),
+                "universe_status": "active" if str(it.get("tradeStatus", "")).lower() in {"1", "active", "trading", "正常", "交易", ""} else "suspended",
+                "first_seen_date": snapshot_date,
+                "last_seen_date": snapshot_date,
+                "last_source": "baostock",
             })
         self.warehouse.upsert_instruments(rows)
+        from StockInvestmentTool.warehouse.universe import UniverseStore
+        UniverseStore(self.warehouse.meta_db_path).record_snapshot(
+            snapshot_date, items, source="baostock", authoritative=bool(items), complete=bool(items),
+            metadata={"include_etf": include_etf, "include_index": include_index},
+        )
         logger.info("标的清单已更新: %d 条", len(rows))
         return len(rows)
 
