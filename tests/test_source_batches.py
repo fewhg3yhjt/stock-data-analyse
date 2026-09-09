@@ -123,6 +123,7 @@ def test_stock_daily_capture_does_not_use_legacy_monthly_raw_writer(tmp_path, mo
         warehouse.raw.effective_path("tencent", "stock_daily", "2026-08-28")
     )
     assert len(effective) == 1
+    assert len(__import__("StockInvestmentTool.warehouse.daily_build", fromlist=["DailyBuilder"]).DailyBuilder(warehouse).select_effective_raw("2026-08")) == 1
 
 
 def test_effective_raw_merges_by_key_and_new_data_wins(tmp_path):

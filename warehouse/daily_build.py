@@ -56,7 +56,8 @@ class DailyBuilder:
             if not root.exists():
                 continue
             for path in sorted(root.glob(f"{month_start:%Y}/{month_start:%m}/*.parquet")):
-                if month_start <= pd.Timestamp(path.stem) <= month_end:
+                data_date = pd.Timestamp(f"{path.parent.parent.name}-{path.parent.name}-{path.stem}")
+                if month_start <= data_date <= month_end:
                     selected.append((source, path, f"effective:{source}:stock_daily:{path.stem}"))
         return selected
 
