@@ -199,7 +199,7 @@ flowchart TB
     COLLECT --> BS[baostock 全市场清单与日线]
     COLLECT --> TX[腾讯历史日线\n可选主源/备源]
     COLLECT --> RAW[Raw Store\n按 source / dataset / partition]
-    RAW --> BUILD[DailyBuilder / Process\n标准化、合并、按月分区]
+    RAW --> BUILD[DailyBuilder / Cleaning\n清洗、标准化、单位转换、合并、去重]
     BUILD --> CAND[Candidate Parquet]
     CAND --> QUALITY[Quality Check\n覆盖、字段、重复、日期、数值]
     QUALITY -->|PASS / WARNING| PUBLISH[Publisher\n分区锁 + checksum + 原子替换]
@@ -236,6 +236,8 @@ flowchart LR
 ```
 
 `DatasetAccess` 默认要求 Published Dataset，校验当前版本、质量和文件 checksum。业务平面不直接选择数据源，也不直接读取 Raw 文件。
+
+数据链模块边界以 [数据平台与可信数据链路设计](DATA_PIPELINE_V1_DESIGN.md#44-数据链模块角色与职责) 为准。当前实现中的 `DailyBuilder` 同时承担 Build 和清洗标准化职责：Raw 只保留源头字段原值，单位转换和历史数据推断在读取 Raw 生成 Candidate 时执行；Quality 和 Publish 不负责修复数据。
 
 ## 7. 新业务任务异步流程
 

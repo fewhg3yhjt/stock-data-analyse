@@ -232,6 +232,49 @@ Published Dataset、management.db、发布/回滚/恢复、生产验证：必须
 5. 数据集切换必须经过质量、版本、路径和业务冒烟验收；
 6. 历史文件保留在归档区，不进入新业务读取路径。
 
+### 4.4 数据链模块角色与职责
+
+以下职责是数据链的边界定义。模块可以协作，但不得跨层替代其他模块的职责。
+
+| 模块 | 角色 | 负责事项 | 不负责事项 |
+|---|---|---|---|
+| Dataset Definition / Metadata | 契约定义层 | 定义数据集、字段、主键、来源映射、标准单位、质量规则和消费者要求 | 不请求外部数据，不直接生成业务数据 |
+| Source Adapter | 来源适配层 | 调用指定外部接口，处理认证、限速、请求超时、响应解析和来源字段映射；将外部代码转换为 canonical code | 不做业务标准化，不填补缺失，不把失败响应伪装成成功 |
+| Capture / Data Worker | 采集执行层 | 按明确日期和证券范围执行采集请求，记录任务进度、重试、失败、跳过和超时，提交 Raw Batch | 不直接发布正式数据，不在 Web 请求中执行全市场生产，不修改既有 Raw |
+| Raw Store / Raw Batch | 原始事实层 | 以不可变批次保存采集后解析得到的源头字段原值，并记录来源、范围、日期、行数、checksum 和状态 | 不做单位转换、补值、去重、异常修正或正式业务读取 |
+| Universe | 采集范围层 | 提供本次任务的证券清单、资产类型、快照来源和有效性状态 | 不代表某证券某日已有行情，不把清单缺失直接判定为退市 |
+| Coverage | 覆盖事实层 | 记录证券、日期、来源和数据集的成功、失败、跳过及最近成功日期，支持增量采集 | 不生成行情数据，不替代 Raw Batch 或质量结论 |
+| Build / Cleaning | 清洗标准化层 | 从 Raw 生成 Candidate；执行字段类型整理、代码和日期标准化、单位转换、历史数据推断、来源合并、优先级处理和去重 | 不修改 Raw，不绕过质量检查，不直接切换正式版本 |
+| Candidate | 待发布结果层 | 保存某次 Build 生成的标准字段结果、输入批次、内容指纹和差异报告，等待质量判断 | 不等同于当前正式数据，不可被正式业务默认读取 |
+| Quality | 质量门禁层 | 检查覆盖率、字段完整性、重复键、日期新鲜度、数值合法性、单位一致性和来源冲突，输出 PASS/WARNING/FAIL | 不负责修复数据，不因任务执行成功而自动判定合格 |
+| Publish / Dataset Current | 正式版本层 | 对通过质量门禁的指定 Candidate 做版本登记、checksum 校验、原子发布，并更新当前版本指针；保留旧版本用于回滚 | 不选择未经请求的历史版本，不发布 FAIL Candidate，不覆盖 Raw |
+| DatasetAccess | 统一访问层 | 根据 `dataset_current` 定位正式版本，校验状态、质量、文件和 checksum，返回数据及版本、日期、来源上下文 | 不直接读取 Raw，不临时切换来源，不在正式业务路径在线采集 |
+| Indicators / Derived Jobs | 派生计算层 | 读取 Published 上游数据，按指标定义计算技术指标和研究因子，生成独立 Candidate 并经过独立质量和发布 | 不修改上游数据，不把研究因子作为另一套基础行情链路 |
+| Business Consumers | 业务消费层 | 通过 DatasetAccess 使用 Published 数据，携带数据日期、版本和质量上下文完成筛选、研究、策略、组合和展示 | 不直接选择数据源，不直接读 Raw/Candidate，不静默使用未发布或低质量数据 |
+| Scheduler | 调度协调层 | 判断交易日、缺口和任务依赖，创建统一 Execution Request，触发和监控执行者 | 不直接调用 Collector、Builder、Quality 或 Publisher，不在 Web 进程执行重型数据生产 |
+
+标准数据链路如下：
+
+```text
+Metadata
+  -> Universe / Scheduler 创建明确 Request
+  -> Source Adapter / Capture
+  -> Raw Batch（源头字段原值）
+  -> Build / Cleaning
+  -> Candidate
+  -> Quality
+  -> Publish / Dataset Current
+  -> DatasetAccess
+  -> Indicators / Business Consumers
+```
+
+其中最重要的边界是：
+
+- Raw 是可追溯的源头事实层，允许解析和结构化落盘，但不改变源头字段值。
+- 清洗、标准化和单位转换统一发生在 Build/清洗层，输出统一业务口径的 Candidate。
+- 任务 `success` 只表示执行完成；只有 Quality 通过并完成 Publish，数据才是正式可消费数据。
+- `SourceBatch`、`Coverage`、`Dataset Version` 和 `Quality Report` 分别记录采集事实、覆盖事实、生成结果和质量结论，不能互相替代。
+
 ---
 
 ## 5. 目标架构
