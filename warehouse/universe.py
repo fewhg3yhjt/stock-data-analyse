@@ -100,6 +100,31 @@ class UniverseStore:
                 "entity_count": len(normalized), "error_message": error_message,
                 "items": normalized}
 
+    def reconcile_authoritative_snapshot(self, snapshot_date: str, items: list[dict], *,
+                                         source: str = "authoritative") -> dict:
+        """Persist a full snapshot and mark omitted catalog entities inactive candidates."""
+        result = self.record_snapshot(snapshot_date, items, source=source,
+                                      authoritative=True, complete=True)
+        present = {(item["entity_id"], item["entity_type"]) for item in result["items"]}
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT code,type FROM instruments WHERE universe_status='active'"
+            ).fetchall() if self._table_exists(conn, "instruments") else []
+            for code, entity_type in rows:
+                if (str(code), str(entity_type)) not in present:
+                    conn.execute(
+                        """UPDATE instruments SET universe_status='inactive_candidate',
+                           last_source=?, updated_at=? WHERE code=?""",
+                        (source, _now(), code),
+                    )
+        return result
+
+    @staticmethod
+    def _table_exists(conn, table: str) -> bool:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone() is not None
+
     def latest_snapshot(self, *, as_of: str, entity_types: set[str] | None = None) -> dict | None:
         with self._connect() as conn:
             snapshot = conn.execute(
@@ -128,8 +153,8 @@ class UniverseStore:
             selected = [item for item in items if str(item.get("type") or "").lower() in entity_types]
             if selected:
                 return self.record_snapshot(snapshot_date, selected, source="authoritative",
-                                             authoritative=True, complete=True,
-                                             metadata={"requested_entity_types": sorted(entity_types)})
+                                            authoritative=True, complete=True,
+                                            metadata={"requested_entity_types": sorted(entity_types)})
             error = "全量 Universe 返回空"
         except Exception as exc:  # noqa: BLE001
             error = str(exc)

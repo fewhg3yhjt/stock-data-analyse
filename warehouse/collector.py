@@ -128,10 +128,15 @@ class MarketCollector:
             })
         self.warehouse.upsert_instruments(rows)
         from StockInvestmentTool.warehouse.universe import UniverseStore
-        UniverseStore(self.warehouse.meta_db_path).record_snapshot(
-            snapshot_date, items, source="baostock", authoritative=bool(items), complete=bool(items),
-            metadata={"include_etf": include_etf, "include_index": include_index},
-        )
+        universe_store = UniverseStore(self.warehouse.meta_db_path)
+        if items:
+            universe_store.reconcile_authoritative_snapshot(snapshot_date, items, source="baostock")
+        else:
+            universe_store.record_snapshot(
+                snapshot_date, items, source="baostock", authoritative=False, complete=False,
+                error_message="全量 Universe 返回空",
+                metadata={"include_etf": include_etf, "include_index": include_index},
+            )
         logger.info("标的清单已更新: %d 条", len(rows))
         return len(rows)
 

@@ -414,6 +414,13 @@ pids_limit: 64
 - 新增交易状态、Universe 生命周期字段到 `instruments`：`trade_status`、`universe_status`、`first_seen_date`、`last_seen_date`、`delisted_date`、`last_source`。
 - Universe 双路径、交易状态和历史兜底测试已通过 30 项；尚未在生产执行当天全量 Universe 同步。
 
+#### Universe 生命周期收口记录（2026-09-09）
+
+- 权威全量快照成功时，`UniverseStore.reconcile_authoritative_snapshot()` 会把目录中未出现在本次清单的 active 实体标记为 `inactive_candidate`，不直接标记 `delisted`，也不删除历史数据。
+- 权威清单为空或获取异常时，只能使用历史快照或 active 目录兜底；该路径不会改变既有证券的 active 状态，避免源故障造成误下架。
+- `stock_daily_capture` 的空范围 Request 已接入 Universe 前置解析：权威清单优先，失败时历史快照/目录兜底，并将来源、权威性和快照日期传入 SourceBatch 上下文。
+- 新增/更新 Universe 生命周期和 Data Worker 前置解析测试，相关测试共 40 项通过；尚未执行生产全量 Universe 同步和退市确认策略。
+
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
 目标：数据生产阶段独立落盘和传递版本。

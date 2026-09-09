@@ -129,3 +129,5 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 阶段 3 覆盖索引已完成代码实现：日常 `stock_daily` 采集按当前批次的 `stock`/`etf` 查询 `management.db` coverage，不再扫描全量历史 Raw；历史 Raw 仅可通过显式重建工具初始化索引。覆盖表同时支持行业和指数实体，但不会改变它们的独立任务链。相关测试已通过 34 项，尚未执行生产 coverage 全量重建或真实数据任务。
 
 Universe 双路径已建立：权威全量清单成功时同步证券目录和当日快照；获取失败时使用最近有效历史快照或 active 目录继续采集，但不据此执行退市标记。Data Worker 空范围任务只消费快照/目录，不再自行扫描历史 Raw；新证券和交易状态字段已进入 `instruments`，尚未执行生产全量 Universe 同步。
+
+Universe 生命周期已补齐：权威清单中未出现的 active 实体先标记 `inactive_candidate`，不直接删除或标记退市；历史快照/目录兜底不会改变 active 状态。相关测试已通过 40 项，生产全量 Universe 同步仍待单独执行。

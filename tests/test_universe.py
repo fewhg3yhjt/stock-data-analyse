@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from warehouse.universe import UniverseStore
 
 
@@ -54,3 +56,46 @@ def test_universe_snapshot_keeps_trade_status_and_catalog_entry(tmp_path):
     assert instrument["trade_status"] == "0"
     assert instrument["universe_status"] == "suspended"
     assert store.active_codes(snapshot_date="2026-09-09", entity_types={"stock"}) == []
+
+
+def test_authoritative_reconcile_marks_omitted_catalog_entity_candidate(tmp_path):
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    db = Path(tmp_path) / "management.db"
+    warehouse = Warehouse(Path(tmp_path) / "warehouse", meta_db_path=db)
+    warehouse.upsert_instruments([
+        {"code": "sh600000", "type": "stock", "universe_status": "active"},
+        {"code": "sh600001", "type": "stock", "universe_status": "active"},
+    ])
+    store = UniverseStore(db)
+    store.reconcile_authoritative_snapshot(
+        "2026-09-10", [{"code": "sh600000", "type": "stock", "tradeStatus": "1"}],
+    )
+
+    assert warehouse.get_instrument("sh600001")["universe_status"] == "inactive_candidate"
+
+
+def test_historical_fallback_does_not_retire_omitted_entity(tmp_path):
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    db = Path(tmp_path) / "management.db"
+    warehouse = Warehouse(Path(tmp_path) / "warehouse", meta_db_path=db)
+    warehouse.upsert_instruments([
+        {"code": "sh600000", "type": "stock", "universe_status": "active"},
+        {"code": "sh600001", "type": "stock", "universe_status": "active"},
+    ])
+    store = UniverseStore(db)
+    store.record_snapshot(
+        "2026-09-09", [{"code": "sh600000", "type": "stock", "tradeStatus": "1"}],
+        source="authoritative", authoritative=True, complete=True,
+    )
+    result = store.resolve(
+        snapshot_date="2026-09-10",
+        fetch_full=lambda _day: (_ for _ in ()).throw(RuntimeError("source down")),
+        entity_types={"stock"}, fallback_to_catalog=[
+            {"code": "sh600000", "type": "stock"}, {"code": "sh600001", "type": "stock"},
+        ],
+    )
+
+    assert result["authoritative"] is False
+    assert warehouse.get_instrument("sh600001")["universe_status"] == "active"
