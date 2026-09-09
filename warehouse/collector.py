@@ -384,9 +384,6 @@ class MarketCollector:
         skipped = 0
         t0 = time.time()
 
-        # 解析写入目标
-        raw_source = source
-
         # Query the persistent index per selected entity type; never scan Raw
         # files during normal incremental capture.
         last_dates = {}
@@ -400,28 +397,6 @@ class MarketCollector:
                 ).items()
             })
         logger.info("覆盖索引命中: %d 个标的（来自 management.db）", len(last_dates))
-
-        # 内存只持有「按月累积」的数据块；每 flush_every 个标的落盘一次并清空，
-        # 避免全市场 × 多月在内存中累积过高（2C2G 下 OOM 风险）。
-        month_bufs: dict[str, Optional[pd.DataFrame]] = {}
-
-        def _flush():
-            """把内存中的月份块合并写入磁盘，然后清空。"""
-            for ym, df in month_bufs.items():
-                if df is None or len(df) == 0:
-                    continue
-                if raw_source:
-                    # 写贴源层：该源分区独立，仅追加/合并本标的
-                    self.warehouse.raw.write(raw_source, ym, df)
-                else:
-                    # 写加工层 daily
-                    existing = self.warehouse.read_daily(ym)
-                    if existing is not None and len(existing):
-                        df = pd.concat([existing, df], ignore_index=True)
-                    df = df.drop_duplicates(subset=["date", "code"])
-                    df = df.sort_values(["date", "code"])
-                    self.warehouse.write_daily_partition(ym, df)
-            month_bufs.clear()
 
         end_ts = pd.Timestamp(end_date)
         for i, code in enumerate(symbols, 1):
@@ -516,27 +491,11 @@ class MarketCollector:
                 coverage.record_success(dataset_name="stock_daily", source_name=source,
                                         entity_type=symbol_types.get(code, "unknown"), entity_id=code,
                                         data_dates=dates, batch_id=batch_id)
-            # 拆入内存中的月份块（去掉该标的旧数据，追加新数据）
-            for ym, grp in df.groupby(df["date"].dt.strftime("%Y-%m")):
-                cur = month_bufs.get(ym)
-                if cur is not None and len(cur):
-                    cur = cur[cur["code"] != code]
-                    merged = pd.concat([cur, grp], ignore_index=True)
-                else:
-                    merged = grp.copy()
-                merged = merged.drop_duplicates(subset=["date", "code"])
-                merged = merged.sort_values(["date", "code"])
-                month_bufs[ym] = merged
             added += len(df)
             if progress_callback:
                 progress_callback(i, len(symbols), code, "已入库")
             if i % flush_every == 0 or i == len(symbols):
-                _flush()
                 logger.info("进度 %d/%d，已入库 %d 行（已落盘）", i, len(symbols), added)
-
-        # 兜底落盘（flush_every > 总标的时）
-        if month_bufs:
-            _flush()
 
         elapsed = time.time() - t0
         raw_result = None

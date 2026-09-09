@@ -101,6 +101,26 @@ def test_tencent_capture_preserves_source_values_in_raw(tmp_path, monkeypatch):
     assert "raw_amount_unit" not in raw.columns
 
 
+def test_stock_daily_capture_does_not_use_legacy_monthly_raw_writer(tmp_path, monkeypatch):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    collector = MarketCollector(warehouse=warehouse, query_interval=0)
+
+    def fail_monthly_writer(*args, **kwargs):
+        raise AssertionError("stock_daily capture must use immutable Raw Batch writer")
+
+    monkeypatch.setattr(warehouse.raw, "write", fail_monthly_writer)
+    monkeypatch.setattr(collector, "_fetch_symbol_tencent", lambda code, start, end, request_timeout=None: pd.DataFrame({
+        "date": [pd.Timestamp("2026-08-28")], "code": [code], "open": [10.0],
+        "high": [10.5], "low": [9.8], "close": [10.2], "volume": [100.0],
+        "amount": [102.0], "turn": [1.0],
+    }))
+    result = collector.sync_daily(
+        start_date="2026-08-28", end_date="2026-08-28", symbols=["sh600000"],
+        source="tencent", target="raw:tencent", capture_raw=True,
+    )
+    assert result["raw_batch"]["row_count"] == 1
+
+
 def test_daily_capture_requires_explicit_date_range(tmp_path):
     collector = MarketCollector(warehouse=Warehouse(tmp_path / "warehouse"), query_interval=0)
     with pytest.raises(ValueError, match="必须显式传入"):
