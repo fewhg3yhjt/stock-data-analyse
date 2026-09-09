@@ -228,11 +228,12 @@ def test_builder_rejects_unknown_raw_units(tmp_path):
         warehouse, dataset_name="stock_daily", source_name="tencent",
         frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
                               "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
-                              "volume": [1.0], "amount": [0.1]})],
+                              "volume": [1.0], "amount": [0.1],
+                              "raw_volume_unit": ["unknown"], "raw_amount_unit": ["yuan"]})],
         expected_symbols=1, success_symbols=1, universe_id="u",
         request_context={"units": {"volume": "unknown", "amount": "yuan"}},
     )
-    with pytest.raises(ValueError, match="单位未识别"):
+    with pytest.raises(ValueError, match="未知 volume 单位|单位未识别"):
         DailyBuilder(warehouse).build_partition(
             "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
         )

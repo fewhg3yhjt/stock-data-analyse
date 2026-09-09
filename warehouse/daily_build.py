@@ -56,20 +56,12 @@ class DailyBuilder:
         out["date"] = pd.to_datetime(out["date"], errors="coerce")
         out["code"] = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
         units = units or {}
-        if source == "tencent" and units.get("resolution") == "tencent_type_dependent_contract_v2":
-            units = {}
         row_volume_units = out.get("raw_volume_unit")
         row_amount_units = out.get("raw_amount_unit")
-        if source == "tencent" and row_volume_units is None and not units:
-            # Legacy Tencent Raw batches predate unit metadata. Their verified
-            # contract is hand/wan_yuan for normal securities, while sh68*
-            # rows use shares/wan_yuan. This only affects the build view; Raw
-            # files and their source-batch metadata remain unchanged.
-            code_series = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
-            row_volume_units = pd.Series("hand", index=out.index)
-            row_volume_units.loc[code_series.str.startswith(("sh68", "sh5", "sz15", "sz16", "sz18"))] = "share"
-            row_amount_units = pd.Series("wan_yuan", index=out.index)
-            row_amount_units.loc[code_series.str.startswith(("sh5", "sz15", "sz16", "sz18"))] = "yuan"
+        if source == "tencent" and row_volume_units is None:
+            # Batch-level Tencent units may describe mixed historical data and
+            # must not override row-level/type-aware interpretation.
+            row_volume_units, row_amount_units = self._infer_tencent_units(out)
         if row_volume_units is not None:
             # Tencent's 68xxxx STAR/BEI? market response is share-based.
             # Enforce the adapter contract even for legacy repair batches that
@@ -111,6 +103,38 @@ class DailyBuilder:
             if field["name"] not in out:
                 out[field["name"]] = pd.NA
         return out[[field["name"] for field in self.config["fields"]]]
+
+    @staticmethod
+    def _infer_tencent_units(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+        """Infer legacy Tencent units per row from type and value consistency."""
+        codes = frame["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+        volume = pd.to_numeric(frame.get("volume"), errors="coerce")
+        amount = pd.to_numeric(frame.get("amount"), errors="coerce")
+        close = pd.to_numeric(frame.get("close"), errors="coerce")
+        candidates = {
+            "hand/wan_yuan": amount * 10000 / (volume * 100 * close),
+            "share/wan_yuan": amount * 10000 / (volume * close),
+            "hand/yuan": amount / (volume * 100 * close),
+            "share/yuan": amount / (volume * close),
+        }
+        preferred = pd.Series("hand/wan_yuan", index=frame.index)
+        preferred.loc[codes.str.startswith("sh68")] = "share/wan_yuan"
+        preferred.loc[codes.str.startswith(("sh5", "sz15", "sz16", "sz18"))] = "share/yuan"
+        result = preferred.copy()
+        for index in frame.index:
+            valid = {
+                name: float(values.loc[index])
+                for name, values in candidates.items()
+                if pd.notna(values.loc[index]) and 0.2 <= float(values.loc[index]) <= 5.0
+            }
+            if valid:
+                result.loc[index] = min(
+                    valid,
+                    key=lambda name: (name != preferred.loc[index], abs(valid[name] - 1.0)),
+                )
+        volume_units = result.str.split("/").str[0]
+        amount_units = result.str.split("/").str[1]
+        return volume_units, amount_units
 
     def _normalize_current(self, frame: pd.DataFrame) -> pd.DataFrame:
         out = frame.copy()
@@ -177,6 +201,10 @@ class DailyBuilder:
                     if fallback is None:
                         raise ValueError(f"{source} Raw Batch {batch_id or path} 缺少单位元数据")
                     units = {**fallback, "resolution": "source_config_default"}
+            elif source == "tencent":
+                # Historical Batch-level declarations can be wrong for mixed
+                # stock/ETF/STAR data; _normalize resolves each row instead.
+                units = {}
             frame = self._read_raw_partition(path, source, partition, units=units)
             if frame is not None and not frame.empty:
                 previous = source_frames.get(source)

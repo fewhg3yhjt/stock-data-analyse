@@ -446,6 +446,7 @@ pids_limit: 64
 - Raw 写入前会恢复为腾讯运输单位，并保存 `raw_volume_unit/raw_amount_unit`；后续 Build 统一输出股/元。
 - 历史缺少单位元数据的 Tencent Raw 在 Build 阶段按相同代码规则推断，原始 Raw 和旧 Batch 元数据不变；显式 Batch/行级单位优先。
 - 单位专项、采集、Build、Quality、DatasetAccess、Coverage 和 Data Worker 回归共 77 项通过；尚未执行生产历史分区的重新 Build/Publish。
+- 旧 Tencent Batch 级 `request_context.units` 不再覆盖历史混合数据的逐行判断；Build 仅信任行级单位，否则按现有类型和数值一致性逻辑推断。
 
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
