@@ -190,6 +190,8 @@ def _build(warehouse: Warehouse, request: dict) -> dict:
             item = ("tencent", path, request["input_batch_id"])
             if item[2] not in {entry[2] for entry in selected}:
                 selected.append(item)
+        else:
+            selected = None
         build = DailyBuilder(warehouse).build_partition(
             partition, selected, include_current=not request.get("controlled_validation"),
         )
