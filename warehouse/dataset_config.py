@@ -98,7 +98,7 @@ def validate_dataset_config(data: dict, *, dataset_name: str = "stock_daily") ->
                 raise DatasetConfigError(f"sources[{index}].unit_rules[{rule_index}] 必须声明 volume 和 amount")
             if rule.get("default"):
                 defaults += 1
-            elif not isinstance(rule.get("code_prefixes"), list) or not rule["code_prefixes"]:
+            elif not rule.get("inference_only") and (not isinstance(rule.get("code_prefixes"), list) or not rule["code_prefixes"]):
                 raise DatasetConfigError(f"sources[{index}].unit_rules[{rule_index}] 必须声明 code_prefixes 或 default")
         if defaults > 1:
             raise DatasetConfigError(f"sources[{index}].unit_rules 最多只能有一个 default 规则")

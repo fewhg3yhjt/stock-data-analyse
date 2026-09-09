@@ -114,6 +114,11 @@ sources:
         default: true
         volume: hand
         amount: wan_yuan
+      - name: legacy_standardized
+        inference_only: true
+        code_prefixes: [legacy]
+        volume: share
+        amount: yuan
     request_defaults:
       adjust: qfq
   - name: baostock

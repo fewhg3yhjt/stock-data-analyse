@@ -69,6 +69,7 @@ def check_stock_daily(path, expected_symbols: int | None = None,
         denominator = numeric["volume"] * numeric["close"]
         implied = numeric["amount"] / denominator.replace(0, pd.NA)
         abnormal = implied.notna() & ((implied < implied_min) | (implied > implied_max))
+        abnormal_count = int(abnormal.sum())
         for index in frame.index[abnormal][:100]:
             unit_anomalies.append({
                 "date": str(frame.at[index, "date"])[:10], "code": str(frame.at[index, "code"]),
@@ -84,7 +85,7 @@ def check_stock_daily(path, expected_symbols: int | None = None,
         "coverage": coverage,
         "freshness": freshness,
         "source_conflict": {"count": conflict_count, "details": source_conflicts or []},
-        "unit_consistency": {"abnormal_count": int(len(unit_anomalies)), "details": unit_anomalies,
+        "unit_consistency": {"abnormal_count": abnormal_count, "details": unit_anomalies,
                              "min": implied_min, "max": implied_max},
     }
     fail = duplicate > config.get("duplicates", {}).get("fail_if_gt", 0)

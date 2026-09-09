@@ -119,6 +119,10 @@ def test_stock_daily_capture_does_not_use_legacy_monthly_raw_writer(tmp_path, mo
         source="tencent", target="raw:tencent", capture_raw=True,
     )
     assert result["raw_batch"]["row_count"] == 1
+    effective = pd.read_parquet(
+        warehouse.raw.effective_path("tencent", "stock_daily", "2026-08")
+    )
+    assert len(effective) == 1
 
 
 def test_effective_raw_merges_by_key_and_new_data_wins(tmp_path):
