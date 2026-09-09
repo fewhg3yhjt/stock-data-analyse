@@ -134,6 +134,6 @@ Universe 生命周期已补齐：权威清单中未出现的 active 实体先标
 
 受控生产验证已完成到 Raw：`sh600000` 在 `2026-09-08` 成功采集 1 行并更新 coverage；后续 Build 被历史 Raw Batch 缺少单位元数据阻断，未发布新版本。ETF 尚未执行，需先处理历史 Raw 契约阻断后再验证完整下游链路。
 
-历史 Tencent Raw 的单位问题已改为处理期修复：Build 读取时普通证券按 `hand/wan_yuan`、`sh68*` 按 `share/wan_yuan` 推断，原始 Raw 和 Batch 元数据不变；显式单位优先，质量检查仍保留。相关回归 73 项通过，尚未执行生产历史分区 Build/Publish。
+历史 Tencent Raw 的单位问题已改为处理期修复：Build 读取时普通股票按 `hand/wan_yuan`、`sh68*` 按 `share/wan_yuan`、ETF 按 `share/yuan` 推断，原始 Raw 和 Batch 元数据不变；显式单位优先，质量检查仍保留。相关回归 73 项通过，尚未执行生产历史分区 Build/Publish。
 
 Tencent 分类型单位契约已修正：普通股票 `hand/wan_yuan`、`sh68*` `share/wan_yuan`、ETF `share/yuan`；采集层保留行级单位，Build 层统一输出股/元，历史无单位 Raw 只在处理期按代码推断。相关数据流水线回归 77 项通过，尚未执行生产历史数据重建或发布。

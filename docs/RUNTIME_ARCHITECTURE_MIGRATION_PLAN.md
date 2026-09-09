@@ -434,6 +434,7 @@ pids_limit: 64
 
 - 未修改历史 Raw 文件，也未修改原有 SourceBatch `request_context`。
 - `DailyBuilder` 在读取缺少单位元数据的历史 Tencent Batch 时，按行推断单位：普通证券 `volume=hand`、`sh68*` `volume=share`，两者 `amount=wan_yuan`。
+- 当前规则已扩展为：普通股票 `hand/wan_yuan`、`sh68*` `share/wan_yuan`、ETF `share/yuan`。
 - 已有显式 `raw_volume_unit/raw_amount_unit` 行级单位和 Batch `units` 元数据优先于推断规则；推断只发生在 Build 处理视图中。
 - 普通股票与 `sh68*` 混合样例已验证转换结果正确，Raw 文件字节保持不变；相关数据构建、采集、覆盖和 Worker 测试共 73 项通过。
 - 该处理期兼容规则仍需在真实历史分区 Build、Quality、Published 之前单独审计输出范围和单位质量，不自动覆盖旧 Published 版本。

@@ -299,6 +299,27 @@ def test_builder_infers_legacy_etf_share_yuan_units(tmp_path):
     assert result.iloc[0]["amount"] == 4000000.0
 
 
+def test_controlled_build_uses_only_explicit_input_batch(tmp_path):
+    from StockInvestmentTool.ops.task_execution import _build
+
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
+                              "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+                              "volume": [100.0], "amount": [102.0]})],
+        expected_symbols=1, success_symbols=1, universe_id="u", request_context={},
+    )
+    result = _build(warehouse, {
+        "period_start": "2026-08-28", "period_end": "2026-08-28",
+        "input_batch_id": source["batch_id"], "symbols": ["sh600000"],
+        "controlled_validation": True,
+    })
+
+    assert result["versions"]["2026-08"]["build"]["symbol_count"] == 1
+
+
 def test_quality_fails_amount_volume_unit_mismatch(tmp_path):
     path = tmp_path / "unit_bad.parquet"
     pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],

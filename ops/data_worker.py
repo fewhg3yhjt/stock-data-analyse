@@ -400,7 +400,7 @@ class DataWorker:
 
     def enqueue_downstream(self, request: dict, result: dict) -> list[dict]:
         """Queue the next data stage only after a successful upstream stage."""
-        if result.get("status") != "success":
+        if result.get("status") != "success" or request.get("request_payload", {}).get("controlled_validation"):
             return []
         chain = {
             "stock_daily_capture": "stock_daily_build",

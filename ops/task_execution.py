@@ -183,13 +183,18 @@ def _build(warehouse: Warehouse, request: dict) -> dict:
         # batch may only contain the symbols completed in the latest retry.
         # Building from it alone would replace a full month with a partial
         # snapshot and silently drop older successful symbols/dates.
-        selected = DailyBuilder(warehouse).select_raw_batches(partition)
+        if request.get("controlled_validation") and request.get("input_batch_id"):
+            selected = []
+        else:
+            selected = DailyBuilder(warehouse).select_raw_batches(partition)
         if request.get("input_batch_id"):
             path = _batch(warehouse, request["input_batch_id"])
             item = ("tencent", path, request["input_batch_id"])
             if item[2] not in {entry[2] for entry in selected}:
                 selected.append(item)
-        build = DailyBuilder(warehouse).build_partition(partition, selected, include_current=True)
+        build = DailyBuilder(warehouse).build_partition(
+            partition, selected, include_current=not request.get("controlled_validation"),
+        )
         ids = [item[2] for item in selected]
         version = PipelineState(warehouse.meta_db_path).create_version(build, source_batches=ids)
         versions[partition] = {"version": version, "build": build}

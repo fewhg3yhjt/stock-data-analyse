@@ -99,6 +99,15 @@ def test_data_worker_does_not_queue_after_failed_stage(tmp_path):
     assert worker.enqueue_downstream(request, {"status": "failed"}) == []
 
 
+def test_controlled_validation_does_not_queue_formal_downstream(tmp_path):
+    db, center, request_id = _request(tmp_path, task_key="stock_daily_build")
+    request = center.request(request_id)
+    request["request_payload"] = {"controlled_validation": True}
+    worker = DataWorker(db, task_keys={"stock_daily_quality"})
+
+    assert worker.enqueue_downstream(request, {"status": "success"}) == []
+
+
 def test_data_worker_default_allowlist_covers_daily_chain():
     from ops.data_worker import DEFAULT_DATA_TASKS
 
