@@ -286,6 +286,7 @@ class DataWorker:
                 input_versions=payload.get("input_versions") or {},
                 request_payload=child_payload,
             )
+            self.center.update_request(child_id, "running")
             results.append(self.execute_task_with_deadline(
                 request["task_key"], child_payload, child_id, deadline,
             ))
