@@ -131,3 +131,5 @@ docs/audits/production_legacy_runtime_reference_audit_YYYYMMDD.md
 Universe 双路径已建立：权威全量清单成功时同步证券目录和当日快照；获取失败时使用最近有效历史快照或 active 目录继续采集，但不据此执行退市标记。Data Worker 空范围任务只消费快照/目录，不再自行扫描历史 Raw；新证券和交易状态字段已进入 `instruments`，尚未执行生产全量 Universe 同步。
 
 Universe 生命周期已补齐：权威清单中未出现的 active 实体先标记 `inactive_candidate`，不直接删除或标记退市；历史快照/目录兜底不会改变 active 状态。相关测试已通过 40 项，生产全量 Universe 同步仍待单独执行。
+
+受控生产验证已完成到 Raw：`sh600000` 在 `2026-09-08` 成功采集 1 行并更新 coverage；后续 Build 被历史 Raw Batch 缺少单位元数据阻断，未发布新版本。ETF 尚未执行，需先处理历史 Raw 契约阻断后再验证完整下游链路。

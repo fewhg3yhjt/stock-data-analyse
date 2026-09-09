@@ -421,6 +421,15 @@ pids_limit: 64
 - `stock_daily_capture` 的空范围 Request 已接入 Universe 前置解析：权威清单优先，失败时历史快照/目录兜底，并将来源、权威性和快照日期传入 SourceBatch 上下文。
 - 新增/更新 Universe 生命周期和 Data Worker 前置解析测试，相关测试共 40 项通过；尚未执行生产全量 Universe 同步和退市确认策略。
 
+#### Universe 到 Raw 受控生产验证记录（2026-09-09）
+
+- Web 保持停止，仅创建 `sh600000` 单证券、`2026-09-08` 日期的明确 Request；未创建空 `symbols` 全市场 Request。
+- Data Worker 启动后完成 `stock_daily_capture`，SourceBatch `tencent_20260909095959_f22a55ba33` 成功，`expected_symbols=1`、`success_symbols=1`、`row_count=1`。
+- `dataset_entity_coverage` 已记录 `stock_daily/tencent/stock/sh600000` 的 `last_success_date=2026-09-08`，同时生成 1 个 Raw Parquet 文件；Universe 前置表在生产库中初始化但本次明确范围采集未触发全量 Universe 查询。
+- Data Worker 自动创建并执行 `stock_daily_build`，但被历史 Raw Batch `tencent_20260904190000_7dea9b14f4` 缺少 Tencent 单位元数据阻断；因此没有生成新的 `stock_daily`/`indicators` Version，也没有更新 Published Current。
+- `sh510300`（ETF）未执行；验证 Worker 已停止，当前没有 pending Request 或 running SourceBatch。
+- 验证结论：Universe/coverage/单证券 Capture 路径已真实跑通；后续 Build 受历史 Raw 契约问题阻断，必须先隔离或补齐历史单位元数据，不能跳过校验继续发布。
+
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
 目标：数据生产阶段独立落盘和传递版本。
