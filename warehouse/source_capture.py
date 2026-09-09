@@ -28,8 +28,8 @@ def capture_frames(warehouse, *, dataset_name: str, source_name: str,
         context = dict(request_context or {})
         if dataset_name == "stock_daily" and source_name == "tencent":
             context.setdefault("units", {
-                "volume": "hand", "amount": "wan_yuan",
-                "resolution": "tencent_newfqkline_contract_v1",
+                "volume": "type_dependent", "amount": "type_dependent",
+                "resolution": "tencent_type_dependent_contract_v2",
             })
         batch_id = batch_store.start(
             dataset_name=dataset_name, source_name=source_name, run_date=run_date,

@@ -254,11 +254,19 @@ class MarketCollector:
         df["code"] = code
         for c in ("open", "high", "low", "close"):
             df[c] = pd.to_numeric(df[c], errors="coerce")
-        # 腾讯 volume 单位是「手」，统一转成「股」（×100），与 baostock 对齐
-        df["volume"] = pd.to_numeric(df["volume"], errors="coerce") * 100
-        # 成交额: 万元 → 元（×10000），与 baostock 对齐
+        # Tencent's transport units differ by instrument: normal stocks use
+        # lots/ten-thousand-yuan, STAR stocks use shares/ten-thousand-yuan,
+        # while ETFs use shares/yuan. Keep the raw unit labels for Build.
+        code_normalized = str(code).lower().replace(".", "")
+        is_etf = code_normalized.startswith(("sh5", "sh51", "sh56", "sh58", "sz15", "sz16", "sz18"))
+        volume_unit = "share" if is_etf or code_normalized.startswith("sh68") else "hand"
+        amount_unit = "yuan" if is_etf else "wan_yuan"
+        df["raw_volume_unit"] = volume_unit
+        df["raw_amount_unit"] = amount_unit
+        # Normalize to standard shares/yuan for callers while retaining units.
+        df["volume"] = pd.to_numeric(df["volume"], errors="coerce") * (1 if volume_unit == "share" else 100)
         if "amount" in df.columns:
-            df["amount"] = pd.to_numeric(df["amount"], errors="coerce") * 10000
+            df["amount"] = pd.to_numeric(df["amount"], errors="coerce") * (1 if amount_unit == "yuan" else 10000)
         if "turn" in df.columns:
             df["turn"] = pd.to_numeric(df["turn"], errors="coerce")
         df["date"] = pd.to_datetime(df["date"])
@@ -512,8 +520,15 @@ class MarketCollector:
                     # Keep Tencent's transport units in Raw; YAML-driven Builder
                     # performs the single canonical conversion to shares/yuan.
                     if source == "tencent":
-                        raw_frame["volume"] = raw_frame["volume"] / 100
-                        raw_frame["amount"] = raw_frame["amount"] / 10000
+                        code_series = raw_frame["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+                        is_etf = code_series.str.startswith(("sh5", "sh51", "sh56", "sh58", "sz15", "sz16", "sz18"))
+                        is_share_volume = is_etf | code_series.str.startswith("sh68")
+                        raw_frame["raw_volume_unit"] = "hand"
+                        raw_frame.loc[is_share_volume, "raw_volume_unit"] = "share"
+                        raw_frame["raw_amount_unit"] = "wan_yuan"
+                        raw_frame.loc[is_etf, "raw_amount_unit"] = "yuan"
+                        raw_frame["volume"] = raw_frame["volume"].where(is_share_volume, raw_frame["volume"] / 100)
+                        raw_frame["amount"] = raw_frame["amount"].where(is_etf, raw_frame["amount"] / 10000)
                     raw_writer.append(raw_frame)
                 except Exception:
                     raw_capture_failed = True

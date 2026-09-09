@@ -56,6 +56,8 @@ class DailyBuilder:
         out["date"] = pd.to_datetime(out["date"], errors="coerce")
         out["code"] = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
         units = units or {}
+        if source == "tencent" and units.get("resolution") == "tencent_type_dependent_contract_v2":
+            units = {}
         row_volume_units = out.get("raw_volume_unit")
         row_amount_units = out.get("raw_amount_unit")
         if source == "tencent" and row_volume_units is None and not units:
@@ -65,8 +67,9 @@ class DailyBuilder:
             # files and their source-batch metadata remain unchanged.
             code_series = out["code"].astype(str).str.lower().str.replace(".", "", regex=False)
             row_volume_units = pd.Series("hand", index=out.index)
-            row_volume_units.loc[code_series.str.startswith("sh68")] = "share"
+            row_volume_units.loc[code_series.str.startswith(("sh68", "sh5", "sz15", "sz16", "sz18"))] = "share"
             row_amount_units = pd.Series("wan_yuan", index=out.index)
+            row_amount_units.loc[code_series.str.startswith(("sh5", "sz15", "sz16", "sz18"))] = "yuan"
         if row_volume_units is not None:
             # Tencent's 68xxxx STAR/BEI? market response is share-based.
             # Enforce the adapter contract even for legacy repair batches that

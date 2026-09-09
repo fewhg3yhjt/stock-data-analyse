@@ -438,6 +438,14 @@ pids_limit: 64
 - 普通股票与 `sh68*` 混合样例已验证转换结果正确，Raw 文件字节保持不变；相关数据构建、采集、覆盖和 Worker 测试共 73 项通过。
 - 该处理期兼容规则仍需在真实历史分区 Build、Quality、Published 之前单独审计输出范围和单位质量，不自动覆盖旧 Published 版本。
 
+#### Tencent 分类型单位修复记录（2026-09-09）
+
+- 根据腾讯接口对异常证券的串行复核，确认 `stock / sh68* / ETF` 的原始单位不同，不能统一按普通股票换算。
+- 新采集适配器现在保留行级单位：普通股票为 `volume=hand, amount=wan_yuan`；`sh68*` 为 `volume=share, amount=wan_yuan`；ETF 为 `volume=share, amount=yuan`。
+- Raw 写入前会恢复为腾讯运输单位，并保存 `raw_volume_unit/raw_amount_unit`；后续 Build 统一输出股/元。
+- 历史缺少单位元数据的 Tencent Raw 在 Build 阶段按相同代码规则推断，原始 Raw 和旧 Batch 元数据不变；显式 Batch/行级单位优先。
+- 单位专项、采集、Build、Quality、DatasetAccess、Coverage 和 Data Worker 回归共 77 项通过；尚未执行生产历史分区的重新 Build/Publish。
+
 ### 阶段 4：Capture/Build/Quality/Publish 收口
 
 目标：数据生产阶段独立落盘和传递版本。

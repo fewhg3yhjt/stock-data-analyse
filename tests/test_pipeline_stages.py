@@ -281,6 +281,24 @@ def test_builder_enforces_tencent_68_market_share_contract(tmp_path):
     assert result.iloc[0]["volume"] == 1000000.0
 
 
+def test_builder_infers_legacy_etf_share_yuan_units(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    warehouse.metadata.register_stock_daily()
+    source = capture_frames(
+        warehouse, dataset_name="stock_daily", source_name="tencent",
+        frames=[pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh510300"],
+                              "open": [4.0], "high": [4.1], "low": [3.9], "close": [4.0],
+                              "volume": [1000000.0], "amount": [4000000.0]})],
+        expected_symbols=1, success_symbols=1, universe_id="u", request_context={},
+    )
+    build = DailyBuilder(warehouse).build_partition(
+        "2026-08", [("tencent", source["raw"]["path"], source["batch_id"])], include_current=False,
+    )
+    result = pd.read_parquet(build["path"])
+    assert result.iloc[0]["volume"] == 1000000.0
+    assert result.iloc[0]["amount"] == 4000000.0
+
+
 def test_quality_fails_amount_volume_unit_mismatch(tmp_path):
     path = tmp_path / "unit_bad.parquet"
     pd.DataFrame({"date": [pd.Timestamp("2026-08-28")], "code": ["sh600000"],
