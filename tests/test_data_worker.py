@@ -108,6 +108,35 @@ def test_data_worker_default_allowlist_covers_daily_chain():
     )
 
 
+def test_data_worker_empty_scope_refreshes_authoritative_universe(tmp_path, monkeypatch):
+    db = tmp_path / "management.db"
+    center = TaskCenter(db, db)
+    center.sync_definitions()
+    from StockInvestmentTool.warehouse.storage import Warehouse
+
+    warehouse = Warehouse(base_dir=tmp_path / "warehouse", meta_db_path=db)
+    worker = DataWorker(db, task_keys={"stock_daily_capture"}, batch_size=50)
+    monkeypatch.setattr(
+        "ops.data_worker.DataWorker._fetch_full_universe",
+        staticmethod(lambda _day: [
+            {"code": "sh600000", "type": "stock", "name": "浦发银行", "tradeStatus": "1"},
+            {"code": "sh510300", "type": "etf", "name": "沪深300ETF", "tradeStatus": "1"},
+        ]),
+    )
+    request_id = center.create_request(
+        "stock_daily_capture", "manual", period_start="2026-09-09", period_end="2026-09-09",
+        symbols=[], requested_by="test",
+    )
+    request = center.request(request_id)
+    payload = {"period_end": "2026-09-09"}
+    symbols = worker._active_symbols(request, payload)
+
+    assert symbols == ["sh600000", "sh510300"]
+    assert payload["universe_source"] == "authoritative"
+    assert payload["universe_authoritative"] is True
+    assert warehouse.get_instrument("sh600000")["last_seen_date"] == "2026-09-09"
+
+
 def test_data_worker_batches_stock_and_etf_separately(tmp_path):
     db = tmp_path / "management.db"
     center = TaskCenter(db, db)

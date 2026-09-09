@@ -165,7 +165,9 @@ def _capture(warehouse: Warehouse, request: dict, run_id: int) -> dict:
         start_date=request.get("period_start"), end_date=request.get("period_end"), symbols=symbols,
         include_etf=True, source="tencent", target="raw:tencent", capture_raw=True,
          flush_every=10, job_run_id=run_id, asset_types=["stock", "etf"],
-         timeout=float(task_timeout) if task_timeout is not None else None)
+          timeout=float(task_timeout) if task_timeout is not None else None,
+          request_context={key: request.get(key) for key in (
+              "universe_source", "universe_authoritative", "universe_snapshot_date")})
     if not result.get("source_batch_id") or result.get("raw_capture_failed"):
         raise RuntimeError("Raw Batch 未成功落盘")
     return result

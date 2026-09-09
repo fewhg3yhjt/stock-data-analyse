@@ -277,10 +277,11 @@ class MarketCollector:
                    target: str = "daily",
                    progress_callback=None, job_run_id: Optional[int] = None,
                    capture_raw: Optional[bool] = None,
-                    asset_types: Optional[list[str]] = None,
-                    force_refresh: bool = False,
-                    timeout: Optional[float] = None,
-                    deadline: Optional[float | datetime] = None) -> dict:
+                     asset_types: Optional[list[str]] = None,
+                     force_refresh: bool = False,
+                     timeout: Optional[float] = None,
+                     deadline: Optional[float | datetime] = None,
+                     request_context: Optional[dict] = None) -> dict:
         """全市场日线增量同步（核心）。
 
         Args:
@@ -354,11 +355,14 @@ class MarketCollector:
                 expected_symbols=len(symbols), universe_id=universe_id,
                 request_context={"source": source, "symbols_limited": max_symbols is not None,
                                   "include_etf": include_etf, "include_index": include_index,
+                                  "universe_source": request_context.get("universe_source") if isinstance(request_context, dict) else None,
+                                  "universe_authoritative": request_context.get("universe_authoritative") if isinstance(request_context, dict) else None,
+                                  "universe_snapshot_date": request_context.get("universe_snapshot_date") if isinstance(request_context, dict) else None,
                                   # Raw keeps Tencent transport values. Build converts once.
                                    "units": ({"volume": "hand", "amount": "wan_yuan",
                                               "resolution": "tencent_newfqkline_contract_v1"}
                                              if source == "tencent" else {})},
-                job_run_id=job_run_id, source_name=source,
+                 job_run_id=job_run_id, source_name=source,
             )
             raw_writer = self.warehouse.raw.begin_batch(
                 source, "stock_daily", datetime.now().strftime("%Y-%m-%d")

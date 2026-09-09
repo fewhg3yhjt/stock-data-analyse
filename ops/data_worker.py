@@ -258,7 +258,7 @@ class DataWorker:
                 request["task_key"], payload, request["request_id"], deadline,
             )
 
-        symbols = payload.get("symbols") or self._active_symbols(request)
+        symbols = payload.get("symbols") or self._active_symbols(request, payload)
         groups = self._batch_symbols(symbols)
         if len(groups) <= 1:
             payload["symbols"] = groups[0][1] if groups else []
@@ -311,9 +311,10 @@ class DataWorker:
                             "source_batch_ids": source_batches,
                             "asset_type_counts": asset_type_counts}}
 
-    def _active_symbols(self, request: dict) -> list[str]:
+    def _active_symbols(self, request: dict, payload: dict | None = None) -> list[str]:
         """Resolve the configured active universe without mixing industries."""
         from StockInvestmentTool.warehouse.storage import Warehouse
+        from StockInvestmentTool.warehouse.universe import UniverseStore
 
         configured = self.center.task(request["task_key"]) or {}
         config = next((item for item in configured.get("config_versions", [])
@@ -326,13 +327,63 @@ class DataWorker:
         warehouse = Warehouse(meta_db_path=self.db_path)
         from StockInvestmentTool.warehouse.universe import UniverseStore
         snapshot_date = request.get("period_end") or request.get("period_start")
-        universe = UniverseStore(self.db_path).latest_snapshot(
+        universe_store = UniverseStore(self.db_path)
+        catalog = warehouse.list_instruments(asset_types=set(allowed))
+        universe = universe_store.resolve(
+            snapshot_date=snapshot_date,
+            fetch_full=self._fetch_full_universe,
+            entity_types=set(allowed), fallback_to_catalog=catalog,
+        ) if snapshot_date else None
+        if universe and universe.get("authoritative"):
+            self._upsert_universe_items(warehouse, universe["items"], snapshot_date)
+        elif universe and payload is not None:
+            payload["universe_source"] = universe.get("source")
+            payload["universe_authoritative"] = bool(universe.get("authoritative"))
+        if universe and universe.get("items"):
+            if payload is not None:
+                payload["universe_source"] = universe.get("source")
+                payload["universe_authoritative"] = bool(universe.get("authoritative"))
+                payload["universe_snapshot_date"] = universe.get("snapshot_date", snapshot_date)
+            return [item["entity_id"] for item in universe["items"]]
+        universe = universe_store.latest_snapshot(
             as_of=snapshot_date, entity_types=set(allowed),
         ) if snapshot_date else None
         if universe and universe.get("items"):
             return [item["entity_id"] for item in universe["items"]]
         return [item["code"] for item in warehouse.list_instruments(asset_types=set(allowed))
                 if item.get("universe_status", "active") == "active"]
+
+    @staticmethod
+    def _fetch_full_universe(snapshot_date: str) -> list[dict]:
+        """Fetch the explicitly requested day's full security universe."""
+        from StockInvestmentTool.warehouse.collector import MarketCollector
+
+        return MarketCollector().list_market(
+            include_etf=True, include_index=False, day=snapshot_date,
+        )
+
+    @staticmethod
+    def _upsert_universe_items(warehouse, items: list[dict], snapshot_date: str) -> None:
+        """Persist authoritative universe metadata without retiring omissions."""
+        from StockInvestmentTool.screener.board import detect_board
+
+        rows = []
+        for item in items:
+            code = str(item.get("code") or item.get("entity_id") or "").lower().replace(".", "")
+            asset_type = str(item.get("type") or item.get("entity_type") or "").lower()
+            if not code or asset_type not in {"stock", "etf", "index"}:
+                continue
+            trade_status = str(item.get("tradeStatus") or item.get("trade_status") or "")
+            active = trade_status.lower() in {"", "1", "active", "trading", "正常", "交易"}
+            rows.append({
+                "code": code, "name": item.get("name", ""), "type": asset_type,
+                "board": detect_board(code) or ("" if asset_type == "stock" else asset_type),
+                "trade_status": trade_status,
+                "universe_status": "active" if active else "suspended",
+                "first_seen_date": snapshot_date, "last_seen_date": snapshot_date,
+                "last_source": "baostock",
+            })
+        warehouse.upsert_instruments(rows)
 
     def _batch_symbols(self, symbols: list[str]) -> list[tuple[str, list[str]]]:
         known = self.center.db_path

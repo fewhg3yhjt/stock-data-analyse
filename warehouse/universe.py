@@ -97,7 +97,8 @@ class UniverseStore:
             )
         return {"snapshot_date": snapshot_date, "source": source,
                 "authoritative": bool(authoritative), "complete": bool(complete),
-                "entity_count": len(normalized), "error_message": error_message}
+                "entity_count": len(normalized), "error_message": error_message,
+                "items": normalized}
 
     def latest_snapshot(self, *, as_of: str, entity_types: set[str] | None = None) -> dict | None:
         with self._connect() as conn:

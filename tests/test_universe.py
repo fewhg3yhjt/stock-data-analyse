@@ -9,6 +9,7 @@ def test_universe_authoritative_snapshot_and_history_fallback(tmp_path):
         entity_types={"stock"}, fallback_to_catalog=[],
     )
     assert result["authoritative"] is True
+    assert result["items"][0]["entity_id"] == "sh600000"
     assert store.active_codes(snapshot_date="2026-09-07", entity_types={"stock"}) == ["sh600000"]
 
     fallback = store.resolve(
