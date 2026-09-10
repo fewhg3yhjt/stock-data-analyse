@@ -277,6 +277,8 @@ Metadata
 - 任务 `success` 只表示执行完成；只有 Quality 通过并完成 Publish，数据才是正式可消费数据。
 - `SourceBatch`、`Coverage`、`Dataset Version` 和 `Quality Report` 分别记录采集事实、覆盖事实、生成结果和质量结论，不能互相替代。
 
+结果唯一性规则：日期级 Current Raw 和最终 Candidate 都必须以 `(date, code)` 为唯一业务键。历史整理脚本先在单日 Raw 阶段完成去重；Build 的最终去重只是防御性门禁，不能替代上游重复检查，也不能把单位冲突隐藏为“最后一条记录”。
+
 ### 4.5 历史异常数据处理范式
 
 历史存量修复属于一次性数据处理，不属于日常生产数据模块的默认职责。处理时必须将历史输入和正式生产流程分开：

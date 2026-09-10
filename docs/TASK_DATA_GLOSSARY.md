@@ -140,7 +140,7 @@ Parquet/CSV 原始数据、标准结果和派生结果文件
 | Indicators | 基于 Published 上游数据生成派生指标 |
 | Business Consumers | 使用 Published 数据完成业务功能 |
 
-Raw 不做单位转换；单位转换属于 Build / Cleaning，并且必须由数据集 YAML 配置驱动。Raw Batch 是采集证据，Current Raw 是去重后的有效原始视图。任务成功不等于质量合格，Candidate 也不等于正式数据。
+Raw 不做单位转换；单位转换属于 Build / Cleaning，并且必须由数据集 YAML 配置驱动。Raw Batch 是采集证据，Current Raw 是按 `(date, code)` 去重后的有效原始视图；最终 Candidate 也不得存在重复业务键。任务成功不等于质量合格，Candidate 也不等于正式数据。
 
 ### 历史异常处理范式
 
