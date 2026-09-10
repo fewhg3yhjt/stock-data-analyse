@@ -447,6 +447,15 @@ pids_limit: 64
 - `request_context.units` 不再由 Capture 自动注入，也不作为 Tencent Raw 的标准化依据；显式行级单位仅作为历史/测试输入的清洗元数据。
 - 采集、Build、Quality、DatasetAccess、Coverage 和 Data Worker 回归 51 项通过；尚未执行生产历史分区的重新 Build/Publish。
 
+#### 历史异常数据处理范式
+
+- 历史存量异常由一次性脚本处理，不通过新增生产 Build 兼容规则解决。
+- 脚本必须按单日读取历史 Raw，先还原预期源头运输格式，再按 `date + code` 去重，生成日期级 Current Raw；之后只调用现有 Build、Quality、Publish 和 Indicators。
+- 普通股票和 ETF 的预期单位为 `hand / wan_yuan`，`sh68*` 为 `share / wan_yuan`；单位无法唯一确认时必须暂停确认。
+- 历史修复按 `2026-09` 向前逆序，每月完成后复查覆盖、单位、重复键、日期和血缘，未通过不得进入下个月。
+- 不得擅自修改 `warehouse/`、`ops/` 生产数据模块来适配单个历史异常；需要删除时只允许负责人确认的 `date + code` 精确范围，不得删除整个 Raw Batch。
+- `2023-09-01` 的 638 条异常删除并重采是已确认的独立案例，不构成其他历史月份的自动处理授权。
+
 全量 ETF 实测补充：管理库中 `1,630` 只 ETF 按 Tencent 接口串行采集 `2026-09-08`，`1,628` 只返回数据、2 只为空、0 只请求失败；全部成功样本符合 `hand/wan_yuan`，因此 ETF 的 YAML 规则统一采用 `hand/wan_yuan`。验证产物位于 `/tmp/opencode/etf_unit_audit_20260908`，未写入生产数据。
 
 ### 阶段 4：Capture/Build/Quality/Publish 收口
