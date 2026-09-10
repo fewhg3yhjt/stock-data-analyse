@@ -2418,6 +2418,74 @@ stock_daily
 
 数据状态为“未完成”的能力不得在产品总览中标记为 healthy/complete；降级能力必须返回限制原因、日期和覆盖范围。
 
+### 28.9 数据处理完成度与强制验收标准
+
+“某月完成”必须拆成两个独立结论，不能仅凭某个任务返回 `success` 或某个 Published 版本存在来判断。
+
+#### A. 底层 Raw 整理完成
+
+必须同时满足：
+
+- 目标月份所有交易日均已明确列出；周末、节假日和非交易日不计为缺失交易日。
+- 每个目标交易日都有日期级 Current Raw 文件，文件可读且 Parquet footer 完整。
+- 每个文件只包含该业务日期的数据。
+- 每个 `(date, code)` 在日期级 Current Raw 中唯一。
+- 历史记录已先还原为预期源头单位，再执行去重。
+- `unresolved` 唯一 `(date, code)` 数量为 `0`；小批量自动重采必须记录删除和重采数量。
+- 缺失证券/日期已按 Universe、交易状态、空响应、失败和真正缺口分类。
+- 原始输入文件修改、删除和保留范围有明确记录。
+- 不再有未声明的旧 Raw Batch 或旧月级文件参与后续正式 Build。
+
+每月必须输出以下统计：
+
+```text
+月份、交易日总数、日期级文件数、缺失交易日数
+原始记录数、去重前记录数、去重后记录数、删除重复数
+唯一证券数、每日证券数分布、unresolved 数量
+重采证券数、重采成功/失败/空响应数
+每日重复键数、每日单位异常数、损坏文件数
+旧 Raw 是否仍参与 Build、Raw 是否被修改
+```
+
+#### B. 正式发布链路完成
+
+必须完整执行并记录：
+
+```text
+日期级 Current Raw
+  -> 现有 Build
+  -> Candidate
+  -> Quality
+  -> stock_daily Publish
+  -> DatasetAccess
+  -> Indicators Build
+  -> Indicators Quality
+  -> indicators Publish
+  -> DatasetAccess
+```
+
+每月必须输出以下结果：
+
+- Candidate 和 Published 的行数、证券数、日期范围及每日分布。
+- 重复主键、OHLC 异常、负成交量/成交额、单位异常数量。
+- Quality 状态及 `publish_allowed`，不能把 WARNING 写成 PASS。
+- `stock_daily` 版本、`indicators` 版本及指标输入版本。
+- DatasetAccess 读取行数、`data_as_of`、`quality_status`、`fallback_used`。
+- Request、JobRun、SourceBatch 的终态和是否存在残留 `running`。
+- 至少三条真实数据示例：普通股票、科创板、ETF；每条包含 Raw 的 `volume/amount`、`close`、最终 `volume/amount` 和使用的单位规则。
+
+只有 A、B 两级都满足，才允许表述为“该月数据处理完成”。否则必须明确写成：
+
+```text
+底层 Raw 整理：完成/未完成
+正式 Build：完成/未完成
+Quality：PASS/WARNING/FAIL
+stock_daily Publish：完成/未完成
+Indicators：完成/未完成
+```
+
+历史修复按 `2026-09 -> 2026-08 -> ... -> 2023-09` 逆序执行；每月验收统计和真实示例未完成前，不得进入下一个月份。生产数据模块需要变更时，必须先说明原因、影响和替代方案，得到负责人确认后才能修改。
+
 ## 29. 行业数据与轮动观测规范
 
 本节定义第一阶段行业数据接入的正式口径、数据集边界和采集链路。第一阶段只建设证监会行业股票归属和同花顺行业指数行情，不建设概念板块，不把两个来源强行合并为同一分类体系。

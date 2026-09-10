@@ -161,6 +161,12 @@ Raw 不做单位转换；单位转换属于 Build / Cleaning，并且必须由�
 
 同一月份 unresolved 唯一 `(date, code)` 不超过 `100` 条时，直接精确删除这些记录并重新抓取；超过 `100` 条，或重采后仍异常/为空/状态矛盾时，必须暂停并请求确认。不得删除整个 Raw Batch 来掩盖单条异常。删除前必须固定日期、证券数量和文件范围，删除后校验 Parquet 可读、目标键已移除、非目标数据未改变，再进入正式链路。
 
+### 月度完成判定
+
+月度完成必须同时满足“底层 Raw 整理”和“正式发布链路”两级验收。底层 Raw 整理要求所有交易日均有可读日期级 Current Raw、每个 `(date, code)` 唯一、先还原单位再去重、`unresolved=0`，并明确旧 Raw 是否仍参与 Build。正式发布链路要求完成 Build、Quality、stock_daily Publish、DatasetAccess、Indicators Build/Quality/Publish，并报告版本、质量、覆盖、回退和任务终态。
+
+每月必须提供统计结果和真实示例，至少覆盖普通股票、科创板和 ETF；不能仅凭任务 `success`、Candidate 存在或 Published 指针存在宣布完成。若任一级未完成，必须分别标记 Raw 整理、Build、Quality、Publish 和 Indicators 的实际状态。
+
 ## 十、任务执行的统一入口
 
 以下方式都必须生成统一的执行请求并进入同一个 Runner：

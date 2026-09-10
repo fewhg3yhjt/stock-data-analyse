@@ -461,6 +461,12 @@ pids_limit: 64
 
 历史结果唯一性规则：一次性脚本生成日期级 Current Raw 时必须先按 `(date, code)` 去重；最终 Candidate 保留同键防御性去重，但不能用最终去重掩盖上游重复或单位冲突。历史迁移未完成期间，旧 Raw Batch 只能补充 Current Raw 尚未覆盖的键。
 
+#### 月度完成判定门禁
+
+每个月必须分开验收“底层 Raw 整理”和“正式发布链路”。Raw 整理必须提供交易日清单、日期级文件数、文件可读性、去重前后行数、每日证券数、unresolved、重采、重复键、单位异常、缺失分类和旧 Raw 参与情况；正式链路必须提供 Build、Quality、stock_daily Publish、DatasetAccess、Indicators Build/Quality/Publish 的版本血缘、质量状态、读取上下文和任务终态。
+
+每月报告至少提供普通股票、科创板和 ETF 的真实 Raw/最终数据示例。只有两级门禁全部满足才可称为该月完成；否则必须分别列出 Raw 整理、Build、Quality、Publish、Indicators 状态。历史处理固定按 `2026-09` 向前逆序，未完成当前月份验收不得进入下个月。
+
 全量 ETF 实测补充：管理库中 `1,630` 只 ETF 按 Tencent 接口串行采集 `2026-09-08`，`1,628` 只返回数据、2 只为空、0 只请求失败；全部成功样本符合 `hand/wan_yuan`，因此 ETF 的 YAML 规则统一采用 `hand/wan_yuan`。验证产物位于 `/tmp/opencode/etf_unit_audit_20260908`，未写入生产数据。
 
 ### 阶段 4：Capture/Build/Quality/Publish 收口
