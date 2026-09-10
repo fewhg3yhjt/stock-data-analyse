@@ -303,9 +303,14 @@ class MarketCollector:
                    capture_raw: Optional[bool] = None,
                      asset_types: Optional[list[str]] = None,
                      force_refresh: bool = False,
-                     timeout: Optional[float] = None,
-                     deadline: Optional[float | datetime] = None,
-                     request_context: Optional[dict] = None) -> dict:
+                      timeout: Optional[float] = None,
+                      deadline: Optional[float | datetime] = None,
+                      request_context: Optional[dict] = None,
+                      run_date: Optional[str] = None,
+                      raw_subdir: Optional[str] = None,
+                      raw_batch_size: Optional[int] = None,
+                      auto_merge_effective: bool = True,
+                      pending_codes_path: Optional[str | Path] = None) -> dict:
         """全市场日线增量同步（核心）。
 
         Args:
@@ -318,6 +323,11 @@ class MarketCollector:
             source: 数据源 baostock（默认）/ tencent（腾讯，不封IP）
              target: 仅允许 raw:<src>；旧的 daily 直写路径已下线。
             force_refresh: 忽略已有覆盖日期，重新请求指定证券的完整区间。
+            run_date: Raw Batch 目录日期；未提供时使用当前运行日期。
+            raw_subdir: Raw Batch 目录下的子目录，例如 ``_tmp``。
+            raw_batch_size: 每个 Raw 文件最多包含的证券数；未提供时不轮转。
+            auto_merge_effective: 成功采集后是否自动合并 Current Raw。
+            pending_codes_path: 显式待拉取清单 CSV；提供后按清单读取 symbols。
 
         Returns:
             dict: 统计（新增行数/失败数/耗时）
@@ -327,6 +337,20 @@ class MarketCollector:
                 "sync_daily 必须显式传入 start_date 和 end_date；"
                 "禁止隐式拉取历史区间"
             )
+        pending_path = Path(pending_codes_path) if pending_codes_path else None
+        if pending_path is not None:
+            if symbols is not None:
+                raise ValueError("pending_codes_path 与 symbols 不能同时指定")
+            if not pending_path.exists():
+                raise ValueError(f"待拉取清单不存在: {pending_path}")
+            pending = pd.read_csv(pending_path)
+            if not {"date", "code"}.issubset(pending.columns):
+                raise ValueError("待拉取清单必须包含 date/code 列")
+            pending["date"] = pending["date"].astype(str).str[:10]
+            pending["code"] = pending["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+            if set(pending["date"].dropna()) != {str(end_date)[:10]}:
+                raise ValueError("待拉取清单日期必须与 end_date 一致")
+            symbols = pending["code"].drop_duplicates().tolist()
 
         started_monotonic = time.monotonic()
         if timeout is not None:
@@ -372,14 +396,20 @@ class MarketCollector:
         batch_store = None
         batch_id = None
         raw_writer = None
+        raw_paths = []
+        raw_success_symbols = 0
+        last_raw_result = None
+        capture_date = run_date or datetime.now().strftime("%Y-%m-%d")
+        if raw_batch_size is not None and int(raw_batch_size) < 1:
+            raise ValueError("raw_batch_size 必须大于 0")
         raw_capture_failed = False
         if capture_raw:
             from StockInvestmentTool.warehouse.source_batches import SourceBatchStore
-            run_date = datetime.now().strftime("%Y-%m-%d")
-            universe_id = f"stock_etf_active_{run_date.replace('-', '')}"
+            batch_run_date = datetime.now().strftime("%Y-%m-%d")
+            universe_id = f"stock_etf_active_{batch_run_date.replace('-', '')}"
             batch_store = SourceBatchStore(self.warehouse.meta_db_path)
             batch_id = batch_store.start(
-                run_date=run_date, trade_date_start=start_date, trade_date_end=end_date,
+                run_date=batch_run_date, trade_date_start=start_date, trade_date_end=end_date,
                 expected_symbols=len(symbols), universe_id=universe_id,
                 request_context={"source": source, "symbols_limited": max_symbols is not None,
                                   "include_etf": include_etf, "include_index": include_index,
@@ -389,8 +419,9 @@ class MarketCollector:
                                    },
                  job_run_id=job_run_id, source_name=source,
             )
+            capture_date = run_date or datetime.now().strftime("%Y-%m-%d")
             raw_writer = self.warehouse.raw.begin_batch(
-                source, "stock_daily", datetime.now().strftime("%Y-%m-%d")
+                source, "stock_daily", capture_date, subdir=raw_subdir
             )
 
         from StockInvestmentTool.warehouse.coverage import CoverageStore
@@ -405,6 +436,7 @@ class MarketCollector:
         skipped_codes: list[str] = []
         timed_out = False
         skipped = 0
+        captured_symbols: set[str] = set()
         t0 = time.time()
 
         # Query the persistent index per selected entity type; never scan Raw
@@ -513,15 +545,25 @@ class MarketCollector:
                 continue
             if capture_raw and not raw_capture_failed:
                 try:
+                    if raw_batch_size and raw_success_symbols >= int(raw_batch_size):
+                        raw_result = raw_writer.finish()
+                        last_raw_result = raw_result
+                        raw_paths.append(raw_result["path"])
+                        raw_writer = self.warehouse.raw.begin_batch(
+                            source, "stock_daily", capture_date, subdir=raw_subdir
+                        )
+                        raw_success_symbols = 0
                     # Raw is an immutable source-fact layer. Cleaning and unit
                     # conversion happen later in DailyBuilder.
                     raw_writer.append(df.copy())
+                    raw_success_symbols += 1
                 except Exception:
                     raw_capture_failed = True
                     raw_writer.abort()
                     raw_writer = None
                     logger.exception("Raw Batch 采集过程中写入失败")
             if not raw_capture_failed:
+                captured_symbols.add(code)
                 dates = [str(value)[:10] for value in df["date"].dropna().unique()]
                 coverage.record_success(dataset_name="stock_daily", source_name=source,
                                         entity_type=symbol_types.get(code, "unknown"), entity_id=code,
@@ -538,19 +580,28 @@ class MarketCollector:
             try:
                 if raw_writer is None:
                     raise ValueError("Raw Batch 写入失败或没有可写数据")
-                raw_result = raw_writer.finish()
+                if raw_writer.row_count:
+                    raw_result = raw_writer.finish()
+                    last_raw_result = raw_result
+                    raw_paths.append(raw_result["path"])
+                elif last_raw_result is not None:
+                    raw_result = last_raw_result
+                else:
+                    raise ValueError("Raw Batch 没有可写数据")
                 batch_status = "failed" if timed_out and not added else ("partial_success" if failed else "success")
                 batch_store.finish(batch_id, success_symbols=len(symbols) - len(failed) - skipped,
                                    failed_symbols=len(failed), skipped_symbols=skipped,
-                                   row_count=raw_result["row_count"], raw_path=str(raw_result["path"]),
+                                   row_count=added, raw_path=str(raw_paths[0]) if raw_paths else None,
                                    checksum=raw_result["checksum"], file_size=raw_result["file_size"],
                                      status=batch_status, error_summary="采集任务超时" if timed_out else "",
                                      failure_details=failed)
-                if batch_status in {"success", "partial_success"}:
+                if batch_status in {"success", "partial_success"} and auto_merge_effective:
                     try:
-                        effective = self.warehouse.raw.merge_batch_to_effective(
-                            source, "stock_daily", raw_result["path"]
-                        )
+                        effective = {}
+                        for raw_path in raw_paths:
+                            effective.update(self.warehouse.raw.merge_batch_to_effective(
+                                source, "stock_daily", raw_path
+                            ))
                         batch_store.update_request_context(batch_id, {
                             "effective_raw": {
                                 month: {"path": str(item["path"]),
@@ -564,7 +615,7 @@ class MarketCollector:
                         batch_store.finish(
                             batch_id, success_symbols=len(symbols) - len(failed) - skipped,
                             failed_symbols=len(failed), skipped_symbols=skipped,
-                            row_count=raw_result["row_count"], raw_path=str(raw_result["path"]),
+                            row_count=added, raw_path=str(raw_paths[0]) if raw_paths else None,
                             checksum=raw_result["checksum"], file_size=raw_result["file_size"],
                             status="failed", error_summary=f"Current Raw 合并失败: {exc}",
                             failure_details=failed,
@@ -574,7 +625,7 @@ class MarketCollector:
                 raw_capture_failed = True
                 logger.error("Raw Batch 写入失败，不阻断旧 daily: %s", exc)
                 batch_store.finish(batch_id, success_symbols=len(symbols) - len(failed) - skipped,
-                                   failed_symbols=len(failed), skipped_symbols=skipped, row_count=0,
+                                   failed_symbols=len(failed), skipped_symbols=skipped, row_count=added,
                                    raw_path=None, checksum=None, file_size=None, status="failed",
                                    error_summary=str(exc), failure_details=failed)
         logger.info("日线增量完成: +%d 行, 失败 %d, 耗时 %.1fs",
@@ -606,6 +657,21 @@ class MarketCollector:
                 "failed_symbols": sorted(failed_set),
                 "skipped_symbols": sorted(skipped_set),
             })
+        if batch_store and batch_id and raw_paths:
+            batch_store.update_request_context(batch_id, {
+                "raw_paths": [str(path) for path in raw_paths],
+                "raw_subdir": raw_subdir or "",
+                "run_date": capture_date,
+                "auto_merge_effective": bool(auto_merge_effective),
+            })
+        if batch_store and batch_id and len(raw_paths) > 1:
+            batch_store.update_request_context(batch_id, {
+                "raw_batch_count": len(raw_paths),
+            })
+        if pending_path is not None:
+            remaining_codes = sorted(set(symbols) - captured_symbols)
+            pd.DataFrame({"date": [str(end_date)[:10]] * len(remaining_codes),
+                          "code": remaining_codes}).to_csv(pending_path, index=False)
         return {"added_rows": added, "symbols": len(symbols),
                 "failed": failed, "up_to_date": not failed and added == 0,
                 "status": status, "timed_out": timed_out,
@@ -616,7 +682,9 @@ class MarketCollector:
                  "asset_type_counts": asset_type_counts,
                  "coverage_by_type": coverage_by_type,
                  "coverage_by_board": coverage_by_board,
-                 "raw_batch": raw_result}
+                 "raw_batch": raw_result, "raw_paths": [str(path) for path in raw_paths],
+                 "auto_merge_effective": bool(auto_merge_effective),
+                 "pending_codes_path": str(pending_path) if pending_path else None}
 
 # ── baostock 包装（供 _bs_query 使用，统一走连接自愈）──
 

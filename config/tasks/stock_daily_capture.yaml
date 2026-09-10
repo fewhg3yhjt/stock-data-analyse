@@ -20,6 +20,11 @@ schedule:
 execution:
   manual_enabled: true
   retry_limit: 2
+  raw_run_date: period_end
+  raw_subdir: _tmp
+  raw_batch_size: 50
+  auto_merge_effective: false
+  pending_codes_path: null
 policy:
   on_partial_success: continue
   on_failure: block_downstream

@@ -58,6 +58,73 @@ def test_raw_batch_failure_leaves_no_final_file(tmp_path):
     assert not list((warehouse.base_dir / "raw" / "tencent" / "stock_daily" / "2026" / "08" / "28").glob("batch_*.parquet"))
 
 
+def test_raw_batch_supports_explicit_subdirectory(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    frame = pd.DataFrame({"date": pd.to_datetime(["2026-09-07"]), "code": ["sh600000"]})
+    result = warehouse.raw.write_batch("tencent", "stock_daily", "2026-09-07", [frame], subdir="_tmp")
+    assert result["path"].parts[-6:] == ("stock_daily", "2026", "09", "07", "_tmp", result["path"].name)
+
+
+def test_tencent_capture_can_write_business_date_tmp_without_effective(tmp_path, monkeypatch):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    collector = MarketCollector(warehouse=warehouse, query_interval=0)
+    monkeypatch.setattr(collector, "_fetch_symbol_tencent", lambda code, start, end, request_timeout=None: pd.DataFrame({
+        "date": [pd.Timestamp("2026-09-07")], "code": [code], "open": [10.0],
+        "high": [10.5], "low": [9.8], "close": [10.2], "volume": [100.0],
+        "amount": [102.0], "turn": [1.0],
+    }))
+    result = collector.sync_daily(
+        start_date="2026-09-07", end_date="2026-09-07", run_date="2026-09-07",
+        raw_subdir="_tmp", raw_batch_size=1, auto_merge_effective=False,
+        symbols=["sh600000", "sh600001"], source="tencent", target="raw:tencent",
+    )
+    paths = sorted((warehouse.base_dir / "raw" / "tencent" / "stock_daily" / "2026" / "09" / "07" / "_tmp").glob("*.parquet"))
+    assert len(paths) == 2
+    assert all(len(pd.read_parquet(path)) == 1 for path in paths)
+    assert not (warehouse.base_dir / "raw" / "effective" / "tencent" / "stock_daily" / "2026" / "09" / "07.parquet").exists()
+    assert result["auto_merge_effective"] is False
+    assert len(result["raw_paths"]) == 2
+
+
+def test_tencent_capture_reads_and_updates_pending_codes(tmp_path, monkeypatch):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    pending = tmp_path / "pending_codes.csv"
+    pd.DataFrame({"date": ["2026-09-07", "2026-09-07"],
+                  "code": ["sh600000", "sh600001"]}).to_csv(pending, index=False)
+    collector = MarketCollector(warehouse=warehouse, query_interval=0)
+
+    def fake_fetch(code, start, end, request_timeout=None):
+        if code == "sh600001":
+            return pd.DataFrame()
+        return pd.DataFrame({
+            "date": [pd.Timestamp("2026-09-07")], "code": [code],
+            "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.2],
+            "volume": [100.0], "amount": [102.0], "turn": [1.0],
+        })
+
+    monkeypatch.setattr(collector, "_fetch_symbol_tencent", fake_fetch)
+    result = collector.sync_daily(
+        start_date="2026-09-07", end_date="2026-09-07", run_date="2026-09-07",
+        raw_subdir="_tmp", raw_batch_size=50, auto_merge_effective=False,
+        pending_codes_path=pending, source="tencent", target="raw:tencent",
+    )
+    remaining = pd.read_csv(pending)
+    assert remaining["code"].tolist() == ["sh600001"]
+    assert result["raw_batch"]["row_count"] == 1
+
+
+def test_tencent_capture_rejects_pending_codes_with_wrong_date(tmp_path):
+    warehouse = Warehouse(tmp_path / "warehouse")
+    pending = tmp_path / "pending_codes.csv"
+    pd.DataFrame({"date": ["2026-09-06"], "code": ["sh600000"]}).to_csv(pending, index=False)
+    collector = MarketCollector(warehouse=warehouse, query_interval=0)
+    with pytest.raises(ValueError, match="日期必须与 end_date 一致"):
+        collector.sync_daily(
+            start_date="2026-09-07", end_date="2026-09-07",
+            pending_codes_path=pending, source="tencent", target="raw:tencent",
+        )
+
+
 def test_raw_batch_empty_input_is_rejected(tmp_path):
     warehouse = Warehouse(tmp_path / "warehouse")
     with pytest.raises(ValueError):

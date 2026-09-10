@@ -159,15 +159,27 @@ def _batch(warehouse: Warehouse, batch_id: str) -> Path:
 
 
 def _capture(warehouse: Warehouse, request: dict, run_id: int) -> dict:
-    symbols = _symbols(request)
+    symbols = None if request.get("pending_codes_path") else _symbols(request)
     task_timeout = request.get("task_timeout")
+    def setting(name, default=None):
+        value = request.get(name, default)
+        if value == "period_start":
+            return request.get("period_start")
+        if value == "period_end":
+            return request.get("period_end")
+        return value
     result = MarketCollector(warehouse=warehouse, query_interval=0.3).sync_daily(
         start_date=request.get("period_start"), end_date=request.get("period_end"), symbols=symbols,
         include_etf=True, source="tencent", target="raw:tencent", capture_raw=True,
          flush_every=10, job_run_id=run_id, asset_types=["stock", "etf"],
           force_refresh=bool(request.get("force_refresh")),
            timeout=float(task_timeout) if task_timeout is not None else None,
-          request_context={key: request.get(key) for key in (
+           run_date=setting("raw_run_date") or request.get("period_end"),
+           raw_subdir=setting("raw_subdir"),
+           raw_batch_size=setting("raw_batch_size"),
+           auto_merge_effective=bool(setting("auto_merge_effective", True)),
+           pending_codes_path=setting("pending_codes_path"),
+           request_context={key: request.get(key) for key in (
               "universe_source", "universe_authoritative", "universe_snapshot_date")})
     if not result.get("source_batch_id") or result.get("raw_capture_failed"):
         raise RuntimeError("Raw Batch 未成功落盘")
@@ -469,17 +481,28 @@ def execute_task(db_path: Path, task_key: str, payload: dict,
     task = center.task(task_key)
     if task is None:
         raise ValueError(f"任务不存在: {task_key}")
+    config = _task_config(task)
+    if task_key == "stock_daily_capture":
+        execution = config.get("execution") or {}
+        payload = dict(payload)
+        for key in ("raw_run_date", "raw_subdir", "raw_batch_size", "auto_merge_effective", "pending_codes_path"):
+            if key not in payload and key in execution:
+                value = execution[key]
+                if isinstance(value, str):
+                    value = value.replace("{period_start}", str(payload.get("period_start") or ""))
+                    value = value.replace("{period_end}", str(payload.get("period_end") or ""))
+                payload[key] = value
     symbols = payload.get("symbols") or []
     # Industry index capture discovers its 90 THS industries from the source;
     # it is not a security-universe task and must not require instruments with
     # type=industry in the management catalog.
     requires_security_scope = task_key != "industry_daily_capture"
-    if not symbols and requires_security_scope:
+    if not symbols and requires_security_scope and not payload.get("pending_codes_path"):
         config = _task_config(task)
         asset_types = set((config.get("scope") or {}).get("asset_types") or [])
         catalog = Warehouse(meta_db_path=db_path).list_instruments(asset_types=asset_types)
         symbols = [item["code"] for item in catalog]
-    if not symbols and requires_security_scope:
+    if not symbols and requires_security_scope and not payload.get("pending_codes_path"):
         raise ValueError(f"任务 {task_key} 没有可执行的证券范围")
     payload = {**payload, "symbols": symbols}
     if requires_security_scope and "asset_types" not in payload:

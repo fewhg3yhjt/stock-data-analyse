@@ -58,14 +58,21 @@ class _BatchRawStore:
         self.raw_dir = self.base_dir / "raw"
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
-    def batch_dir(self, source: str, dataset: str, run_date: str) -> Path:
+    def batch_dir(self, source: str, dataset: str, run_date: str,
+                  subdir: str | None = None) -> Path:
         day = pd.Timestamp(run_date)
-        return self.raw_dir / source / dataset / f"{day:%Y}" / f"{day:%m}" / f"{day:%d}"
+        path = self.raw_dir / source / dataset / f"{day:%Y}" / f"{day:%m}" / f"{day:%d}"
+        if subdir:
+            clean_subdir = str(subdir).strip("/")
+            if clean_subdir in {"", ".", ".."} or Path(clean_subdir).name != clean_subdir:
+                raise ValueError(f"非法 Raw 子目录: {subdir!r}")
+            path /= clean_subdir
+        return path
 
     def write_batch(self, source: str, dataset: str, run_date: str,
-                    frames: Iterable[pd.DataFrame]) -> dict:
+                    frames: Iterable[pd.DataFrame], *, subdir: str | None = None) -> dict:
         """Stream frames into one immutable Parquet batch using an atomic replace."""
-        writer = self.begin_batch(source, dataset, run_date)
+        writer = self.begin_batch(source, dataset, run_date, subdir=subdir)
         try:
             for frame in frames:
                 writer.append(frame)
@@ -74,8 +81,9 @@ class _BatchRawStore:
             writer.abort()
             raise
 
-    def begin_batch(self, source: str, dataset: str, run_date: str):
-        return _RawBatchWriter(self.batch_dir(source, dataset, run_date))
+    def begin_batch(self, source: str, dataset: str, run_date: str,
+                    *, subdir: str | None = None):
+        return _RawBatchWriter(self.batch_dir(source, dataset, run_date, subdir=subdir))
 
 
 class _RawBatchWriter:
