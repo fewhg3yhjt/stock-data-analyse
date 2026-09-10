@@ -139,3 +139,5 @@ Universe 生命周期已补齐：权威清单中未出现的 active 实体先标
 Raw 与清洗职责已明确：Tencent Capture/Raw 保留源头字段原值，不按资产类型改写成交量、成交额，也不写入推导单位列；`DailyBuilder` 作为清洗标准化层，在生成 Candidate 时按配置及历史数据一致性完成单位转换。相关数据流水线回归待本次改动后重新验证，尚未执行生产历史数据重建或发布。
 
 2026-09-09 全量 ETF 实测补充：管理库中 `1,630` 只 ETF 按 Tencent 接口串行采集 `2026-09-08`，`1,628` 只返回数据、2 只为空、0 只请求失败；全部成功样本符合 `hand/wan_yuan`，因此 ETF 的 YAML 规则统一采用 `hand/wan_yuan`。
+
+2026-09-10 9 月缺失证券核对：对 `2026-09-09` Tencent 空响应且此前仍标记 active 的证券与 Baostock 权威 Universe 交叉核对。70 只不在权威清单中的历史证券已标记为 `inactive_candidate`，5 只仍在权威清单但当日 `tradeStatus=0` 的证券继续保留 active；未删除证券历史、Raw 或 Published 数据。
