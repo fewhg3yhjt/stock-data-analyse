@@ -242,7 +242,7 @@ flowchart LR
 
 采集成功批次会先按业务日期拆分并合并到 Current Raw（每天一个全市场文件）；合并按 `date + code` 覆盖，新批次未命中的旧键继续保留。失败、空响应和源头格式异常不会覆盖 Current Raw，格式异常进入 `manual_retry_required`。
 
-历史存量异常不直接修改生产数据模块：由一次性脚本单日处理，先还原源头单位、再按 `date + code` 去重，生成日期级 Current Raw；之后仍使用现有 Build、Quality、Publish 和 Indicators 流程。历史修复按 `2026-09` 向前逆序，每月复查后再进入下一个月；范式外问题必须暂停确认。
+历史存量异常不直接修改生产数据模块：由一次性脚本单日处理，先还原源头单位、再按 `date + code` 去重，生成日期级 Current Raw；之后仍使用现有 Build、Quality、Publish 和 Indicators 流程。历史修复按 `2026-09` 向前逆序，每月复查后再进入下一个月；范式外问题先定点重采一次，重采后仍异常、为空或状态矛盾时才暂停确认。
 
 `MarketCollector.sync_daily` 只允许写入 `raw:<source>` Raw Batch；`target="daily"` 已下线并会直接报错。CLI、生产任务和 Shadow 验证均必须先采集 Raw，再由 `DailyBuilder` 生成 Candidate。
 

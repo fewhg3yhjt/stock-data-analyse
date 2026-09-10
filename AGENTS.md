@@ -20,6 +20,24 @@
 - Do not bypass Published Dataset, quality, checksum, or version checks for formal analysis and decisions.
 - Keep source classifications and data dates explicit; do not silently merge incompatible industry or sector definitions.
 
+## Minimal Change And Contract Discipline
+
+- Prefer the smallest change to the existing implementation and contract that solves the confirmed problem; do not introduce a parallel rule system when the existing path can be corrected.
+- Do not add new default rules, default fallback behavior, compatibility branches, implicit recovery, or silent data-source substitutions unless there is a concrete approved requirement.
+- Existing fallback or compatibility behavior may be retained only when its scope is explicit, such as a test fixture, migration tool, diagnostic path, or separately approved research path; it must not become a production default by accident.
+- When the required behavior, data meaning, source classification, unit, coverage rule, or migration boundary is uncertain, stop before changing semantics and discuss the ambiguity with the user.
+- Do not treat a passing test, an existing helper, or a newly added abstraction as approval to change production behavior; verify that the change follows the established contract and original scenario.
+
+## Data Repair Stop And Confirm
+
+- If a historical repair, migration, validation, or production data task encounters OOM, worker termination, timeout, incomplete temporary files, Parquet corruption, inconsistent statistics, conflicting quality results, or an unexpected status transition, stop the current operation immediately.
+- After stopping, first record the actual facts: affected scope, completed and uncompleted work, files changed or not changed, database state, process/container state, and whether a Published Current pointer changed. Do not treat a command with no output as success.
+- Do not respond to a failed or ambiguous operation by silently changing tools, containers, mount paths, scripts, batch sizes, statistics, deletion scope, retry scope, or processing order. Explain the proposed alternative and wait for explicit approval before continuing.
+- Do not infer business meaning from one empty response, one abnormal value, a security name, or a partial batch. Perform only the retry explicitly defined by the approved repair procedure; if the retry has the same result, stop and ask the user to confirm the business meaning and next action.
+- Do not modify `warehouse/`, `ops/`, production configuration, or production data semantics to work around a historical record without first reporting the reason, impact, alternatives, and required change, then receiving explicit approval.
+- Do not announce a stage or month as complete based only on a successful task, Candidate, Published pointer, or partial report. Use the documented statistical acceptance checklist and provide actual data examples.
+- If a destructive action has already been approved for an exact `(date, code)` scope, stop again if the actual scope, count, file set, or post-delete verification differs from the approved scope. Never expand the deletion autonomously.
+
 ## Scheduled collection timeout
 
 - `WAREHOUSE_DAILY_TIMEOUT` controls the scheduled daily capture deadline (default 1800 seconds); timeout leaves unprocessed symbols failed/partial and never leaves a SourceBatch running.
