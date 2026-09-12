@@ -106,6 +106,21 @@ def cmd_online(args):
     print(f"✅ 在线快照已写入: {path}")
 
 
+def cmd_prepare_raw(args):
+    """按交易日初始化 stock_daily Raw 目录和待拉取清单。"""
+    from StockInvestmentTool.warehouse.raw_repair import prepare_stock_daily_raw_range
+
+    reference = __import__("pandas").read_csv(args.reference)
+    if "code" not in reference.columns:
+        raise ValueError("reference CSV 必须包含 code 列")
+    result = prepare_stock_daily_raw_range(
+        args.raw_root, args.start, args.end, reference["code"].tolist(),
+        clean_empty_non_trading=args.clean_empty_non_trading,
+    )
+    for item in result["dates"]:
+        print(f"{item['date']} trading={item['trading']} pending={item['pending']}")
+
+
 def cmd_reset(args):
     """清理仓库数据（破坏性）。"""
     from StockInvestmentTool.warehouse.storage import Warehouse
@@ -269,6 +284,16 @@ def main(argv: list[str] | None = None):
     p_online.add_argument("--codes", default="", help="逗号分隔代码，空=用观察池")
     p_online.add_argument("--day", default=None, help="YYYY-MM-DD")
 
+    p_prepare = sub.add_parser("prepare-raw", help="按交易日初始化 stock_daily Raw 目录和 pending 清单")
+    p_prepare.add_argument("--raw-root", required=True, type=__import__("pathlib").Path,
+                           help="warehouse/raw/tencent/stock_daily 根目录")
+    p_prepare.add_argument("--start", required=True, help="YYYY-MM-DD")
+    p_prepare.add_argument("--end", required=True, help="YYYY-MM-DD")
+    p_prepare.add_argument("--reference", required=True, type=__import__("pathlib").Path,
+                           help="包含 code 列的参考证券 CSV")
+    p_prepare.add_argument("--clean-empty-non-trading", action="store_true",
+                           help="清理没有有效 parquet 的误建非交易日目录")
+
     p_public = sub.add_parser("export-public-daily", help="从 Published 日线导出静态公开 JSON")
     p_public.add_argument("--codes", default="", help="逗号分隔股票代码；空时使用 PUBLIC_DAILY_EXPORT_CODES 或默认列表")
     p_public.set_defaults(func=cmd_export_public_daily)
@@ -314,7 +339,8 @@ def main(argv: list[str] | None = None):
     setup_logging(args.verbose)
 
     handlers = {"init": cmd_init, "sync": cmd_sync,
-                "scan": cmd_scan, "online": cmd_online, "status": cmd_status,
+                 "scan": cmd_scan, "online": cmd_online, "status": cmd_status,
+                 "prepare-raw": cmd_prepare_raw,
                 "reset": cmd_reset, "process": cmd_process, "backfill": cmd_backfill,
                 "fundamentals": cmd_fundamentals, "industry": cmd_industry,
                  "ths-industry-import": cmd_ths_industry_import,
