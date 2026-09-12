@@ -69,15 +69,15 @@ def _parse_time(spec: str) -> tuple[int, int]:
 
 
 def _daily_timeout() -> float:
-    raw = os.getenv("WAREHOUSE_DAILY_TIMEOUT", "1800")
+    raw = os.getenv("WAREHOUSE_DAILY_TIMEOUT", "3600")
     try:
         value = float(raw)
         if value <= 0:
             raise ValueError
         return value
     except (TypeError, ValueError):
-        logger.warning("WAREHOUSE_DAILY_TIMEOUT 格式错误(%s)，使用默认 1800 秒", raw)
-        return 1800.0
+        logger.warning("WAREHOUSE_DAILY_TIMEOUT 格式错误(%s)，使用默认 3600 秒", raw)
+        return 3600.0
 
 
 def run_daily_tasks(run_id: int | None = None) -> dict:
