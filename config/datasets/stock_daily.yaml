@@ -166,6 +166,12 @@ quality:
   unit_consistency:
     implied_amount_volume_close_min: 0.2
     implied_amount_volume_close_max: 5.0
+    exceptions:
+      - name: sz159582_july_2026
+        codes: [sz159582]
+        dates: [2026-07-01, 2026-07-02, 2026-07-10]
+        max: 10.0
+        reason: 历史 ETF 成交量口径与相邻交易日呈稳定连续偏移
   coverage:
     pass_min: 0.995
     warning_min: 0.98

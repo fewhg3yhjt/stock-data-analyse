@@ -65,10 +65,23 @@ def check_stock_daily(path, expected_symbols: int | None = None,
     unit_config = config.get("unit_consistency", {})
     implied_min = float(unit_config.get("implied_amount_volume_close_min", 0.2))
     implied_max = float(unit_config.get("implied_amount_volume_close_max", 5.0))
+    unit_exceptions = unit_config.get("exceptions", []) or []
+    exception_hits = []
     if {"amount", "volume", "close"}.issubset(numeric):
         denominator = numeric["volume"] * numeric["close"]
         implied = numeric["amount"] / denominator.replace(0, pd.NA)
-        abnormal = implied.notna() & ((implied < implied_min) | (implied > implied_max))
+        allowed_max = pd.Series(implied_max, index=frame.index, dtype=float)
+        for exception in unit_exceptions:
+            codes = {str(code).lower().replace(".", "") for code in exception.get("codes", [])}
+            dates = {str(value)[:10] for value in exception.get("dates", [])}
+            mask = frame["code"].astype(str).str.lower().str.replace(".", "", regex=False).isin(codes)
+            mask &= frame["date"].astype(str).str[:10].isin(dates)
+            if mask.any():
+                allowed_max.loc[mask] = float(exception.get("max", implied_max))
+                exception_hits.append({"name": exception.get("name", ""),
+                                       "rows": int(mask.sum()),
+                                       "reason": exception.get("reason", "")})
+        abnormal = implied.notna() & ((implied < implied_min) | (implied > allowed_max))
         abnormal_count = int(abnormal.sum())
         for index in frame.index[abnormal][:100]:
             unit_anomalies.append({
@@ -86,7 +99,8 @@ def check_stock_daily(path, expected_symbols: int | None = None,
         "freshness": freshness,
         "source_conflict": {"count": conflict_count, "details": source_conflicts or []},
         "unit_consistency": {"abnormal_count": abnormal_count, "details": unit_anomalies,
-                             "min": implied_min, "max": implied_max},
+                             "min": implied_min, "max": implied_max,
+                             "exceptions_applied": exception_hits},
     }
     fail = duplicate > config.get("duplicates", {}).get("fail_if_gt", 0)
     fail |= int(invalid_mask.sum()) > config.get("ohlc", {}).get("fail_if_invalid_gt", 0)
