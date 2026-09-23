@@ -12,6 +12,11 @@ from pathlib import Path
 import pandas as pd
 
 from StockInvestmentTool.warehouse.collector import MarketCollector
+from StockInvestmentTool.warehouse.daily_build import DailyBuilder
+from StockInvestmentTool.warehouse.pipeline_state import PipelineState
+from StockInvestmentTool.warehouse.quality import check_stock_daily
+from StockInvestmentTool.warehouse.publish import Publisher
+from StockInvestmentTool.warehouse.storage import Warehouse
 
 
 def _months(start: str, end: str) -> list[str]:
@@ -65,8 +70,62 @@ def run(root: Path, start: str, end: str, log_path: Path) -> None:
                               "remaining": remaining,
                               "elapsed_sec": result.get("elapsed_sec"),
                               "started_epoch": started})
+            pipeline = _publish_month(root, month)
+            _write(log, {"event": "month_pipeline", "month": month, **pipeline})
             _write(log, {"event": "month_done", "month": month,
                           "elapsed_sec": round(time.monotonic() - month_started, 1)})
+
+
+def _publish_month(root: Path, month: str) -> dict:
+    """Build, quality-check and publish one completed month from its Raw files."""
+    year, month_number = month.split("-")
+    month_root = root / year / month_number
+    files = sorted(month_root.glob("*/batch_repair_*.parquet"))
+    if not files:
+        return {"status": "blocked", "reason": "no_raw_files", "pending": 0}
+
+    pending = sum(len(pd.read_csv(path)) for path in month_root.glob("*/pending_codes.csv"))
+    raw = pd.concat([pd.read_parquet(path) for path in files], ignore_index=True)
+    warehouse = Warehouse()
+    normalized = DailyBuilder(warehouse)._normalize(raw, "tencent", units={})
+    normalized["date"] = pd.to_datetime(normalized["date"], errors="coerce")
+    normalized["code"] = normalized["code"].astype(str).str.lower().str.replace(".", "", regex=False)
+    normalized = normalized.sort_values(["date", "code"]).drop_duplicates(["date", "code"]).reset_index(drop=True)
+
+    import hashlib
+    fingerprint = hashlib.sha256(
+        normalized.to_json(orient="records", date_format="iso").encode()
+    ).hexdigest()
+    candidate_dir = warehouse.base_dir / "candidates" / "stock_daily" / month
+    candidate_dir.mkdir(parents=True, exist_ok=True)
+    candidate_path = candidate_dir / f"stock_daily_{month.replace('-', '')}_repaired_norm_{fingerprint[:12]}.parquet"
+    normalized.to_parquet(candidate_path, index=False, engine="pyarrow", compression="zstd")
+    version_id = f"stock_daily_{month.replace('-', '')}_repaired_norm_{fingerprint[:12]}"
+    build = {
+        "version_id": version_id, "partition": month, "path": candidate_path,
+        "row_count": len(normalized), "symbol_count": int(normalized["code"].nunique()),
+        "min_date": str(normalized["date"].min())[:10],
+        "max_date": str(normalized["date"].max())[:10],
+        "checksum": hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
+    }
+    state = PipelineState(warehouse.meta_db_path)
+    state.create_version(build, source_batches=[f"raw-repair:{month}:{len(files)}"])
+    quality = check_stock_daily(candidate_path, expected_symbols=6860,
+                                expected_trade_date=None, source_conflicts=[])
+    state.quality(version_id, status=quality["status"], checks=quality["checks"],
+                  publish_allowed=quality["publish_allowed"])
+    result = {
+        "status": quality["status"], "publish_allowed": quality["publish_allowed"],
+        "version_id": version_id, "rows": len(normalized),
+        "symbols": int(normalized["code"].nunique()), "pending": pending,
+        "coverage": quality["checks"].get("coverage"),
+        "unit_anomalies": quality["checks"]["unit_consistency"]["abnormal_count"],
+    }
+    if quality["publish_allowed"]:
+        result["publish"] = Publisher(warehouse).publish(version_id)
+    else:
+        result["publish"] = None
+    return result
 
 
 def _write(handle, payload: dict) -> None:
